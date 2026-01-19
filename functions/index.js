@@ -64,6 +64,11 @@ exports.runLeadDistribution = leadDistribution.runLeadDistribution;
 exports.planLeadDistribution = leadDistribution.planLeadDistribution;
 exports.distributeDailyLeads = leadDistribution.distributeDailyLeads;
 exports.getLeadSupplyAnalytics = leadDistribution.getLeadSupplyAnalytics;
+// Lead Pool Management (new)
+exports.recallAllPlatformLeads = leadDistribution.recallAllPlatformLeads;
+exports.forceUnlockPool = leadDistribution.forceUnlockPool;
+exports.getBadLeadsAnalytics = leadDistribution.getBadLeadsAnalytics;
+exports.getCompanyDistributionStatus = leadDistribution.getCompanyDistributionStatus;
 
 // 6. System Integrity
 exports.syncSystemStructure = systemIntegrity.syncSystemStructure;

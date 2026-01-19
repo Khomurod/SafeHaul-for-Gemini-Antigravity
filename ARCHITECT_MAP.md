@@ -76,3 +76,27 @@ Any field added to the **Driver Input** (Left) MUST be rendered in the **Admin O
 * **No Auto-Conversion**: Marking a lead as "Interested" via Call Outcome NEVER moves it to Applications. It simply updates the status to "Contacted".
 * **The Only Path**: A Lead is converted to an Application ONLY when the Driver clicks the "Interest Link" (triggering `confirmDriverInterest`) OR submits a full application via the Recruiter Link.
 * **Data Isolation**: Last Call Status (`lastCallOutcome`) is strictly local to the Company and must not sync to other companies viewing the same Lead.
+
+## 6. Critical Field Mappings
+
+### Lead Name Display (IMPORTANT)
+The Lead Distribution system has a **legacy data compatibility issue**:
+
+| Source | Name Storage | How to Display |
+|--------|-------------|----------------|
+| New Distributions | `firstName` + `lastName` | `${firstName} ${lastName}` |
+| Legacy Data | `fullName` | Parse `fullName` directly |
+| Fallback | Neither | "Unknown Driver" |
+
+**Frontend Rule**: Always check for BOTH patterns:
+```javascript
+if (item.fullName) {
+    name = item.fullName;
+} else {
+    name = `${item.firstName || 'Unknown'} ${item.lastName || 'Driver'}`;
+}
+```
+
+> Files using this pattern:
+> - `src/features/companies/components/DashboardBody.jsx`
+> - `src/shared/components/modals/SafeHaulLeadsDriverModal.jsx`

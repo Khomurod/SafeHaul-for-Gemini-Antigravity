@@ -12,6 +12,7 @@ import { FeaturesView } from './FeaturesView.jsx';
 import { SystemHealthView } from './SystemHealthView.jsx';
 import { IntegrationManager } from './integrations/IntegrationManager.jsx';
 import StatsBackfillPanel from './StatsBackfillPanel.jsx';
+import { LeadPoolView } from './LeadPoolView.jsx';
 
 // --- Views from Parent Directory ---
 import { AnalyticsView } from '../views/AnalyticsView.jsx';
@@ -74,6 +75,10 @@ export function ViewRouter({
         case 'analytics':
             return (
                 <AnalyticsView />
+            );
+        case 'lead-pool':
+            return (
+                <LeadPoolView onDataUpdate={onDataUpdate} />
             );
         case 'companies':
             return (

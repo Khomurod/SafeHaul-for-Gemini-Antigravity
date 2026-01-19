@@ -58,6 +58,13 @@ export function SuperAdminSidebar({
         onClick={() => handleNavClick("analytics")}
       />
 
+      <NavItem
+        label="Lead Pool"
+        icon={<Database size={20} />}
+        isActive={activeView === "lead-pool" && !isSearching}
+        onClick={() => handleNavClick("lead-pool")}
+      />
+
       <div className="my-2 border-t border-gray-100"></div>
 
       <NavItem

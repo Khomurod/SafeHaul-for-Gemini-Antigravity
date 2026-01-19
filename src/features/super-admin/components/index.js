@@ -10,4 +10,5 @@ export { UsersView } from './UsersView.jsx';
 export { BulkLeadAddingView } from './BulkLeadAddingView.jsx';
 export { CreateView } from './CreateView.jsx';
 export { FeaturesView } from './FeaturesView.jsx';
-export { SystemHealthView } from './SystemHealthView.jsx'; // <-- Added
+export { SystemHealthView } from './SystemHealthView.jsx';
+export { LeadPoolView } from './LeadPoolView.jsx';
