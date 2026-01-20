@@ -104,6 +104,7 @@ exports.addManualPhoneNumber = smsIntegrations.addManualPhoneNumber;
 exports.addPhoneLine = smsIntegrations.addPhoneLine;
 exports.removePhoneLine = smsIntegrations.removePhoneLine;
 exports.testLineConnection = smsIntegrations.testLineConnection;
+exports.verifyLineConnection = smsIntegrations.verifyLineConnection;
 
 // 11. Stats Aggregation
 exports.onActivityLogCreated = statsAggregator.onActivityLogCreated;
