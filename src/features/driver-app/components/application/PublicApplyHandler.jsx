@@ -174,7 +174,23 @@ export function PublicApplyHandler() {
       const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       // DATA PRESERVATION: Maintained 'personalInfo' nested object for Firestore Rules
-      const applicationData = {
+      // Use sanitizeData to recursively replace undefined with null
+      function sanitizeData(data) {
+        if (data === undefined) return null;
+        if (data === null) return null;
+        if (data instanceof Date) return data;
+        if (Array.isArray(data)) return data.map(sanitizeData);
+        if (typeof data === 'object') {
+          const sanitized = {};
+          for (const key in data) {
+            sanitized[key] = sanitizeData(data[key]);
+          }
+          return sanitized;
+        }
+        return data;
+      }
+
+      const applicationData = sanitizeData({
         applicantId: prefillLeadId || guestId,
         personalInfo: {
           firstName: formData.firstName || '',
@@ -200,7 +216,7 @@ export function PublicApplyHandler() {
         accidents: Array.isArray(formData.accidents) ? formData.accidents : [],
         schools: Array.isArray(formData.schools) ? formData.schools : [],
         military: Array.isArray(formData.military) ? formData.military : []
-      };
+      });
 
       // DUPLICATION PREVENTION: Use deterministic ID (updates Lead instead of duplicating)
       const docId = prefillLeadId || guestId;

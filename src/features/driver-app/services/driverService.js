@@ -190,53 +190,101 @@ export async function getSavedJobs(driverId) {
 }
 
 // --- Application Logic ---
+// --- Application Logic ---
 export async function uploadApplicationFile(companyId, userId, fieldName, file) {
     if (!file) return null;
     const basePath = companyId
         ? `companies/${companyId}/applications/${userId}`
         : `global_leads/${userId}`;
 
-    const storagePath = `${basePath}/${fieldName}/${Date.now()}_${file.name}`;
+    // Fix: Sanitize filename to prevent path issues
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const storagePath = `${basePath}/${fieldName}/${Date.now()}_${sanitizedName}`;
     const fileRef = ref(storage, storagePath);
 
-    await uploadBytes(fileRef, file);
-    const downloadURL = await getDownloadURL(fileRef);
+    // RETRY LOGIC (3 attempts)
+    let lastError;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            await uploadBytes(fileRef, file);
+            const downloadURL = await getDownloadURL(fileRef);
 
-    return {
-        name: file.name,
-        url: downloadURL,
-        storagePath: storagePath
-    };
+            return {
+                name: file.name,
+                url: downloadURL,
+                storagePath: storagePath,
+                uploadedAt: new Date().toISOString()
+            };
+        } catch (error) {
+            console.warn(`Upload attempt ${attempt} failed:`, error);
+            lastError = error;
+            // Wait 1s before retry
+            if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+
+    throw new Error(`Upload failed after 3 attempts: ${lastError?.message}`);
+}
+
+// Helper to remove undefined values (Firestore rejects them)
+function sanitizeData(data) {
+    if (data === undefined) return null;
+    if (data === null) return null;
+    if (data instanceof Date) return data;
+    if (Array.isArray(data)) return data.map(sanitizeData);
+    if (typeof data === 'object') {
+        const sanitized = {};
+        for (const key in data) {
+            sanitized[key] = sanitizeData(data[key]);
+        }
+        return sanitized;
+    }
+    return data;
 }
 
 export async function submitDriverApplication(currentUser, formData, activeCompanyId, job) {
     const timestamp = serverTimestamp();
 
-    // Prepare Payload
-    const finalData = {
-        ...formData,
-        signature: formData.signature,
-        signatureType: formData.signatureType || 'drawn',
-        userId: currentUser.uid,
-        driverId: currentUser.uid,
-        status: 'New Application',
-        submittedAt: timestamp,
-        createdAt: timestamp,
-        sourceType: activeCompanyId ? 'Company App' : 'Global Pool',
-        companyId: activeCompanyId || 'general-leads',
-        // --- NEW: Job specific data ---
-        jobId: job?.id || null,
-        jobTitle: job?.title || null
-    };
+    // RETRY LOGIC for Submission (3 attempts)
+    let lastError;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            // Prepare Payload
+            const finalData = sanitizeData({
+                ...formData,
+                signature: formData.signature,
+                signatureType: formData.signatureType || 'drawn',
+                userId: currentUser.uid,
+                driverId: currentUser.uid,
+                status: 'New Application',
+                submittedAt: timestamp,
+                createdAt: timestamp,
+                sourceType: activeCompanyId ? 'Company App' : 'Global Pool',
+                companyId: activeCompanyId || 'general-leads',
+                // --- NEW: Job specific data ---
+                jobId: job?.id || null,
+                jobTitle: job?.title || null
+            });
 
-    // Determine Destination
-    let docRef;
-    if (activeCompanyId) {
-        docRef = doc(db, "companies", activeCompanyId, "applications", currentUser.uid);
-    } else {
-        docRef = doc(db, "leads", currentUser.uid);
+            // Determine Destination
+            let docRef;
+            if (activeCompanyId) {
+                // Check if we are retrying - avoid overwriting if it somehow succeeded but ack failed?
+                // setDoc is idempotent so it's fine.
+                docRef = doc(db, "companies", activeCompanyId, "applications", currentUser.uid);
+            } else {
+                docRef = doc(db, "leads", currentUser.uid);
+            }
+
+            await setDoc(docRef, finalData);
+            return true; // Success
+
+        } catch (error) {
+            console.warn(`Submission attempt ${attempt} failed:`, error);
+            lastError = error;
+            if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+        }
     }
 
-    await setDoc(docRef, finalData);
-    return true;
+    throw new Error(`Submission failed after 3 attempts: ${lastError?.message}`);
 }

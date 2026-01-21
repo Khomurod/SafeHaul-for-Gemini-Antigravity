@@ -4,7 +4,7 @@ import { useData } from '@/context/DataContext';
 import { FileSignature, PenTool, CheckCircle, Save, Eraser, RotateCcw } from 'lucide-react';
 import { getSignatureDataUrl, clearCanvas, initializeSignatureCanvas } from '@/lib/signature';
 
-const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit }) => {
+const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, isSubmitting, isUploading }) => {
     const { currentCompanyProfile } = useData();
     const currentCompany = currentCompanyProfile;
     const canvasRef = useRef(null);
@@ -106,7 +106,18 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit }) 
                 </legend>
 
                 <div className="bg-gray-50 p-4 rounded text-sm text-gray-700 leading-relaxed border border-gray-200 italic">
-                    <p>This certifies that this application was completed by me, and that all entries on it and information in it are true and complete to the best of my knowledge.</p>
+                    <div className="space-y-4 text-xs sm:text-sm">
+                        <p><strong>CERTIFICATION OF APPLICANT:</strong></p>
+                        <p>I certify that this application was completed by me, and that all entries on it and information in it are true and complete to the best of my knowledge.</p>
+                        <p>I authorize you to make such investigations and inquiries of my personal, employment, financial or medical history and other related matters as may be necessary in arriving at an employment decision. (Generally, inquiries regarding medical history will be made only if and after a conditional offer of employment has been extended.) I hereby release employers, schools, health care providers and other persons from all liability in responding to inquiries and releasing information in connection with my application.</p>
+                        <p>In the event of employment, I understand that false or misleading information given in my application or interview(s) may result in discharge. I understand, also, that I am required to abide by all rules and regulations of the Company.</p>
+                        <p>I understand that information I provide regarding current and/or previous employers may be used, and those employer(s) will be contacted, for the purpose of investigating my safety performance history as required by 49 CFR 391.23(d) and (e). I understand that I have the right to:</p>
+                        <ul className="list-disc pl-5 space-y-1">
+                            <li>Review information provided by previous employers;</li>
+                            <li>Have errors in the information corrected by previous employers and for those previous employers to re-send the corrected information to the prospective employer; and</li>
+                            <li>Have a rebuttal statement attached to the alleged erroneous information, if the previous employer(s) and I cannot agree on the accuracy of the information.</li>
+                        </ul>
+                    </div>
                 </div>
 
                 <div className="pt-4 border-t border-gray-200">
@@ -189,10 +200,19 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit }) 
                 <button
                     type="submit"
                     onClick={onFinalSubmit}
-                    disabled={!isFinalCertified || !isSigned}
-                    className="px-10 py-3.5 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-40 disabled:grayscale disabled:cursor-not-allowed flex items-center gap-2 transition-all active:scale-95"
+                    disabled={!isFinalCertified || !isSigned || isSubmitting || isUploading}
+                    className="px-10 py-3.5 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed flex items-center gap-2 transition-all active:scale-95"
                 >
-                    <CheckCircle size={20} /> Submit Full Application
+                    {isSubmitting ? (
+                        <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Submitting...
+                        </>
+                    ) : (
+                        <>
+                            <CheckCircle size={20} /> Submit Full Application
+                        </>
+                    )}
                 </button>
             </div>
         </div>

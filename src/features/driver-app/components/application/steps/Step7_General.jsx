@@ -11,7 +11,7 @@ import BusinessInfoSection from './components/BusinessInfoSection';
 import VehicleExperienceSection from './components/VehicleExperienceSection';
 import EmergencyContactsSection from './components/EmergencyContactsSection';
 
-const Step7_General = ({ formData, updateFormData, onNavigate, handleFileUpload }) => {
+const Step7_General = ({ formData, updateFormData, onNavigate, handleFileUpload, isUploading }) => {
     const { states } = useUtils();
     const { currentCompanyProfile } = useData();
     const currentCompany = currentCompanyProfile;
@@ -102,29 +102,8 @@ const Step7_General = ({ formData, updateFormData, onNavigate, handleFileUpload 
                 />
             )}
 
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Hours of Service (HOS)</legend>
-                <p className="text-sm text-gray-600">Total hours worked during the immediately preceding 7 days.</p>
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-3">
-                    {[1, 2, 3, 4, 5, 6, 7].map(day => (
-                        <div key={day}>
-                            <label htmlFor={'hos-day' + day} className="block text-xs font-medium text-gray-700 mb-1">Day {day}</label>
-                            <input
-                                type="number"
-                                id={'hos-day' + day}
-                                name={'hosDay' + day}
-                                value={formData['hosDay' + day] || ''}
-                                onChange={(e) => updateFormData(e.target.name, e.target.value)}
-                                className="w-full p-2 border border-gray-300 rounded-lg shadow-sm"
-                            />
-                        </div>
-                    ))}
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
-                    <InputField label="Last relieved from work (DATE)" id="last-relieved-date" name="lastRelievedDate" type="date" value={formData.lastRelievedDate} onChange={updateFormData} />
-                    <InputField label="Last relieved from work (TIME)" id="last-relieved-time" name="lastRelievedTime" type="time" value={formData.lastRelievedTime} onChange={updateFormData} />
-                </div>
-            </fieldset>
+            {/* HOS Section Removed: Note required for initial application per typical DOT flows unless asked by carrier (now handled via custom questions if needed) */}
+
 
             <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
                 <legend className="text-lg font-semibold text-gray-800 px-2">Felony History</legend>

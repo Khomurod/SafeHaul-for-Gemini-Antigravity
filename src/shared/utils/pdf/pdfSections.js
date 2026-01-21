@@ -317,3 +317,48 @@ export function addAddressHistorySection(doc, y, applicant) {
 
     return y;
 }
+
+export function addVehicleExperienceSection(doc, y, applicant) {
+    y = addTableHeader(doc, y, "Nature & Extent of Experience (49 CFR 391.21(b)(6))");
+
+    // Header Row
+    const headers = ["Equipment", "Miles Driven", "Experience"];
+    const colWidths = [60, 50, 60];
+    let currentX = PDF_CONFIG.MARGIN;
+
+    doc.setFont(PDF_CONFIG.FONT.BOLD, "bold");
+    doc.setFontSize(9);
+    doc.setFillColor(230, 230, 230);
+    doc.setDrawColor(180);
+
+    // Draw Header
+    headers.forEach((h, i) => {
+        doc.rect(currentX, y, colWidths[i], 7, 'FD');
+        doc.text(h, currentX + 2, y + 5);
+        currentX += colWidths[i];
+    });
+    y += 7;
+
+    // Data Row Helper
+    const addExpRow = (label, milesKey, expKey) => {
+        currentX = PDF_CONFIG.MARGIN;
+        doc.setFont(PDF_CONFIG.FONT.NORMAL, "normal");
+        doc.setFillColor(255);
+
+        const miles = getFieldValue(applicant?.[milesKey]) || "0";
+        const exp = getFieldValue(applicant?.[expKey]) || "N/A";
+
+        [label, miles, exp].forEach((val, i) => {
+            doc.rect(currentX, y, colWidths[i], 7, 'S');
+            doc.text(String(val), currentX + 2, y + 5);
+            currentX += colWidths[i];
+        });
+        y += 7;
+    };
+
+    addExpRow("Straight Truck", "expStraightTruckMiles", "expStraightTruckExp");
+    addExpRow("Tractor + Semi Trailer", "expSemiTrailerMiles", "expSemiTrailerExp");
+    addExpRow("Tractor + Two Trailers", "expTwoTrailersMiles", "expTwoTrailersExp");
+
+    return y + PDF_CONFIG.SECTION_GAP;
+}

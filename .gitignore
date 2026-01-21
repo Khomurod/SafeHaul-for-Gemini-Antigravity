@@ -96,7 +96,7 @@ temp/
 # ===========================================
 # OPTIONAL: Large generated files
 # ===========================================
-# package-lock.json
+package-lock.json
 
 # ===========================================
 # SECURITY & SECRETS (EXTRA SAFEGUARDS)

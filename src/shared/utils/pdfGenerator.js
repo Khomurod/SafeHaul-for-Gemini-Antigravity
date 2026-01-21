@@ -11,7 +11,8 @@ import {
     addEmploymentSection,
     addDrivingHistorySection,
     addCustomQuestionsSection,
-    addAddressHistorySection
+    addAddressHistorySection,
+    addVehicleExperienceSection
 } from '@shared/utils/pdf/pdfSections';
 
 // --- FULL LEGAL TEXT CONSTANTS ---
@@ -133,7 +134,10 @@ export function generateApplicationPDF(pdfData) {
     // Safe access to arrays
     y = addDrivingHistorySection(doc, y, applicant?.violations || [], applicant?.accidents || []);
 
-    // --- 7. Employment History ---
+    // --- 7. Vehicle Experience Section (49 CFR 391.21(b)(6)) ---
+    y = addVehicleExperienceSection(doc, y, applicant);
+
+    // --- 8. Employment History ---
     y = addEmploymentSection(doc, y, applicant?.employers || []);
 
     // --- 8. Education & Military ---

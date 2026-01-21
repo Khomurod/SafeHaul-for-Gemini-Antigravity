@@ -1,12 +1,13 @@
 import React from 'react';
 import InputField from '@shared/components/form/InputField';
+import UploadField from '../UploadField';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
 import { useUtils } from '@shared/hooks/useUtils';
 import { useData } from '@/context/DataContext';
 import { YES_NO_OPTIONS, LICENSE_CLASS_OPTIONS, ENDORSEMENT_OPTIONS } from '@/config/form-options';
 
-const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate }) => {
+const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate, isUploading }) => {
     const { states } = useUtils();
     const { currentCompanyProfile } = useData();
     const currentCompany = currentCompanyProfile;
@@ -201,22 +202,20 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate 
                 {/* CDL UPLOADS */}
                 {!cdlUploadConfig.hidden && (
                     <div className="space-y-4 pt-4 border-t border-gray-200">
-                        <InputField
+                        <UploadField
                             label="Upload CDL (Front)"
-                            id="cdl-front"
                             name="cdl-front"
-                            type="file"
                             value={formData['cdl-front']}
-                            onChange={safeFileChange}
+                            onUpload={handleFileUpload}
+                            onChange={(name, fileData) => updateFormData(name, fileData)}
                             required={cdlUploadConfig.required && !formData['cdl-front']}
                         />
-                        <InputField
+                        <UploadField
                             label="Upload CDL (Back)"
-                            id="cdl-back"
                             name="cdl-back"
-                            type="file"
                             value={formData['cdl-back']}
-                            onChange={safeFileChange}
+                            onUpload={handleFileUpload}
+                            onChange={(name, fileData) => updateFormData(name, fileData)}
                             required={cdlUploadConfig.required && !formData['cdl-back']}
                         />
                     </div>
@@ -225,13 +224,12 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate 
                 {/* MEDICAL CARD UPLOAD */}
                 {!medCardConfig.hidden && (
                     <div className="pt-4 border-t border-gray-200">
-                        <InputField
+                        <UploadField
                             label="Upload Medical Card"
-                            id="medical-card-upload"
                             name="medical-card-upload"
-                            type="file"
                             value={formData['medical-card-upload']}
-                            onChange={safeFileChange}
+                            onUpload={handleFileUpload}
+                            onChange={(name, fileData) => updateFormData(name, fileData)}
                             required={medCardConfig.required && !formData['medical-card-upload']}
                         />
                     </div>
@@ -252,13 +250,12 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate 
                 {hasTwic && (
                     <div id="twic-card-details" className="space-y-4 pt-4 border-t border-gray-200">
                         <InputField label="Expiration Date" id="twic-expiration" name="twicExpiration" type="date" value={formData.twicExpiration} onChange={updateFormData} />
-                        <InputField
+                        <UploadField
                             label="Upload TWIC Card"
-                            id="twic-card-upload"
                             name="twic-card-upload"
-                            type="file"
                             value={formData['twic-card-upload']}
-                            onChange={safeFileChange}
+                            onUpload={handleFileUpload}
+                            onChange={(name, fileData) => updateFormData(name, fileData)}
                         />
                     </div>
                 )}
@@ -275,9 +272,10 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate 
                 <button
                     type="button"
                     onClick={handleContinue}
-                    className="w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
+                    disabled={isUploading}
+                    className="w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
                 >
-                    Continue
+                    {isUploading ? 'Uploading...' : 'Continue'}
                 </button>
             </div>
         </div>

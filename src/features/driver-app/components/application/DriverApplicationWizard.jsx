@@ -112,7 +112,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   };
 
   const handleFinalSubmit = async () => {
-    // FIX: Add Validation for Signature
+    // FIX: Add Validation for Signature and Certification
     if (!formData.signature || !formData['final-certification']) {
       showError("Please provide your signature and certify the application.");
       setCurrentStep(8); // Jump to Step 9
