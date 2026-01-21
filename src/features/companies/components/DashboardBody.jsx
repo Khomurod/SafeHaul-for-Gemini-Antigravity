@@ -7,7 +7,7 @@ import {
     CheckSquare, Square
 } from 'lucide-react';
 // FIXED IMPORT PATH BELOW
-import { getFieldValue, formatPhoneNumber } from '@shared/utils/helpers';
+import { getFieldValue, formatPhoneNumber, toTitleCase } from '@shared/utils/helpers';
 import { ALL_COLUMNS } from './tableConfig';
 
 const getColWidth = (key) => ALL_COLUMNS.find(c => c.key === key)?.widthClass || '';
@@ -127,7 +127,7 @@ export function DashboardBody({
 
                 if (item.fullName) {
                     // Distributed leads have fullName field
-                    name = item.fullName;
+                    name = toTitleCase(item.fullName);
                     // Parse for avatar initial
                     const nameParts = item.fullName.trim().split(' ');
                     firstName = nameParts[0] || 'Unknown';
@@ -136,7 +136,7 @@ export function DashboardBody({
                     // Legacy pattern or direct applications
                     firstName = item.firstName || 'Unknown';
                     lastName = item.lastName || 'Driver';
-                    name = `${firstName} ${lastName}`.trim();
+                    name = toTitleCase(`${firstName} ${lastName}`.trim());
                 }
                 const isSelected = selectedId === item.id;
                 const isChecked = selectedRowIds.includes(item.id);

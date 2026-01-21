@@ -3,11 +3,25 @@
 /**
  * Returns a "Not Specified" string if the value is empty, otherwise returns the value.
  */
- export function getFieldValue(value) {
+export function getFieldValue(value) {
     if (value === null || value === undefined || value === "") {
         return "Not Specified";
     }
     return value;
+}
+
+/**
+ * Converts a string to Title Case (e.g., "JOHN DOE" -> "John Doe").
+ * Handles ALL CAPS, all lowercase, and mixed case inputs.
+ */
+export function toTitleCase(str) {
+    if (!str || typeof str !== 'string') return str;
+
+    return str
+        .toLowerCase()
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
 }
 
 /**
@@ -68,7 +82,7 @@ export function formatPhoneNumber(phone) {
  * Returns Tailwind classes for the application status.
  */
 export function getStatusColor(status) {
-    switch(status) {
+    switch (status) {
         case 'Approved':
             return 'bg-green-100 text-green-800';
         case 'Rejected':
@@ -87,7 +101,7 @@ export function getStatusColor(status) {
 
 export function field(label, value) {
     const displayValue = getFieldValue(value);
-    const val = (displayValue === "Not Specified") 
+    const val = (displayValue === "Not Specified")
         ? `<span class="text-gray-400 italic">${displayValue}</span>`
         : displayValue;
     return `<div class="py-2 sm:grid sm:grid-cols-3 sm:gap-4"><dt class="text-sm font-medium text-gray-500">${label}</dt><dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">${val}</dd></div>`;
