@@ -32,6 +32,7 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, is
 
         updateFormData('signature', dataUrl);
         updateFormData('signatureType', 'drawn');
+        updateFormData('signatureDate', new Date().toISOString()); // Save the signing date
         setIsSigned(true);
     };
 

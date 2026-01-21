@@ -270,35 +270,7 @@ export function SupplementalSection({ appData }) {
                 </div>
             </Section>
 
-            {/* --- 6. HOS LOG --- */}
-            <Section title="Hours of Service (Last 7 Days)">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-center border-collapse border border-gray-200">
-                        <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-                            <tr>
-                                {[1, 2, 3, 4, 5, 6, 7].map(d => <th key={d} className="border border-gray-200 p-2">Day {d}</th>)}
-                                <th className="border border-gray-200 p-2 text-blue-700">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                {[1, 2, 3, 4, 5, 6, 7].map(d => (
-                                    <td key={d} className="border border-gray-200 p-2 font-medium text-gray-900">
-                                        {appData['hosDay' + d] || 0}
-                                    </td>
-                                ))}
-                                <td className="border border-gray-200 p-2 font-bold text-blue-700 bg-blue-50">
-                                    {[1, 2, 3, 4, 5, 6, 7].reduce((acc, d) => acc + (parseInt(appData['hosDay' + d]) || 0), 0)}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div className="mt-3 text-xs text-gray-500 flex justify-end gap-4">
-                        <span>Last Relieved: <strong className="text-gray-900">{appData.lastRelievedDate || 'N/A'}</strong></span>
-                        <span>Time: <strong className="text-gray-900">{appData.lastRelievedTime || 'N/A'}</strong></span>
-                    </div>
-                </div>
-            </Section>
+            {/* HOS Section Removed - No longer collected in driver application (see Step7_General.jsx) */}
 
             {/* --- 7. EDUCATION & MILITARY --- */}
             {(appData.schools?.length > 0 || appData.military?.length > 0) && (

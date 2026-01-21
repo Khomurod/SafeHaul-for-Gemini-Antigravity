@@ -3,6 +3,7 @@ import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { DataProvider, useData } from '@/context/DataContext';
 import { ToastProvider, ErrorBoundary, GlobalLoadingState } from '@shared/components/feedback';
+import { QueueStatusIndicator } from '@shared/components/feedback/QueueStatusIndicator';
 
 // Keep Auth screens eager-loaded as they are the entry point
 import { LoginScreen, TeamMemberSignup } from '@features/auth';
@@ -128,6 +129,8 @@ export default function App() {
         <DataProvider>
           <Router>
             <AppRoutes />
+            {/* Bulletproof: Show queue/offline status indicator */}
+            <QueueStatusIndicator />
           </Router>
         </DataProvider>
       </ToastProvider>

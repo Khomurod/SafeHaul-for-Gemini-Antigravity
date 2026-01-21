@@ -177,7 +177,22 @@ export function addSignatureBlock(doc, y, applicantData) {
     y = checkPageBreak(doc, y, 70);
     y += PDF_CONFIG.SECTION_GAP * 2;
 
-    const sigDate = getFieldValue(applicantData['signature-date']);
+    // Check multiple field names for signature date with fallbacks
+    const formatDate = (val) => {
+        if (!val) return null;
+        if (val.toDate) val = val.toDate();
+        if (val.seconds) val = new Date(val.seconds * 1000);
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    };
+
+    const sigDate = formatDate(applicantData['signature-date'])
+        || formatDate(applicantData.signatureDate)
+        || formatDate(applicantData.signedAt)
+        || formatDate(applicantData.submittedAt)
+        || formatDate(applicantData.createdAt)
+        || 'Not Available';
+
     const signatureData = applicantData.signature;
     const name = `${getFieldValue(applicantData['firstName'])} ${getFieldValue(applicantData['lastName'])}`;
 

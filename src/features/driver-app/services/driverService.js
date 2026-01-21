@@ -13,6 +13,19 @@ import {
 } from "firebase/firestore";
 import { db, storage } from '@lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as Sentry from '@sentry/react';
+
+// Queue and ID generation for bulletproof submissions
+import {
+    initQueue,
+    enqueueSubmission,
+    dequeueSubmission,
+    isSupported as isQueueSupported
+} from '@lib/submissionQueue';
+import {
+    generateApplicationId,
+    generateConfirmationNumber
+} from '@lib/applicationId';
 
 // --- Offer Logic ---
 export async function respondToOffer(companyId, applicationId, response, signatureData = null) {
@@ -242,48 +255,175 @@ function sanitizeData(data) {
     return data;
 }
 
+/**
+ * Submit a driver application with guaranteed delivery
+ * 
+ * Uses a queue-first pattern:
+ * 1. Generate deterministic application ID
+ * 2. Queue the submission locally (IndexedDB)
+ * 3. Attempt to submit to Firestore with retries
+ * 4. Only dequeue on confirmed success
+ * 5. If all retries fail, data remains in queue for later retry
+ * 
+ * @param {Object} currentUser - Firebase auth user
+ * @param {Object} formData - Complete form data
+ * @param {string} activeCompanyId - Target company ID
+ * @param {Object} job - Optional job posting info
+ * @returns {Promise<{success: boolean, applicationId: string, confirmationNumber: string, queueId?: string}>}
+ */
 export async function submitDriverApplication(currentUser, formData, activeCompanyId, job) {
-    const timestamp = serverTimestamp();
+    const email = formData.email || currentUser?.email || '';
+    const phone = formData.phone || '';
+    const companyId = activeCompanyId || 'general-leads';
 
-    // RETRY LOGIC for Submission (3 attempts)
+    // Sentry breadcrumb for debugging
+    Sentry.addBreadcrumb({
+        category: 'submission',
+        message: 'Application submission started',
+        data: { companyId, hasEmail: !!email, hasPhone: !!phone },
+        level: 'info',
+    });
+
+    // 1. Generate deterministic application ID (prevents duplicates on retry)
+    let applicationId;
+    try {
+        applicationId = await generateApplicationId(companyId, email, phone);
+    } catch (idError) {
+        // Fallback to user UID if ID generation fails
+        console.warn('[submitDriverApplication] ID generation failed, using UID:', idError);
+        applicationId = currentUser.uid;
+    }
+
+    // 2. Generate confirmation number for user
+    const confirmationNumber = generateConfirmationNumber();
+
+    // 3. Prepare the final payload
+    const timestamp = serverTimestamp();
+    const finalData = sanitizeData({
+        ...formData,
+        signature: formData.signature,
+        signatureType: formData.signatureType || 'drawn',
+        userId: currentUser.uid,
+        driverId: currentUser.uid,
+        email: email,
+        phone: phone,
+        status: 'New Application',
+        submittedAt: timestamp,
+        createdAt: timestamp,
+        sourceType: activeCompanyId ? 'Company App' : 'Global Pool',
+        companyId: companyId,
+        // Job specific data
+        jobId: job?.id || null,
+        jobTitle: job?.title || null,
+        // New: Bulletproof tracking fields
+        applicationId: applicationId,
+        confirmationNumber: confirmationNumber,
+        lifecycle: {
+            status: 'pending',
+            submittedAt: new Date().toISOString(),
+            clientVersion: '2.0-bulletproof',
+        },
+    });
+
+    // 4. Queue first (if supported) for guaranteed delivery
+    let queueId = null;
+    if (isQueueSupported()) {
+        try {
+            await initQueue();
+            queueId = await enqueueSubmission(finalData, companyId, {
+                type: 'authenticated',
+                userId: currentUser.uid,
+            });
+            console.log(`[submitDriverApplication] Queued submission ${queueId}`);
+            Sentry.addBreadcrumb({
+                category: 'submission',
+                message: 'Submission queued',
+                data: { queueId, applicationId },
+                level: 'info',
+            });
+        } catch (queueError) {
+            // Queue failure is not fatal - continue with direct submission
+            console.warn('[submitDriverApplication] Queue failed, proceeding directly:', queueError);
+            Sentry.captureMessage('Submission queue unavailable', 'warning');
+        }
+    }
+
+    // 5. Attempt submission with retry logic (3 attempts)
     let lastError;
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-            // Prepare Payload
-            const finalData = sanitizeData({
-                ...formData,
-                signature: formData.signature,
-                signatureType: formData.signatureType || 'drawn',
-                userId: currentUser.uid,
-                driverId: currentUser.uid,
-                status: 'New Application',
-                submittedAt: timestamp,
-                createdAt: timestamp,
-                sourceType: activeCompanyId ? 'Company App' : 'Global Pool',
-                companyId: activeCompanyId || 'general-leads',
-                // --- NEW: Job specific data ---
-                jobId: job?.id || null,
-                jobTitle: job?.title || null
-            });
-
-            // Determine Destination
+            // Determine document reference
             let docRef;
             if (activeCompanyId) {
-                // Check if we are retrying - avoid overwriting if it somehow succeeded but ack failed?
-                // setDoc is idempotent so it's fine.
-                docRef = doc(db, "companies", activeCompanyId, "applications", currentUser.uid);
+                // Use deterministic ID for company applications
+                docRef = doc(db, "companies", activeCompanyId, "applications", applicationId);
             } else {
-                docRef = doc(db, "leads", currentUser.uid);
+                docRef = doc(db, "leads", applicationId);
             }
 
+            // setDoc with deterministic ID is idempotent - safe to retry
             await setDoc(docRef, finalData);
-            return true; // Success
+
+            // Success! Dequeue if we queued earlier
+            if (queueId) {
+                try {
+                    await dequeueSubmission(queueId);
+                    console.log(`[submitDriverApplication] Dequeued ${queueId} after success`);
+                } catch (dequeueError) {
+                    // Non-fatal - queue entry will be cleaned up on next process
+                    console.warn('[submitDriverApplication] Dequeue failed:', dequeueError);
+                }
+            }
+
+            Sentry.addBreadcrumb({
+                category: 'submission',
+                message: 'Application submitted successfully',
+                data: { applicationId, confirmationNumber, attempts: attempt },
+                level: 'info',
+            });
+
+            return {
+                success: true,
+                applicationId,
+                confirmationNumber,
+                queueId,
+            };
 
         } catch (error) {
-            console.warn(`Submission attempt ${attempt} failed:`, error);
+            console.warn(`[submitDriverApplication] Attempt ${attempt} failed:`, error);
             lastError = error;
-            if (attempt < 3) await new Promise(r => setTimeout(r, 1000));
+
+            Sentry.addBreadcrumb({
+                category: 'submission',
+                message: `Attempt ${attempt} failed`,
+                data: { error: error.message },
+                level: 'warning',
+            });
+
+            if (attempt < 3) {
+                // Exponential backoff: 1s, 2s, 4s
+                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+            }
         }
+    }
+
+    // All attempts failed
+    Sentry.captureException(lastError, {
+        tags: { flow: 'driver_application', stage: 'submission_failed' },
+        extra: { applicationId, companyId, queueId, attempts: 3 },
+    });
+
+    // If we have a queue ID, the data is safe - return partial success
+    if (queueId) {
+        console.log(`[submitDriverApplication] All attempts failed, but data is queued: ${queueId}`);
+        return {
+            success: false,
+            queued: true,
+            applicationId,
+            confirmationNumber,
+            queueId,
+            error: 'Submission failed but your application is saved. It will be automatically submitted when connection is restored.',
+        };
     }
 
     throw new Error(`Submission failed after 3 attempts: ${lastError?.message}`);

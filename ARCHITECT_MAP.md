@@ -17,22 +17,73 @@ SafeHaul uses three distinct patterns to talk to the backend:
 - **How it works**: The Frontend simply writes a document to Firestore (e.g., setting status to `pending_seal`). The Backend "sees" this change automatically and starts the PDF generation process.
 - **Dependency**: The `onApplicationSubmitted` trigger **strictly requires** the `signature` field to follow the `TEXT_SIGNATURE:[Name]` format (or be a valid image URL) to successfully generate the PDF.
 
-## 2. Key Data Models
+---
+
+## 2. Bulletproof Driver Application System (NEW)
+
+### Overview
+Guaranteed delivery system ensuring **zero data loss** for driver applications, even with network failures.
+
+### Data Flow
+```
+User submits → Generate deterministic ID → Queue to IndexedDB
+                                                    ↓
+                                          Attempt Firestore write
+                                                    ↓
+                                    Success → Dequeue | Fail → Retry
+                                                    ↓
+                              onApplicationSubmitted (idempotent)
+```
+
+### Key Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **Submission Queue** | `src/lib/submissionQueue.js` | IndexedDB queue with exponential backoff |
+| **Application IDs** | `src/lib/applicationId.js` | SHA-256 deterministic ID generation |
+| **Queue Hook** | `src/hooks/useSubmissionQueue.js` | Auto-recovery on reconnect |
+| **Queue Indicator** | `src/shared/components/feedback/QueueStatusIndicator.jsx` | Offline/pending UI |
+| **Draft Recovery** | `src/features/driver-app/components/DraftRecoveryModal.jsx` | Resume/start fresh modal |
+| **Auto-save** | `DriverApplicationWizard.jsx` | 5-second debounced save |
+
+### Deterministic IDs
+```javascript
+applicationId = SHA256(companyId + email + phone)
+confirmationNumber = "SAF-YYYY-" + random5digits
+```
+**Purpose:** Prevents duplicate submissions during retries
+
+### Idempotency Protection
+The backend uses `processing_status/{app_companyId_appId}` to prevent double-processing:
+```javascript
+{
+  started: Timestamp,
+  completed: boolean,
+  completedAt: Timestamp
+}
+```
+
+---
+
+## 3. Key Data Models
 To keep the system in sync, the Frontend expects specific fields:
 - **Companies**: Must have `planType` ('free'/'paid') to determine lead limits.
 - **Leads**: Must have `unavailableUntil` (timestamp) to manage the shuffle logic.
 - **Signing Requests**: Must have a `fields` array containing `xPosition`, `yPosition`, etc., as percentages.
 
-### **D. Application Schema (Compliance Critical)**
+### Application Schema (Compliance Critical)
 The Application object (`companies/{id}/applications/{appId}`) is the single source of truth for the PDF Generator and Admin Dashboard.
 * **Identity**: `suffix` and `otherName` (Aliases) are mandatory display fields for background checks.
 * **Signature**: Must be stored as `TEXT_SIGNATURE:John Doe` for typed signatures.
+* **Lifecycle** (NEW): `{ status, submittedAt, processingStartedAt, processingCompletedAt }`
 * **Compliance Logs**:
     * `hosDay1` through `hosDay7` (Hours of Service).
     * `lastRelievedDate` & `lastRelievedTime`.
     * `safetyDeclarations` (flags for `revoked-licenses`, `driving-convictions`, `drug-alcohol-convictions`).
 
-## 3. The "Dealer" Distribution Engine (CRITICAL)
+---
+
+## 4. The "Dealer" Distribution Engine (CRITICAL)
 **DO NOT MODIFY THE LOGIC BELOW WITHOUT UNDERSTANDING THE "GHOST LEAD" PROTECTION.**
 
 The Lead Distribution system (`functions/leadLogic.js`) uses a **"Dealer Architecture"**, not a simple shuffle. It operates on strict rules to prevent crashes and ensure quota delivery.
@@ -55,7 +106,9 @@ The system calculates quotas in this specific order of priority:
 * **Pathing**: The Backend stores leads in `companies/{CompanyUID}/leads`.
 * **Slug Resolution**: The Frontend URL uses a "Slug" (e.g., `/dashboard/ray-star-llc`). The Frontend (`useCompanyDashboard.js`) **MUST** resolve this Slug to the actual `CompanyUID` before querying. Failure to do this will result in an empty dashboard even if leads exist.
 
-## 4. Frontend View Sync Strategy (The "Mirror Law")
+---
+
+## 5. Frontend View Sync Strategy (The "Mirror Law")
 To prevent "Hidden Data" liability, the Admin Dashboard must mirror 100% of the input fields collected in the Driver App.
 
 ### A. The Critical Path Mapping
@@ -71,13 +124,18 @@ Any field added to the **Driver Input** (Left) MUST be rendered in the **Admin O
 
 ### B. Validation Strategy
 * **Submission Gate**: The `handleFinalSubmit` function in `PublicApplyHandler.jsx` and `DriverApplicationWizard.jsx` MUST validate that `signatureName` exists and `final-certification` is checked before allowing the write to Firestore.
+* **Queue-First Pattern** (NEW): All submissions go through IndexedDB queue before Firestore write.
 
-## 5. Lead Lifecycle & Conversion Rules
+---
+
+## 6. Lead Lifecycle & Conversion Rules
 * **No Auto-Conversion**: Marking a lead as "Interested" via Call Outcome NEVER moves it to Applications. It simply updates the status to "Contacted".
 * **The Only Path**: A Lead is converted to an Application ONLY when the Driver clicks the "Interest Link" (triggering `confirmDriverInterest`) OR submits a full application via the Recruiter Link.
 * **Data Isolation**: Last Call Status (`lastCallOutcome`) is strictly local to the Company and must not sync to other companies viewing the same Lead.
 
-## 6. Critical Field Mappings
+---
+
+## 7. Critical Field Mappings
 
 ### Lead Name Display (IMPORTANT)
 The Lead Distribution system has a **legacy data compatibility issue**:
@@ -100,3 +158,55 @@ if (item.fullName) {
 > Files using this pattern:
 > - `src/features/companies/components/DashboardBody.jsx`
 > - `src/shared/components/modals/SafeHaulLeadsDriverModal.jsx`
+
+---
+
+## 8. Feature Module Structure
+
+### Core Features
+| Module | Purpose | Key Files |
+|--------|---------|-----------|
+| `analytics` | Performance tracking | Stats aggregation |
+| `applications` | Application management | Hooks, services |
+| `auth` | Authentication | Login, signup |
+| `companies` | Company dashboard | Dashboard hooks, components |
+| `company-admin` | HR portal | Application detail view, bulk upload |
+| `driver-app` | Driver application flow | Wizard, draft recovery |
+| `drivers` | Driver profiles | Profile management |
+| `onboarding` | New user onboarding | Setup flows |
+| `settings` | Company settings | Configuration |
+| `signing` | Digital signatures | Signing room |
+| `super-admin` | Platform admin | System management |
+
+### Shared Libraries (`src/lib/`)
+- `firebase/` - Firebase configuration
+- `submissionQueue.js` - IndexedDB queue (NEW)
+- `applicationId.js` - Deterministic ID generation (NEW)
+- `signature.js` - Signature utilities
+- `notificationService.js` - Notifications
+
+### Shared Hooks (`src/hooks/`)
+- `useSubmissionQueue.js` - Queue auto-recovery (NEW)
+
+---
+
+## 9. Testing Strategy
+
+### Unit Tests
+- `submissionQueue.test.js` - 21 tests for queue operations
+- `applicationId.test.js` - 23 tests for ID generation
+
+### Integration Points
+- Queue → Firestore → Backend trigger
+- Draft save → Recovery → Resume
+- Offline → Online → Auto-retry
+
+---
+
+## Maintenance Notes
+
+- **Timezone**: All date keys use `America/Chicago` for consistency
+- **Queue is client-side**: Each browser has its own IndexedDB queue
+- **Deterministic IDs**: Same driver + company = same ID (prevents duplicates)
+- **Idempotency**: Backend checks `processing_status` before processing
+- **Auto-save**: Every 5 seconds of inactivity in driver wizard

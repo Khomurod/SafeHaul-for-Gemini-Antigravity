@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from '@lib/firebase';
 import { logActivity } from '@shared/utils/activityLogger';

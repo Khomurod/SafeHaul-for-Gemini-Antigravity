@@ -248,6 +248,7 @@ await logActivity(companyId, collectionName, docId, action, details, type);
 
 ---
 
+
 ## 4. When to Backfill vs Real-Time
 
 | Scenario | Use |
@@ -258,9 +259,73 @@ await logActivity(companyId, collectionName, docId, action, details, type);
 
 ---
 
+## 5. Bulletproof Driver Application System
+
+### Overview
+Guaranteed delivery system ensuring zero data loss for driver applications, even with network failures.
+
+### Data Flow
+```
+User submits → Generate deterministic ID → Queue to IndexedDB
+                                                    ↓
+                                          Attempt Firestore write
+                                                    ↓
+                                    Success → Dequeue | Fail → Retry later
+                                                    ↓
+                              onApplicationSubmitted trigger (idempotent)
+                                                    ↓
+                              processing_status check → Process → Update lifecycle
+```
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/lib/submissionQueue.js` | IndexedDB queue with exponential backoff |
+| `src/lib/applicationId.js` | Deterministic SHA-256 ID generation |
+| `src/hooks/useSubmissionQueue.js` | Auto-recovery on reconnect |
+| `src/shared/components/feedback/QueueStatusIndicator.jsx` | Offline/queue UI |
+| `src/features/driver-app/components/DraftRecoveryModal.jsx` | Resume draft prompt |
+| `functions/driverSync.js` → `onApplicationSubmitted` | Idempotent backend trigger |
+
+### Deterministic Application IDs
+```javascript
+applicationId = SHA256(companyId + email + phone)
+confirmationNumber = "SAF-YYYY-" + random5digits
+```
+
+**Purpose:** Prevents duplicate submissions during retries
+
+### Queue Processing
+- **Auto-save:** Every 5 seconds of inactivity
+- **Auto-retry:** When online event detected
+- **Exponential backoff:** 1s, 2s, 4s delays
+- **Emergency save:** On page unload
+
+### Lifecycle States
+```
+pending → processing → complete
+              ↓
+           failed (with reason)
+```
+
+### Idempotency Check
+Location: `processing_status/{app_companyId_appId}`
+```javascript
+{
+  started: Timestamp,
+  completed: boolean,
+  completedAt: Timestamp
+}
+```
+
+**Critical:** Backend checks this before processing to prevent double-execution
+
+---
+
 ## Maintenance Notes
 
 - **Timezone:** All date keys use `America/Chicago` for consistency
 - **Date Format:** `YYYY-MM-DD` (en-CA locale format)
 - **Backfill is idempotent:** Safe to run multiple times (rebuilds from scratch)
-
+- **Queue is client-side:** Each browser has its own IndexedDB queue
+- **Deterministic IDs:** Same driver + company = same ID (prevents duplicates)

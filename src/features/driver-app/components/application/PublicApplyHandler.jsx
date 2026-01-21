@@ -4,11 +4,24 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@lib/firebase';
-import { Loader2, AlertCircle, Building2 } from 'lucide-react';
+import { Loader2, AlertCircle, Building2, WifiOff, RefreshCw } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
 import { isValidEmail, isValidPhone } from '@shared/utils/validation';
+import * as Sentry from '@sentry/react';
+
+// Bulletproof submission imports
+import {
+  initQueue,
+  enqueueSubmission,
+  dequeueSubmission,
+  isSupported as isQueueSupported
+} from '@lib/submissionQueue';
+import {
+  generateApplicationId,
+  generateConfirmationNumber
+} from '@lib/applicationId';
 
 export function PublicApplyHandler() {
   const { slug } = useParams();
@@ -144,14 +157,14 @@ export function PublicApplyHandler() {
   };
 
   const handleFinalSubmit = async () => {
-    // FIX: Validate the actual fields from Step 9 (Signature + Checkbox)
+    // Validate signature and certification
     if (!formData.signature || !formData['final-certification']) {
       showError("Please complete the electronic signature in Step 9.");
-      setCurrentStep(8); // Automatically jump to Step 9 (0-based index)
+      setCurrentStep(8);
       return;
     }
 
-    // VALIDATION INTEGRATION
+    // Validate email and phone
     if (!isValidEmail(formData.email)) {
       showError("Invalid Email Address.");
       return;
@@ -161,20 +174,39 @@ export function PublicApplyHandler() {
       return;
     }
 
-    // DUPLICATION PREVENTION: Click Guard
+    // Prevent double submission
     if (submissionStatus === 'submitting') return;
     setSubmissionStatus('submitting');
 
+    const email = formData.email || '';
+    const phone = formData.phone || '';
+
+    // Sentry breadcrumb
+    Sentry.addBreadcrumb({
+      category: 'submission',
+      message: 'Guest application submission started',
+      data: { companyId: company.id, slug },
+      level: 'info',
+    });
+
     try {
+      // 1. Generate deterministic application ID
+      let applicationId;
+      try {
+        applicationId = await generateApplicationId(company.id, email, phone);
+      } catch (idError) {
+        // Fallback for ID generation failure
+        const prefillLeadId = searchParams.get('prefill') || searchParams.get('leadId');
+        applicationId = prefillLeadId || `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
+
+      // 2. Generate confirmation number
+      const confirmationNumber = generateConfirmationNumber();
+
       const timestamp = serverTimestamp();
       const recruiterCode = sessionStorage.getItem('pending_application_recruiter');
 
-      // DUPLICATION PREVENTION: Prefill detection for Lead IDs
-      const prefillLeadId = searchParams.get('prefill') || searchParams.get('leadId');
-      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      // DATA PRESERVATION: Maintained 'personalInfo' nested object for Firestore Rules
-      // Use sanitizeData to recursively replace undefined with null
+      // Sanitize data helper
       function sanitizeData(data) {
         if (data === undefined) return null;
         if (data === null) return null;
@@ -191,22 +223,24 @@ export function PublicApplyHandler() {
       }
 
       const applicationData = sanitizeData({
-        applicantId: prefillLeadId || guestId,
+        applicantId: applicationId,
+        applicationId: applicationId,
+        confirmationNumber: confirmationNumber,
         personalInfo: {
           firstName: formData.firstName || '',
           lastName: formData.lastName || '',
-          email: formData.email || '',
-          phone: formData.phone || '',
+          email: email,
+          phone: phone,
         },
         ...formData,
-        // FIX: Construct the signature field expected by the backend PDF generator
+        email: email,
+        phone: phone,
         signature: formData.signature,
         signatureType: formData.signatureType || 'drawn',
-
         companyId: company.id,
         companyName: company.companyName,
         recruiterCode: recruiterCode || null,
-        sourceType: prefillLeadId ? 'Invite-Link Application' : 'Public Application',
+        sourceType: 'Public Application',
         sourceSlug: slug,
         status: 'New Application',
         submittedAt: timestamp,
@@ -215,22 +249,89 @@ export function PublicApplyHandler() {
         violations: Array.isArray(formData.violations) ? formData.violations : [],
         accidents: Array.isArray(formData.accidents) ? formData.accidents : [],
         schools: Array.isArray(formData.schools) ? formData.schools : [],
-        military: Array.isArray(formData.military) ? formData.military : []
+        military: Array.isArray(formData.military) ? formData.military : [],
+        // Bulletproof tracking
+        lifecycle: {
+          status: 'pending',
+          submittedAt: new Date().toISOString(),
+          clientVersion: '2.0-bulletproof',
+          isGuest: true,
+        },
       });
 
-      // DUPLICATION PREVENTION: Use deterministic ID (updates Lead instead of duplicating)
-      const docId = prefillLeadId || guestId;
-      const appRef = doc(db, "companies", company.id, "applications", docId);
-      await setDoc(appRef, applicationData, { merge: true });
+      // 3. Queue first for guaranteed delivery
+      let queueId = null;
+      if (isQueueSupported()) {
+        try {
+          await initQueue();
+          queueId = await enqueueSubmission(applicationData, company.id, {
+            type: 'guest',
+            userId: null,
+          });
+          console.log(`[PublicApplyHandler] Queued submission ${queueId}`);
+        } catch (queueError) {
+          console.warn('[PublicApplyHandler] Queue failed:', queueError);
+        }
+      }
 
-      setSubmissionStatus('success');
-      localStorage.removeItem(`draft_${slug}`);
-      sessionStorage.removeItem('pending_application_recruiter');
+      // 4. Attempt submission with retries
+      let lastError;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const appRef = doc(db, "companies", company.id, "applications", applicationId);
+          await setDoc(appRef, applicationData, { merge: true });
+
+          // Success - dequeue if queued
+          if (queueId) {
+            try {
+              await dequeueSubmission(queueId);
+            } catch (dequeueError) {
+              console.warn('[PublicApplyHandler] Dequeue failed:', dequeueError);
+            }
+          }
+
+          setSubmissionStatus('success');
+          localStorage.removeItem(`draft_${slug}`);
+          sessionStorage.removeItem('pending_application_recruiter');
+
+          Sentry.addBreadcrumb({
+            category: 'submission',
+            message: 'Guest application submitted successfully',
+            data: { applicationId, confirmationNumber },
+            level: 'info',
+          });
+
+          // Store confirmation for display
+          sessionStorage.setItem('lastConfirmationNumber', confirmationNumber);
+          return; // Exit on success
+
+        } catch (error) {
+          console.warn(`[PublicApplyHandler] Attempt ${attempt} failed:`, error);
+          lastError = error;
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+          }
+        }
+      }
+
+      // All attempts failed
+      Sentry.captureException(lastError, {
+        tags: { flow: 'guest_application', stage: 'submission_failed' },
+        extra: { applicationId, companyId: company.id, queueId },
+      });
+
+      // If queued, show partial success
+      if (queueId) {
+        setSubmissionStatus('queued');
+        showSuccess("Your application is saved and will be submitted automatically when connection is restored.");
+      } else {
+        throw lastError;
+      }
 
     } catch (error) {
       console.error("Submission error:", error);
       setSubmissionStatus('error');
-      showError("Failed to submit application.");
+      showError("Failed to submit application. Please try again.");
     }
   };
 

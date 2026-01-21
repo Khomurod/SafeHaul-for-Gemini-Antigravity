@@ -164,8 +164,8 @@ export function generateApplicationPDF(pdfData) {
     // --- 9. Custom Questions ---
     y = addCustomQuestionsSection(doc, y, applicant?.customAnswers || {});
 
-    // --- 10. HOS & Misc ---
-    y = addTableHeader(doc, y, "Hours of Service & Misc");
+    // --- 10. Miscellaneous Information (HOS removed - no longer collected in application) ---
+    y = addTableHeader(doc, y, "Miscellaneous Information");
     if (applicant?.driverInitials) y = addTableRow(doc, y, "Driver Initials:", applicant.driverInitials);
     if (applicant?.ein) y = addTableRow(doc, y, "EIN / Business:", `${applicant.ein} / ${applicant.businessName}`);
 
@@ -180,15 +180,6 @@ export function generateApplicationPDF(pdfData) {
     if (applicant?.['has-felony'] === 'yes') {
         y = addTableRow(doc, y, "Felony Explanation:", applicant?.felonyExplanation);
     }
-
-    // HOS Table
-    y = checkPageBreak(doc, y, 30);
-    y += PDF_CONFIG.SECTION_GAP;
-    doc.setFont(PDF_CONFIG.FONT.BOLD, "bold");
-    doc.setFontSize(10);
-    doc.text("Total hours worked during the immediately preceding 7 days:", PDF_CONFIG.MARGIN, y);
-    y += PDF_CONFIG.LINE_HEIGHT;
-    y = addHosTable(doc, y, applicant);
 
     // --- 11. Agreements & Signature (FULL TEXT) ---
 

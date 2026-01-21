@@ -15,7 +15,7 @@ import { NotificationBell } from '@shared/components/feedback/NotificationBell';
 import { CallOutcomeModal } from '@shared/components/modals/CallOutcomeModal';
 import { CompanyBulkUpload } from './CompanyBulkUpload';
 import { PerformanceWidget } from './PerformanceWidget';
-const ApplicationDetailView = React.lazy(() => import('./ApplicationDetailView').then(m => ({ default: m.ApplicationDetailView })));
+const ApplicationDetailView = React.lazy(() => import('./application-v2').then(m => ({ default: m.ApplicationDetailViewV2 })));
 import { SafeHaulInfoModal } from '@shared/components/modals/SafeHaulInfoModal';
 import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
 import { SafeHaulLeadsDriverModal } from '@shared/components/modals/SafeHaulLeadsDriverModal';

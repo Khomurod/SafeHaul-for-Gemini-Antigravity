@@ -1,8 +1,8 @@
 import React from 'react';
-import { 
-  User, MapPin, Truck, Briefcase, FileCheck, 
-  AlertCircle, IdCard, ShieldCheck, Beaker, Edit2,
-  Calendar, CheckCircle2
+import {
+    User, MapPin, Truck, Briefcase, FileCheck,
+    AlertCircle, IdCard, ShieldCheck, Beaker, Edit2,
+    Calendar, CheckCircle2
 } from 'lucide-react';
 
 const ReviewSection = ({ title, icon: Icon, onEdit, children }) => (
@@ -12,9 +12,9 @@ const ReviewSection = ({ title, icon: Icon, onEdit, children }) => (
                 {Icon && <Icon size={18} className="text-blue-600" />}
                 {title}
             </h4>
-            <button 
-                type="button" 
-                onClick={onEdit} 
+            <button
+                type="button"
+                onClick={onEdit}
                 className="flex items-center gap-1 text-gray-500 hover:text-blue-600 hover:bg-white px-3 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-all text-xs font-bold uppercase tracking-wide"
                 title={`Edit ${title}`}
             >
@@ -64,7 +64,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
     // 5: Employment
     // 6: General / HOS
     const navigateToStep = (stepIndex) => {
-        onNavigate(stepIndex); 
+        onNavigate(stepIndex);
     };
 
     // Helper to nicely format file names
@@ -108,10 +108,10 @@ const Step8_Review = ({ formData, onNavigate }) => {
                 <ReviewItem label="3+ Years at Current?" value={formData['residence-3-years'] === 'yes' ? 'Yes' : 'No'} />
 
                 {formData['residence-3-years'] === 'no' && (
-                    <ReviewItem 
-                        label="Previous Address" 
-                        value={`${formData.prevStreet}, ${formData.prevCity}, ${formData.prevState} ${formData.prevZip}`} 
-                        fullWidth 
+                    <ReviewItem
+                        label="Previous Address"
+                        value={`${formData.prevStreet}, ${formData.prevCity}, ${formData.prevState} ${formData.prevZip}`}
+                        fullWidth
                         className="mt-2 pt-2 border-t border-gray-100"
                     />
                 )}
@@ -152,7 +152,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
                 </div>
             </ReviewSection>
 
-             <ReviewSection title="Driving History" icon={AlertCircle} onEdit={() => navigateToStep(3)}>
+            <ReviewSection title="Driving History" icon={AlertCircle} onEdit={() => navigateToStep(3)}>
                 <div className="col-span-2 grid grid-cols-2 gap-4 mb-4">
                     <ReviewItem label="License Revoked?" value={formData['revoked-licenses'] === 'yes' ? 'YES' : 'No'} />
                     <ReviewItem label="Suspended Convictions?" value={formData['driving-convictions'] === 'yes' ? 'YES' : 'No'} />
@@ -161,8 +161,8 @@ const Step8_Review = ({ formData, onNavigate }) => {
 
                 <div className="col-span-2">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Moving Violations (3 Years)</span>
-                    <ReviewList 
-                        items={formData.violations} 
+                    <ReviewList
+                        items={formData.violations}
                         renderItem={(v) => (
                             <div className="flex justify-between">
                                 <span className="font-bold">{v.charge}</span>
@@ -175,8 +175,8 @@ const Step8_Review = ({ formData, onNavigate }) => {
 
             <ReviewSection title="Accident History" icon={Truck} onEdit={() => navigateToStep(4)}>
                 <div className="col-span-2">
-                    <ReviewList 
-                        items={formData.accidents} 
+                    <ReviewList
+                        items={formData.accidents}
                         renderItem={(a) => (
                             <div>
                                 <div className="flex justify-between font-bold">
@@ -198,8 +198,8 @@ const Step8_Review = ({ formData, onNavigate }) => {
                 <div className="col-span-2 space-y-4">
                     <div>
                         <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Employers</span>
-                        <ReviewList 
-                            items={formData.employers} 
+                        <ReviewList
+                            items={formData.employers}
                             renderItem={(e) => (
                                 <div>
                                     <div className="flex justify-between font-bold text-gray-900">
@@ -208,18 +208,18 @@ const Step8_Review = ({ formData, onNavigate }) => {
                                     </div>
                                     <p className="text-gray-600">{e.position}</p>
                                 </div>
-                            )} 
+                            )}
                         />
                     </div>
 
                     {formData.unemployment && formData.unemployment.length > 0 && (
                         <div className="pt-2 border-t border-gray-100">
                             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Unemployment Gaps</span>
-                            <ReviewList 
-                                items={formData.unemployment} 
+                            <ReviewList
+                                items={formData.unemployment}
                                 renderItem={(u) => (
                                     <span>{u.startDate} - {u.endDate}: {u.details}</span>
-                                )} 
+                                )}
                             />
                         </div>
                     )}
@@ -238,18 +238,12 @@ const Step8_Review = ({ formData, onNavigate }) => {
 
                 <ReviewItem label="Emergency Contact" value={`${formData.ec1Name} (${formData.ec1Relationship}) - ${formData.ec1Phone}`} fullWidth />
 
-                <div className="col-span-2 pt-2 mt-2 border-t border-gray-100">
-                    <ReviewItem label="HOS (Last 7 Days)" value={[1,2,3,4,5,6,7].map(d => formData['hosDay'+d] || 0).join(' + ')} fullWidth />
-                    <div className="grid grid-cols-2 gap-4 mt-2">
-                        <ReviewItem label="Last Relieved Date" value={formData.lastRelievedDate} />
-                        <ReviewItem label="Last Relieved Time" value={formData.lastRelievedTime} />
-                    </div>
-                </div>
+                {/* HOS Section Removed - No longer collected in driver application */}
 
                 <div className="col-span-2 pt-2 mt-2 border-t border-gray-100">
-                    <ReviewItem 
-                        label="Felony History" 
-                        value={formData['has-felony'] === 'yes' ? `YES - ${formData.felonyExplanation}` : 'No Felony Convictions'} 
+                    <ReviewItem
+                        label="Felony History"
+                        value={formData['has-felony'] === 'yes' ? `YES - ${formData.felonyExplanation}` : 'No Felony Convictions'}
                         className={formData['has-felony'] === 'yes' ? 'text-red-600 font-bold' : ''}
                         fullWidth
                     />
@@ -257,15 +251,15 @@ const Step8_Review = ({ formData, onNavigate }) => {
             </ReviewSection>
 
             <div className="flex justify-between pt-6 pb-12">
-                <button 
-                    type="button" 
+                <button
+                    type="button"
                     onClick={() => onNavigate('back')}
                     className="w-auto px-6 py-3 bg-white text-gray-700 font-bold rounded-lg shadow-sm border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-200"
                 >
                     Back
                 </button>
-                <button 
-                    type="button" 
+                <button
+                    type="button"
                     onClick={() => onNavigate('next')}
                     className="w-auto px-8 py-3 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200 flex items-center gap-2"
                 >

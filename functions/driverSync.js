@@ -121,13 +121,46 @@ exports.onApplicationSubmitted = onDocumentCreated({
   const companyId = event.params.companyId;
   const appId = event.params.applicationId;
 
+  // IDEMPOTENCY CHECK: Prevent double-processing
+  const statusRef = db.collection("processing_status").doc(`app_${companyId}_${appId}`);
+  const appRef = db.collection("companies").doc(companyId).collection("applications").doc(appId);
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const statusDoc = await transaction.get(statusRef);
+
+      if (statusDoc.exists && statusDoc.data().completed) {
+        console.log(`[onApplicationSubmitted] Already processed: ${appId}, skipping.`);
+        return; // Already processed - skip
+      }
+
+      // Mark as processing
+      transaction.set(statusRef, {
+        started: admin.firestore.FieldValue.serverTimestamp(),
+        companyId,
+        applicationId: appId,
+        completed: false,
+      }, { merge: true });
+
+      // Update lifecycle to processing
+      transaction.update(appRef, {
+        'lifecycle.status': 'processing',
+        'lifecycle.processingStartedAt': admin.firestore.FieldValue.serverTimestamp(),
+        'lifecycle.triggerVersion': '2.0-bulletproof',
+      });
+    });
+  } catch (txError) {
+    console.error(`[onApplicationSubmitted] Transaction failed for ${appId}:`, txError);
+    // Continue processing anyway - the status check is defensive, not blocking
+  }
+
   // AUTO-ASSIGN LOGIC
   if (data.recruiterCode && !data.assignedTo) {
     try {
       const linkSnap = await db.collection("recruiter_links").doc(data.recruiterCode).get();
       const assignedTo = linkSnap.exists ? linkSnap.data().userId : data.recruiterCode;
 
-      await db.collection("companies").doc(companyId).collection("applications").doc(appId).update({
+      await appRef.update({
         assignedTo: assignedTo
       });
       console.log(`[onApplicationSubmitted] Auto-assigned app ${appId} to recruiter ${assignedTo}`);
@@ -139,14 +172,34 @@ exports.onApplicationSubmitted = onDocumentCreated({
   // VALIDATION: Ensure signature exists for PDF generation
   if (!data.signature || (!data.signature.startsWith('data:image') && !data.signature.startsWith('TEXT_SIGNATURE:'))) {
     console.error(`[onApplicationSubmitted] Application ${appId} missing valid signature. Skipping processing.`);
-    await db.collection("companies").doc(companyId).collection("applications").doc(appId).update({
+    await appRef.update({
       status: 'validation_error',
-      statusMessage: 'Missing or invalid signature'
+      statusMessage: 'Missing or invalid signature',
+      'lifecycle.status': 'failed',
+      'lifecycle.failureReason': 'invalid_signature',
     });
     return;
   }
 
+  // Process the driver data
   await processDriverData(data, appId);
+
+  // Mark processing as complete
+  try {
+    await statusRef.set({
+      completed: true,
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    await appRef.update({
+      'lifecycle.status': 'complete',
+      'lifecycle.processingCompletedAt': admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(`[onApplicationSubmitted] Successfully processed ${appId}`);
+  } catch (completeError) {
+    console.error(`[onApplicationSubmitted] Failed to mark complete for ${appId}:`, completeError);
+  }
 });
 
 // 2. Global Leads (Unbranded)

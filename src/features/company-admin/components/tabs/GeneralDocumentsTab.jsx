@@ -3,20 +3,21 @@ import { db, storage } from '@lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Loader2, Upload, Trash2, FileText, Download, AlertTriangle, Shield } from 'lucide-react';
-import { Section } from '../application/ApplicationUI'; 
+import { Section } from '../application/ApplicationUI';
 import { getFieldValue } from '@shared/utils/helpers';
 
 const APP_FILE_KEYS = [
   { key: 'cdl-front', label: 'CDL (Front)' },
   { key: 'cdl-back', label: 'CDL (Back)' },
+  { key: 'medical-card-upload', label: 'Medical Card' },
   { key: 'twic-card-upload', label: 'TWIC Card' },
   { key: 'mvr-consent-upload', label: 'MVR Consent Form' },
   { key: 'drug-test-consent-upload', label: 'Drug Test Consent' },
 ];
 
-export function GeneralDocumentsTab({ 
-  companyId, 
-  applicationId, 
+export function GeneralDocumentsTab({
+  companyId,
+  applicationId,
   appData,
   collectionName = 'applications' // Default to 'applications'
 }) {
@@ -42,10 +43,10 @@ export function GeneralDocumentsTab({
     try {
       const q = query(generalDocsCollectionRef, orderBy("createdAt", "desc"));
       const snapshot = await getDocs(q);
-      const files = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
+      const files = snapshot.docs.map(doc => ({
+        id: doc.id,
         ...doc.data(),
-        isReadonly: false, 
+        isReadonly: false,
         source: 'Uploaded'
       }));
       setGeneralDocs(files);
@@ -67,18 +68,18 @@ export function GeneralDocumentsTab({
 
     return APP_FILE_KEYS.map(fileKey => {
       const fileData = appData[fileKey.key];
-      if (!fileData || !fileData.url) return null; 
+      if (!fileData || !fileData.url) return null;
 
       return {
-        id: fileKey.key, 
+        id: fileKey.key,
         description: fileKey.label,
         fileName: fileData.name,
-        url: fileData.url, 
-        storagePath: fileData.storagePath, 
-        isReadonly: true, 
+        url: fileData.url,
+        storagePath: fileData.storagePath,
+        isReadonly: true,
         source: 'Application'
       };
-    }).filter(file => file !== null); 
+    }).filter(file => file !== null);
   }, [appData]);
 
   // --- 4. Combine lists ---
@@ -135,7 +136,7 @@ export function GeneralDocumentsTab({
       setFileDescription('');
       document.getElementById('general-file-input').value = null;
 
-      await fetchGeneralDocs(); 
+      await fetchGeneralDocs();
       setTimeout(() => setUploadMessage(''), 2000);
 
     } catch (err) {
@@ -210,7 +211,7 @@ export function GeneralDocumentsTab({
           </div>
 
           <div className="flex items-center gap-4">
-            <button 
+            <button
               className="w-full sm:w-auto py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150 disabled:opacity-75"
               onClick={handleUpload}
               disabled={isUploading || !fileToUpload}
@@ -250,10 +251,10 @@ export function GeneralDocumentsTab({
                 </div>
               </div>
               <div className="flex gap-2 shrink-0 items-center">
-                <span 
+                <span
                   className={`px-2 py-0.5 text-xs font-semibold rounded-full
-                    ${file.isReadonly 
-                      ? 'bg-green-100 text-green-800' 
+                    ${file.isReadonly
+                      ? 'bg-green-100 text-green-800'
                       : 'bg-gray-100 text-gray-800'
                     }
                   `}

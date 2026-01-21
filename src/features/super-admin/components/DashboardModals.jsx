@@ -1,12 +1,12 @@
 import React from 'react';
-import { 
-    EditCompanyModal, 
-    EditUserModal, 
-    ViewCompanyAppsModal, 
-    DeleteCompanyModal, 
-    DeleteUserModal 
+import {
+    EditCompanyModal,
+    EditUserModal,
+    ViewCompanyAppsModal,
+    DeleteCompanyModal,
+    DeleteUserModal
 } from './modals';
-import { ApplicationDetailView } from '@features/company-admin/components/ApplicationDetailView';
+import { ApplicationDetailViewV2 } from '@features/company-admin/components/application-v2';
 
 export function DashboardModals({
     // Modal States
@@ -69,13 +69,12 @@ export function DashboardModals({
             )}
 
             {selectedApplication && (
-                <ApplicationDetailView
+                <ApplicationDetailViewV2
                     companyId={selectedApplication.companyId}
                     applicationId={selectedApplication.appId}
-                    onClosePanel={onClose}
-                    onStatusUpdate={onRefreshData}
-                    isCompanyAdmin={true} // Super Admin has full access
-                    onPhoneClick={onPhoneClick}
+                    collectionName="applications"
+                    onClose={onClose}
+                    onStatusChange={onRefreshData}
                 />
             )}
         </>

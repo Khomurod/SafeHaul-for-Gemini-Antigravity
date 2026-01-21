@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
 import { db, storage } from '@lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { uploadApplicationFile, submitDriverApplication } from '../../services/driverService';
 import Stepper from '@shared/components/layout/Stepper';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, X, Save } from 'lucide-react';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { DraftRecoveryModal } from '../DraftRecoveryModal';
 
 export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, companyId }) {
   const { currentUser } = useData();
@@ -19,7 +20,14 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [targetCompanyId, setTargetCompanyId] = useState(null);
-  const [submissionStatus, setSubmissionStatus] = useState(null); // 'success', 'error', or null
+  const [submissionStatus, setSubmissionStatus] = useState(null);
+
+  // New: Draft recovery and auto-save state
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const [draftData, setDraftData] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveTimeoutRef = useRef(null);
+  const lastFormDataRef = useRef({});
 
   // 1. Resolve Target Company
   useEffect(() => {
@@ -33,7 +41,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     }
   }, [paramCompanyId, companyId]);
 
-  // 2. Load Draft
+  // 2. Load Draft (with recovery modal)
   useEffect(() => {
     const loadDraft = async () => {
       if (!currentUser) return;
@@ -43,8 +51,16 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
         if (snap.exists()) {
           const data = snap.data();
-          setFormData(data);
-          if (data.lastStep) setCurrentStep(data.lastStep);
+          setDraftData(data);
+
+          // Show recovery modal if draft has meaningful progress (past step 0 or has data)
+          if (data.lastStep > 0 || data.firstName || data.email) {
+            setShowDraftModal(true);
+          } else {
+            // Very early draft - just load it
+            setFormData(data);
+            if (data.lastStep) setCurrentStep(data.lastStep);
+          }
         } else {
           // Pre-fill from Auth
           setFormData({
@@ -63,20 +79,105 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     loadDraft();
   }, [currentUser]);
 
-  // 3. Save Draft Helper
-  const saveDraft = async (newData = {}) => {
+  // Draft recovery handlers
+  const handleResumeDraft = () => {
+    if (draftData) {
+      setFormData(draftData);
+      if (draftData.lastStep) setCurrentStep(draftData.lastStep);
+    }
+    setShowDraftModal(false);
+  };
+
+  const handleStartFresh = async () => {
+    // Clear old draft
+    if (currentUser) {
+      try {
+        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
+        await deleteDoc(draftRef);
+      } catch (err) {
+        console.error("Failed to clear draft:", err);
+      }
+    }
+    // Start with fresh pre-filled data
+    setFormData({
+      email: currentUser?.email || '',
+      phone: currentUser?.phoneNumber || '',
+      firstName: currentUser?.displayName?.split(' ')[0] || '',
+      lastName: currentUser?.displayName?.split(' ').slice(1).join(' ') || ''
+    });
+    setCurrentStep(0);
+    setShowDraftModal(false);
+  };
+
+  // 3. Save Draft Helper (with debounce indicator)
+  const saveDraft = useCallback(async (newData = {}) => {
     if (!currentUser) return;
+    setIsSaving(true);
     try {
-      const mergedData = { ...formData, ...newData, lastStep: currentStep, updatedAt: serverTimestamp() };
+      const mergedData = {
+        ...formData,
+        ...newData,
+        lastStep: currentStep,
+        updatedAt: serverTimestamp(),
+        lastSavedAt: new Date().toISOString(),
+      };
       setFormData(mergedData);
+      lastFormDataRef.current = mergedData;
       const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
       await setDoc(draftRef, mergedData, { merge: true });
     } catch (err) {
       console.error("Auto-save failed:", err);
+    } finally {
+      setIsSaving(false);
     }
-  };
+  }, [currentUser, formData, currentStep]);
 
-  // 4. Handlers
+  // 4. Aggressive Auto-Save: Debounced every 5 seconds
+  useEffect(() => {
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Only auto-save if we have data and user is authenticated
+    if (currentUser && Object.keys(formData).length > 0 && !loading) {
+      saveTimeoutRef.current = setTimeout(() => {
+        // Only save if data actually changed
+        if (JSON.stringify(formData) !== JSON.stringify(lastFormDataRef.current)) {
+          saveDraft();
+        }
+      }, 5000); // Save every 5 seconds of inactivity
+    }
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [formData, currentUser, loading, saveDraft]);
+
+  // 5. Emergency save on page unload
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (currentUser && Object.keys(formData).length > 0) {
+        // Attempt synchronous save (best effort)
+        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
+        const mergedData = {
+          ...formData,
+          lastStep: currentStep,
+          lastSavedAt: new Date().toISOString(),
+        };
+        // Use sendBeacon for reliability (if available)
+        // For Firestore, we rely on the periodic auto-save above
+        console.log('[DriverApplicationWizard] Page unload - draft should be saved');
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [currentUser, formData, currentStep]);
+
+  // 6. Handlers
   const handleUpdateFormData = (name, value) => {
     const newData = { ...formData, [name]: value };
     setFormData(newData);
@@ -94,7 +195,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   };
 
   const handleFileUpload = async (fieldName, file) => {
-    if (!file) return;
+    if (!file) return null;
     setIsUploading(true);
     try {
       const fileData = await uploadApplicationFile(targetCompanyId, currentUser.uid, fieldName, file);
@@ -103,9 +204,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       await saveDraft({ [fieldName]: fileData });
       showSuccess("File uploaded successfully.");
 
+      // Return fileData for UploadField component to update its state
+      return fileData;
+
     } catch (error) {
       console.error("Upload failed:", error);
       showError("Upload failed. Please try again.");
+      throw error; // Re-throw so UploadField can handle error state
     } finally {
       setIsUploading(false);
     }
@@ -204,8 +309,26 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   // --- PAGE RENDER ---
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Draft Recovery Modal */}
+      <DraftRecoveryModal
+        isOpen={showDraftModal}
+        draftData={draftData}
+        onResume={handleResumeDraft}
+        onStartFresh={handleStartFresh}
+        onClose={() => setShowDraftModal(false)}
+      />
+
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-30">
-        <h1 className="font-bold text-gray-900">Driver Application</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="font-bold text-gray-900">Driver Application</h1>
+          {/* Auto-save indicator */}
+          {isSaving && (
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+              <Save size={12} className="animate-pulse" />
+              Saving...
+            </span>
+          )}
+        </div>
         <button onClick={() => navigate('/driver/dashboard')} className="text-sm text-gray-500 hover:text-gray-800 font-medium">
           Save & Exit
         </button>

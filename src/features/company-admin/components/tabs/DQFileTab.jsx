@@ -4,6 +4,7 @@ import { collection, addDoc, getDoc, getDocs, deleteDoc, doc, query, orderBy } f
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Loader2, Upload, Trash2, FileText, Download, AlertTriangle } from 'lucide-react';
 import { Section } from '../application/ApplicationUI';
+import { logActivity } from '@shared/utils/activityLogger';
 
 const DQ_FILE_TYPES = [
   "Application for Employment",
@@ -165,6 +166,16 @@ export function DQFileTab({ companyId, applicationId, collectionName = 'applicat
 
       await addDoc(dqFilesCollectionRef, newDoc);
 
+      // Log activity for the upload
+      await logActivity(
+        companyId,
+        collectionName,
+        applicationId,
+        'dq_file_uploaded',
+        `Uploaded DQ file: ${selectedFileType} - ${fileToUpload.name}`,
+        'user'
+      );
+
       setUploadMessage('Upload Complete!');
       setFileToUpload(null);
       setSelectedFileType(DQ_FILE_TYPES[0]);
@@ -199,6 +210,16 @@ export function DQFileTab({ companyId, applicationId, collectionName = 'applicat
       // Delete from Firestore
       const docRef = doc(dqFilesCollectionRef, file.id);
       await deleteDoc(docRef);
+
+      // Log activity for the deletion
+      await logActivity(
+        companyId,
+        collectionName,
+        applicationId,
+        'dq_file_deleted',
+        `Deleted DQ file: ${file.fileType} - ${file.fileName}`,
+        'user'
+      );
 
       // Assuming fetchDqFiles is meant to be fetchAndSyncFiles
       await fetchAndSyncFiles();
