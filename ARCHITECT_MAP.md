@@ -108,23 +108,44 @@ The system calculates quotas in this specific order of priority:
 
 ---
 
-## 5. Frontend View Sync Strategy (The "Mirror Law")
-To prevent "Hidden Data" liability, the Admin Dashboard must mirror 100% of the input fields collected in the Driver App.
+## 5. Frontend View Sync Strategy (Schema-Driven Architecture)
 
-### A. The Critical Path Mapping
-Any field added to the **Driver Input** (Left) MUST be rendered in the **Admin Output** (Right).
+> **IMPORTANT**: The old "Mirror Law" (manual field synchronization) has been replaced with a **Schema-Driven Architecture**.
 
-| Driver Input Component | Admin Render Component | Critical Data Points |
-| :--- | :--- | :--- |
-| `Step1_Contact.jsx` | `PersonalInfoSection.jsx` | Suffix, Aliases (Known By Other Name) |
-| `Step3_License.jsx` | `SupplementalSection.jsx` | TWIC Card, Expiration |
-| `Step4_Violations.jsx` | `SupplementalSection.jsx` | **Red Flags:** License Revoked, Suspended |
-| `Step7_General.jsx` | `SupplementalSection.jsx` | **HOS Table:** 7-Day Log, Last Relieved Time |
-| `BusinessInfoSection` | `SupplementalSection.jsx` | Owner Operator Business Name, EIN |
+### A. Single Source of Truth
+All application fields are now defined in a single schema file:
+- **Schema**: `src/lib/applicationSchema.js`
+- **Renderer**: `src/shared/components/schema/SchemaRenderer.jsx`
+- **Tests**: `src/lib/applicationSchema.test.js` (19 tests enforce compliance)
 
-### B. Validation Strategy
-* **Submission Gate**: The `handleFinalSubmit` function in `PublicApplyHandler.jsx` and `DriverApplicationWizard.jsx` MUST validate that `signatureName` exists and `final-certification` is checked before allowing the write to Firestore.
-* **Queue-First Pattern** (NEW): All submissions go through IndexedDB queue before Firestore write.
+### B. How It Works
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   applicationSchema.js                       │
+│ - Field definitions (type, label, required, showIf)         │
+│ - Validation rules                                           │
+│ - Section-to-component mappings                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+       Driver Wizard    Admin Display    PDF Generator
+       (Input Forms)    (Read Views)     (Reports)
+```
+
+### C. Adding New Fields
+To add a new field to the application:
+1. **Add to schema**: Define field in `applicationSchema.js` under the appropriate section
+2. **Run tests**: `npm run test -- src/lib/applicationSchema.test.js`
+3. **Done**: SchemaRenderer automatically handles input/display in both wizard and admin
+
+### D. Schema Drift Detection
+The schema includes `detectSchemaDrift(applicationData)` to catch fields in Firestore that aren't defined in the schema. This helps identify legacy data or missed updates.
+
+### E. Validation Strategy
+* **Submission Gate**: The `handleFinalSubmit` function validates that `signature` exists and `final-certification` is checked.
+* **Queue-First Pattern**: All submissions go through IndexedDB queue before Firestore write.
+* **Required Field Validation**: Use `validateRequiredFields(data, stepNumber)` for per-step validation.
 
 ---
 

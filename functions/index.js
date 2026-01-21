@@ -43,6 +43,7 @@ exports.onMembershipWrite = hrAdmin.onMembershipWrite;
 
 // 3. Company Admin
 exports.getCompanyProfile = companyAdmin.getCompanyProfile;
+exports.resolveCompanySlug = companyAdmin.resolveCompanySlug;
 exports.joinCompanyTeam = hrAdmin.joinCompanyTeam;
 exports.deleteCompany = companyAdmin.deleteCompany;
 exports.getTeamPerformanceHistory = companyAdmin.getTeamPerformanceHistory;

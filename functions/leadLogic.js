@@ -153,7 +153,10 @@ async function dealLeadsToCompany(company, planLimit, forceRotate) {
     return `${company.companyName}: Active ${activeWorkingCount}, Added ${added} (Target: ${planLimit})`;
 }
 
-// --- 3. TRANSACTIONAL ASSIGNMENT ---
+// --- 3. TRANSACTIONAL ASSIGNMENT (REFERENCE-BASED MODEL) ---
+// Instead of copying all lead data, we store only a reference + operational fields.
+// This eliminates data duplication and reduces ghost lead complexity.
+// Frontend uses useLeadWithSource hook to hydrate the reference.
 async function assignLeadTransaction(companyId, leadDocRef, nowTs) {
     try {
         await db.runTransaction(async (t) => {
@@ -166,24 +169,36 @@ async function assignLeadTransaction(companyId, leadDocRef, nowTs) {
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const companyLeadRef = db.collection("companies").doc(companyId).collection("leads").doc(freshDoc.id);
+
+            // REFERENCE-BASED PAYLOAD
+            // Only store: reference to source + company-specific operational fields
+            // Source data (firstName, phone, etc.) is fetched via leadRef on frontend
             const payload = {
+                // Reference to source document (single source of truth)
+                leadRef: `leads/${freshDoc.id}`,
+                originalLeadId: freshDoc.id,
+
+                // Essential display fields (cached for list views to avoid N+1 queries)
+                // These are denormalized for performance but leadRef is the source of truth
                 firstName: data.firstName || 'Unknown',
                 lastName: data.lastName || 'Driver',
-                email: data.email || '',
                 phone: data.phone || '',
-                normalizedPhone: data.normalizedPhone || '',
-                driverType: data.driverType || 'Unspecified',
-                experience: data.experience || 'N/A',
-                city: data.city || '',
-                state: data.state || '',
-                source: data.source || 'SafeHaul Network',
-                sharedHistory: data.sharedHistory || [],
+                email: data.email || '',
+
+                // Platform metadata
                 isPlatformLead: true,
                 distributedAt: nowTs,
-                originalLeadId: freshDoc.id,
+                source: data.source || 'SafeHaul Network',
+
+                // Company-specific operational fields (these are NOT in source)
                 status: "New Lead",
-                assignedTo: null
+                assignedTo: null,
+                lastContactedAt: null,
+                lastCallOutcome: null,
+                notes: [],
+                callAttempts: 0
             };
+
             t.set(companyLeadRef, payload);
             t.update(leadDocRef.ref, {
                 unavailableUntil: admin.firestore.Timestamp.fromDate(tomorrow),
@@ -429,6 +444,78 @@ async function harvestNotesBeforeDelete(docSnap, data) {
 
 
 
+// --- CLEANUP JOB: Orphaned Lead References ---
+// Scans company leads for orphaned references (where source lead was deleted)
+// and either marks them or removes them based on configuration.
+async function cleanupOrphanedLeadRefs(options = {}) {
+    const { dryRun = true, maxCompanies = 10 } = options;
+    const results = { scanned: 0, orphaned: 0, cleaned: 0, errors: [] };
+
+    try {
+        const companiesSnap = await db.collection("companies").limit(maxCompanies).get();
+
+        for (const companyDoc of companiesSnap.docs) {
+            const companyLeadsSnap = await companyDoc.ref
+                .collection("leads")
+                .where("isPlatformLead", "==", true)
+                .get();
+
+            let batch = db.batch();
+            let batchCount = 0;
+
+            for (const leadDoc of companyLeadsSnap.docs) {
+                results.scanned++;
+                const data = leadDoc.data();
+                const sourceId = data.originalLeadId || null;
+
+                if (!sourceId) continue;
+
+                // Check if source document exists
+                const sourceRef = db.collection("leads").doc(sourceId);
+                const sourceSnap = await sourceRef.get();
+
+                if (!sourceSnap.exists) {
+                    results.orphaned++;
+
+                    if (!dryRun) {
+                        // Option 1: Mark as orphaned (preserve data)
+                        batch.update(leadDoc.ref, {
+                            _isOrphaned: true,
+                            _orphanedAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+
+                        // Option 2: Delete (uncomment if preferred)
+                        // batch.delete(leadDoc.ref);
+
+                        batchCount++;
+                        results.cleaned++;
+
+                        if (batchCount >= 400) {
+                            await batch.commit();
+                            batch = db.batch();
+                            batchCount = 0;
+                        }
+                    }
+                }
+            }
+
+            if (batchCount > 0) await batch.commit();
+        }
+
+        return {
+            success: true,
+            dryRun,
+            ...results,
+            message: dryRun
+                ? `Dry run complete. Found ${results.orphaned} orphaned leads out of ${results.scanned} scanned.`
+                : `Cleanup complete. Marked ${results.cleaned} orphaned leads.`
+        };
+    } catch (err) {
+        console.error("[cleanupOrphanedLeadRefs] Error:", err);
+        return { success: false, error: err.message, ...results };
+    }
+}
+
 module.exports = {
     runLeadDistribution,
     dealLeadsToCompany,  // Exported for worker
@@ -436,4 +523,5 @@ module.exports = {
     runCleanup,
     processLeadOutcome,
     confirmDriverInterest,
+    cleanupOrphanedLeadRefs,  // NEW: Cleanup orphaned references
 };

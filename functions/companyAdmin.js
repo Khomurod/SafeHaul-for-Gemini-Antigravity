@@ -1,8 +1,75 @@
 // functions/companyAdmin.js
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onRequest } = require("firebase-functions/v2/https");
 const { admin, db } = require("./firebaseAdmin");
 
+// --- IN-MEMORY CACHE FOR SLUG RESOLUTION ---
+const slugCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// --- FEATURE 0: RESOLVE COMPANY SLUG (Public Endpoint) ---
+/**
+ * Resolves a company slug (e.g., "ray-star-llc") to its Firebase UID.
+ * This is a public HTTP endpoint with caching for performance.
+ * 
+ * Usage: GET /resolveCompanySlug?slug=ray-star-llc
+ * 
+ * Returns: { companyId, slug, companyName, isActive }
+ */
+exports.resolveCompanySlug = onRequest(
+    { cors: true, region: "us-central1", maxInstances: 20 },
+    async (req, res) => {
+        const { slug } = req.query;
+
+        if (!slug) {
+            return res.status(400).json({ error: "Missing slug parameter" });
+        }
+
+        const normalizedSlug = slug.toLowerCase().trim();
+
+        // 1. Check Cache
+        const cached = slugCache.get(normalizedSlug);
+        if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+            console.log(`[resolveCompanySlug] Cache hit for: ${normalizedSlug}`);
+            return res.json(cached.data);
+        }
+
+        // 2. Query Firestore
+        try {
+            const snap = await db.collection("companies")
+                .where("appSlug", "==", normalizedSlug)
+                .limit(1)
+                .get();
+
+            if (snap.empty) {
+                console.log(`[resolveCompanySlug] No company found for slug: ${normalizedSlug}`);
+                return res.status(404).json({ error: "Company not found", slug: normalizedSlug });
+            }
+
+            const doc = snap.docs[0];
+            const data = doc.data();
+
+            const result = {
+                companyId: doc.id,
+                slug: normalizedSlug,
+                companyName: data.companyName || "Unknown Company",
+                isActive: data.isActive !== false,
+                logoUrl: data.logoUrl || null
+            };
+
+            // 3. Cache Result
+            slugCache.set(normalizedSlug, { data: result, timestamp: Date.now() });
+            console.log(`[resolveCompanySlug] Resolved ${normalizedSlug} -> ${doc.id}`);
+
+            return res.json(result);
+
+        } catch (err) {
+            console.error("[resolveCompanySlug] Error:", err);
+            return res.status(500).json({ error: "Internal error", message: err.message });
+        }
+    }
+);
 
 // --- FEATURE 1: GET COMPANY PROFILE ---
 exports.getCompanyProfile = onCall({
