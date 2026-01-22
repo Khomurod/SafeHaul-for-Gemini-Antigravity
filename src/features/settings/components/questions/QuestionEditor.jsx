@@ -1,11 +1,11 @@
 import React from 'react';
-import { 
-    Trash2, MoreVertical, Plus, X, HelpCircle 
+import {
+    Trash2, MoreVertical, Plus, X, HelpCircle, Shield, Lock, AlertTriangle
 } from 'lucide-react';
 import { QUESTION_TYPES, hasOptions } from './QuestionConfig';
 
 export function QuestionEditor({ question, index, onChange, onDelete }) {
-    
+
     const handleChange = (field, value) => {
         onChange(index, { ...question, [field]: value });
     };
@@ -29,23 +29,23 @@ export function QuestionEditor({ question, index, onChange, onDelete }) {
     const handleTypeChange = (e) => {
         const newType = e.target.value;
         const updates = { type: newType };
-        
+
         if (hasOptions(newType) && (!question.options || question.options.length === 0)) {
             updates.options = ['Option 1'];
         }
-        
+
         onChange(index, { ...question, ...updates });
     };
 
     return (
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm relative group transition-all hover:shadow-md border-l-4 border-l-blue-500">
-            
+
             <div className="flex justify-between items-start mb-4">
                 <div className="p-1 text-gray-400 cursor-move">
                     <MoreVertical size={20} />
                 </div>
                 <div className="flex-1 px-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                    
+
                     <div className="md:col-span-2">
                         <input
                             type="text"
@@ -78,8 +78,8 @@ export function QuestionEditor({ question, index, onChange, onDelete }) {
                         </div>
                     </div>
                 </div>
-                
-                <button 
+
+                <button
                     onClick={() => onDelete(index)}
                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
                     title="Delete Question"
@@ -89,12 +89,12 @@ export function QuestionEditor({ question, index, onChange, onDelete }) {
             </div>
 
             <div className="pl-10 pr-12 space-y-4">
-                
+
                 <div className="flex items-center gap-2">
                     <HelpCircle size={14} className="text-gray-400" />
-                    <input 
-                        type="text" 
-                        placeholder="Description (optional)" 
+                    <input
+                        type="text"
+                        placeholder="Description (optional)"
                         className="flex-1 text-sm text-gray-600 border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none bg-transparent transition-colors py-1"
                         value={question.helpText || ''}
                         onChange={(e) => handleChange('helpText', e.target.value)}
@@ -113,7 +113,7 @@ export function QuestionEditor({ question, index, onChange, onDelete }) {
                                     onChange={(e) => handleOptionChange(i, e.target.value)}
                                     placeholder={`Option ${i + 1}`}
                                 />
-                                <button 
+                                <button
                                     onClick={() => removeOption(i)}
                                     className="opacity-0 group-hover/opt:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
                                 >
@@ -121,8 +121,8 @@ export function QuestionEditor({ question, index, onChange, onDelete }) {
                                 </button>
                             </div>
                         ))}
-                        
-                        <button 
+
+                        <button
                             onClick={addOption}
                             className="flex items-center gap-2 text-sm text-blue-600 font-medium hover:text-blue-800 mt-2 px-2 py-1 rounded hover:bg-blue-50 transition-colors w-fit"
                         >
@@ -136,13 +136,79 @@ export function QuestionEditor({ question, index, onChange, onDelete }) {
                         <p>Applicants will see a file upload button here.</p>
                     </div>
                 )}
+                {/* DOT/FMCSA Compliance Section */}
+                <div className="pt-4 mt-4 border-t border-gray-100 space-y-3">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Shield size={16} className="text-amber-600" />
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Compliance Settings</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* DOT Required Badge */}
+                        <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-amber-300 cursor-pointer transition-all">
+                            <input
+                                type="checkbox"
+                                className="h-4 w-4 text-amber-600 rounded focus:ring-amber-500"
+                                checked={question.dotRequired || false}
+                                onChange={(e) => handleChange('dotRequired', e.target.checked)}
+                            />
+                            <div className="flex items-center gap-2">
+                                <Shield size={14} className={question.dotRequired ? 'text-amber-600' : 'text-gray-400'} />
+                                <span className="text-sm font-medium text-gray-700">DOT Required</span>
+                            </div>
+                            {question.dotRequired && (
+                                <span className="ml-auto text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
+                                    FMCSA
+                                </span>
+                            )}
+                        </label>
+
+                        {/* FMCSA Reference */}
+                        {question.dotRequired && (
+                            <div>
+                                <input
+                                    type="text"
+                                    placeholder="FMCSA Reference (e.g., 49 CFR 391.21)"
+                                    className="w-full p-3 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+                                    value={question.fmcsaReference || ''}
+                                    onChange={(e) => handleChange('fmcsaReference', e.target.value)}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Company Override Controls */}
+                    <div className="flex flex-wrap gap-4 pt-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                className="h-4 w-4 text-gray-600 rounded focus:ring-gray-500"
+                                checked={!(question.canCompanyHide ?? true)}
+                                onChange={(e) => handleChange('canCompanyHide', !e.target.checked)}
+                            />
+                            <Lock size={14} className="text-gray-400" />
+                            <span className="text-sm text-gray-600">Lock (companies can't hide)</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                className="h-4 w-4 text-gray-600 rounded focus:ring-gray-500"
+                                checked={!(question.canCompanyModify ?? true)}
+                                onChange={(e) => handleChange('canCompanyModify', !e.target.checked)}
+                            />
+                            <AlertTriangle size={14} className="text-gray-400" />
+                            <span className="text-sm text-gray-600">Protect label (read-only)</span>
+                        </label>
+                    </div>
+                </div>
 
                 <div className="pt-4 mt-4 border-t border-gray-100 flex justify-end items-center gap-4">
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                         <span className="text-sm font-medium text-gray-600">Required</span>
                         <div className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                                type="checkbox" 
+                            <input
+                                type="checkbox"
                                 className="sr-only peer"
                                 checked={question.required || false}
                                 onChange={(e) => handleChange('required', e.target.checked)}

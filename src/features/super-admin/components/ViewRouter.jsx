@@ -18,6 +18,9 @@ import { LeadPoolView } from './LeadPoolView.jsx';
 import { AnalyticsView } from '../views/AnalyticsView.jsx';
 import { UnifiedDriverList } from '../views/UnifiedDriverList.jsx';
 
+// --- Form Builder (Super Admin) ---
+import { GlobalQuestionsManager } from './GlobalQuestionsManager';
+
 export function ViewRouter({
     isSearching,
     activeView,
@@ -164,6 +167,8 @@ export function ViewRouter({
             );
         case 'stats-backfill':
             return <StatsBackfillPanel />;
+        case 'questions':
+            return <GlobalQuestionsManager />;
         default:
             return null;
     }

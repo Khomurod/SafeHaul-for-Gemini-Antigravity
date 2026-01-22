@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Plus, Eye, EyeOff, GripVertical, Save, Loader2 } from 'lucide-react';
+import { Plus, Eye, EyeOff, GripVertical, Save, Loader2, Shield, AlertCircle } from 'lucide-react';
 import { QuestionEditor } from './QuestionEditor';
 import { INITIAL_QUESTION_STATE } from './QuestionConfig';
 
@@ -23,6 +23,12 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
     };
 
     const deleteQuestion = (index) => {
+        const question = questions[index];
+        // Prevent deletion of DOT-required fields
+        if (question?.dotRequired) {
+            alert('Cannot delete DOT-required field. This question is mandated by FMCSA regulations.');
+            return;
+        }
         const newQuestions = questions.filter((_, i) => i !== index);
         onChange(newQuestions);
     };
@@ -38,7 +44,7 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
 
     const renderPreviewInput = (q) => {
         const commonClasses = "w-full p-3 border border-gray-300 rounded-lg bg-white opacity-75 cursor-not-allowed";
-        
+
         switch (q.type) {
             case 'paragraph':
                 return <textarea className={commonClasses} rows="3" disabled placeholder="Long answer text..." />;
@@ -100,30 +106,29 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
 
     return (
         <div className="space-y-6">
-            
+
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm sticky top-0 z-20">
                 <div>
                     <h3 className="text-lg font-bold text-gray-900">Custom Questions</h3>
                     <p className="text-sm text-gray-500">{questions.length} questions added</p>
                 </div>
                 <div className="flex gap-3">
-                    <button 
+                    <button
                         onClick={() => setPreviewMode(!previewMode)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                            previewMode 
-                            ? 'bg-purple-100 text-purple-700' 
-                            : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${previewMode
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
                     >
-                        {previewMode ? <EyeOff size={18}/> : <Eye size={18}/>}
+                        {previewMode ? <EyeOff size={18} /> : <Eye size={18} />}
                         {previewMode ? 'Edit Mode' : 'Preview'}
                     </button>
-                    <button 
+                    <button
                         onClick={onSave}
                         disabled={loading}
                         className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-md transition-all"
                     >
-                        {loading ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
+                        {loading ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                         Save Changes
                     </button>
                 </div>
@@ -133,7 +138,7 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
                 {questions.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
                         <p className="text-gray-400 font-medium">No questions yet.</p>
-                        <button 
+                        <button
                             onClick={addQuestion}
                             className="mt-4 text-blue-600 hover:text-blue-800 font-bold text-sm"
                         >
@@ -143,7 +148,7 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
                 )}
 
                 {questions.map((question, index) => (
-                    <div 
+                    <div
                         key={question.id || index}
                         draggable={!previewMode}
                         onDragStart={(e) => { dragItem.current = index; e.currentTarget.style.opacity = '0.5'; }}
@@ -155,16 +160,31 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
                         {previewMode ? (
                             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
                                 <div className="mb-3">
-                                    <label className="block text-sm font-bold text-gray-800 mb-1">
-                                        {question.label || 'Untitled Question'}
-                                        {question.required && <span className="text-red-500 ml-1">*</span>}
-                                    </label>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <label className="block text-sm font-bold text-gray-800">
+                                            {question.label || 'Untitled Question'}
+                                            {question.required && <span className="text-red-500 ml-1">*</span>}
+                                        </label>
+                                        {question.dotRequired && (
+                                            <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
+                                                <Shield size={10} /> DOT
+                                            </span>
+                                        )}
+                                        {!question.canCompanyHide && (
+                                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                                                Locked
+                                            </span>
+                                        )}
+                                    </div>
+                                    {question.fmcsaReference && (
+                                        <p className="text-xs text-amber-600 font-medium">{question.fmcsaReference}</p>
+                                    )}
                                     {question.helpText && <p className="text-xs text-gray-500">{question.helpText}</p>}
                                 </div>
                                 {renderPreviewInput(question)}
                             </div>
                         ) : (
-                            <QuestionEditor 
+                            <QuestionEditor
                                 question={question}
                                 index={index}
                                 onChange={updateQuestion}
@@ -177,7 +197,7 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
 
             {!previewMode && (
                 <div className="flex justify-center pt-4">
-                    <button 
+                    <button
                         onClick={addQuestion}
                         className="group flex flex-col items-center gap-2 text-gray-400 hover:text-blue-600 transition-colors"
                     >

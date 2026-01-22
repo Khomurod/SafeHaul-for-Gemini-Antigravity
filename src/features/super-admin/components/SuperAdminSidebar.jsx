@@ -103,6 +103,13 @@ export function SuperAdminSidebar({
       />
 
       <NavItem
+        label="Form Builder"
+        icon={<FileText size={20} />}
+        isActive={activeView === "questions" && !isSearching}
+        onClick={() => handleNavClick("questions")}
+      />
+
+      <NavItem
         label="System Health"
         icon={<Activity size={20} />}
         isActive={activeView === "system-health" && !isSearching}

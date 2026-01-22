@@ -8,6 +8,7 @@ import Stepper from '@shared/components/layout/Stepper';
 import { Loader2, X, Save } from 'lucide-react';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { DraftRecoveryModal } from '../DraftRecoveryModal';
+import { useApplicationSchema } from '@/hooks/useApplicationSchema';
 
 export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, companyId }) {
   const { currentUser } = useData();
@@ -28,6 +29,12 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef(null);
   const lastFormDataRef = useRef({});
+
+  // NEW: Fetch application schema with custom questions
+  const { schema, hasCustomQuestions } = useApplicationSchema(targetCompanyId);
+  const customQuestions = schema?.sections?.find(s => s.isCustom)?.fields ||
+    schema?.fields?.filter(f => f.isCustom) ||
+    [];
 
   // 1. Resolve Target Company
   useEffect(() => {
@@ -298,6 +305,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
                 handleFileUpload={handleFileUpload}
                 isUploading={isUploading}
                 submissionStatus={submissionStatus}
+                customQuestions={customQuestions}
               />
             </div>
           </div>
@@ -345,6 +353,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
           handleFileUpload={handleFileUpload}
           isUploading={isUploading}
           submissionStatus={submissionStatus}
+          customQuestions={customQuestions}
         />
       </div>
     </div>

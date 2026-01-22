@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, AlertTriangle, FileSignature, AlertCircle, School, Flag, Truck, Phone, Gavel, HeartPulse, CheckCircle2, ShieldAlert, BadgeCheck } from 'lucide-react';
+import { HelpCircle, AlertTriangle, FileSignature, AlertCircle, School, Flag, Truck, Phone, Gavel, HeartPulse, CheckCircle2, ShieldAlert, BadgeCheck, FileText } from 'lucide-react';
 import { Section } from '../ApplicationUI';
 import { getFieldValue } from '@shared/utils/helpers';
 
@@ -252,18 +252,77 @@ export function SupplementalSection({ appData }) {
                         </h4>
                         {appData.customAnswers && Object.keys(appData.customAnswers).length > 0 ? (
                             <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                {Object.entries(appData.customAnswers).map(([question, answer], i) => (
-                                    <div key={i} className={`flex flex-col md:flex-row border-b border-gray-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                                        {/* Question Column */}
-                                        <div className="p-3 md:w-[40%] text-xs font-bold text-gray-700 bg-gray-50/50 md:border-r border-gray-100 flex items-center">
-                                            {question}
+                                {Object.entries(appData.customAnswers).map(([question, answer], i) => {
+                                    // Determine answer type and render appropriately
+                                    const renderAnswer = () => {
+                                        if (!answer && answer !== 0) return <span className="text-gray-400 italic">No response</span>;
+
+                                        // File upload (URL or object with url)
+                                        if (typeof answer === 'string' && (answer.startsWith('http') || answer.startsWith('gs://'))) {
+                                            return (
+                                                <a
+                                                    href={answer}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
+                                                >
+                                                    <FileText size={14} /> View Uploaded File
+                                                </a>
+                                            );
+                                        }
+
+                                        // Array (checkboxes)
+                                        if (Array.isArray(answer)) {
+                                            if (answer.length === 0) return <span className="text-gray-400 italic">None selected</span>;
+                                            return (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {answer.map((item, idx) => (
+                                                        <span key={idx} className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
+                                                            {item}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            );
+                                        }
+
+                                        // Number (linear scale or number input)
+                                        if (typeof answer === 'number') {
+                                            // Check if it looks like a rating (1-5 or 1-10)
+                                            if (answer >= 1 && answer <= 10) {
+                                                return (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex gap-0.5">
+                                                            {[1, 2, 3, 4, 5].map(star => (
+                                                                <div
+                                                                    key={star}
+                                                                    className={`w-4 h-4 rounded-full ${star <= answer ? 'bg-blue-500' : 'bg-gray-200'}`}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                        <span className="text-sm font-bold text-gray-700">{answer}/5</span>
+                                                    </div>
+                                                );
+                                            }
+                                            return <span className="font-medium text-gray-900">{answer}</span>;
+                                        }
+
+                                        // Default: string
+                                        return <span className="font-medium text-gray-900">{String(answer)}</span>;
+                                    };
+
+                                    return (
+                                        <div key={i} className={`flex flex-col md:flex-row border-b border-gray-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                            {/* Question Column */}
+                                            <div className="p-3 md:w-[40%] text-xs font-bold text-gray-700 bg-gray-50/50 md:border-r border-gray-100 flex items-center">
+                                                {question}
+                                            </div>
+                                            {/* Answer Column */}
+                                            <div className="p-3 md:w-[60%] text-sm">
+                                                {renderAnswer()}
+                                            </div>
                                         </div>
-                                        {/* Answer Column */}
-                                        <div className="p-3 md:w-[60%] text-sm text-gray-900 font-medium">
-                                            {Array.isArray(answer) ? answer.join(', ') : (String(answer) || 'N/A')}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         ) : renderEmpty("No custom questions answered.")}
                     </div>
