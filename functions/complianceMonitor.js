@@ -1,5 +1,7 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { getFirestore } = require("firebase-admin/firestore");
+const { logger } = require("firebase-functions");
+const { sendDynamicEmail } = require('./emailService');
 
 exports.checkExpiringDocuments = onSchedule("every 24 hours", async (event) => {
     // 1. Calculate Target Date (Today + 7 Days)
@@ -11,7 +13,7 @@ exports.checkExpiringDocuments = onSchedule("every 24 hours", async (event) => {
     const db = getFirestore();
 
     try {
-        console.log(`Checking for documents expiring on: ${targetDateString}`);
+        logger.info(`Checking for documents expiring on: ${targetDateString}`);
 
         // 2. Query Collection Group
         // Note: Requires Index on 'expirationDate' ASC/DESC
@@ -20,7 +22,7 @@ exports.checkExpiringDocuments = onSchedule("every 24 hours", async (event) => {
             .get();
 
         if (snapshot.empty) {
-            console.log("No expiring documents found.");
+            logger.info("No expiring documents found.");
             return;
         }
 
@@ -39,14 +41,75 @@ exports.checkExpiringDocuments = onSchedule("every 24 hours", async (event) => {
             });
         }
 
-        console.log(`Found ${notifications.length} expiring documents. Sending alerts...`);
+        logger.info(`Found ${notifications.length} expiring documents. Sending alerts...`);
 
-        // 4. Simulate Sending Emails (Log them)
-        notifications.forEach(note => {
-            console.log(`ALERT: Document '${note.fileName}' (${note.fileType}) at ${note.path} expires in 7 days!`);
-        });
+        // 4. Send Compliance Alert Emails
+        let emailsSent = 0;
+        let emailsFailed = 0;
+
+        for (const note of notifications) {
+            try {
+                // Extract companyId from path: "companies/{companyId}/applications/..."
+                const pathParts = note.path.split('/');
+                const companyId = pathParts.length >= 2 ? pathParts[1] : null;
+
+                if (!companyId) {
+                    logger.warn(`Could not extract companyId from path: ${note.path}`);
+                    continue;
+                }
+
+                // Get company admin email
+                const companyDoc = await db.collection('companies').doc(companyId).get();
+                if (!companyDoc.exists) {
+                    logger.warn(`Company not found: ${companyId}`);
+                    continue;
+                }
+
+                const companyData = companyDoc.data();
+                const adminEmail = companyData.adminEmail || companyData.email;
+
+                if (!adminEmail) {
+                    logger.warn(`No admin email configured for company: ${companyId}`);
+                    continue;
+                }
+
+                await sendDynamicEmail(
+                    companyId,
+                    adminEmail,
+                    `⚠️ Document Expiring: ${note.fileName}`,
+                    `<div style="font-family: Arial, sans-serif; max-width: 600px;">
+                        <h2 style="color: #d97706;">⚠️ Compliance Alert</h2>
+                        <p>The following document will expire in <strong>7 days</strong>:</p>
+                        <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                            <tr style="background: #f3f4f6;">
+                                <td style="padding: 10px; border: 1px solid #e5e7eb;"><strong>File Name</strong></td>
+                                <td style="padding: 10px; border: 1px solid #e5e7eb;">${note.fileName}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #e5e7eb;"><strong>Document Type</strong></td>
+                                <td style="padding: 10px; border: 1px solid #e5e7eb;">${note.fileType}</td>
+                            </tr>
+                            <tr style="background: #f3f4f6;">
+                                <td style="padding: 10px; border: 1px solid #e5e7eb;"><strong>Expiration Date</strong></td>
+                                <td style="padding: 10px; border: 1px solid #e5e7eb;">${note.expirationDate}</td>
+                            </tr>
+                        </table>
+                        <p>Please ensure this document is renewed before expiration to maintain compliance.</p>
+                    </div>`
+                );
+
+                logger.info(`Email sent to ${adminEmail} for ${note.fileName}`);
+                emailsSent++;
+            } catch (emailErr) {
+                logger.error(`Failed to send alert for ${note.fileName}:`, { error: emailErr.message });
+                emailsFailed++;
+                // Continue loop - don't let one failure stop others
+            }
+        }
+
+        logger.info(`Compliance check complete. Emails sent: ${emailsSent}, Failed: ${emailsFailed}`);
 
     } catch (error) {
-        console.error("Compliance Monitor Error:", error);
+        logger.error("Compliance Monitor Error:", { error: error.message, stack: error.stack });
     }
 });

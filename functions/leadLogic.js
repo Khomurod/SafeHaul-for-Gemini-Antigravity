@@ -1,10 +1,11 @@
 // functions/leadLogic.js
 const { admin, db, auth } = require("./firebaseAdmin");
 const { CloudTasksClient } = require("@google-cloud/tasks");
+const { logger } = require("firebase-functions");
 
-// --- CLOUD TASKS CONFIG ---
-const PROJECT_ID = "truckerapp-system";
-const LOCATION = "us-central1";
+// --- CLOUD TASKS CONFIG (Dynamic for multi-environment support) ---
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'truckerapp-system';
+const LOCATION = process.env.FUNCTION_REGION || 'us-central1';
 const QUEUE_NAME = "lead-distribution-queue";
 const tasksClient = new CloudTasksClient();
 
@@ -37,14 +38,14 @@ async function getSystemSettings() {
             };
         }
     } catch (e) {
-        console.warn("Could not fetch system_settings, using defaults:", e.message);
+        logger.warn("Could not fetch system_settings, using defaults:", { error: e.message });
     }
     return { quotaPaid: 200, quotaFree: 50, maintenanceMode: false };
 }
 
 // --- 1. THE DEALER ENGINE V4 (Cloud Tasks Parallel) ---
 async function runLeadDistribution(forceRotate = false) {
-    console.log(`Starting 'THE DEALER' Engine V4 PARALLEL (Force Rotate: ${forceRotate})...`);
+    logger.info(`Starting 'THE DEALER' Engine V4 PARALLEL (Force Rotate: ${forceRotate})...`);
 
     try {
         // 1. Check for maintenance mode

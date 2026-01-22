@@ -3,6 +3,14 @@ import { Section, InfoGrid, InfoItem } from '../ApplicationUI';
 import { getFieldValue } from '@shared/utils/helpers';
 import { AlertCircle, User } from 'lucide-react';
 
+/**
+ * PersonalInfoSection - Displays personal information fields
+ * 
+ * Field definitions are documented in: src/config/applicationSchema.js
+ * Sections: PERSONAL_INFO_SECTION, ADDRESS_SECTION, PREVIOUS_ADDRESSES_SECTION
+ * 
+ * @see src/config/applicationSchema.js for the source of truth
+ */
 export function PersonalInfoSection({
     appData,
     isEditing,
