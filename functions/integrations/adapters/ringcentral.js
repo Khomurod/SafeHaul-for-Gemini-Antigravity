@@ -69,9 +69,25 @@ class RingCentralAdapter extends BaseAdapter {
 
             console.error("RingCentral Send Error:", JSON.stringify(responseData || error.message));
 
+            let userFriendlyError = `RingCentral Error [${errorCode}]: ${errorMsg}`;
+
+            switch (errorCode) {
+                case 'InvalidAuthentication':
+                    userFriendlyError = "Authentication with RingCentral failed. Please verify your JWT token and credentials.";
+                    break;
+                case 'InvalidRequest':
+                    if (errorMsg.includes('PhoneNumber.from')) {
+                        userFriendlyError = "Invalid 'From' number. Please ensure the selected number is provisioned for SMS in your RingCentral account.";
+                    }
+                    break;
+                case 'FeatureNotAvailable':
+                    userFriendlyError = "SMS feature is not available for this account or user. Please check your RingCentral plan and permissions.";
+                    break;
+            }
+
             // Return Detailed Error to Frontend
             // format: "RingCentral Error [FeatureNotAvailable]: The requested feature is not available"
-            throw new Error(`RingCentral Error [${errorCode}]: ${errorMsg}`);
+            throw new Error(userFriendlyError);
         }
     }
 

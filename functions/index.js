@@ -98,9 +98,11 @@ exports.facebookWebhook = facebook.facebookWebhook;
 exports.facebookWebhookV1 = facebook.facebookWebhookV1; // V1 version - public by default
 exports.saveIntegrationConfig = smsIntegrations.saveIntegrationConfig;
 exports.sendTestSMS = smsIntegrations.sendTestSMS;
+exports.sendSMS = smsIntegrations.sendSMS; // NEW: Real Outbound
 exports.executeReactivationBatch = smsIntegrations.executeReactivationBatch;
 exports.assignPhoneNumber = smsIntegrations.assignPhoneNumber;
 exports.addManualPhoneNumber = smsIntegrations.addManualPhoneNumber;
+// exports.incomingSMS = require('./integrations/incoming').incomingSMS; // Disabled per user request
 
 // Digital Wallet
 exports.addPhoneLine = smsIntegrations.addPhoneLine;

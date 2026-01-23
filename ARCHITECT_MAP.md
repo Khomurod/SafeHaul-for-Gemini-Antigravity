@@ -231,3 +231,26 @@ if (item.fullName) {
 - **Deterministic IDs**: Same driver + company = same ID (prevents duplicates)
 - **Idempotency**: Backend checks `processing_status` before processing
 - **Auto-save**: Every 5 seconds of inactivity in driver wizard
+
+---
+
+## 10. SMS Integration (Multi-Tenant Digital Wallet)
+
+### Overview
+The SMS system uses a **"Digital Wallet"** architecture to allow companies to bring their own carriers (RingCentral, 8x8) and assign specific phone lines to individual recruiters.
+
+### Factory Pattern
+We use an **Abstract Factory Pattern** to instantiate the correct adapter at runtime:
+- `SMSAdapterFactory`: The gatekeeper. It fetches encrypted config, decrypts credentials, and returns a unified `BaseAdapter` interface.
+- **Adapters**: `RingCentralAdapter`, `EightByEightAdapter`.
+
+### Key & Credential Management
+* **Shared Credentials**: Stored in `companies/{id}/integrations/sms_provider`. Used for account-level operations (fetching inventory).
+* **Private Keychain** (The "Digital Wallet"): Stored in subcollection `sms_provider/keychain/{phoneNumber}`.
+    * Contains the **Per-Line JWT** (RingCentral) encrypted with the server key.
+    * **Security**: These documents are **NEVER** exposed to the frontend. Only the backend (Super Admin) can write to them.
+    * **Routing**: The `factory.js` automatically looks up the correct JWT based on the sender's phone number during `sendSMS`.
+
+### Resilience
+* **Stale Config Protection**: The factory gracefully downgrades decryption errors to warnings for non-critical keys (legacy data), ensuring the system doesn't crash if an old key rotation breaks an unused field.
+* **Encryption Key Rotation**: Requires manual re-entry of credentials in Super Admin to re-encrypt with the new `SMS_ENCRYPTION_KEY`.

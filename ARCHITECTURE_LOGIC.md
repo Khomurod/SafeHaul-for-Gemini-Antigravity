@@ -324,8 +324,34 @@ Location: `processing_status/{app_companyId_appId}`
 
 ## Maintenance Notes
 
-- **Timezone:** All date keys use `America/Chicago` for consistency
-- **Date Format:** `YYYY-MM-DD` (en-CA locale format)
-- **Backfill is idempotent:** Safe to run multiple times (rebuilds from scratch)
-- **Queue is client-side:** Each browser has its own IndexedDB queue
-- **Deterministic IDs:** Same driver + company = same ID (prevents duplicates)
+- **Timezone**: All date keys use `America/Chicago` for consistency
+- **Date Format**: `YYYY-MM-DD` (en-CA locale format)
+- **Backfill is idempotent**: Safe to run multiple times (rebuilds from scratch)
+- **Queue is client-side**: Each browser has its own IndexedDB queue
+- **Deterministic IDs**: Same driver + company = same ID (prevents duplicates)
+
+---
+
+## 6. SMS Integration Logic
+
+### The "factory.js" Pattern
+The SMS system ignores the specifics of the provider (RingCentral, 8x8) until the very last moment.
+- `functions/integrations/factory.js`: The central hub.
+- **Input**: `companyId` (and optional `fromPhoneNumber`).
+- **Logic**:
+    1. Fetches company config.
+    2. Decrypts shared credentials.
+    3. **Key Step**: If a specific `fromPhoneNumber` is requested, it looks up the **Private Keychain** (`keychain/{phone}`) to get the specific JWT for that line.
+    4. **Output**: an authenticated Adapter instance ready to `.sendSMS()`.
+
+### The Encryption "Vault"
+- **Environment Variable**: `SMS_ENCRYPTION_KEY` (32-char AES-256 string).
+- **Behavior**: All sensitive fields (Client Secret, JWT, API Keys) are encrypted *before* being written to Firestore.
+- **Reading**: The system decrypts on-the-fly.
+- **Resilience**: If the server key rotates, old encrypted data becomes unreadable. The `factory.js` includes a "Soft Fail" mechanism to warn/ignore stale legacy keys instead of crashing, provided valid credentials exist.
+
+### "Digital Wallet" (Keychain)
+To support multi-tenancy (where Recruiter A has a different phone line than Recruiter B):
+- We do **NOT** store credentials on the User profile (insecure).
+- We store them in a protected subcollection: `companies/{id}/integrations/sms_provider/keychain/{phoneNumber}`.
+- **Access Control**: Only Super Admins can write to this. Company Admins can *assign* these lines to users, but cannot see the JWTs.

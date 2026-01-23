@@ -137,8 +137,14 @@ export function ContactTab({ companyId, recordId, collectionName, email, phone, 
                 setSuccess(true);
 
             } else {
-                // SMS SIMULATION
-                await new Promise(resolve => setTimeout(resolve, 800));
+                // SMS (Real Outbound)
+                const sendSmsFn = httpsCallable(functions, 'sendSMS');
+
+                await sendSmsFn({
+                    companyId,
+                    recipientPhone: phone,
+                    messageBody: message
+                });
 
                 await logActivity(
                     companyId,
@@ -148,7 +154,7 @@ export function ContactTab({ companyId, recordId, collectionName, email, phone, 
                     `To: ${phone}\nMessage: ${message}`,
                     'communication'
                 );
-                showSuccess("SMS sent (Simulated)");
+                showSuccess("SMS sent successfully.");
                 setSuccess(true);
             }
 

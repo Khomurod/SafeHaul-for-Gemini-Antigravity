@@ -24,10 +24,48 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
         throw new HttpsError('invalid-argument', 'Missing required fields.');
     }
 
-    // Encrypt sensitive keys before saving
-    const encryptedConfig = {};
+    // CRITICAL: Fetch existing config to preserve credentials if __PRESERVE__ marker is sent
+    const docRef = admin.firestore()
+        .collection('companies').doc(companyId)
+        .collection('integrations').doc('sms_provider');
+
+    let existingConfig = {};
+    try {
+        const existingDoc = await docRef.get();
+        if (existingDoc.exists) {
+            existingConfig = existingDoc.data().config || {};
+        }
+    } catch (fetchError) {
+        console.warn('[saveIntegrationConfig] Could not fetch existing config:', fetchError.message);
+    }
+
+    // Build the final configuration, handling non-string values appropriately.
+    const finalConfig = { ...existingConfig }; // Start with existing to preserve untouched fields
+
     for (const [key, value] of Object.entries(config)) {
-        encryptedConfig[key] = encrypt(value);
+        // Skip encryption for 'isSandbox' and store its boolean value directly.
+        if (key === 'isSandbox') {
+            finalConfig[key] = value;
+            continue;
+        }
+
+        // Handle the preservation of existing encrypted values.
+        if (value === '__PRESERVE__') {
+            // If __PRESERVE__ is sent, but there's no existing value, we simply do nothing,
+            // effectively ignoring it, rather than trying to encrypt the marker.
+            if (existingConfig[key]) {
+                finalConfig[key] = existingConfig[key];
+            }
+            continue; // Move to the next item.
+        }
+
+        // For all other keys, encrypt the value if it's not empty.
+        if (value) {
+            finalConfig[key] = encrypt(value);
+        } else {
+            // If an existing field is cleared (empty value submitted), remove it.
+            delete finalConfig[key];
+        }
     }
 
     // --- NEW: Verify Credentials & Fetch Inventory (Non-Blocking) ---
@@ -35,6 +73,7 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
     let verificationWarning = null;
     let adapter = null;
     try {
+        // IMPORTANT: Use the raw, unencrypted config for adapter instantiation for verification
         if (provider === 'ringcentral') {
             adapter = new RingCentralAdapter(config);
         } else if (provider === '8x8') {
@@ -51,10 +90,6 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
     }
 
     try {
-        const docRef = admin.firestore()
-            .collection('companies').doc(companyId)
-            .collection('integrations').doc('sms_provider');
-
         // Determine Default Number (pick first available if present)
         let defaultPhoneNumber = null;
         if (inventory && inventory.length > 0) {
@@ -63,7 +98,7 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
 
         await docRef.set({
             provider,
-            config: encryptedConfig,
+            config: finalConfig,
             inventory,
             defaultPhoneNumber, // Auto-set from first inventory item
             isActive: true,
@@ -80,6 +115,33 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
     } catch (error) {
         console.error("Save Config Error:", error);
         throw new HttpsError('internal', 'Failed to save configuration.');
+    }
+});
+
+exports.verifySmsConfig = onCall(encryptedCallOptions, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+
+    const { companyId } = request.data;
+    if (!companyId) {
+        throw new HttpsError('invalid-argument', 'Missing companyId.');
+    }
+
+    try {
+        const adapter = await SMSAdapterFactory.getAdapter(companyId);
+        if (adapter instanceof RingCentralAdapter) {
+            await adapter.rc.login({ jwt: adapter.config.jwt });
+            const idResp = await adapter.rc.get('/restapi/v1.0/account/~/extension/~');
+            const idData = await idResp.json();
+            const identity = `${idData.contact?.firstName} ${idData.contact?.lastName} (Ext: ${idData.extensionNumber}) - Acc: ${idData.account?.id}`;
+            return { success: true, message: `Successfully connected to RingCentral as ${identity}.` };
+        } else {
+            return { success: true, message: 'Configuration for this provider is valid.' };
+        }
+    } catch (error) {
+        console.error("SMS Config Verification Error:", error);
+        throw new HttpsError('internal', `Configuration check failed: ${error.message}`);
     }
 });
 
@@ -111,9 +173,41 @@ exports.sendTestSMS = onCall(encryptedCallOptions, async (request) => {
             message: "Test message sent successfully.",
             sentFrom: fromNumber || 'default'
         };
+
     } catch (error) {
         console.error("Test SMS Error:", error);
         // Return the specific error message from the adapter to help debugging
+        throw new HttpsError('internal', error.message);
+    }
+});
+
+// --- 2.1 Send Real SMS (Outbound) ---
+exports.sendSMS = onCall(encryptedCallOptions, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
+
+    const { companyId, recipientPhone, messageBody } = request.data;
+    const userId = request.auth.uid;
+
+    if (!recipientPhone || !messageBody) {
+        throw new HttpsError('invalid-argument', 'Missing recipientPhone or messageBody.');
+    }
+
+    try {
+        const adapter = await SMSAdapterFactory.getAdapter(companyId);
+
+        // Use the adapter's intelligent routing (userId -> assigned number)
+        await adapter.sendSMS(
+            recipientPhone,
+            messageBody,
+            userId
+        );
+
+        return {
+            success: true,
+            message: "Message sent successfully."
+        };
+    } catch (error) {
+        console.error("Send SMS Error:", error);
         throw new HttpsError('internal', error.message);
     }
 });
@@ -126,23 +220,48 @@ exports.testLineConnection = onCall(encryptedCallOptions, async (request) => {
         throw new HttpsError('unauthenticated', 'User must be logged in.');
     }
 
-    const { clientId, clientSecret, jwt, isSandbox } = request.data;
+    const { companyId, clientId, clientSecret, jwt, isSandbox } = request.data;
 
     // Validate required fields
     if (!jwt) {
         throw new HttpsError('invalid-argument', 'JWT token is required.');
     }
 
-    // Use provided credentials or require them for per-line auth
-    const effectiveClientId = clientId;
-    const effectiveClientSecret = clientSecret;
+    // Start with provided credentials
+    let effectiveClientId = clientId;
+    let effectiveClientSecret = clientSecret;
+    let effectiveIsSandbox = isSandbox;
+
+    // If credentials not provided, fetch shared credentials from company config
+    if ((!effectiveClientId || !effectiveClientSecret) && companyId) {
+        try {
+            const providerDoc = await admin.firestore()
+                .collection('companies').doc(companyId)
+                .collection('integrations').doc('sms_provider')
+                .get();
+
+            if (providerDoc.exists) {
+                const config = providerDoc.data().config || {};
+                if (config.clientId && config.clientSecret) {
+                    effectiveClientId = decrypt(config.clientId);
+                    effectiveClientSecret = decrypt(config.clientSecret);
+                    effectiveIsSandbox = config.isSandbox === 'true' || config.isSandbox === true;
+                    console.log('[testLineConnection] Using shared credentials from company config');
+                }
+            }
+        } catch (fetchError) {
+            console.error('[testLineConnection] Failed to fetch shared credentials:', fetchError.message);
+            // Continue - will fail on the check below if still missing
+        }
+    }
 
     if (!effectiveClientId || !effectiveClientSecret) {
-        throw new HttpsError('invalid-argument', 'Client ID and Client Secret are required.');
+        throw new HttpsError('invalid-argument',
+            'Client ID and Client Secret are required. Save shared credentials first or enable per-line credentials.');
     }
 
     // Determine server URL
-    const serverUrl = isSandbox ? RC.server.sandbox : RC.server.production;
+    const serverUrl = effectiveIsSandbox ? RC.server.sandbox : RC.server.production;
 
     try {
         // Instantiate isolated SDK with the provided credentials
@@ -212,6 +331,25 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
         // Simple light-weight check: Fetch own extension info
         const resp = await adapter.rc.get('/restapi/v1.0/account/~/extension/~');
         const data = await resp.json();
+
+        // SELF-HEALING: Ensure this number is in the global index
+        // This acts as a lazy backfill for existing lines
+        const sanitizedPhone = phoneNumber.replace(/[^0-9+]/g, '');
+        try {
+            const indexRef = db.collection('integrations_index').doc(`sms_${sanitizedPhone}`);
+            const indexDoc = await indexRef.get();
+            if (!indexDoc.exists) {
+                console.log(`[Self-Healing] Backfilling global index for ${sanitizedPhone}`);
+                await indexRef.set({
+                    companyId: companyId,
+                    type: 'sms',
+                    provider: 'ringcentral',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        } catch (idxError) {
+            console.error('Index check failed:', idxError);
+        }
 
         return {
             success: true,
@@ -517,7 +655,7 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
                 ...existingConfig,
                 clientId: encrypt(clientId),
                 clientSecret: encrypt(clientSecret),
-                isSandbox: String(isSandbox ?? true)
+                isSandbox: isSandbox ?? false
             };
         }
 
@@ -527,6 +665,20 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
         }
 
         await providerDocRef.set(updateData, { merge: true });
+
+        // 6. GLOBAL INDEX UPDATE (For Incoming Webhooks)
+        // integrations_index/sms_+15550000
+        try {
+            await db.collection('integrations_index').doc(`sms_${sanitizedPhone}`).set({
+                companyId: companyId,
+                type: 'sms',
+                provider: 'ringcentral',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (idxError) {
+            console.error(`Failed to update global index for ${sanitizedPhone}:`, idxError);
+            // Non-fatal, but logs needed
+        }
 
         return {
             success: true,
@@ -607,6 +759,13 @@ exports.removePhoneLine = onCall(encryptedCallOptions, async (request) => {
             defaultPhoneNumber: defaultPhoneNumber,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+
+        // 5. GLOBAL INDEX REMOVAL
+        try {
+            await db.collection('integrations_index').doc(`sms_${sanitizedPhone}`).delete();
+        } catch (idxError) {
+            console.error(`Failed to remove global index for ${sanitizedPhone}:`, idxError);
+        }
 
         return {
             success: true,

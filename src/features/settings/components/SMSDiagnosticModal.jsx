@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Send, Loader2, Smartphone } from 'lucide-react';
+import { X, Send, Loader2, Smartphone, CheckCircle, AlertTriangle } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { useToast } from '@shared/components/feedback/ToastProvider';
@@ -12,10 +12,26 @@ import { useToast } from '@shared/components/feedback/ToastProvider';
 export function SMSDiagnosticModal({ companyId, inventory, onClose }) {
     const { showSuccess, showError } = useToast();
     const [sending, setSending] = useState(false);
+    const [verifying, setVerifying] = useState(false);
+    const [verificationResult, setVerificationResult] = useState(null);
 
     // State for the form
     const [destination, setDestination] = useState('');
     const [selectedSender, setSelectedSender] = useState(''); // Empty = Auto/Default
+
+    const handleVerifyConfig = async () => {
+        setVerifying(true);
+        setVerificationResult(null);
+        try {
+            const verifyFn = httpsCallable(functions, 'verifySmsConfig');
+            const result = await verifyFn({ companyId });
+            setVerificationResult({ success: true, message: result.data.message });
+        } catch (error) {
+            setVerificationResult({ success: false, message: error.message });
+        } finally {
+            setVerifying(false);
+        }
+    };
 
     const handleSendTest = async (e) => {
         e.preventDefault();
@@ -102,8 +118,25 @@ export function SMSDiagnosticModal({ companyId, inventory, onClose }) {
                         />
                     </div>
 
-                    {/* Submit */}
-                    <div className="pt-2">
+                    {/* Actions */}
+                    <div className="pt-2 space-y-3">
+                        <button
+                            type="button"
+                            onClick={handleVerifyConfig}
+                            disabled={verifying}
+                            className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-70"
+                        >
+                            {verifying ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                            {verifying ? 'Verifying...' : 'Verify Configuration'}
+                        </button>
+
+                        {verificationResult && (
+                            <div className={`p-3 rounded-lg text-xs flex items-start gap-2 ${verificationResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                                {verificationResult.success ? <CheckCircle className="w-4 h-4 mt-0.5" /> : <AlertTriangle className="w-4 h-4 mt-0.5" />}
+                                <span className="flex-1">{verificationResult.message}</span>
+                            </div>
+                        )}
+
                         <button
                             type="submit"
                             disabled={sending}

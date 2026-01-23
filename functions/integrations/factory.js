@@ -40,15 +40,20 @@ class SMSAdapterFactory {
         }
 
         const data = snap.data();
-        const entry = {
-            jwt: decrypt(data.jwt)
-        };
+        const entry = {};
+        try {
+            entry.jwt = decrypt(data.jwt);
 
-        // Decrypt per-line credentials if present (Multi-Tenant Architecture)
-        if (data.clientId && data.clientSecret) {
-            entry.clientId = decrypt(data.clientId);
-            entry.clientSecret = decrypt(data.clientSecret);
-            entry.isSandbox = data.isSandbox ?? false;
+            // Decrypt per-line credentials if present (Multi-Tenant Architecture)
+            if (data.clientId && data.clientSecret) {
+                entry.clientId = decrypt(data.clientId);
+                entry.clientSecret = decrypt(data.clientSecret);
+                entry.isSandbox = data.isSandbox ?? false;
+            }
+        } catch (e) {
+            console.error(`[CRITICAL] Keychain decryption failed for ${phoneNumber}:`, e.message);
+            // This specific error helps the user identify that they need to rotate the key for this specific line
+            throw new Error(`Configuration encryption error: The credentials for ${phoneNumber} are encrypted with an old or invalid key. Please go to the 'SMS Integration' settings, remove the line '${phoneNumber}', and add it again to fix this.`);
         }
 
         return entry;
@@ -79,11 +84,17 @@ class SMSAdapterFactory {
         // 2. Decrypt shared Config (clientId, clientSecret, etc.)
         const config = {};
         for (const [key, value] of Object.entries(data.config || {})) {
+            // Skip decryption for 'isSandbox' as it's stored in plaintext.
+            if (key === 'isSandbox') {
+                config[key] = value;
+                continue;
+            }
             try {
                 config[key] = decrypt(value);
             } catch (e) {
-                console.error(`Failed to decrypt key: ${key}`, e);
-                throw new Error("Configuration encryption error.");
+                console.warn(`[WARNING] Failed to decrypt configuration key '${key}': ${e.message}. This key may be stale or encrypted with an old key. Ignoring.`);
+                // Do not throw here. If a critical key is missing, it will fail later when used.
+                // This allows us to survive stale/legacy keys (like old 'jwt' in shared config) being present but undecryptable.
             }
         }
 

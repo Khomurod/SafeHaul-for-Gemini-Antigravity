@@ -44,6 +44,7 @@ export function AddLineModal({ companyId, onClose, onSuccess, sharedCredentials 
         try {
             const testFn = httpsCallable(functions, 'testLineConnection');
             const result = await testFn({
+                companyId,  // Pass companyId so backend can fetch shared creds if needed
                 jwt: jwt.trim(),
                 clientId: needsCredentials ? clientId.trim() : undefined,
                 clientSecret: needsCredentials ? clientSecret.trim() : undefined,
@@ -269,8 +270,8 @@ export function AddLineModal({ companyId, onClose, onSuccess, sharedCredentials 
                     {/* Test Result */}
                     {testResult && (
                         <div className={`p-3 rounded-lg text-sm ${testResult.success
-                                ? 'bg-green-50 border border-green-200 text-green-700'
-                                : 'bg-red-50 border border-red-200 text-red-700'
+                            ? 'bg-green-50 border border-green-200 text-green-700'
+                            : 'bg-red-50 border border-red-200 text-red-700'
                             }`}>
                             <div className="flex items-center gap-2">
                                 {testResult.success ? <CheckCircle size={16} /> : <AlertCircle size={16} />}

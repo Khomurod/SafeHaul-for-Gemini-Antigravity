@@ -15,6 +15,9 @@ export function IntegrationManager({ companyId, companyName, onBack }) {
         isSandbox: true // Default to true for safety
     });
 
+    // Track if credentials already exist (stored encrypted in Firestore)
+    const [hasExistingCredentials, setHasExistingCredentials] = useState(false);
+
     const [testPhone, setTestPhone] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
@@ -36,12 +39,25 @@ export function IntegrationManager({ companyId, companyName, onBack }) {
                 if (snap.exists()) {
                     const data = snap.data();
                     if (data.provider) setProvider(data.provider);
-                    // Note: Sensitive fields like jwt, clientSecret, apiKey are NOT pre-filled for security.
+
+                    // IMPORTANT: Do NOT pre-fill clientId/clientSecret with encrypted values!
+                    // The values in Firestore are encrypted. Loading them into the form and then
+                    // saving would cause double-encryption. Instead, we track that credentials
+                    // exist and show a placeholder. User can enter new credentials if needed.
+                    const existingClientId = data.config?.clientId;
+                    const existingClientSecret = data.config?.clientSecret;
+
+                    // Check if credentials exist (encrypted values contain a colon separator)
+                    const credsExist = !!(existingClientId && existingClientId.includes(':'));
+                    setHasExistingCredentials(credsExist);
+
                     setConfig(prev => ({
                         ...prev,
                         isSandbox: data.config?.isSandbox === 'true' || data.config?.isSandbox === true,
                         phoneNumber: data.config?.phoneNumber || '',
-                        clientId: data.config?.clientId || '',
+                        // Leave clientId/clientSecret empty - user enters new values if updating
+                        clientId: '',
+                        clientSecret: '',
                         subAccountId: data.config?.subAccountId || ''
                     }));
                 }
@@ -65,6 +81,27 @@ export function IntegrationManager({ companyId, companyName, onBack }) {
         try {
             // Prepare payload
             const payloadConfig = { ...config };
+
+            // CRITICAL: If credentials exist and user didn't enter new ones, 
+            // don't send empty credentials (would overwrite with blank)
+            const hasNewClientId = payloadConfig.clientId && payloadConfig.clientId.trim() !== '';
+            const hasNewClientSecret = payloadConfig.clientSecret && payloadConfig.clientSecret.trim() !== '';
+
+            // If user has existing credentials but didn't enter new ones, 
+            // mark these fields as "preserve" so backend knows not to overwrite
+            if (hasExistingCredentials && !hasNewClientId) {
+                payloadConfig.clientId = '__PRESERVE__';
+            }
+            if (hasExistingCredentials && !hasNewClientSecret) {
+                payloadConfig.clientSecret = '__PRESERVE__';
+            }
+
+            // If NO existing credentials AND user didn't enter new ones, that's an error
+            if (!hasExistingCredentials && (!hasNewClientId || !hasNewClientSecret)) {
+                showError("Client ID and Client Secret are required.");
+                setIsLoading(false);
+                return;
+            }
 
             // 1. Sanitize Phone Number (RingCentral needs E.164, e.g. +15551234567)
             if (payloadConfig.phoneNumber) {
@@ -213,26 +250,36 @@ export function IntegrationManager({ companyId, companyName, onBack }) {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Client ID</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Client ID
+                                    {hasExistingCredentials && (
+                                        <span className="ml-2 text-green-600 font-normal normal-case">✓ Saved</span>
+                                    )}
+                                </label>
                                 <input
                                     type="text"
                                     className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                                     value={config.clientId || ''}
                                     onChange={e => updateConfig('clientId', e.target.value)}
-                                    placeholder="Enter Client ID"
-                                    required
+                                    placeholder={hasExistingCredentials ? "(Leave blank to keep existing)" : "Enter Client ID"}
+                                    required={!hasExistingCredentials}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Client Secret</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Client Secret
+                                    {hasExistingCredentials && (
+                                        <span className="ml-2 text-green-600 font-normal normal-case">✓ Saved</span>
+                                    )}
+                                </label>
                                 <div className="relative">
                                     <input
                                         type="password"
                                         className="w-full p-2 pl-10 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                                         value={config.clientSecret || ''}
                                         onChange={e => updateConfig('clientSecret', e.target.value)}
-                                        placeholder="••••••••••••••••"
-                                        required
+                                        placeholder={hasExistingCredentials ? "(Leave blank to keep existing)" : "Enter Client Secret"}
+                                        required={!hasExistingCredentials}
                                     />
                                     <Lock size={16} className="absolute left-3 top-2.5 text-gray-400" />
                                 </div>
