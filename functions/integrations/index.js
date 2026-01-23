@@ -5,8 +5,15 @@ const { encrypt, decrypt } = require('./encryption');
 const RingCentralAdapter = require('./adapters/ringcentral');
 const EightByEightAdapter = require('./adapters/eightbyeight');
 
+// Shared options for functions that need encryption capabilities
+// secrets array uses string format - Firebase will inject SMS_ENCRYPTION_KEY into process.env
+const encryptedCallOptions = {
+    cors: true,
+    secrets: ['SMS_ENCRYPTION_KEY']
+};
+
 // --- 1. Save Configuration (Super Admin) ---
-exports.saveIntegrationConfig = onCall({ cors: true }, async (request) => {
+exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => {
     // RBAC Check: Must be Super Admin (or equivalent high-privilege role)
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in.');
@@ -26,8 +33,8 @@ exports.saveIntegrationConfig = onCall({ cors: true }, async (request) => {
     // --- NEW: Verify Credentials & Fetch Inventory (Non-Blocking) ---
     let inventory = [];
     let verificationWarning = null;
+    let adapter = null;
     try {
-        let adapter;
         if (provider === 'ringcentral') {
             adapter = new RingCentralAdapter(config);
         } else if (provider === '8x8') {
@@ -77,7 +84,7 @@ exports.saveIntegrationConfig = onCall({ cors: true }, async (request) => {
 });
 
 // --- 2. Test Connection / Diagnostic Lab ---
-exports.sendTestSMS = onCall({ cors: true }, async (request) => {
+exports.sendTestSMS = onCall(encryptedCallOptions, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
 
     // Add 'fromNumber' to destructured props for diagnostic testing
@@ -114,7 +121,7 @@ exports.sendTestSMS = onCall({ cors: true }, async (request) => {
 // --- 2.5 Test Line Connection (Validate Credentials Before Saving) ---
 const RC = require('@ringcentral/sdk').SDK;
 
-exports.testLineConnection = onCall({ cors: true }, async (request) => {
+exports.testLineConnection = onCall(encryptedCallOptions, async (request) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in.');
     }
@@ -174,7 +181,7 @@ exports.testLineConnection = onCall({ cors: true }, async (request) => {
 });
 
 // --- 2.6 Verify Existing Line Connection (For Company Admins) ---
-exports.verifyLineConnection = onCall({ cors: true }, async (request) => {
+exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'User must be logged in.');
     }
@@ -219,7 +226,7 @@ exports.verifyLineConnection = onCall({ cors: true }, async (request) => {
 });
 
 // --- 3. Execute Campaign Batch (Company Admin) ---
-exports.executeReactivationBatch = onCall({ cors: true }, async (request) => {
+exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
 
     const { companyId, leadIds, messageText } = request.data; // leadIds is array of [leadId]
@@ -376,7 +383,7 @@ exports.assignPhoneNumber = onCall({ cors: true }, async (request) => {
 });
 
 // --- 5. Add Phone Line (Super Admin - Digital Wallet) ---
-exports.addPhoneLine = onCall({ cors: true }, async (request) => {
+exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
 
     const { companyId, phoneNumber, jwt, label, clientId, clientSecret, isSandbox } = request.data;
@@ -536,7 +543,7 @@ exports.addPhoneLine = onCall({ cors: true }, async (request) => {
 });
 
 // --- 6. Remove Phone Line (Super Admin - Digital Wallet) ---
-exports.removePhoneLine = onCall({ cors: true }, async (request) => {
+exports.removePhoneLine = onCall(encryptedCallOptions, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
 
     const { companyId, phoneNumber } = request.data;
