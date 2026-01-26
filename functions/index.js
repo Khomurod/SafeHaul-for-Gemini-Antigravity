@@ -1,19 +1,28 @@
-const Sentry = require("@sentry/node");
-
-// Initialize Sentry ASAP (before any other code)
-Sentry.init({
-  dsn: "https://a65b9de0dd496035cfa65d0543f2c566@o4510692386799616.ingest.us.sentry.io/4510692400365568",
-  tracesSampleRate: 1.0,
-});
-
 const functions = require('firebase-functions/v1');
-const { onCall } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 
 // Initialize Admin SDK once
 if (!admin.apps.length) {
   admin.initializeApp();
 }
+
+// Bulk Actions (Resilient session-based)
+const bulkActions = require('./bulkActions');
+exports.initBulkSession = bulkActions.initBulkSession;
+exports.processBulkBatch = bulkActions.processBulkBatch;
+exports.pauseBulkSession = bulkActions.pauseBulkSession;
+exports.resumeBulkSession = bulkActions.resumeBulkSession;
+exports.cancelBulkSession = bulkActions.cancelBulkSession;
+// Templates
+const templates = require('./templates');
+exports.createTemplate = templates.createTemplate;
+exports.getTemplates = templates.getTemplates;
+exports.updateTemplate = templates.updateTemplate;
+exports.deleteTemplate = templates.deleteTemplate;
+
+
+
+
 
 // --- IMPORT MODULES ---
 const driverSync = require('./driverSync');
@@ -97,16 +106,17 @@ exports.connectFacebookPage = facebook.connectFacebookPage;
 exports.facebookWebhook = facebook.facebookWebhook;
 exports.facebookWebhookV1 = facebook.facebookWebhookV1; // V1 version - public by default
 exports.saveIntegrationConfig = smsIntegrations.saveIntegrationConfig;
+exports.verifySmsConfig = smsIntegrations.verifySmsConfig; // Added missing export
 exports.sendTestSMS = smsIntegrations.sendTestSMS;
 exports.sendSMS = smsIntegrations.sendSMS; // NEW: Real Outbound
 exports.executeReactivationBatch = smsIntegrations.executeReactivationBatch;
 exports.assignPhoneNumber = smsIntegrations.assignPhoneNumber;
 exports.addManualPhoneNumber = smsIntegrations.addManualPhoneNumber;
-// exports.incomingSMS = require('./integrations/incoming').incomingSMS; // Disabled per user request
 
 // Digital Wallet
 exports.addPhoneLine = smsIntegrations.addPhoneLine;
 exports.removePhoneLine = smsIntegrations.removePhoneLine;
+
 exports.testLineConnection = smsIntegrations.testLineConnection;
 exports.verifyLineConnection = smsIntegrations.verifyLineConnection;
 
@@ -122,6 +132,3 @@ exports.processCompanyDistribution = require('./workers/distributeWorker').proce
 const statsBackfill = require('./statsBackfill');
 exports.backfillCompanyStats = statsBackfill.backfillCompanyStats;
 exports.backfillAllStats = statsBackfill.backfillAllStats;
-
-// --- DEPRECATED: Legacy migration (kept for reference but superseded by statsBackfill) ---
-// exports.migrateLegacyActivities = require('./migrateLegacyActivities').migrateLegacyActivities;

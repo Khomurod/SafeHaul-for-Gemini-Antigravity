@@ -90,21 +90,47 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
     }
 
     try {
-        // Determine Default Number (pick first available if present)
-        let defaultPhoneNumber = null;
-        if (inventory && inventory.length > 0) {
+        // Determine Default Number
+        // Only pick a new one if it's currently null/empty
+        let defaultPhoneNumber = existingDoc.exists ? existingDoc.data().defaultPhoneNumber : null;
+        if (!defaultPhoneNumber && inventory && inventory.length > 0) {
             defaultPhoneNumber = inventory[0].phoneNumber;
+        }
+
+        // --- INVENTORY MERGE STRATEGY ---
+        // Syncing with provider (inventory) might miss:
+        // 1. Dedicated lines (added via addPhoneLine with own JWTs)
+        // 2. Manually added lines
+        // We MUST preserve these.
+
+        let finalInventory = [...inventory]; // Start with the fresh sync
+
+        if (existingDoc.exists) {
+            const currentInventory = existingDoc.data().inventory || [];
+
+            // Find items to preserve:
+            // - Ones with hasDedicatedCredentials
+            // - Ones that were manually added (usageType === 'DirectNumber' but not in the fresh sync)
+            const toPreserve = currentInventory.filter(existingItem => {
+                const inFreshSync = inventory.some(newItem => newItem.phoneNumber === existingItem.phoneNumber);
+                return !inFreshSync && (existingItem.hasDedicatedCredentials || existingItem.usageType === 'DirectNumber');
+            });
+
+            if (toPreserve.length > 0) {
+                console.log(`[Inventory Merge] Preserving ${toPreserve.length} dedicated/manual lines.`);
+                finalInventory = [...finalInventory, ...toPreserve];
+            }
         }
 
         await docRef.set({
             provider,
             config: finalConfig,
-            inventory,
-            defaultPhoneNumber, // Auto-set from first inventory item
+            inventory: finalInventory,
+            defaultPhoneNumber,
             isActive: true,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedBy: request.auth.uid
-        }, { merge: true }); // Preserve existing assignments if re-saving
+        }, { merge: true });
 
         return {
             success: true,
@@ -193,7 +219,8 @@ exports.sendSMS = onCall(encryptedCallOptions, async (request) => {
     }
 
     try {
-        const adapter = await SMSAdapterFactory.getAdapter(companyId);
+        // Use the smart recruiter routing - automatically picks dedicated credentials if assigned
+        const adapter = await SMSAdapterFactory.getAdapterForUser(companyId, userId);
 
         // Use the adapter's intelligent routing (userId -> assigned number)
         await adapter.sendSMS(
@@ -328,9 +355,8 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
         const SMSAdapterFactory = require('./factory');
         const adapter = await SMSAdapterFactory.getAdapter(companyId, phoneNumber);
 
-        // Simple light-weight check: Fetch own extension info
-        const resp = await adapter.rc.get('/restapi/v1.0/account/~/extension/~');
-        const data = await resp.json();
+        // Standardized verification via adapter
+        const result = await adapter.verifyConnection();
 
         // SELF-HEALING: Ensure this number is in the global index
         // This acts as a lazy backfill for existing lines
@@ -352,10 +378,8 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
         }
 
         return {
-            success: true,
-            identity: `${data.contact?.firstName} ${data.contact?.lastName}`,
-            extension: data.extensionNumber,
-            timestamp: new Date().toISOString()
+            ...result,
+            success: true
         };
     } catch (error) {
         console.error(`Verification Failed for ${phoneNumber}:`, error.message);
@@ -385,7 +409,8 @@ exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) 
     const errors = [];
 
     try {
-        const adapter = await SMSAdapterFactory.getAdapter(companyId);
+        // Batch execution now uses recruiter-specific routing
+        const adapter = await SMSAdapterFactory.getAdapterForUser(companyId, request.auth.uid);
         const db = admin.firestore();
 
         // Loop with Delay
@@ -594,7 +619,8 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
         }
 
         // 2. Sanitize phone number for document ID
-        const sanitizedPhone = phoneNumber.replace(/[^0-9+]/g, '');
+        const rawSanitized = phoneNumber.replace(/[^0-9+]/g, '');
+        const sanitizedPhone = rawSanitized.startsWith('+') ? rawSanitized : `+${rawSanitized}`;
 
         // 3. Store encrypted JWT + Per-Line Credentials in Private Keychain (subcollection)
         const keychainRef = providerDocRef.collection('keychain').doc(sanitizedPhone);

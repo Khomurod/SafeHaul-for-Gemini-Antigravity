@@ -20,8 +20,18 @@ export function NumberAssignmentManager({ companyId }) {
 
     // Local state for edits before save
     const [assignments, setAssignments] = useState({});
+    const [initialAssignments, setInitialAssignments] = useState({});
     const [defaultNumber, setDefaultNumber] = useState('');
     const [showTestModal, setShowTestModal] = useState(false);
+
+    const sanitizePhone = (num) => {
+        if (!num) return "";
+        const raw = num.replace(/[^0-9+]/g, '');
+        return raw.startsWith('+') ? raw : `+${raw}`;
+    };
+
+    const hasChanges = JSON.stringify(assignments) !== JSON.stringify(initialAssignments) ||
+        defaultNumber !== (configDoc?.defaultPhoneNumber || configDoc?.config?.defaultPhoneNumber || '');
 
     useEffect(() => {
         if (!companyId) return;
@@ -30,10 +40,21 @@ export function NumberAssignmentManager({ companyId }) {
         const unsub = onSnapshot(doc(db, 'companies', companyId, 'integrations', 'sms_provider'), (snap) => {
             if (snap.exists()) {
                 const data = snap.data();
+                console.log("[SMS Config] Loaded Data:", data);
                 setConfigDoc(data);
-                setAssignments(data.assignments || {});
-                setDefaultNumber(data.defaultPhoneNumber || data.config?.defaultPhoneNumber || '');
+
+                // Sanitize incoming assignments
+                const incomingAssignments = data.assignments || {};
+                const sanitizedMap = {};
+                Object.keys(incomingAssignments).forEach(uid => {
+                    sanitizedMap[uid] = sanitizePhone(incomingAssignments[uid]);
+                });
+
+                setAssignments(sanitizedMap);
+                setInitialAssignments(JSON.parse(JSON.stringify(sanitizedMap))); // Deep copy
+                setDefaultNumber(sanitizePhone(data.defaultPhoneNumber || data.config?.defaultPhoneNumber || ''));
             } else {
+                console.log("[SMS Config] Document does not exist.");
                 setConfigDoc(null);
             }
             setLoading(false);
@@ -133,10 +154,11 @@ export function NumberAssignmentManager({ companyId }) {
 
             await updateDoc(docRef, {
                 assignments: assignments,
-                defaultPhoneNumber: defaultNumber,
+                defaultPhoneNumber: sanitizePhone(defaultNumber),
                 updatedAt: new Date()
             });
 
+            setInitialAssignments(JSON.parse(JSON.stringify(assignments)));
             showSuccess("Assignments updated successfully.");
         } catch (error) {
             console.error(error);
@@ -145,6 +167,18 @@ export function NumberAssignmentManager({ companyId }) {
             setSaving(false);
         }
     };
+
+    // Warn about unsaved changes
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (hasChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [hasChanges]);
 
     if (loading) return <div className="p-8 text-center text-gray-400 text-sm">Loading inventory...</div>;
 
@@ -183,6 +217,11 @@ export function NumberAssignmentManager({ companyId }) {
                     <p className="text-sm text-gray-500 mt-1">inventory: {inventory.length} numbers available</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    {hasChanges && (
+                        <span className="flex items-center gap-1.5 text-[10px] font-bold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full border border-orange-200 animate-pulse">
+                            <AlertCircle size={12} /> UNSAVED CHANGES
+                        </span>
+                    )}
                     {/* Diagnostic Test Button */}
                     <button
                         onClick={() => setShowTestModal(true)}
@@ -195,10 +234,11 @@ export function NumberAssignmentManager({ companyId }) {
                     <button
                         onClick={handleSave}
                         disabled={saving}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+                        className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 ${hasChanges ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-200' : 'bg-blue-600 hover:bg-blue-700 text-white'
+                            }`}
                     >
                         {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-                        Save Changes
+                        {hasChanges ? 'Save Changes Now' : 'Save Changes'}
                     </button>
                 </div>
             </div>
@@ -217,16 +257,19 @@ export function NumberAssignmentManager({ companyId }) {
                 </div>
                 <div className="flex gap-3 max-w-lg">
                     <select
-                        value={defaultNumber}
-                        onChange={(e) => setDefaultNumber(e.target.value)}
+                        value={sanitizePhone(defaultNumber)}
+                        onChange={(e) => setDefaultNumber(sanitizePhone(e.target.value))}
                         className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
                     >
                         <option value="">-- Select Default Number --</option>
-                        {inventory.map(num => (
-                            <option key={num.phoneNumber} value={num.phoneNumber}>
-                                {num.phoneNumber} ({num.usageType || 'Line'})
-                            </option>
-                        ))}
+                        {inventory.map(num => {
+                            const sNum = sanitizePhone(num.phoneNumber);
+                            return (
+                                <option key={num.phoneNumber} value={sNum}>
+                                    {sNum} ({num.usageType || 'Line'})
+                                </option>
+                            );
+                        })}
                     </select>
                     {defaultNumber && (
                         <button
@@ -286,9 +329,12 @@ export function NumberAssignmentManager({ companyId }) {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {users.map(user => {
-                            const currentPhone = assignments[user.id] || '';
+                            const rawPhone = assignments[user.id] || '';
+                            const currentPhone = sanitizePhone(rawPhone);
                             const isAssigned = !!currentPhone;
-                            const invItem = inventory.find(i => i.phoneNumber === currentPhone);
+
+                            // Match against sanitized inventory numbers
+                            const invItem = inventory.find(i => sanitizePhone(i.phoneNumber) === currentPhone);
                             const hasDedicated = invItem?.hasDedicatedCredentials;
 
                             return (
@@ -304,16 +350,26 @@ export function NumberAssignmentManager({ companyId }) {
                                         <div className="flex flex-col gap-1">
                                             <select
                                                 value={currentPhone}
-                                                onChange={(e) => setAssignments(prev => ({ ...prev, [user.id]: e.target.value }))}
+                                                onChange={(e) => setAssignments(prev => ({ ...prev, [user.id]: sanitizePhone(e.target.value) }))}
                                                 className={`w-full p-2 border rounded text-sm outline-none transition-all ${isAssigned ? 'border-purple-200 bg-purple-50 text-purple-700 font-mono' : 'border-gray-200 text-gray-400'
                                                     }`}
                                             >
                                                 <option value="">No Direct Line</option>
-                                                {inventory.map(num => (
-                                                    <option key={num.phoneNumber} value={num.phoneNumber}>
-                                                        {num.phoneNumber}
+                                                {/* 1. Show existing inventory */}
+                                                {inventory.map(num => {
+                                                    const sNum = sanitizePhone(num.phoneNumber);
+                                                    return (
+                                                        <option key={num.phoneNumber} value={sNum}>
+                                                            {sNum}
+                                                        </option>
+                                                    );
+                                                })}
+                                                {/* 2. Resilience: If currently assigned number is MISSING from inventory, show it anyway */}
+                                                {isAssigned && !invItem && (
+                                                    <option value={currentPhone}>
+                                                        {currentPhone} (Missing from sync)
                                                     </option>
-                                                ))}
+                                                )}
                                             </select>
                                             {isAssigned && hasDedicated && (
                                                 <div className="flex items-center gap-1 text-[9px] text-blue-600 font-bold uppercase tracking-tighter">
@@ -337,11 +393,15 @@ export function NumberAssignmentManager({ companyId }) {
                                                         <Activity size={14} className={lineStatuses[currentPhone] ? 'text-blue-500' : 'text-gray-400'} />
                                                     )}
                                                 </button>
-                                                {lineStatuses[currentPhone] && (
+                                                {lineStatuses[currentPhone] ? (
                                                     <span className={`text-[10px] font-medium ${lineStatuses[currentPhone].success ? 'text-green-600' : 'text-red-600'
                                                         }`}>
                                                         {lineStatuses[currentPhone].success ? 'Connected' : 'Failed'}
                                                     </span>
+                                                ) : isAssigned && !invItem ? (
+                                                    <span className="text-[10px] text-orange-500 font-medium">Inventory Mismatch</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-gray-400">Untested</span>
                                                 )}
                                             </div>
                                         ) : (
@@ -350,8 +410,13 @@ export function NumberAssignmentManager({ companyId }) {
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         {isAssigned ? (
-                                            <div className={`w-2 h-2 rounded-full mx-auto ${lineStatuses[currentPhone]?.success === false ? 'bg-red-500' : 'bg-green-500'
-                                                }`} title={lineStatuses[currentPhone]?.success === false ? 'Connection Error' : 'Active'}></div>
+                                            <div
+                                                className={`w-2 h-2 rounded-full mx-auto ${!lineStatuses[currentPhone]
+                                                    ? (invItem ? 'bg-blue-400' : 'bg-orange-400')
+                                                    : lineStatuses[currentPhone].success === false ? 'bg-red-500' : 'bg-green-500'
+                                                    }`}
+                                                title={!lineStatuses[currentPhone] ? 'Untested' : lineStatuses[currentPhone].success === false ? 'Connection Error' : 'Active'}
+                                            ></div>
                                         ) : (
                                             <div className="w-2 h-2 rounded-full bg-gray-200 mx-auto" title="No Assignment"></div>
                                         )}

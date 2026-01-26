@@ -24,6 +24,14 @@ class BaseAdapter {
     async fetchAvailablePhoneNumbers() {
         throw new Error("Method 'fetchAvailablePhoneNumbers' must be implemented by concrete class.");
     }
+
+    /**
+     * Verify the connection and credentials
+     * @returns {Promise<{success: boolean, identity: string}>}
+     */
+    async verifyConnection() {
+        throw new Error("Method 'verifyConnection' must be implemented by concrete class.");
+    }
 }
 
 module.exports = BaseAdapter;

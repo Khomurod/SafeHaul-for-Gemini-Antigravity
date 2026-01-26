@@ -76,6 +76,17 @@ class EightByEightAdapter extends BaseAdapter {
             }
         ];
     }
+
+    async verifyConnection() {
+        if (!this.config.subAccountId || !this.config.apiKey) {
+            throw new Error("Missing 8x8 credentials (SubAccount ID or API Key).");
+        }
+        return {
+            success: true,
+            identity: `8x8 SubAccount: ${this.config.subAccountId}`,
+            timestamp: new Date().toISOString()
+        };
+    }
 }
 
 module.exports = EightByEightAdapter;

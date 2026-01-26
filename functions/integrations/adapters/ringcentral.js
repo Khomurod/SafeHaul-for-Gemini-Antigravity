@@ -131,20 +131,44 @@ class RingCentralAdapter extends BaseAdapter {
             // Filter for numbers that are likely SMS capable (Relaxed filter)
             const filtered = uniqueRecords
                 .filter(record => record.phoneNumber && record.type !== 'FaxOnly')
-                .map(record => ({
-                    phoneNumber: record.phoneNumber,
-                    type: record.type,           // e.g. VoiceFax
-                    usageType: record.usageType, // e.g. DirectNumber
-                    paymentType: record.paymentType,
-                    status: 'available',         // Default status
-                    assignedTo: null             // Not assigned yet
-                }));
+                .map(record => {
+                    // Force E.164 sanitization (remove all except numbers and +)
+                    const sanitized = (record.phoneNumber || "").replace(/[^0-9+]/g, '');
+                    // Ensure it has a leading +
+                    const finalPhone = sanitized.startsWith('+') ? sanitized : `+${sanitized}`;
+
+                    return {
+                        phoneNumber: finalPhone,
+                        type: record.type,           // e.g. VoiceFax
+                        usageType: record.usageType, // e.g. DirectNumber
+                        paymentType: record.paymentType,
+                        status: 'available',         // Default status
+                        assignedTo: null             // Not assigned yet
+                    };
+                });
 
             return filtered;
         } catch (error) {
             console.error("RC Fetch Inventory Error [Diagnostic]:", error);
             const detailedError = error.response?.data ? JSON.stringify(error.response.data) : error.message;
             throw new Error(`Failed to fetch number inventory: ${detailedError}`);
+        }
+    }
+
+    async verifyConnection() {
+        try {
+            await this.rc.login({ jwt: this.config.jwt });
+            const idResp = await this.rc.get('/restapi/v1.0/account/~/extension/~');
+            const data = await idResp.json();
+            return {
+                success: true,
+                identity: `${data.contact?.firstName} ${data.contact?.lastName}`,
+                extension: data.extensionNumber,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error("RC Connection Verification Error:", error.message);
+            throw error;
         }
     }
 }

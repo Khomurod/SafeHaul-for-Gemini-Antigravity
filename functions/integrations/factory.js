@@ -53,7 +53,7 @@ class SMSAdapterFactory {
         } catch (e) {
             console.error(`[CRITICAL] Keychain decryption failed for ${phoneNumber}:`, e.message);
             // This specific error helps the user identify that they need to rotate the key for this specific line
-            throw new Error(`Configuration encryption error: The credentials for ${phoneNumber} are encrypted with an old or invalid key. Please go to the 'SMS Integration' settings, remove the line '${phoneNumber}', and add it again to fix this.`);
+            throw new Error(`Configuration encryption error - The credentials for ${phoneNumber} are encrypted with an old or invalid key. Please go to the 'SMS Integration' settings, remove the line '${phoneNumber}', and add it again to fix this.`);
         }
 
         return entry;
@@ -155,6 +155,28 @@ class SMSAdapterFactory {
      */
     static async getAdapterForNumber(companyId, targetPhoneNumber) {
         return this.getAdapter(companyId, targetPhoneNumber);
+    }
+
+    /**
+     * Get adapter configured for a specific User (Direct Assignment helper)
+     * @param {string} companyId 
+     * @param {string} userId 
+     * @returns {Promise<import('./adapters/BaseAdapter')>}
+     */
+    static async getAdapterForUser(companyId, userId) {
+        if (!companyId || !userId) return this.getAdapter(companyId);
+
+        const docRef = admin.firestore().collection('companies').doc(companyId).collection('integrations').doc('sms_provider');
+        const docSnap = await docRef.get();
+        if (!docSnap.exists) return this.getAdapter(companyId);
+
+        const data = docSnap.data();
+        const assignments = data.assignments || {};
+        const assignedPhone = assignments[userId];
+
+        // If user has a direct assignment, get adapter for that specific number (dedicated JWT etc)
+        // Otherwise, fall back to the default company adapter
+        return this.getAdapter(companyId, assignedPhone || null);
     }
 }
 
