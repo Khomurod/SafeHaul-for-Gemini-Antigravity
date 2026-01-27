@@ -7,21 +7,13 @@ if (!admin.apps.length) {
 }
 
 // Bulk Actions (Resilient session-based)
+// Note: pause/resume/cancel moved to frontend direct Firestore writes
 const bulkActions = require('./bulkActions');
 exports.initBulkSession = bulkActions.initBulkSession;
 exports.processBulkBatch = bulkActions.processBulkBatch;
-exports.pauseBulkSession = bulkActions.pauseBulkSession;
-exports.resumeBulkSession = bulkActions.resumeBulkSession;
-exports.cancelBulkSession = bulkActions.cancelBulkSession;
-// Templates
-const templates = require('./templates');
-exports.createTemplate = templates.createTemplate;
-exports.getTemplates = templates.getTemplates;
-exports.updateTemplate = templates.updateTemplate;
-exports.deleteTemplate = templates.deleteTemplate;
+exports.retryFailedAttempts = bulkActions.retryFailedAttempts;
 
-
-
+// Templates - REMOVED: All CRUD operations moved to frontend SDK
 
 
 // --- IMPORT MODULES ---
@@ -34,7 +26,7 @@ const notifySigner = require('./notifySigner');
 const publicSigning = require('./publicSigning');
 const systemIntegrity = require('./systemIntegrity');
 const statsAggregator = require('./statsAggregator');
-const searchHandler = require('./searchHandler');
+
 
 // --- EXPORTS ---
 
@@ -51,19 +43,18 @@ exports.updatePortalUser = hrAdmin.updatePortalUser;
 exports.onMembershipWrite = hrAdmin.onMembershipWrite;
 
 // 3. Company Admin
-exports.getCompanyProfile = companyAdmin.getCompanyProfile;
-exports.resolveCompanySlug = companyAdmin.resolveCompanySlug;
+// REMOVED: getCompanyProfile, resolveCompanySlug, getTeamPerformanceHistory - moved to frontend SDK
 exports.joinCompanyTeam = hrAdmin.joinCompanyTeam;
 exports.deleteCompany = companyAdmin.deleteCompany;
-exports.getTeamPerformanceHistory = companyAdmin.getTeamPerformanceHistory;
 
 // 4. Applications & Driver Sync
 exports.onApplicationSubmitted = driverSync.onApplicationSubmitted;
 exports.onLeadSubmitted = driverSync.onLeadSubmitted;
 exports.syncDriverOnLog = driverSync.syncDriverOnLog;
 exports.syncDriverOnActivity = driverSync.syncDriverOnActivity;
-exports.moveApplication = companyAdmin.moveApplication;
+// REMOVED: moveApplication - now handled via direct Firestore Transaction
 exports.sendAutomatedEmail = companyAdmin.sendAutomatedEmail;
+
 
 // 5. Leads & Distribution
 exports.cleanupBadLeads = leadDistribution.cleanupBadLeads;
@@ -91,8 +82,7 @@ exports.testEmailConnection = require('./testEmailConnection').testEmailConnecti
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
 
-// 8. Global Search
-exports.searchUnifiedData = searchHandler.searchUnifiedData;
+// 8. Global Search - REMOVED: Moved to frontend parallel Firestore queries
 
 // 9. Scheduled Jobs
 const customJobs = require('./customJobs');
@@ -110,8 +100,7 @@ exports.verifySmsConfig = smsIntegrations.verifySmsConfig; // Added missing expo
 exports.sendTestSMS = smsIntegrations.sendTestSMS;
 exports.sendSMS = smsIntegrations.sendSMS; // NEW: Real Outbound
 exports.executeReactivationBatch = smsIntegrations.executeReactivationBatch;
-exports.assignPhoneNumber = smsIntegrations.assignPhoneNumber;
-exports.addManualPhoneNumber = smsIntegrations.addManualPhoneNumber;
+// REMOVED: assignPhoneNumber - now handled via direct Firestore updateDoc
 
 // Digital Wallet
 exports.addPhoneLine = smsIntegrations.addPhoneLine;
@@ -119,6 +108,7 @@ exports.removePhoneLine = smsIntegrations.removePhoneLine;
 
 exports.testLineConnection = smsIntegrations.testLineConnection;
 exports.verifyLineConnection = smsIntegrations.verifyLineConnection;
+
 
 // 11. Stats Aggregation
 exports.onActivityLogCreated = statsAggregator.onActivityLogCreated;
@@ -132,3 +122,11 @@ exports.processCompanyDistribution = require('./workers/distributeWorker').proce
 const statsBackfill = require('./statsBackfill');
 exports.backfillCompanyStats = statsBackfill.backfillCompanyStats;
 exports.backfillAllStats = statsBackfill.backfillAllStats;
+
+// 14. Engagement Engine (Smart Segments & Compliance)
+const segments = require('./segments');
+const blacklist = require('./blacklist');
+
+exports.onApplicationUpdateSegments = segments.onApplicationUpdateSegments;
+exports.onApplicationCreatedSegments = segments.onApplicationCreatedSegments;
+exports.handleOptOut = blacklist.handleOptOut;

@@ -1,12 +1,13 @@
-import { 
-  collection, 
-  getDocs, 
-  doc, 
-  updateDoc, 
-  addDoc, 
-  query, 
-  where, 
-  documentId 
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  addDoc,
+  query,
+  where,
+  documentId
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from '@lib/firebase';
@@ -25,12 +26,14 @@ export async function getCompaniesFromIds(companyIds) {
 export async function getCompanyProfile(companyId) {
   if (!companyId) return null;
   try {
-      const getProfile = httpsCallable(functions, 'getCompanyProfile');
-      const result = await getProfile({ companyId: companyId });
-      return result.data;
+    const docSnap = await getDoc(doc(db, "companies", companyId));
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() };
+    }
+    return null;
   } catch (error) {
-      console.error(`Error calling getCompanyProfile function for ${companyId}:`, error);
-      return null;
+    console.error(`Error fetching company profile for ${companyId}:`, error);
+    return null;
   }
 }
 
@@ -39,7 +42,7 @@ export async function createNewCompany(companyData) {
   const slugSnapshot = await getDocs(slugQuery);
 
   if (!slugSnapshot.empty) {
-      throw new Error(`The URL Slug "${companyData.appSlug}" is already taken. Please choose a unique one.`);
+    throw new Error(`The URL Slug "${companyData.appSlug}" is already taken. Please choose a unique one.`);
   }
 
   return await addDoc(collection(db, "companies"), companyData);
@@ -47,17 +50,17 @@ export async function createNewCompany(companyData) {
 
 export async function updateCompany(companyId, companyData, originalSlug) {
   if (companyData.appSlug && originalSlug && companyData.appSlug !== originalSlug) {
-      const slugQuery = query(collection(db, "companies"), where("appSlug", "==", companyData.appSlug));
-      const slugSnapshot = await getDocs(slugQuery);
+    const slugQuery = query(collection(db, "companies"), where("appSlug", "==", companyData.appSlug));
+    const slugSnapshot = await getDocs(slugQuery);
 
-      let isSameDoc = false;
-      slugSnapshot.forEach(doc => {
-          if (doc.id === companyId) isSameDoc = true;
-      });
+    let isSameDoc = false;
+    slugSnapshot.forEach(doc => {
+      if (doc.id === companyId) isSameDoc = true;
+    });
 
-      if (!slugSnapshot.empty && !isSameDoc) {
-           throw new Error(`The URL Slug "${companyData.appSlug}" is already taken. Please choose a unique one.`);
-      }
+    if (!slugSnapshot.empty && !isSameDoc) {
+      throw new Error(`The URL Slug "${companyData.appSlug}" is already taken. Please choose a unique one.`);
+    }
   }
 
   const companyRef = doc(db, "companies", companyId);

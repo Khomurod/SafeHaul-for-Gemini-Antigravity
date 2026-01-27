@@ -25,6 +25,13 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
+    exclude: [
+      'firebase/app',
+      'firebase/auth',
+      'firebase/firestore',
+      'firebase/functions',
+      'firebase/storage'
+    ],
     include: ['pdfjs-dist'],
     esbuildOptions: {
       target: 'esnext', // CRITICAL: Allows Top-Level Await for PDF.js

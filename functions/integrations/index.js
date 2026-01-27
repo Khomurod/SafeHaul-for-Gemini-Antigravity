@@ -30,8 +30,9 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
         .collection('integrations').doc('sms_provider');
 
     let existingConfig = {};
+    let existingDoc = null;
     try {
-        const existingDoc = await docRef.get();
+        existingDoc = await docRef.get();
         if (existingDoc.exists) {
             existingConfig = existingDoc.data().config || {};
         }
@@ -92,7 +93,7 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
     try {
         // Determine Default Number
         // Only pick a new one if it's currently null/empty
-        let defaultPhoneNumber = existingDoc.exists ? existingDoc.data().defaultPhoneNumber : null;
+        let defaultPhoneNumber = (existingDoc && existingDoc.exists) ? existingDoc.data().defaultPhoneNumber : null;
         if (!defaultPhoneNumber && inventory && inventory.length > 0) {
             defaultPhoneNumber = inventory[0].phoneNumber;
         }
@@ -105,7 +106,7 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
 
         let finalInventory = [...inventory]; // Start with the fresh sync
 
-        if (existingDoc.exists) {
+        if (existingDoc && existingDoc.exists) {
             const currentInventory = existingDoc.data().inventory || [];
 
             // Find items to preserve:
@@ -487,63 +488,8 @@ exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) 
     }
 });
 
-// --- 4. Assign Phone Number (Company Admin) ---
-exports.assignPhoneNumber = onCall({ cors: true }, async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
+// REMOVED: assignPhoneNumber - now handled via direct Firestore updates
 
-    const { companyId, userId, phoneNumber } = request.data;
-
-    if (!companyId || !userId || !phoneNumber) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: companyId, userId, phoneNumber.');
-    }
-
-    // Permission Check: Requester must be Company Admin
-    const claims = request.auth.token;
-    const isCompanyAdmin = claims.roles?.[companyId] === 'company_admin';
-    const isSuperAdmin = claims.globalRole === 'super_admin' || claims.email?.endsWith('@safehaul.io');
-
-    if (!isCompanyAdmin && !isSuperAdmin) {
-        throw new HttpsError('permission-denied', 'Only Company Admins can assign phone numbers.');
-    }
-
-    const db = admin.firestore();
-    const docRef = db.collection('companies').doc(companyId).collection('integrations').doc('sms_provider');
-
-    try {
-        const doc = await docRef.get();
-        if (!doc.exists) {
-            throw new HttpsError('not-found', 'SMS integration not configured for this company.');
-        }
-
-        const data = doc.data();
-        const inventory = data.inventory || [];
-
-        // Validate that phoneNumber is in inventory
-        const isValidNumber = inventory.some(n => n.phoneNumber === phoneNumber);
-        if (!isValidNumber && phoneNumber !== '') {
-            throw new HttpsError('invalid-argument', 'Phone number not found in company inventory.');
-        }
-
-        // Update assignments map
-        const assignments = data.assignments || {};
-        if (phoneNumber === '') {
-            delete assignments[userId]; // Unassign
-        } else {
-            assignments[userId] = phoneNumber;
-        }
-
-        await docRef.update({
-            assignments,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        return { success: true, message: 'Phone number assigned successfully.' };
-    } catch (error) {
-        console.error('Assignment Error:', error);
-        if (error instanceof HttpsError) throw error;
-        throw new HttpsError('internal', 'Failed to assign phone number.');
-    }
-});
 
 // --- 5. Add Phone Line (Super Admin - Digital Wallet) ---
 exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
@@ -806,64 +752,6 @@ exports.removePhoneLine = onCall(encryptedCallOptions, async (request) => {
     }
 });
 
-// --- 7. Add Manual Phone Number (Fallback/Admin) ---
-exports.addManualPhoneNumber = onCall({ cors: true }, async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
+// REMOVED: addManualPhoneNumber - now handled via direct Firestore updates on the frontend.
 
-    const { companyId, phoneNumber, label, usageType } = request.data;
-    if (!companyId || !phoneNumber) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: companyId, phoneNumber.');
-    }
-
-    // Permission Check: Allow Super Admin OR Company Admin (Self-Service)
-    // Permission Check: Allow Super Admin OR Company Admin (Self-Service)
-    const token = request.auth.token;
-    const roles = token.roles || {};
-    const globalRole = token.globalRole || roles.globalRole;
-
-    const isSuperAdmin = globalRole === 'super_admin' || token.email?.endsWith('@safehaul.io');
-    const isCompanyAdmin = roles[companyId] === 'company_admin';
-
-    if (!isSuperAdmin && !isCompanyAdmin) {
-        console.warn(`[PermissionDenied] User: ${request.auth.uid}, GlobalRole: ${globalRole}, Target: ${companyId}`);
-        throw new HttpsError('permission-denied', 'You do not have permission to add phone numbers.');
-    }
-
-    try {
-        const db = admin.firestore();
-        const providerDocRef = db.collection('companies').doc(companyId).collection('integrations').doc('sms_provider');
-        const doc = await providerDocRef.get();
-
-        if (!doc.exists) {
-            throw new HttpsError('not-found', 'SMS integration not found.');
-        }
-
-        const data = doc.data();
-        let inventory = data.inventory || [];
-
-        // Check for duplicates
-        if (inventory.some(item => item.phoneNumber === phoneNumber)) {
-            return { success: true, message: 'Number already exists in inventory.' };
-        }
-
-        // Add to inventory
-        inventory.push({
-            phoneNumber: phoneNumber,
-            label: label || phoneNumber,
-            usageType: usageType || 'DirectNumber',
-            status: 'active',
-            addedAt: new Date().toISOString()
-        });
-
-        await providerDocRef.update({
-            inventory,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        return { success: true, message: `Number ${phoneNumber} added to inventory.` };
-    } catch (error) {
-        console.error('Add Manual Number Error:', error);
-        throw new HttpsError('internal', error.message);
-    }
-});
 

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
-    MessageSquare, Mail, Layers, Sparkles, ChevronDown, Clock
+    MessageSquare, Mail, Layers, Sparkles, ChevronDown, Clock, Save, Trash2, AlertCircle
 } from 'lucide-react';
-import { db } from '@lib/firebase';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import { db, functions } from '@lib/firebase';
+import { collection, query, getDocs, orderBy, doc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { useToast } from '@shared/components/feedback/ToastProvider';
 
 const PLACEHOLDERS = [
     { label: 'Driver Name', code: '[Driver Name]' },
@@ -12,18 +14,53 @@ const PLACEHOLDERS = [
 ];
 
 export function MessageComposer({ companyId, messageConfig, setMessageConfig }) {
+    const { showSuccess, showError } = useToast();
     const [templates, setTemplates] = useState([]);
     const [isTemplateMenuOpen, setIsTemplateMenuOpen] = useState(false);
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+
+    const fetchTemplates = async () => {
+        if (!companyId) return;
+        const q = query(collection(db, 'companies', companyId, 'message_templates'), orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+        setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    };
 
     useEffect(() => {
-        if (!companyId) return;
-        const fetchTemplates = async () => {
-            const q = query(collection(db, 'companies', companyId, 'message_templates'), orderBy('createdAt', 'desc'));
-            const snap = await getDocs(q);
-            setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        };
         fetchTemplates();
     }, [companyId]);
+
+    const handleSaveTemplate = async () => {
+        const name = window.prompt("Enter a name for this template:");
+        if (!name) return;
+
+        setIsSavingTemplate(true);
+        try {
+            await addDoc(collection(db, 'companies', companyId, 'message_templates'), {
+                name,
+                method: messageConfig.method,
+                subject: messageConfig.subject,
+                message: messageConfig.message,
+                createdAt: serverTimestamp()
+            });
+            showSuccess("Template saved!");
+            fetchTemplates();
+        } catch (err) {
+            showError(err.message);
+        } finally {
+            setIsSavingTemplate(false);
+        }
+    };
+
+    const handleDeleteTemplate = async (e, tid) => {
+        e.stopPropagation();
+        if (!window.confirm("Delete this template?")) return;
+        try {
+            await deleteDoc(doc(db, 'companies', companyId, 'message_templates', tid));
+            showSuccess("Template deleted");
+            fetchTemplates();
+        } catch (err) { showError(err.message); }
+    };
 
     const handlePlaceholderClick = (code) => {
         setMessageConfig(prev => ({ ...prev, message: prev.message + " " + code }));
@@ -79,6 +116,13 @@ export function MessageComposer({ companyId, messageConfig, setMessageConfig }) 
                             >
                                 <Layers size={12} /> Templates <ChevronDown size={10} />
                             </button>
+                            <button
+                                onClick={handleSaveTemplate}
+                                disabled={isSavingTemplate || !messageConfig.message}
+                                className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-full text-[10px] font-black hover:bg-blue-700 transition-all uppercase tracking-tight shadow-sm disabled:opacity-50"
+                            >
+                                <Save size={12} /> Save Draft
+                            </button>
                             {isTemplateMenuOpen && (
                                 <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                                     <div className="p-3 border-b border-slate-50 bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Template</div>
@@ -87,17 +131,27 @@ export function MessageComposer({ companyId, messageConfig, setMessageConfig }) 
                                             <div className="p-4 text-[10px] text-slate-400 italic">No templates found</div>
                                         ) : (
                                             templates.map(t => (
-                                                <button
+                                                <div
                                                     key={t.id}
                                                     onClick={() => {
-                                                        setMessageConfig(prev => ({ ...prev, message: t.text }));
+                                                        setMessageConfig(prev => ({ ...prev, message: t.message || t.text }));
                                                         setIsTemplateMenuOpen(false);
                                                     }}
-                                                    className="w-full text-left p-4 hover:bg-slate-50 border-b border-slate-50 last:border-0"
+                                                    className="w-full text-left p-4 hover:bg-slate-50 border-b border-slate-50 last:border-0 cursor-pointer group"
                                                 >
-                                                    <div className="text-[10px] font-black text-slate-900 uppercase tracking-tight mb-1">{t.name}</div>
-                                                    <div className="text-[10px] text-slate-500 line-clamp-1">{t.text}</div>
-                                                </button>
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex-1">
+                                                            <div className="text-[10px] font-black text-slate-900 uppercase tracking-tight mb-1">{t.name}</div>
+                                                            <div className="text-[10px] text-slate-500 line-clamp-1">{t.message || t.text}</div>
+                                                        </div>
+                                                        <button
+                                                            onClick={(e) => handleDeleteTemplate(e, t.id)}
+                                                            className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             ))
                                         )}
                                     </div>
@@ -113,30 +167,47 @@ export function MessageComposer({ companyId, messageConfig, setMessageConfig }) 
                         onChange={(e) => setMessageConfig(prev => ({ ...prev, message: e.target.value }))}
                     />
 
-                    <div className="mt-8 flex flex-wrap items-center gap-4">
-                        <div className="flex gap-2">
-                            {PLACEHOLDERS.map(p => (
-                                <button
-                                    key={p.code}
-                                    onClick={() => handlePlaceholderClick(p.code)}
-                                    className="px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-tight hover:bg-blue-100 transition-all border border-blue-100 shadow-sm"
-                                >
-                                    {p.label}
-                                </button>
-                            ))}
+                    {messageConfig.method === 'sms' && (
+                        <div className="mt-4 flex items-center justify-between px-2">
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${messageConfig.message.length > 160 ? 'text-amber-500' : 'text-slate-400'}`}>
+                                    {messageConfig.message.length} / {messageConfig.message.length > 160 ? '320' : '160'} Chars
+                                </span>
+                                {messageConfig.message.length > 160 && (
+                                    <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 animate-in fade-in slide-in-from-left-2">
+                                        <AlertCircle size={10} />
+                                        <span className="text-[9px] font-black uppercase tracking-tighter">2 SMS Segments Detected</span>
+                                    </div>
+                                )}
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-300 italic uppercase">Carrier compliance enforced</span>
                         </div>
-                        <div className="h-4 w-px bg-slate-200 mx-2"></div>
-                        <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
-                            <Clock size={12} className="text-slate-400" />
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">Interval:</span>
-                            <input
-                                type="number"
-                                className="w-12 bg-transparent text-[10px] font-black text-blue-600 outline-none"
-                                value={messageConfig.interval}
-                                onChange={e => setMessageConfig(prev => ({ ...prev, interval: parseInt(e.target.value) }))}
-                            />
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">Min</span>
-                        </div>
+                    )}
+                </div>
+
+                <div className="mt-8 flex flex-wrap items-center gap-4">
+                    <div className="flex gap-2">
+                        {PLACEHOLDERS.map(p => (
+                            <button
+                                key={p.code}
+                                onClick={() => handlePlaceholderClick(p.code)}
+                                className="px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-tight hover:bg-blue-100 transition-all border border-blue-100 shadow-sm"
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="h-4 w-px bg-slate-200 mx-2"></div>
+                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
+                        <Clock size={12} className="text-slate-400" />
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">Interval:</span>
+                        <input
+                            type="number"
+                            className="w-12 bg-transparent text-[10px] font-black text-blue-600 outline-none"
+                            value={messageConfig.interval}
+                            onChange={e => setMessageConfig(prev => ({ ...prev, interval: parseInt(e.target.value) }))}
+                        />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">Min</span>
                     </div>
                 </div>
             </div>

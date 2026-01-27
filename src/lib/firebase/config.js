@@ -1,10 +1,15 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  memoryLocalCache,
+  getFirestore,
+  terminate
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
-// Use environment variables. Throw error if missing to prevent silent failures.
+// ... Configuration remains the same ...
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -14,17 +19,26 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Simple validation
-if (!firebaseConfig.apiKey) {
-  console.warn("FATAL: Missing Firebase Environment Variables!");
-}
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase with HMR safety
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Use memory-only cache and forced long polling to prevent "Unexpected state (ID: ca9)" 
+// assertion failures caused by transport synchronization errors or IndexedDB corruption.
+// HMR Safety: Check if db is already initialized.
+let firestore;
+try {
+  firestore = getFirestore(app);
+} catch (e) {
+  firestore = initializeFirestore(app, {
+    localCache: memoryLocalCache(),
+    experimentalForceLongPolling: true
+  });
+}
+
+export const db = firestore;
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
-console.log("Firebase has been connected securely!");
+console.log("Firebase has been connected safely (HMR-Optimized)!");

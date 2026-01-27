@@ -1,8 +1,11 @@
 const functions = require("firebase-functions");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("./firebaseAdmin");
 const SMSAdapterFactory = require("./integrations/factory");
 const { CloudTasksClient } = require("@google-cloud/tasks");
 const nodemailer = require('nodemailer');
+const { isBlacklisted } = require("./blacklist");
+
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'truckerapp-system';
 
@@ -15,14 +18,14 @@ const tasksClient = new CloudTasksClient();
  * 1. Initialize a Bulk Messaging Session
  * Handles filtering and identifying target IDs across 3 sources.
  */
-exports.initBulkSession = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+exports.initBulkSession = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
 
-    const { companyId, filters, messageConfig, scheduledFor } = data;
-    const userId = context.auth.uid;
+    const { companyId, filters, messageConfig, scheduledFor } = request.data;
+    const userId = request.auth.uid;
 
     if (!companyId || !filters || !messageConfig) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing companyId, filters, or messageConfig.');
+        throw new HttpsError('invalid-argument', 'Missing companyId, filters, or messageConfig.');
     }
 
     try {
@@ -35,90 +38,95 @@ exports.initBulkSession = functions.https.onCall(async (data, context) => {
 
         const companySnap = await db.collection('companies').doc(companyId).get();
         if (companySnap.exists) companyName = companySnap.data().companyName || companyName;
-        let targetIds = [];
-
         // --- 1. RESOLVE SOURCE ---
-        // source: 'applications' (Direct), 'leads' (Assigned SafeHaul), 'global' (SafeHaul Pool)
-        let baseRef;
-        if (filters.leadType === 'global') {
-            baseRef = db.collection('leads');
-        } else if (filters.leadType === 'leads') {
-            // Assigned SafeHaul Leads (distributed by dealer)
-            baseRef = db.collection('companies').doc(companyId).collection('leads').where('isPlatformLead', '==', true);
+        let targetIds = [];
+        if (filters.segmentId && filters.segmentId !== 'all') {
+            const segmentSnap = await db.collection('companies').doc(companyId)
+                .collection('segments').doc(filters.segmentId)
+                .collection('members').limit(200).get();
+            targetIds = segmentSnap.docs.map(d => d.id);
         } else {
-            // Direct Company Applications
-            baseRef = db.collection('companies').doc(companyId).collection('applications');
-        }
-
-        let q = baseRef;
-
-        // --- 2. APPLY FILTERS ---
-        // Status Filter
-        if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
-            // Support for single status or multi-status array calling
-            if (Array.isArray(filters.status)) {
-                q = q.where('status', 'in', filters.status);
-            } else {
-                q = q.where('status', '==', filters.status);
-            }
-        }
-
-        // Recruiter Filter
-        if (filters.recruiterId === 'my_leads') {
-            q = q.where('assignedTo', '==', userId);
-        } else if (filters.recruiterId && filters.recruiterId !== 'all') {
-            q = q.where('assignedTo', '==', filters.recruiterId);
-        }
-
-        // Created Date Range Filters
-        if (filters.createdAfter) {
-            const date = new Date(filters.createdAfter);
-            q = q.where('createdAt', '>=', admin.firestore.Timestamp.fromDate(date));
-        }
-        if (filters.createdBefore) {
-            const date = new Date(filters.createdBefore);
-            q = q.where('createdAt', '<=', admin.firestore.Timestamp.fromDate(date));
-        }
-
-        // Note: 'notContactedSince' requires a field on the document or a separate query. 
-        // For efficiency in this implementation, we will assume a 'lastContactedAt' field exists if filtered.
-        if (filters.notContactedSince) {
-            const days = parseInt(filters.notContactedSince);
-            const date = new Date();
-            date.setDate(date.getDate() - days);
-            q = q.where('lastContactedAt', '<=', admin.firestore.Timestamp.fromDate(date));
-        }
-
-        // Last Call Outcome Filter (Phase 6 & 8)
-        if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
+            let baseRef;
             if (filters.leadType === 'global') {
-                // Map Label -> ID for Global Pool
-                const outcomeMap = {
-                    "Connected / Interested": "interested",
-                    "Connected / Scheduled Callback": "callback",
-                    "Connected / Not Qualified": "not_qualified",
-                    "Connected / Not Interested": "not_interested",
-                    "Connected / Hired Elsewhere": "hired_elsewhere",
-                    "Left Voicemail": "voicemail",
-                    "No Answer": "no_answer",
-                    "Wrong Number": "wrong_number"
-                };
-                const outcomeId = outcomeMap[filters.lastCallOutcome];
-                if (outcomeId) {
-                    q = q.where('lastOutcome', '==', outcomeId);
-                } else {
-                    // Fallback to literal if mapping fails
-                    q = q.where('lastOutcome', '==', filters.lastCallOutcome);
-                }
+                baseRef = db.collection('leads');
+            } else if (filters.leadType === 'leads') {
+                // Assigned SafeHaul Leads (distributed by dealer)
+                baseRef = db.collection('companies').doc(companyId).collection('leads').where('isPlatformLead', '==', true);
             } else {
-                q = q.where('lastCallOutcome', '==', filters.lastCallOutcome);
+                // Direct Company Applications
+                baseRef = db.collection('companies').doc(companyId).collection('applications');
             }
-        }
 
-        // --- 3. EXECUTE QUERY ---
-        const limitCount = Math.min(filters.limit || 50, 200); // Increased cap for advanced users
-        const snapshot = await q.limit(limitCount).get();
-        targetIds = snapshot.docs.map(doc => doc.id);
+            let q = baseRef;
+
+            // --- 2. APPLY FILTERS ---
+            // Status Filter
+            if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
+                // Support for single status or multi-status array calling
+                if (Array.isArray(filters.status)) {
+                    q = q.where('status', 'in', filters.status);
+                } else {
+                    q = q.where('status', '==', filters.status);
+                }
+            }
+
+            // Recruiter Filter
+            if (filters.recruiterId === 'my_leads') {
+                q = q.where('assignedTo', '==', userId);
+            } else if (filters.recruiterId && filters.recruiterId !== 'all') {
+                q = q.where('assignedTo', '==', filters.recruiterId);
+            }
+
+            // Created Date Range Filters
+            if (filters.createdAfter) {
+                const date = new Date(filters.createdAfter);
+                q = q.where('createdAt', '>=', admin.firestore.Timestamp.fromDate(date));
+            }
+            if (filters.createdBefore) {
+                const date = new Date(filters.createdBefore);
+                q = q.where('createdAt', '<=', admin.firestore.Timestamp.fromDate(date));
+            }
+
+            // Note: 'notContactedSince' requires a field on the document or a separate query. 
+            // For efficiency in this implementation, we will assume a 'lastContactedAt' field exists if filtered.
+            if (filters.notContactedSince) {
+                const days = parseInt(filters.notContactedSince);
+                const date = new Date();
+                date.setDate(date.getDate() - days);
+                q = q.where('lastContactedAt', '<=', admin.firestore.Timestamp.fromDate(date));
+            }
+
+            // Last Call Outcome Filter (Phase 6 & 8)
+            if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
+                if (filters.leadType === 'global') {
+                    // Map Label -> ID for Global Pool
+                    const outcomeMap = {
+                        "Connected / Interested": "interested",
+                        "Connected / Scheduled Callback": "callback",
+                        "Connected / Not Qualified": "not_qualified",
+                        "Connected / Not Interested": "not_interested",
+                        "Connected / Hired Elsewhere": "hired_elsewhere",
+                        "Left Voicemail": "voicemail",
+                        "No Answer": "no_answer",
+                        "Wrong Number": "wrong_number"
+                    };
+                    const outcomeId = outcomeMap[filters.lastCallOutcome];
+                    if (outcomeId) {
+                        q = q.where('lastOutcome', '==', outcomeId);
+                    } else {
+                        // Fallback to literal if mapping fails
+                        q = q.where('lastOutcome', '==', filters.lastCallOutcome);
+                    }
+                } else {
+                    q = q.where('lastCallOutcome', '==', filters.lastCallOutcome);
+                }
+            }
+
+            // --- 3. EXECUTE QUERY ---
+            const limitCount = Math.min(filters.limit || 50, 200); // Increased cap for advanced users
+            const snapshot = await q.limit(limitCount).get();
+            targetIds = snapshot.docs.map(doc => doc.id);
+        }
 
         // Filter: Exclude Session IDs
         // This must be done in memory after fetching or by fetching the previous sessions first.
@@ -194,47 +202,10 @@ exports.initBulkSession = functions.https.onCall(async (data, context) => {
 });
 
 /**
- * 2. Pause a Bulk Session
+ * Bulk session controls (pause/resume/cancel) have been refactored
+ * to use direct Firestore SDK updates for better performance.
  */
-exports.pauseBulkSession = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
-    const { companyId, sessionId } = data;
-    const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
-    await sessionRef.update({ status: 'paused' });
-    return { success: true };
-});
 
-/**
- * 3. Resume a Bulk Session
- */
-exports.resumeBulkSession = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
-    const { companyId, sessionId } = data;
-    const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
-
-    await db.runTransaction(async (t) => {
-        const doc = await t.get(sessionRef);
-        if (!doc.exists) throw new functions.https.HttpsError('not-found', 'Session not found');
-        const s = doc.data();
-        if (s.status === 'active') return; // Already active
-        t.update(sessionRef, { status: 'active' });
-    });
-
-    // Re-ignite the worker
-    await enqueueWorker(companyId, sessionId, 0);
-    return { success: true };
-});
-
-/**
- * 4. Cancel a Bulk Session
- */
-exports.cancelBulkSession = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
-    const { companyId, sessionId } = data;
-    const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
-    await sessionRef.update({ status: 'cancelled' });
-    return { success: true };
-});
 
 /**
  * 5. Retry Failed Attempts
@@ -253,10 +224,24 @@ exports.retryFailedAttempts = functions.https.onCall(async (data, context) => {
             .where('status', '==', 'failed')
             .get();
 
-        const failedLeadIds = [...new Set(attemptsSnapshot.docs.map(d => d.data().leadId))];
+        // --- TRANSIENT ERROR FILTERING ---
+        // Permanent errors that we should NOT retry automatically
+        const permanentErrors = [
+            "blacklist", "opt-out", "invalid", "landline", "no phone", "unreachable", "unallocated"
+        ];
+
+        const retryableAttempts = attemptsSnapshot.docs.filter(doc => {
+            const error = (doc.data().error || "").toLowerCase();
+            return !permanentErrors.some(pe => error.includes(pe));
+        });
+
+        const failedLeadIds = [...new Set(retryableAttempts.map(d => d.data().leadId))];
 
         if (failedLeadIds.length === 0) {
-            return { success: false, message: "No failed attempts found to retry." };
+            return {
+                success: false,
+                message: "No transient failures found. All errors appear to be permanent (Invalid numbers, Blacklisted, etc)."
+            };
         }
 
         // 2. Fetch original config if not provided
@@ -359,15 +344,20 @@ exports.processBulkBatch = functions.https.onRequest(async (req, res) => {
             if (leadSnap.exists) {
                 const leadData = leadSnap.data();
                 recipientName = `${leadData.firstName || 'Driver'} ${leadData.lastName || ''}`.trim();
+                const phone = leadData.phone || leadData.phoneNumber;
 
-                // --- 2. TRANSMIT ---
-                if (config.method === 'sms') {
-                    recipientIdentity = leadData.phone || leadData.phoneNumber || "No Phone";
+                // --- COMPLIANCE CHECK ---
+                const blacklisted = await isBlacklisted(companyId, phone);
+                if (blacklisted) {
+                    errorMsg = "Number is blacklisted (Opt-out)";
+                    success = false;
+                } else if (config.method === 'sms') {
+                    // --- 2. TRANSMIT ---
+                    recipientIdentity = phone || "No Phone";
                     if (recipientIdentity !== "No Phone") {
                         const adapter = await SMSAdapterFactory.getAdapterForUser(companyId, session.creatorId);
 
                         // --- VARIABLE INJECTION (Phase 7) ---
-                        // Use regex with 'g' for global replacement
                         const finalMsg = config.message
                             .replace(/\[Driver Name\]/g, leadData.firstName || 'Driver')
                             .replace(/\[Company Name\]/g, config.companyName || 'our company')
@@ -442,9 +432,18 @@ exports.processBulkBatch = functions.https.onRequest(async (req, res) => {
             lastUpdateAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // --- 5. SCHEDULE NEXT (Strict 15s for Carrier compliance if SMS) ---
+        // --- 5. SCHEDULE NEXT (Human Mode: Randomized Jitter) ---
         if (!isLast) {
-            const delay = config.method === 'sms' ? (config.interval || 15) : 3; // Email can go faster
+            let delay;
+            if (config.method === 'sms') {
+                // Professional Human Jitter: 45-90 seconds randomized
+                // Reduced for testing/dev if interval is explicitly low
+                const baseDelay = config.interval || 45;
+                const jitter = Math.floor(Math.random() * 45);
+                delay = baseDelay + jitter;
+            } else {
+                delay = 3; // Email can go faster
+            }
             await enqueueWorker(companyId, sessionId, delay);
         }
 

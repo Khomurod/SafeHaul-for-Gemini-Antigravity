@@ -1,28 +1,25 @@
 // src/hooks/useSlugResolver.js
 /**
- * useSlugResolver - Resolves company slugs via backend
+ * useSlugResolver - Resolves company slugs via Firestore
  *
- * This hook calls the backend resolveCompanySlug function to convert
+ * This hook queries the Firestore 'companies' collection to convert
  * a URL slug (e.g., "ray-star-llc") to a Firebase CompanyUID.
  *
- * This eliminates the client-side slug resolution that was identified
- * as a fragile routing risk in the architecture review.
+ * This eliminates the redundant Cloud Function call and improves
+ * initial page load performance.
  *
  * Features:
- * - Local cache to avoid redundant API calls
+ * - Local cache to avoid redundant queries during session
  * - Error handling for invalid/missing slugs
  * - Loading state for UI feedback
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { db } from '@lib/firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
-// Local cache to avoid redundant API calls during session
+// Local cache to avoid redundant queries during session
 const LOCAL_CACHE = new Map();
-
-// Function URLs by environment
-const FUNCTION_BASE_URL = import.meta.env.PROD
-    ? 'https://us-central1-truckerapp-system.cloudfunctions.net'
-    : 'https://us-central1-truckerapp-system.cloudfunctions.net'; // Same for now
 
 /**
  * Hook to resolve a company slug to its Firebase UID via backend
@@ -57,16 +54,25 @@ export function useSlugResolver(slug) {
         setError(null);
 
         try {
-            const response = await fetch(
-                `${FUNCTION_BASE_URL}/resolveCompanySlug?slug=${encodeURIComponent(normalizedSlug)}`
+            const q = query(
+                collection(db, "companies"),
+                where("appSlug", "==", normalizedSlug),
+                limit(1)
             );
+            const snap = await getDocs(q);
 
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error || `Failed to resolve company (${response.status})`);
+            if (snap.empty) {
+                throw new Error("Company not found.");
             }
 
-            const data = await response.json();
+            const docSnap = snap.docs[0];
+            const rawData = docSnap.data();
+            const data = {
+                companyId: docSnap.id,
+                companyName: rawData.companyName,
+                logoUrl: rawData.logoUrl,
+                isActive: rawData.isActive ?? true
+            };
 
             // Cache the result
             LOCAL_CACHE.set(normalizedSlug, data);
@@ -126,16 +132,26 @@ export async function resolveSlug(slug) {
     }
 
     try {
-        const response = await fetch(
-            `${FUNCTION_BASE_URL}/resolveCompanySlug?slug=${encodeURIComponent(normalizedSlug)}`
+        const q = query(
+            collection(db, "companies"),
+            where("appSlug", "==", normalizedSlug),
+            limit(1)
         );
+        const snap = await getDocs(q);
 
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            return { error: errData.error || `Failed to resolve (${response.status})` };
+        if (snap.empty) {
+            return { error: 'Company not found' };
         }
 
-        const data = await response.json();
+        const docSnap = snap.docs[0];
+        const rawData = docSnap.data();
+        const data = {
+            companyId: docSnap.id,
+            companyName: rawData.companyName,
+            logoUrl: rawData.logoUrl,
+            isActive: rawData.isActive ?? true
+        };
+
         LOCAL_CACHE.set(normalizedSlug, data);
         return data;
 

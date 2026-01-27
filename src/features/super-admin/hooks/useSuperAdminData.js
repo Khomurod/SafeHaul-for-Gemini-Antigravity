@@ -331,32 +331,59 @@ export function useSuperAdminData() {
         }
     }, [lastCompanyDoc, lastAppDoc, lastLeadDoc, hasMoreCompanies, hasMoreApps, showError]);
 
-    // --- 3. SERVER-SIDE SEARCH (Cloud Function) ---
-    const performServerSearch = useCallback(async (term) => {
+    // --- 3. CLIENT-SIDE SEARCH (Direct Firestore) ---
+    const performClientSearch = useCallback(async (term) => {
         setIsSearching(true);
         setLoading(true);
-        console.log(`🔍 Calling Cloud Search for: "${term}"`);
+        console.log(`🔍 Performing Client Search for: "${term}"`);
 
         try {
-            const searchFn = httpsCallable(functions, 'searchUnifiedData');
-            const result = await searchFn({ query: term });
-            const data = result.data.data;
+            const queryTerm = term;
+            const endTerm = term + '\uf8ff';
 
-            setCompanyList(data.companies || []);
-            setUserList(data.users || []);
+            // Parallel queries across main collections
+            const companiesQuery = query(
+                collection(db, "companies"),
+                where('companyName', '>=', queryTerm),
+                where('companyName', '<=', endTerm),
+                limit(20)
+            );
 
-            const mappedApps = (data.leads || []).map(l => ({
-                id: l.id,
-                firstName: l.firstName,
-                lastName: l.lastName,
-                email: l.email,
-                phone: l.phone,
-                status: l.status,
-                companyId: l.companyId || 'unknown',
-                sourceType: 'Search Result',
-                createdAt: { seconds: Date.now() / 1000 }
-            }));
-            setAllApplications(mappedApps);
+            const usersQuery = query(
+                collection(db, "users"),
+                where('name', '>=', queryTerm),
+                where('name', '<=', endTerm),
+                limit(20)
+            );
+
+            // Leads use a lowercased 'searchName' field in backend logic
+            const leadsQuery = query(
+                collection(db, "leads"),
+                where('searchName', '>=', queryTerm.toLowerCase()),
+                where('searchName', '<=', queryTerm.toLowerCase() + '\uf8ff'),
+                limit(20)
+            );
+
+            const [compSnap, userSnap, leadSnap] = await Promise.all([
+                getDocs(companiesQuery),
+                getDocs(usersQuery),
+                getDocs(leadsQuery)
+            ]);
+
+            setCompanyList(compSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setUserList(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+            const mappedLeads = leadSnap.docs.map(l => {
+                const data = l.data();
+                return {
+                    id: l.id,
+                    ...data,
+                    companyId: data.companyId || 'unknown',
+                    sourceType: 'Search Result',
+                    createdAt: data.createdAt || { seconds: Date.now() / 1000 }
+                };
+            });
+            setAllApplications(mappedLeads);
 
         } catch (e) {
             console.error("Search failed:", e);
@@ -371,7 +398,7 @@ export function useSuperAdminData() {
     useEffect(() => {
         const timer = setTimeout(() => {
             if (searchQuery && searchQuery.trim().length >= 2) {
-                performServerSearch(searchQuery);
+                performClientSearch(searchQuery);
             } else {
                 if (searchQuery.trim().length === 0) {
                     loadRecentData();
@@ -380,7 +407,7 @@ export function useSuperAdminData() {
         }, 600);
 
         return () => clearTimeout(timer);
-    }, [searchQuery, loadRecentData, performServerSearch]);
+    }, [searchQuery, loadRecentData, performClientSearch]);
 
     // --- RETURN (Preserving Interface) ---
     return {

@@ -114,17 +114,15 @@ export function CompanySettings() {
                     </div>
                 );
             case 'bulk-actions':
-                return (
+                return currentCompanyProfile?.features?.campaignsEnabled ? (
+                    <CampaignsView companyId={currentCompanyProfile?.id} />
+                ) : (
                     <div className="space-y-8 max-w-4xl animate-in fade-in">
                         <SectionHeader title="Bulk Actions" subtitle="Manage reactivation campaigns and mass messaging." />
-                        {currentCompanyProfile?.features?.campaignsEnabled ? (
-                            <CampaignsView companyId={currentCompanyProfile?.id} />
-                        ) : (
-                            <PaywallMessage
-                                title="Bulk Actions - Paid Feature"
-                                message="This is a paid feature. Please contact your account manager or reach out to SafeHaul at info@safehaul.io to get more information."
-                            />
-                        )}
+                        <PaywallMessage
+                            title="Bulk Actions - Paid Feature"
+                            message="This is a paid feature. Please contact your account manager or reach out to SafeHaul at info@safehaul.io to get more information."
+                        />
                     </div>
                 );
             default:

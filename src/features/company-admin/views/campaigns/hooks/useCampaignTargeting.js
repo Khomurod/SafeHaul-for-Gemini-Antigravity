@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react';
-import { db, auth } from '@lib/firebase';
+import { db } from '@lib/firebase';
 import {
     collection, query, where, getDocs,
     limit, Timestamp, getCountFromServer
 } from 'firebase/firestore';
-import { useToast } from '@shared/components/feedback/ToastProvider';
+import {
+    APPLICATION_STATUSES,
+    LAST_CALL_RESULTS,
+    getDbValue,
+    ERROR_MESSAGES
+} from '../constants/campaignConstants';
 
 export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
-    const { showError } = useToast();
     const [filters, setFilters] = useState({
-        recruiterId: 'my_leads',
+        recruiterId: 'all',
         status: [],
         leadType: 'applications',
         limit: 50,
@@ -27,78 +31,90 @@ export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
         let isCancelled = false;
 
         const fetchTargetingData = async () => {
-            console.log("[useCampaignTargeting] Attempting fetch with:", { isAuthLoading, companyId, hasUser: !!currentUser });
-            if (!currentUser || !companyId || isAuthLoading) return;
+            // --- 1. DEFENSIVE GUARDS (Bulletproof Logic) ---
+            if (isAuthLoading) {
+                setPreviewError(ERROR_MESSAGES.LOADING);
+                return;
+            }
+            if (!currentUser) {
+                setPreviewError(ERROR_MESSAGES.MISSING_AUTH);
+                return;
+            }
+            if (!companyId) {
+                setPreviewError(ERROR_MESSAGES.MISSING_COMPANY);
+                return;
+            }
 
             setIsPreviewLoading(true);
             setPreviewError(null);
 
             try {
-                let baseRef;
-                if (filters.leadType === 'global') {
-                    baseRef = collection(db, 'leads');
-                } else if (filters.leadType === 'leads') {
-                    baseRef = query(collection(db, 'companies', companyId, 'leads'), where('isPlatformLead', '==', true));
+                let q;
+
+                // --- 2. SMART SEGMENT BYPASS ---
+                if (filters.segmentId && filters.segmentId !== 'all') {
+                    q = query(collection(db, 'companies', companyId, 'segments', filters.segmentId, 'members'));
                 } else {
-                    baseRef = collection(db, 'companies', companyId, 'applications');
-                }
-
-                let q = query(baseRef);
-
-                // 1. Status Filter
-                if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
-                    q = query(q, where('status', 'in', filters.status));
-                }
-
-                // 2. Recruiter Filter
-                if (filters.recruiterId === 'my_leads') {
-                    q = query(q, where('assignedTo', '==', currentUser.uid));
-                } else if (filters.recruiterId && filters.recruiterId !== 'all') {
-                    q = query(q, where('assignedTo', '==', filters.recruiterId));
-                }
-
-                // 3. Created After Filter
-                if (filters.createdAfter) {
-                    const date = new Date(filters.createdAfter);
-                    q = query(q, where('createdAt', '>=', Timestamp.fromDate(date)));
-                }
-
-                // 4. Not Contacted Since Filter
-                if (filters.notContactedSince) {
-                    const days = parseInt(filters.notContactedSince);
-                    const date = new Date();
-                    date.setDate(date.getDate() - days);
-                    q = query(q, where('lastContactedAt', '<=', Timestamp.fromDate(date)));
-                }
-
-                // 5. Last Call Outcome Filter
-                if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
+                    // --- 3. DYNAMIC FILTERING (Using Unified Dictionary) ---
+                    let baseRef;
                     if (filters.leadType === 'global') {
-                        const outcomeMap = {
-                            "Connected / Interested": "interested",
-                            "Connected / Scheduled Callback": "callback",
-                            "Connected / Not Qualified": "not_qualified",
-                            "Connected / Not Interested": "not_interested",
-                            "Connected / Hired Elsewhere": "hired_elsewhere",
-                            "Left Voicemail": "voicemail",
-                            "No Answer": "no_answer",
-                            "Wrong Number": "wrong_number"
-                        };
-                        const outcomeId = outcomeMap[filters.lastCallOutcome];
-                        if (outcomeId) q = query(q, where('lastOutcome', '==', outcomeId));
+                        baseRef = collection(db, 'leads');
+                    } else if (filters.leadType === 'leads') {
+                        baseRef = query(collection(db, 'companies', companyId, 'leads'), where('isPlatformLead', '==', true));
                     } else {
-                        q = query(q, where('lastCallOutcome', '==', filters.lastCallOutcome));
+                        baseRef = collection(db, 'companies', companyId, 'applications');
+                    }
+
+                    q = query(baseRef);
+
+                    // Status Filter (Mapped from Dictionary)
+                    if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
+                        const dbStatuses = filters.status.map(s => getDbValue(s, APPLICATION_STATUSES));
+                        q = query(q, where('status', 'in', dbStatuses));
+                    }
+
+                    // Recruiter Filter
+                    if (filters.recruiterId === 'my_leads') {
+                        q = query(q, where('assignedTo', '==', currentUser.uid));
+                    } else if (filters.recruiterId && filters.recruiterId !== 'all') {
+                        q = query(q, where('assignedTo', '==', filters.recruiterId));
+                    }
+
+                    // Created After Filter
+                    if (filters.createdAfter) {
+                        const date = new Date(filters.createdAfter);
+                        q = query(q, where('createdAt', '>=', Timestamp.fromDate(date)));
+                    }
+
+                    // Not Contacted Since Filter
+                    if (filters.notContactedSince) {
+                        const days = parseInt(filters.notContactedSince);
+                        const date = new Date();
+                        date.setDate(date.getDate() - days);
+                        q = query(q, where('lastContactedAt', '<=', Timestamp.fromDate(date)));
+                    }
+
+                    // Last Call Outcome Filter (Mapped from Dictionary)
+                    if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
+                        const dbOutcome = getDbValue(filters.lastCallOutcome, LAST_CALL_RESULTS);
+                        q = query(q, where('lastCallOutcome', '==', dbOutcome));
                     }
                 }
 
                 // Fetch Count
                 const countSnap = await getCountFromServer(q);
-                console.log("[useCampaignTargeting] Match Count Result:", countSnap.data().count);
-                if (!isCancelled) setMatchCount(countSnap.data().count);
+                const count = countSnap.data().count;
+
+                if (!isCancelled) {
+                    setMatchCount(count);
+                    // --- 4. ZERO RESULTS HANDLING ---
+                    if (count === 0) {
+                        setPreviewError(ERROR_MESSAGES.ZERO_RESULTS);
+                    }
+                }
 
                 // Fetch Preview
                 const snap = await getDocs(query(q, limit(filters.limit)));
-                console.log("[useCampaignTargeting] Preview Snapshot Size:", snap.size);
                 if (!isCancelled) {
                     setPreviewLeads(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                 }
@@ -108,9 +124,7 @@ export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
                 if (!isCancelled) {
                     setPreviewLeads([]);
                     setMatchCount(0);
-                    if (err.message?.includes('index') || err.message?.includes('permission-denied')) {
-                        setPreviewError(err.message);
-                    }
+                    setPreviewError(err.message);
                 }
             } finally {
                 if (!isCancelled) setIsPreviewLoading(false);

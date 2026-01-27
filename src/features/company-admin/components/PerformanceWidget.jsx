@@ -1,7 +1,7 @@
 // src/features/company-admin/components/PerformanceWidget.jsx
 import React, { useState, useEffect } from 'react';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '@lib/firebase';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '@lib/firebase';
 import {
   Loader2, Calendar, Users, Trophy, X, Search,
   Medal, Award, LineChart as ChartIcon, List
@@ -41,28 +41,65 @@ export function PerformanceWidget({ companyId }) {
     setLoading(true);
     setError('');
     try {
-      const getHistory = httpsCallable(functions, 'getTeamPerformanceHistory');
+      const statsRef = collection(db, 'companies', companyId, 'stats_daily');
+      const q = query(
+        statsRef,
+        where('__name__', '>=', startDate),
+        where('__name__', '<=', endDate),
+        orderBy('__name__')
+      );
 
-      // Send Chicago date strings directly - backend handles timezone conversion
-      const result = await getHistory({
-        companyId,
-        startDate: startDate,  // YYYY-MM-DD format (Chicago date)
-        endDate: endDate,      // YYYY-MM-DD format (Chicago date)
-        includeTimeSeries: true
+      const snap = await getDocs(q);
+
+      const userTotals = {};
+      const formattedHistory = [];
+
+      snap.forEach(doc => {
+        const dateKey = doc.id;
+        const data = doc.data();
+
+        // Build history point
+        const dateObj = new Date(dateKey + 'T00:00:00Z');
+        const displayDate = `${dateObj.getUTCMonth() + 1}/${dateObj.getUTCDate()}`;
+        const point = { name: displayDate, fullDate: dateKey };
+
+        const byUser = data.byUser || {};
+        Object.keys(byUser).forEach(userId => {
+          const userData = byUser[userId];
+          point[userId] = userData.dials || 0;
+
+          if (!userTotals[userId]) {
+            userTotals[userId] = {
+              id: userId,
+              name: userData.name || 'Unknown Recruiter',
+              dials: 0,
+              connected: 0,
+              voicemail: 0,
+              callback: 0,
+              notInt: 0,
+              notQual: 0
+            };
+          }
+          userTotals[userId].dials += (userData.dials || 0);
+          userTotals[userId].connected += (userData.connected || 0);
+          userTotals[userId].voicemail += (userData.voicemail || 0);
+          userTotals[userId].callback += (userData.callback || 0);
+          userTotals[userId].notInt += (userData.notInt || 0);
+          userTotals[userId].notQual += (userData.notQual || 0);
+        });
+
+        formattedHistory.push(point);
       });
 
-      if (result.data.success) {
-        const sortedLeaderboard = (result.data.data || []).sort((a, b) => b.dials - a.dials);
-        setLeaderboard(sortedLeaderboard);
+      const sortedLeaderboard = Object.values(userTotals).sort((a, b) => b.dials - a.dials);
+      setLeaderboard(sortedLeaderboard);
 
-        // Auto-select top 5 for graph
-        if (selectedRecruiters.length === 0) {
-          setSelectedRecruiters(sortedLeaderboard.slice(0, 5).map(r => r.id));
-        }
-
-        // REAL DATA: Use the aggregated history from backend
-        setHistoryData(result.data.history || []);
+      if (selectedRecruiters.length === 0) {
+        setSelectedRecruiters(sortedLeaderboard.slice(0, 5).map(r => r.id));
       }
+
+      setHistoryData(formattedHistory);
+
     } catch (error) {
       console.error("Failed to fetch performance:", error);
       setError("Failed to load data.");

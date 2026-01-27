@@ -8,10 +8,11 @@ import {
   deleteDoc,
   query,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  runTransaction
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { db, functions, auth } from '@lib/firebase'; // Ensure auth is imported if available, or just rely on passed ID or currentUser
+import { db, functions, auth } from '@lib/firebase';
 
 
 export async function submitApplication(companyId, job, driverId) {
@@ -108,13 +109,36 @@ export async function moveApplication(sourceCompanyId, destinationCompanyId, app
   if (!sourceCompanyId || !destinationCompanyId || !applicationId) {
     throw new Error("Missing parameters for moving application.");
   }
-  const moveApp = httpsCallable(functions, 'moveApplication');
-  return await moveApp({
-    sourceCompanyId,
-    destinationCompanyId,
-    applicationId,
-    isSourceNested: true
-  });
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const sourceRef = doc(db, 'companies', sourceCompanyId, 'applications', applicationId);
+      const destRef = doc(db, 'companies', destinationCompanyId, 'applications', applicationId);
+
+      const sourceSnap = await transaction.get(sourceRef);
+      if (!sourceSnap.exists()) {
+        throw new Error('Application not found in source company.');
+      }
+
+      const appData = sourceSnap.data();
+
+      const newAppData = {
+        ...appData,
+        companyId: destinationCompanyId,
+        movedFrom: sourceCompanyId,
+        movedAt: serverTimestamp(),
+        status: 'New Application', // Reset status for new company
+      };
+
+      transaction.set(destRef, newAppData);
+      transaction.delete(sourceRef);
+    });
+
+    return { success: true, message: 'Application moved successfully.' };
+  } catch (e) {
+    console.error("Move Application Error:", e);
+    throw e;
+  }
 }
 
 export async function getApplicationNotes(companyId, applicationId, collectionName = 'applications') {

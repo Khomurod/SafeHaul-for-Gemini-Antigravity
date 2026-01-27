@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { db, functions } from '@lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '@lib/firebase';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 
 export function useCampaignExecution(companyId) {
@@ -40,14 +41,16 @@ export function useCampaignExecution(companyId) {
 
     const pauseSession = async (sessionId) => {
         try {
-            await httpsCallable(functions, 'pauseBulkSession')({ companyId, sessionId });
+            const ref = doc(db, 'companies', companyId, 'bulk_sessions', sessionId);
+            await updateDoc(ref, { status: 'paused' });
             showSuccess("Session Paused");
         } catch (err) { showError(err.message); }
     };
 
     const resumeSession = async (sessionId) => {
         try {
-            await httpsCallable(functions, 'resumeBulkSession')({ companyId, sessionId });
+            const ref = doc(db, 'companies', companyId, 'bulk_sessions', sessionId);
+            await updateDoc(ref, { status: 'active' });
             showSuccess("Session Resumed");
         } catch (err) { showError(err.message); }
     };
@@ -55,9 +58,29 @@ export function useCampaignExecution(companyId) {
     const cancelSession = async (sessionId) => {
         if (!window.confirm("Are you sure you want to cancel this campaign? This cannot be undone.")) return;
         try {
-            await httpsCallable(functions, 'cancelBulkSession')({ companyId, sessionId });
+            const ref = doc(db, 'companies', companyId, 'bulk_sessions', sessionId);
+            await updateDoc(ref, { status: 'cancelled' });
             showSuccess("Session Cancelled");
         } catch (err) { showError(err.message); }
+    };
+
+    const retryFailed = async (originalSessionId) => {
+        setIsExecuting(true);
+        try {
+            const result = await httpsCallable(functions, 'retryFailedAttempts')({ companyId, originalSessionId });
+            if (result.data.success) {
+                showSuccess("Retry session created successfully.");
+                return { success: true, sessionId: result.data.sessionId };
+            } else {
+                showError(result.data.message || "Failed to initiate retry.");
+                return { success: false };
+            }
+        } catch (err) {
+            showError(err.message);
+            return { success: false };
+        } finally {
+            setIsExecuting(false);
+        }
     };
 
     return {
@@ -65,6 +88,7 @@ export function useCampaignExecution(companyId) {
         handleLaunch,
         pauseSession,
         resumeSession,
-        cancelSession
+        cancelSession,
+        retryFailed
     };
 }

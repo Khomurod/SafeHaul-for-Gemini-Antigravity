@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-    Clock, CheckCircle, Play, Pause, XCircle, ChevronRight, Activity, AlertCircle, RefreshCw
+    Clock, CheckCircle, Play, Pause, XCircle, ChevronRight, Activity, AlertCircle, RefreshCw, Download, RotateCcw
 } from 'lucide-react';
 
 export function CampaignHistory({ sessions, selectedSessionId, setSelectedSessionId, setView, onPause, onResume, onCancel }) {
@@ -25,7 +25,7 @@ export function CampaignHistory({ sessions, selectedSessionId, setSelectedSessio
                     <p className="text-slate-500 font-medium text-sm tracking-tight">Audit and monitor all historical sequence executions.</p>
                 </div>
                 <button
-                    onClick={() => setView('draft')}
+                    onClick={() => setView('wizard')}
                     className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md shadow-blue-100"
                 >
                     <Play size={14} className="fill-current" /> New Campaign
@@ -58,7 +58,7 @@ export function CampaignHistory({ sessions, selectedSessionId, setSelectedSessio
                                         </span>
                                     </div>
                                     <div>
-                                        <h4 className="text-xl font-black text-slate-900 tracking-tight uppercase line-clamp-1">{s.messageConfig?.message}</h4>
+                                        <h4 className="text-xl font-black text-slate-900 tracking-tight uppercase line-clamp-1">{s.config?.message}</h4>
                                         <div className="flex items-center gap-4 mt-2">
                                             <div className="flex items-center gap-2">
                                                 <Activity size={12} className="text-blue-500" />
@@ -95,7 +95,7 @@ export function CampaignHistory({ sessions, selectedSessionId, setSelectedSessio
     );
 }
 
-export function CampaignReport({ session, attempts, setView }) {
+export function CampaignReport({ session, attempts, setView, onRetryFailed }) {
     if (!session) return (
         <div className="bg-white border border-slate-200 rounded-[3.5rem] p-12 shadow-sm flex items-center justify-center min-h-[500px]">
             <div className="text-center space-y-4">
@@ -105,7 +105,7 @@ export function CampaignReport({ session, attempts, setView }) {
         </div>
     );
 
-    const percent = Math.round((session.progress?.totalAttempted / session.progress?.totalTarget) * 100) || 0;
+    const percent = Math.round((session.progress?.processedCount / session.progress?.totalCount) * 100) || 0;
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -133,6 +133,43 @@ export function CampaignReport({ session, attempts, setView }) {
                     </div>
                 </div>
 
+                {/* Action Toolbar */}
+                <div className="flex gap-4 mt-8">
+                    <button
+                        onClick={() => {
+                            const headers = ["Name", "Endpoint", "Time", "Status", "Error"];
+                            const rows = attempts.map(a => [
+                                a.recipientName,
+                                a.recipientIdentity,
+                                a.timestamp?.toDate().toLocaleString().replace(/,/g, ''),
+                                a.status,
+                                (a.error || "").replace(/,/g, ' ')
+                            ]);
+                            const csvContent = "data:text/csv;charset=utf-8,"
+                                + headers.join(",") + "\n"
+                                + rows.map(r => r.join(",")).join("\n");
+                            const link = document.createElement("a");
+                            link.setAttribute("href", encodeURI(csvContent));
+                            link.setAttribute("download", `campaign_${session.id}_report.csv`);
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        }}
+                        className="flex items-center gap-2 px-8 py-3.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+                    >
+                        <Download size={14} /> Export CSV Report
+                    </button>
+
+                    {session.progress?.failedCount > 0 && (
+                        <button
+                            onClick={() => onRetryFailed && onRetryFailed(session.id)}
+                            className="flex items-center gap-2 px-8 py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl active:scale-95"
+                        >
+                            <RotateCcw size={14} /> Retry {session.progress.failedCount} Failed
+                        </button>
+                    )}
+                </div>
+
                 {/* Progress Visualizer */}
                 <div className="mt-12 h-6 bg-slate-50 border border-slate-100 rounded-full overflow-hidden shadow-inner flex relative">
                     <div className="h-full bg-blue-600 transition-all duration-1000 ease-out flex items-center justify-center font-black text-[9px] text-white shadow-lg" style={{ width: `${percent}%` }}>
@@ -143,7 +180,7 @@ export function CampaignReport({ session, attempts, setView }) {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
                     <div className="p-10 bg-slate-50/50 rounded-[3rem] border border-slate-100">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Audience</div>
-                        <div className="text-7xl font-black text-slate-900 tracking-tighter">{session.progress.totalTarget}</div>
+                        <div className="text-7xl font-black text-slate-900 tracking-tighter">{session.progress?.totalCount || 0}</div>
                     </div>
                     <div className="p-10 bg-green-50/30 rounded-[3rem] border border-green-100">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Successful Dispatch</div>
@@ -154,6 +191,29 @@ export function CampaignReport({ session, attempts, setView }) {
                         <div className="text-7xl font-black text-red-500 tracking-tighter">{session.progress.failedCount}</div>
                     </div>
                 </div>
+
+                {/* Failure Analysis */}
+                {session.progress?.failedCount > 0 && (
+                    <div className="mt-12 p-8 bg-slate-50/50 border border-slate-100 rounded-[3rem]">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <AlertCircle size={14} /> Technical Failure Analysis
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {Object.entries(attempts.reduce((acc, a) => {
+                                if (a.status === 'failed') {
+                                    const reason = a.error || "Unknown System Error";
+                                    acc[reason] = (acc[reason] || 0) + 1;
+                                }
+                                return acc;
+                            }, {})).map(([reason, count]) => (
+                                <div key={reason} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                                    <div className="text-2xl font-black text-slate-900 mb-1">{count}</div>
+                                    <div className="text-[9px] font-black text-red-500 uppercase tracking-widest line-clamp-2 leading-relaxed">{reason}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Granular Audit Trail */}
@@ -191,7 +251,7 @@ export function CampaignReport({ session, attempts, setView }) {
                                         </span>
                                     </td>
                                     <td className="p-10">
-                                        <div className="text-[10px] font-bold text-slate-500 max-w-xs">{att.errorMessage || 'Successful attribution confirmed.'}</div>
+                                        <div className="text-[10px] font-bold text-slate-500 max-w-xs">{att.error || 'Successful attribution confirmed.'}</div>
                                     </td>
                                 </tr>
                             ))}

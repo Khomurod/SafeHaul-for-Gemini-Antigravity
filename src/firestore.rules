@@ -115,6 +115,33 @@ service cloud.firestore {
         allow write: if isCompanyAdmin(companyId) || isSuperAdmin();
       }
 
+      // MESSAGE TEMPLATES: Used for campaigns
+      match /message_templates/{templateId} {
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow write: if isCompanyAdmin(companyId) || isSuperAdmin();
+      }
+
+      // BULK SESSIONS: Tracking messaging campaigns
+      match /bulk_sessions/{sessionId} {
+        allow read, write: if isCompanyTeam(companyId) || isSuperAdmin();
+      }
+
+      // SEGMENTS (Audience Intelligence)
+      match /segments/{segmentId} {
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow write: if isCompanyAdmin(companyId) || isSuperAdmin();
+        
+        match /members/{memberId} {
+            allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+            allow write: if isCompanyAdmin(companyId) || isSuperAdmin();
+        }
+      }
+
+      // STATS DAILY: Pre-aggregated performance data
+      match /stats_daily/{dateId} {
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+      }
+
       // SIGNING REQUESTS: Secure Envelopes for E-Signatures
       match /signing_requests/{requestId} {
          // Read: Sender (Company), Recipient, or Super Admin
@@ -207,7 +234,8 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow create: if isSignedIn();
       allow read: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid || isEmailOwner(resource.data.email);
-      allow update: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid;
+      // Allow Super Admin, Owner, OR Company Team (to report outcomes to the pool)
+      allow update: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid || isStaff();
       allow delete: if isSuperAdmin();
     }
 
@@ -226,7 +254,7 @@ service cloud.firestore {
 
     // --- USERS (HR/Admin Profiles) ---
     match /users/{userId} {
-      allow read: if isOwner(userId) || isStaff() || isSuperAdmin();
+      allow read: if isOwner(userId) || isSuperAdmin() || (isSignedIn() && isStaff());
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isOwner(userId) || isSuperAdmin();
       allow delete: if isSuperAdmin();
