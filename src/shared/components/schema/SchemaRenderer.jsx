@@ -11,8 +11,24 @@
  */
 
 import React from 'react';
-import { getFieldDefinition, isFieldVisible, FIELD_TYPES } from '@lib/applicationSchema';
+import { APPLICATION_SCHEMA, getFieldByKey, isFieldConditionallyVisible } from '@/config/applicationSchema';
 import InputField from '@shared/components/form/InputField';
+
+// Field type constants for type checking (matches config schema string types)
+const FIELD_TYPES = {
+    TEXT: 'text',
+    EMAIL: 'email',
+    PHONE: 'tel',
+    DATE: 'date',
+    SELECT: 'select',
+    RADIO: 'radio',
+    CHECKBOX: 'checkbox',
+    TEXTAREA: 'textarea',
+    FILE: 'file',
+    SIGNATURE: 'signature',
+    ARRAY: 'array'
+};
+
 
 /**
  * Render a single field based on schema and mode
@@ -32,7 +48,7 @@ export function SchemaField({
     isEditing = false,
     config = {}
 }) {
-    const definition = getFieldDefinition(fieldKey);
+    const definition = getFieldByKey(fieldKey);
 
     if (!definition) {
         console.warn(`[SchemaRenderer] Unknown field key: "${fieldKey}"`);
@@ -45,7 +61,7 @@ export function SchemaField({
     }
 
     // Check conditional visibility
-    if (!isFieldVisible(definition, data)) {
+    if (!isFieldConditionallyVisible(definition, data)) {
         return null;
     }
 
@@ -262,8 +278,8 @@ export function SchemaSection({
     config = {},
     className = ''
 }) {
-    const { getSection } = require('@lib/applicationSchema');
-    const section = getSection(sectionId);
+    // Find section directly from APPLICATION_SCHEMA
+    const section = APPLICATION_SCHEMA.sections.find(s => s.id === sectionId);
 
     if (!section) {
         console.warn(`[SchemaSection] Unknown section: "${sectionId}"`);

@@ -9,13 +9,13 @@ import { pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 
-// Force the worker to use the CDN version (5.4.296) to avoid 404s in production build
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs`;
+// Use local worker file to avoid CDN dependency and production fragility
+pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
 // -------------------------------
 
 // --- INITIALIZE SENTRY ---
 Sentry.init({
-  dsn: "https://84325326c1d706f10006eb3fdecbdb87@o4510692386799616.ingest.us.sentry.io/4510692392632320",
+  dsn: import.meta.env.VITE_SENTRY_DSN,
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.replayIntegration(),
