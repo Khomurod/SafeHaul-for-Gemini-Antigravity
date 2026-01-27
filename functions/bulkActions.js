@@ -26,6 +26,15 @@ exports.initBulkSession = functions.https.onCall(async (data, context) => {
     }
 
     try {
+        // --- 0. FETCH RECRUITER & COMPANY NAMES (Phase 7) ---
+        let recruiterName = "Recruiter";
+        let companyName = "SafeHaul";
+
+        const userSnap = await db.collection('users').doc(userId).get();
+        if (userSnap.exists) recruiterName = userSnap.data().name || recruiterName;
+
+        const companySnap = await db.collection('companies').doc(companyId).get();
+        if (companySnap.exists) companyName = companySnap.data().companyName || companyName;
         let targetIds = [];
 
         // --- 1. RESOLVE SOURCE ---
@@ -80,6 +89,32 @@ exports.initBulkSession = functions.https.onCall(async (data, context) => {
             q = q.where('lastContactedAt', '<=', admin.firestore.Timestamp.fromDate(date));
         }
 
+        // Last Call Outcome Filter (Phase 6 & 8)
+        if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
+            if (filters.leadType === 'global') {
+                // Map Label -> ID for Global Pool
+                const outcomeMap = {
+                    "Connected / Interested": "interested",
+                    "Connected / Scheduled Callback": "callback",
+                    "Connected / Not Qualified": "not_qualified",
+                    "Connected / Not Interested": "not_interested",
+                    "Connected / Hired Elsewhere": "hired_elsewhere",
+                    "Left Voicemail": "voicemail",
+                    "No Answer": "no_answer",
+                    "Wrong Number": "wrong_number"
+                };
+                const outcomeId = outcomeMap[filters.lastCallOutcome];
+                if (outcomeId) {
+                    q = q.where('lastOutcome', '==', outcomeId);
+                } else {
+                    // Fallback to literal if mapping fails
+                    q = q.where('lastOutcome', '==', filters.lastCallOutcome);
+                }
+            } else {
+                q = q.where('lastCallOutcome', '==', filters.lastCallOutcome);
+            }
+        }
+
         // --- 3. EXECUTE QUERY ---
         const limitCount = Math.min(filters.limit || 50, 200); // Increased cap for advanced users
         const snapshot = await q.limit(limitCount).get();
@@ -125,7 +160,9 @@ exports.initBulkSession = functions.https.onCall(async (data, context) => {
             scheduledFor: scheduledFor ? admin.firestore.Timestamp.fromDate(new Date(scheduledFor)) : null,
             config: {
                 ...messageConfig,
-                filters: filters
+                filters: filters,
+                recruiterName,
+                companyName
             },
             progress: {
                 totalCount: targetIds.length,
@@ -328,7 +365,14 @@ exports.processBulkBatch = functions.https.onRequest(async (req, res) => {
                     recipientIdentity = leadData.phone || leadData.phoneNumber || "No Phone";
                     if (recipientIdentity !== "No Phone") {
                         const adapter = await SMSAdapterFactory.getAdapterForUser(companyId, session.creatorId);
-                        const finalMsg = config.message.replace('[Driver Name]', leadData.firstName || 'Driver');
+
+                        // --- VARIABLE INJECTION (Phase 7) ---
+                        // Use regex with 'g' for global replacement
+                        const finalMsg = config.message
+                            .replace(/\[Driver Name\]/g, leadData.firstName || 'Driver')
+                            .replace(/\[Company Name\]/g, config.companyName || 'our company')
+                            .replace(/\[Recruiter Name\]/g, config.recruiterName || 'your recruiter');
+
                         await adapter.sendSMS(recipientIdentity, finalMsg, session.creatorId);
                         success = true;
                     } else {
@@ -347,11 +391,17 @@ exports.processBulkBatch = functions.https.onRequest(async (req, res) => {
                                 auth: { user: emailSettings.email, pass: emailSettings.appPassword }
                             });
 
-                            const finalBody = config.message.replace('[Driver Name]', leadData.firstName || 'Driver');
+                            // --- VARIABLE INJECTION (Phase 7) ---
+                            // Use regex with 'g' for global replacement
+                            const finalBody = config.message
+                                .replace(/\[Driver Name\]/g, leadData.firstName || 'Driver')
+                                .replace(/\[Company Name\]/g, config.companyName || 'our company')
+                                .replace(/\[Recruiter Name\]/g, config.recruiterName || 'your recruiter');
+
                             await transporter.sendMail({
-                                from: `"${companySnap.data().companyName || 'SafeHaul'}" <${emailSettings.email}>`,
+                                from: `"${config.companyName || 'SafeHaul'}" <${emailSettings.email}>`,
                                 to: recipientIdentity,
-                                subject: config.subject || `Update from ${companySnap.data().companyName || 'SafeHaul'}`,
+                                subject: config.subject || `Update from ${config.companyName || 'SafeHaul'}`,
                                 text: finalBody,
                                 html: `<p>${finalBody.replace(/\n/g, '<br>')}</p>`
                             });
