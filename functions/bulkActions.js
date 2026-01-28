@@ -6,6 +6,30 @@ const { CloudTasksClient } = require("@google-cloud/tasks");
 const nodemailer = require('nodemailer');
 const { isBlacklisted } = require("./blacklist");
 
+// --- CONSTANTS (Synced with Frontend) ---
+const APPLICATION_STATUSES = [
+    { id: 'new', label: 'New Application', value: 'New Application' },
+    { id: 'contacted', label: 'Contacted', value: 'Contacted' },
+    { id: 'interview', label: 'Interview Scheduled', value: 'Interview Scheduled' },
+    { id: 'offer', label: 'Offer Sent', value: 'Offer Sent' },
+    { id: 'hired', label: 'Hired', value: 'Hired' },
+    { id: 'rejected', label: 'Rejected', value: 'Rejected' },
+    { id: 'withdrawn', label: 'Withdrawn', value: 'Withdrawn' },
+    { id: 'inactive', label: 'Inactive (30d+)', value: 'Inactive' }
+];
+
+const LAST_CALL_RESULTS = [
+    { id: 'no_answer', label: 'No Answer', value: 'No Answer' },
+    { id: 'left_voicemail', label: 'Left Voicemail', value: 'Left Voicemail' },
+    { id: 'busy', label: 'Busy', value: 'Busy' },
+    { id: 'wrong_number', label: 'Wrong Number', value: 'Wrong Number' },
+    { id: 'not_interested', label: 'Not Interested', value: 'Not Interested' }
+];
+
+const getDbValue = (id, dictionary) => {
+    const item = dictionary.find(i => i.id === id);
+    return item ? item.value : id;
+};
 
 const PROJECT_ID = admin.instanceId().app.options.projectId || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
 
@@ -66,11 +90,16 @@ exports.initBulkSession = onCall(async (request) => {
             // --- 2. APPLY FILTERS ---
             // Status Filter
             if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
+                // Map IDs to DB Values
+                const mapStatus = (s) => getDbValue(s, APPLICATION_STATUSES);
+
                 // Support for single status or multi-status array calling
                 if (Array.isArray(filters.status)) {
-                    q = q.where('status', 'in', filters.status);
+                    const dbStatuses = filters.status.map(mapStatus);
+                    q = q.where('status', 'in', dbStatuses);
                 } else {
-                    q = q.where('status', '==', filters.status);
+                    const dbStatus = mapStatus(filters.status);
+                    q = q.where('status', '==', dbStatus);
                 }
             }
 
@@ -128,7 +157,9 @@ exports.initBulkSession = onCall(async (request) => {
                         q = q.where('lastOutcome', '==', filters.lastCallOutcome);
                     }
                 } else {
-                    q = q.where('lastCallOutcome', '==', filters.lastCallOutcome);
+                    // Map ID -> DB Value for Company Leads
+                    const dbOutcome = getDbValue(filters.lastCallOutcome, LAST_CALL_RESULTS);
+                    q = q.where('lastCallOutcome', '==', dbOutcome);
                 }
             }
 
