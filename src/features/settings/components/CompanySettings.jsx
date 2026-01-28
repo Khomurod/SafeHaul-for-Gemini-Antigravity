@@ -18,7 +18,8 @@ import { ManageTeamModal } from '@shared/components/modals';
 import { UnderDevelopmentAnimation } from '@shared/components/admin/UnderDevelopmentAnimation';
 import { ESignatureAnimation } from '@shared/components/admin/ESignatureAnimation';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
-import { CampaignsView } from '@features/company-admin/views/CampaignsView';
+// NEW IMPORT
+import { CampaignsDashboard } from '@features/campaigns/CampaignsDashboard';
 
 const SidebarItem = ({ id, label, icon: Icon, activeTab, onClick }) => (
     <button
@@ -114,8 +115,9 @@ export function CompanySettings() {
                     </div>
                 );
             case 'bulk-actions':
+                // REPLACED OLD VIEW WITH NEW CAMPAIGN DASHBOARD
                 return currentCompanyProfile?.features?.campaignsEnabled ? (
-                    <CampaignsView companyId={currentCompanyProfile?.id} />
+                    <CampaignsDashboard />
                 ) : (
                     <div className="space-y-8 max-w-4xl animate-in fade-in">
                         <SectionHeader title="Bulk Actions" subtitle="Manage reactivation campaigns and mass messaging." />
@@ -131,6 +133,26 @@ export function CompanySettings() {
     };
 
     if (!currentCompanyProfile) return null;
+
+    // Full-screen mode for Campaigns
+    if (activeTab === 'bulk-actions' && currentCompanyProfile?.features?.campaignsEnabled) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex flex-col">
+                <div className="h-16 bg-white border-b border-gray-200 flex items-center px-8 sticky top-0 z-10 shrink-0">
+                    <button onClick={() => navigate('/company/dashboard')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors font-medium">
+                        <ArrowLeft size={20} /> Back to Dashboard
+                    </button>
+                    <div className="h-6 w-px bg-slate-200 mx-4"></div>
+                    <button onClick={() => setActiveTab('company')} className="text-sm font-bold text-slate-500 hover:text-slate-800">
+                        Settings
+                    </button>
+                </div>
+                <div className="flex-1">
+                    <CampaignsDashboard />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50">
