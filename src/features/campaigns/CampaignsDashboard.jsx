@@ -3,10 +3,11 @@ import {
     Plus, Rocket, History, LayoutGrid, List, Search, Filter,
     MessageSquare, Users, Zap, TrendingUp, BarChart3, Loader2
 } from 'lucide-react';
-import { collection, query, orderBy, onSnapshot, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '@lib/firebase';
 import { CampaignCard } from './components/CampaignCard';
 import { CampaignEditor } from './CampaignEditor';
+import { CampaignDetails } from './components/CampaignDetails';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 
 export function CampaignsDashboard({ companyId }) {
@@ -15,6 +16,7 @@ export function CampaignsDashboard({ companyId }) {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('drafts'); // 'drafts' | 'history'
     const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+    const [viewingSession, setViewingSession] = useState(null);
     const { showSuccess, showError } = useToast();
 
     // 1. Fetch Drafts
@@ -82,12 +84,43 @@ export function CampaignsDashboard({ companyId }) {
         }
     };
 
+    const handleDeleteCampaign = async (campaign) => {
+        if (!companyId || !campaign.id) return;
+        if (!window.confirm(`Are you sure you want to delete "${campaign.name}"?`)) return;
+
+        try {
+            // Determine collection based on activeTab or campaign data
+            if (activeTab === 'drafts') {
+                await deleteDoc(doc(db, 'companies', companyId, 'campaign_drafts', campaign.id));
+                showSuccess("Campaign draft deleted");
+            } else {
+                if (['active', 'queued'].includes(campaign.status)) {
+                    showError("Cannot delete active campaigns");
+                    return;
+                }
+                await deleteDoc(doc(db, 'companies', companyId, 'bulk_sessions', campaign.id));
+                showSuccess("Campaign record deleted");
+            }
+        } catch (err) {
+            showError("Failed to delete campaign: " + err.message);
+        }
+    };
+
     if (selectedCampaignId) {
         return (
             <CampaignEditor
                 companyId={companyId}
                 campaignId={selectedCampaignId}
                 onClose={() => setSelectedCampaignId(null)}
+            />
+        );
+    }
+
+    if (viewingSession) {
+        return (
+            <CampaignDetails
+                campaign={viewingSession}
+                onClose={() => setViewingSession(null)}
             />
         );
     }
@@ -196,7 +229,8 @@ export function CampaignsDashboard({ companyId }) {
                         <CampaignCard
                             key={campaign.id}
                             campaign={campaign}
-                            onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : null} // Disable editing for history for now, or show report
+                            onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : setViewingSession(campaign)}
+                            onDelete={handleDeleteCampaign}
                         />
                     ))}
                 </div>
