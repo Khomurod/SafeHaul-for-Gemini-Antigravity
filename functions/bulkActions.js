@@ -146,10 +146,11 @@ exports.initBulkSession = onCall(async (request) => {
             // Fetch target IDs from those sessions? Expensive.
             // Better: 'excludeLeadsFromSessions' -> fetch attempts? 
             // For now, let's skip complex exclusion logic to avoid read spikes unless explicitly requested with optimized schema.
-            // A simple implementation if we have a list of leadIds to exclude:
-            if (filters.excludedLeadIds && Array.isArray(filters.excludedLeadIds)) {
-                targetIds = targetIds.filter(id => !filters.excludedLeadIds.includes(id));
-            }
+        }
+
+        // Filter: Manually Excluded Lead IDs (Opt-out from Preview)
+        if (filters.excludedLeadIds && Array.isArray(filters.excludedLeadIds)) {
+            targetIds = targetIds.filter(id => !filters.excludedLeadIds.includes(id));
         }
 
         if (targetIds.length === 0) {

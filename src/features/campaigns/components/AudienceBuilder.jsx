@@ -3,7 +3,7 @@ import { useCampaignTargeting } from '../hooks/useCampaignTargeting';
 import { useCompanyTeam } from '@/shared/hooks/useCompanyTeam';
 import { useData } from '@/context/DataContext';
 import { APPLICATION_STATUSES, LAST_CALL_RESULTS } from '../constants/campaignConstants';
-import { Filter, Users, RefreshCw } from 'lucide-react';
+import { Filter, Users, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 export function AudienceBuilder({ companyId, filters, onChange }) {
     const { currentUser } = useData();
@@ -23,11 +23,26 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
     // Handle filter changes
     const handleChange = (key, value) => {
         const newFilters = { ...filters, [key]: value };
+        // If changing main criteria, we might want to reset exclusions?
+        // For now, keep them.
         setFilters(newFilters);
-        // Bubble up change to parent (CampaignEditor)
-        // Note: We bubble up immediately, but the hook inside here also updates targeting
         onChange(newFilters, matchCount);
     };
+
+    const handleToggleExclusion = (leadId) => {
+        const currentExcluded = filters.excludedLeadIds || [];
+        const newExcluded = currentExcluded.includes(leadId)
+            ? currentExcluded.filter(id => id !== leadId)
+            : [...currentExcluded, leadId];
+
+        // Update parent immediately
+        // Note: This causes prop update -> useEffect -> setFilters -> re-fetch
+        // UNLESS useCampaignTargeting is optimized to ignore excludedLeadIds.
+        onChange({ ...filters, excludedLeadIds: newExcluded }, matchCount);
+    };
+
+    const excludedCount = filters.excludedLeadIds?.length || 0;
+    const finalCount = Math.max(0, matchCount - excludedCount);
 
     return (
         <div className="max-w-4xl mx-auto">
@@ -120,45 +135,85 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
 
                 {/* Right: Results Preview */}
                 <div className="lg:col-span-1">
-                    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl sticky top-8">
-                        <div className="flex items-center justify-between mb-6">
+                    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl sticky top-8 max-h-[calc(100vh-100px)] flex flex-col">
+                        <div className="flex items-center justify-between mb-6 shrink-0">
                             <h3 className="font-bold flex items-center gap-2">
                                 <Users size={18} className="text-slate-400" /> Matched Leads
                             </h3>
                             {isPreviewLoading && <RefreshCw size={14} className="animate-spin text-slate-400" />}
                         </div>
 
-                        <div className="text-center py-8 border-b border-slate-800 mb-6">
+                        <div className="text-center py-6 border-b border-slate-800 mb-6 shrink-0">
                             <div className="text-5xl font-black tracking-tighter mb-1">
-                                {matchCount}
+                                {finalCount}
                             </div>
-                            <div className="text-sm text-slate-400 font-medium">Recipients Found</div>
+                            <div className="text-sm text-slate-400 font-medium">Recipients Selected</div>
+                            {excludedCount > 0 && (
+                                <div className="text-xs text-red-400 mt-2">
+                                    {excludedCount} excluded manually
+                                </div>
+                            )}
                         </div>
 
                         {previewError && (
-                            <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg mb-4">
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg mb-4 shrink-0">
                                 {previewError}
                             </div>
                         )}
 
-                        <div className="space-y-3">
-                            <p className="text-xs font-bold text-slate-500 uppercase">Preview Samples</p>
-                            {previewLeads.slice(0, 5).map(lead => (
-                                <div key={lead.id} className="bg-slate-800 p-3 rounded-xl flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs">
-                                        {(lead.firstName?.[0] || 'D')}
+                        <div className="flex-1 min-h-0 flex flex-col">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-3 flex justify-between shrink-0">
+                                <span>Preview List</span>
+                                <span>{previewLeads.length} Loaded</span>
+                            </p>
+
+                            <div className="space-y-2 overflow-y-auto pr-1 custom-scrollbar flex-1">
+                                {previewLeads.map(lead => {
+                                    const isExcluded = filters.excludedLeadIds?.includes(lead.id);
+                                    return (
+                                        <div
+                                            key={lead.id}
+                                            role="checkbox"
+                                            aria-checked={!isExcluded}
+                                            tabIndex={0}
+                                            className={`p-3 rounded-xl flex items-center gap-3 border transition-all cursor-pointer group ${isExcluded ? 'bg-slate-900 border-slate-700 opacity-60' : 'bg-slate-800 border-transparent hover:border-slate-600'}`}
+                                            onClick={() => handleToggleExclusion(lead.id)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    handleToggleExclusion(lead.id);
+                                                }
+                                            }}
+                                        >
+                                            <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${!isExcluded ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-800 border-slate-600'}`}>
+                                                {!isExcluded && <CheckCircle2 size={12} />}
+                                            </div>
+
+                                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                                {(lead.firstName?.[0] || 'D')}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-bold truncate text-white group-hover:text-blue-200 transition-colors">
+                                                    {lead.firstName || 'Driver'} {lead.lastName}
+                                                </div>
+                                                <div className="text-xs text-slate-400 truncate">{lead.phone || lead.email}</div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {previewLeads.length === 0 && !isPreviewLoading && (
+                                    <div className="text-xs text-slate-500 italic text-center py-8">
+                                        Adjust filters to see matches
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-bold truncate">{lead.firstName || 'Driver'} {lead.lastName}</div>
-                                        <div className="text-xs text-slate-500 truncate">{lead.phone || lead.email}</div>
+                                )}
+
+                                {matchCount > previewLeads.length && (
+                                    <div className="text-xs text-slate-500 text-center py-4 border-t border-slate-800 mt-2">
+                                        + {matchCount - previewLeads.length} more not shown
                                     </div>
-                                </div>
-                            ))}
-                            {previewLeads.length === 0 && !isPreviewLoading && (
-                                <div className="text-xs text-slate-500 italic text-center py-4">
-                                    Adjust filters to see matches
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -236,4 +236,50 @@ describe('Bulk Actions Tests', () => {
         // Verify next task enqueue
         expect(mockCreateTask).toHaveBeenCalled();
     });
+
+    it('should exclude IDs in filters.excludedLeadIds', async () => {
+        const wrapped = test.wrap(bulkActions.initBulkSession);
+        const data = {
+            companyId: 'company123',
+            filters: {
+                leadType: 'global',
+                excludedLeadIds: ['lead1']
+            },
+            messageConfig: { method: 'sms', message: 'Hello' }
+        };
+        const context = {
+            auth: { uid: 'user123' }
+        };
+
+        // Reuse mocks from previous tests (returns lead1, lead2)
+        // db.collection...get() mocked in beforeEach/it block setup?
+        // Wait, the mocks are set up in the `jestMock.mock` block globally or per test?
+        // In the first test `should enqueue...` I set up mocks inside the test.
+        // I should set up mocks here too.
+
+        const mockDoc = {
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Test Recruiter', companyName: 'Test Company' }) }),
+            set: jestMock.fn().mockResolvedValue(true),
+            update: jestMock.fn().mockResolvedValue(true),
+            collection: jestMock.fn(),
+            id: 'mock-doc-id'
+        };
+
+        const mockCollection = {
+            doc: jestMock.fn().mockReturnValue(mockDoc),
+            where: jestMock.fn().mockReturnThis(),
+            limit: jestMock.fn().mockReturnThis(),
+            get: jestMock.fn().mockResolvedValue({
+                docs: [{ id: 'lead1' }, { id: 'lead2' }]
+            }),
+            add: jestMock.fn(),
+        };
+
+        mockDoc.collection.mockReturnValue(mockCollection);
+        db.collection.mockReturnValue(mockCollection);
+
+        const result = await wrapped({ data, auth: context.auth });
+
+        expect(result.targetCount).toBe(1);
+    });
 });

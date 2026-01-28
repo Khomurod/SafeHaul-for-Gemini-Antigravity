@@ -27,7 +27,7 @@ export function useCompanyTeam(companyId) {
                         if (userDoc.exists()) {
                             const d = userDoc.data();
                             // Handle various name fields (fullName, firstName/lastName, etc.)
-                            const name = d.fullName || (d.firstName && d.lastName ? `${d.firstName} ${d.lastName}` : 'Unknown User');
+                            const name = d.fullName || d.displayName || (d.firstName && d.lastName ? `${d.firstName} ${d.lastName}` : d.email || 'Unknown User');
                             userData = { name, email: d.email };
                         }
                     } catch (e) {
