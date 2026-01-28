@@ -1,5 +1,4 @@
-const functions = require("firebase-functions");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("./firebaseAdmin");
 const SMSAdapterFactory = require("./integrations/factory");
 const { CloudTasksClient } = require("@google-cloud/tasks");
@@ -205,6 +204,7 @@ exports.initBulkSession = onCall(async (request) => {
 
         const sessionData = {
             id: sessionRef.id,
+            companyId: companyId,
             name: name || "Untitled Campaign",
             status: initialStatus,
             creatorId: userId,
@@ -241,7 +241,7 @@ exports.initBulkSession = onCall(async (request) => {
 
     } catch (error) {
         console.error("[initBulkSession] Error:", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw new HttpsError('internal', error.message);
     }
 });
 
@@ -283,16 +283,16 @@ exports.resumeBulkSession = onCall(async (request) => {
  * 5. Retry Failed Attempts
  * Creates a new session with only the failed IDs from a previous session.
  */
-exports.retryFailedAttempts = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
-    const { companyId, originalSessionId, newMessageConfig } = data;
-    const userId = context.auth.uid;
+exports.retryFailedAttempts = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
+    const { companyId, originalSessionId, newMessageConfig } = request.data;
+    const userId = request.auth.uid;
 
     try {
-        // 1. Fetch failed attempts
-        const attemptsSnapshot = await db.collection('companies').doc(companyId)
+        // 1. Fetch failed logs
+        const logsSnapshot = await db.collection('companies').doc(companyId)
             .collection('bulk_sessions').doc(originalSessionId)
-            .collection('attempts')
+            .collection('logs')
             .where('status', '==', 'failed')
             .get();
 
@@ -302,12 +302,12 @@ exports.retryFailedAttempts = functions.https.onCall(async (data, context) => {
             "blacklist", "opt-out", "invalid", "landline", "no phone", "unreachable", "unallocated"
         ];
 
-        const retryableAttempts = attemptsSnapshot.docs.filter(doc => {
+        const retryableLogs = logsSnapshot.docs.filter(doc => {
             const error = (doc.data().error || "").toLowerCase();
             return !permanentErrors.some(pe => error.includes(pe));
         });
 
-        const failedLeadIds = [...new Set(retryableAttempts.map(d => d.data().leadId))];
+        const failedLeadIds = [...new Set(retryableLogs.map(d => d.data().leadId))];
 
         if (failedLeadIds.length === 0) {
             return {
@@ -354,7 +354,7 @@ exports.retryFailedAttempts = functions.https.onCall(async (data, context) => {
 
     } catch (error) {
         console.error("Retry Error:", error);
-        throw new functions.https.HttpsError('internal', error.message);
+        throw new HttpsError('internal', error.message);
     }
 });
 
@@ -372,10 +372,16 @@ exports.retryFailedAttempts = functions.https.onCall(async (data, context) => {
  * - Keeps execution time well within 60s timeout (usually < 5s)
  * - stays under Firestore batch limit (500 ops)
  */
-exports.processBulkBatch = functions.https.onRequest(async (req, res) => {
+exports.processBulkBatch = onRequest({
+    timeoutSeconds: 540,
+    memory: '1GiB',
+    region: 'us-central1',
+    secrets: ['SMS_ENCRYPTION_KEY']
+}, async (req, res) => {
 
-    // Security check
-    if (!req.headers["x-appengine-queuename"] && !process.env.FUNCTIONS_EMULATOR) {
+    // Security check: Only allow Cloud Tasks to call this
+    const hasQueueHeader = req.headers["x-appengine-queuename"] || req.headers["x-cloudtasks-queuename"];
+    if (!hasQueueHeader && !process.env.FUNCTIONS_EMULATOR) {
         return res.status(403).send("Forbidden");
     }
 
@@ -601,7 +607,7 @@ async function enqueueWorker(companyId, sessionId, delaySeconds) {
     let url = process.env.PROCESS_BULK_BATCH_URL;
     if (!url) {
         if (PROJECT_ID === 'truckerapp-system' && LOCATION === 'us-central1') {
-            url = `https://processbulkbatch-kswpqm6w2q-uc.a.run.app`;
+            url = `https://processbulkbatch-kswpqm6w2q-uc.a.run.app/processBulkBatch`;
         } else {
             // Fallback to V1 pattern (might fail if deployed as V2)
             url = `https://${LOCATION}-${PROJECT_ID}.cloudfunctions.net/processBulkBatch`;
@@ -614,7 +620,11 @@ async function enqueueWorker(companyId, sessionId, delaySeconds) {
             httpMethod: "POST",
             url,
             headers: { "Content-Type": "application/json" },
-            body: Buffer.from(JSON.stringify(payload)).toString("base64")
+            body: Buffer.from(JSON.stringify(payload)).toString("base64"),
+            oidcToken: {
+                serviceAccountEmail: `truckerapp-system@appspot.gserviceaccount.com`, // Default SA for the project
+                audience: url
+            }
         }
     };
     if (delaySeconds > 0) {

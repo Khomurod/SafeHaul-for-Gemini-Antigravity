@@ -70,7 +70,13 @@ async function runLeadDistribution(forceRotate = false) {
 
         // 3. Create a Cloud Task for EACH company (parallel execution)
         const queuePath = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
-        const workerUrl = `https://${LOCATION}-${PROJECT_ID}.cloudfunctions.net/processCompanyDistribution`;
+
+        let workerUrl = `https://processcompanydistribution-kswpqm6w2q-uc.a.run.app/processCompanyDistribution`;
+
+        // Use environment variable if set (allows override)
+        if (process.env.PROCESS_COMPANY_DISTRIBUTION_URL) {
+            workerUrl = process.env.PROCESS_COMPANY_DISTRIBUTION_URL;
+        }
 
         const taskPromises = companies.map(async (company) => {
             const isPaid = company.planType?.toLowerCase() === 'paid';
@@ -90,7 +96,11 @@ async function runLeadDistribution(forceRotate = false) {
                     httpMethod: "POST",
                     url: workerUrl,
                     headers: { "Content-Type": "application/json" },
-                    body: Buffer.from(JSON.stringify(payload)).toString("base64")
+                    body: Buffer.from(JSON.stringify(payload)).toString("base64"),
+                    oidcToken: {
+                        serviceAccountEmail: `truckerapp-system@appspot.gserviceaccount.com`,
+                        audience: workerUrl
+                    }
                 }
             };
 

@@ -47,9 +47,8 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
 
     // Validation
     const errors = [];
-    if (!campaign.filters?.status?.length && !campaign.filters?.leadType) errors.push("No audience selected");
+    if (!campaign.matchCount || campaign.matchCount === 0) errors.push("No audience selected");
     if (!campaign.messageConfig?.message) errors.push("Message content is empty");
-    if (campaign.matchCount === 0) errors.push("Audience size is 0");
 
     const isValid = errors.length === 0;
 

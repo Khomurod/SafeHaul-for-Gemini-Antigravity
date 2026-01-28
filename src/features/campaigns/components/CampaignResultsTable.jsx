@@ -10,7 +10,10 @@ export function CampaignResultsTable({ companyId, campaignId }) {
 
     useEffect(() => {
         const fetchLogs = async () => {
-            if (!companyId || !campaignId) return;
+            if (!companyId || !campaignId) {
+                setLoading(false);
+                return;
+            }
             try {
                 // Fetch last 100 logs
                 const q = query(

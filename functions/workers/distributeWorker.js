@@ -11,12 +11,14 @@ exports.processCompanyDistribution = onRequest(
     {
         timeoutSeconds: 540,
         memory: "1GiB",
-        region: "us-central1"
+        region: "us-central1",
+        secrets: ["SMS_ENCRYPTION_KEY"]
     },
     async (req, res) => {
         // 1. Security: Only allow Cloud Tasks to call this
-        // Cloud Tasks automatically adds this header
-        if (!req.headers["x-appengine-queuename"] && !process.env.FUNCTIONS_EMULATOR) {
+        // Cloud Tasks automatically adds these headers
+        const hasQueueHeader = req.headers["x-appengine-queuename"] || req.headers["x-cloudtasks-queuename"];
+        if (!hasQueueHeader && !process.env.FUNCTIONS_EMULATOR) {
             console.error("Access Forbidden: Missing Queue Header");
             return res.status(403).send("Forbidden");
         }

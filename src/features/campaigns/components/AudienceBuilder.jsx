@@ -171,7 +171,7 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                             <div className="mb-4 shrink-0">
                                 <button
                                     className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all active:scale-95 flex items-center justify-center gap-2"
-                                    onClick={() => onChange(filters, finalCount)} // Re-trigger update to confirm
+                                    onClick={() => onChange(filters, finalCount)} // Pass internal filters (with defaults) up
                                 >
                                     <CheckCircle2 size={18} /> Confirm {finalCount} Recipients
                                 </button>

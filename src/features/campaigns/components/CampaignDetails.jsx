@@ -102,7 +102,7 @@ export function CampaignDetails({ campaign, onClose }) {
                                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Sent</span>
                             </div>
                             <div className="text-2xl font-black text-slate-900">
-                                {campaign.progress ? campaign.progress.processedCount : 0}
+                                {campaign.progress ? campaign.progress.successCount : 0}
                             </div>
                         </div>
 
@@ -123,7 +123,7 @@ export function CampaignDetails({ campaign, onClose }) {
                     {campaign.progress && (
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <BarChart3 size={16} className="text-blue-500"/> Campaign Progress
+                                <BarChart3 size={16} className="text-blue-500" /> Campaign Progress
                             </h3>
                             <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2">
                                 <div
@@ -141,7 +141,7 @@ export function CampaignDetails({ campaign, onClose }) {
                     {/* Message Configuration */}
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <MessageSquare size={16} className="text-purple-500"/> Message Content
+                            <MessageSquare size={16} className="text-purple-500" /> Message Content
                         </h3>
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-600 font-medium whitespace-pre-wrap">
                             {campaign.messageConfig?.message || 'No message content defined.'}
@@ -155,8 +155,8 @@ export function CampaignDetails({ campaign, onClose }) {
 
                     {/* Technical Details */}
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest mb-4">Details</h3>
-                         <div className="grid grid-cols-2 gap-4 text-sm">
+                        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest mb-4">Details</h3>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
                                 <span className="block text-slate-400 text-xs font-bold uppercase mb-1">Campaign ID</span>
                                 <span className="font-mono text-slate-600">{campaign.id}</span>
@@ -175,7 +175,7 @@ export function CampaignDetails({ campaign, onClose }) {
                                     <span className="text-slate-600">{formatDate(campaign.scheduledFor)}</span>
                                 </div>
                             )}
-                         </div>
+                        </div>
                     </div>
 
                     {/* NEW: Individual Results Table */}
