@@ -77,12 +77,16 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
                 </div>
 
                 <div className="p-6">
-                    <input
-                        type="text"
-                        value={campaignData.name}
-                        onChange={(e) => setCampaignData(prev => ({ ...prev, name: e.target.value }))}
-                        className="w-full text-lg font-black text-slate-900 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-blue-500 outline-none transition-all mb-8 pb-1 truncate"
-                    />
+                    <div className="mb-8">
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Campaign Name</label>
+                        <input
+                            type="text"
+                            value={campaignData.name}
+                            onChange={(e) => setCampaignData(prev => ({ ...prev, name: e.target.value }))}
+                            className="w-full text-lg font-black text-slate-900 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none transition-all pb-1 truncate placeholder-slate-300"
+                            placeholder="Enter campaign name..."
+                        />
+                    </div>
 
                     <nav className="space-y-2">
                         {SECTIONS.map(section => {
