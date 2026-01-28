@@ -1,11 +1,13 @@
 import React from 'react';
 import { useCampaignTargeting } from '../hooks/useCampaignTargeting';
+import { useCompanyTeam } from '@/shared/hooks/useCompanyTeam';
 import { useData } from '@/context/DataContext';
 import { APPLICATION_STATUSES, LAST_CALL_RESULTS } from '../constants/campaignConstants';
 import { Filter, Users, RefreshCw } from 'lucide-react';
 
 export function AudienceBuilder({ companyId, filters, onChange }) {
     const { currentUser } = useData();
+    const { team } = useCompanyTeam(companyId);
 
     // We lift the state up, but the hook manages logic
     const {
@@ -52,8 +54,24 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                     onChange={(e) => handleChange('leadType', e.target.value)}
                                 >
                                     <option value="applications">Direct Applications</option>
-                                    <option value="leads">Assigned Leads (SafeHaul)</option>
+                                    <option value="leads">Assigned Leads (SafeHaul & Imported)</option>
                                     <option value="global">Global Pool (Cold)</option>
+                                </select>
+                            </div>
+
+                            {/* Recruiter Filter */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assigned Recruiter</label>
+                                <select
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-100"
+                                    value={filters.recruiterId || 'all'}
+                                    onChange={(e) => handleChange('recruiterId', e.target.value)}
+                                >
+                                    <option value="all">All Recruiters</option>
+                                    <option value="my_leads">My Leads Only</option>
+                                    {team.map(member => (
+                                        <option key={member.id} value={member.id}>{member.name}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -61,21 +79,21 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Application Status</label>
                                 <div className="flex flex-wrap gap-2">
-                                    {Object.entries(APPLICATION_STATUSES).map(([key, label]) => {
-                                        const isSelected = filters.status?.includes(key);
+                                    {APPLICATION_STATUSES.map((status) => {
+                                        const isSelected = filters.status?.includes(status.id);
                                         return (
                                             <button
-                                                key={key}
+                                                key={status.id}
                                                 onClick={() => {
                                                     const current = filters.status || [];
                                                     const newVal = isSelected
-                                                        ? current.filter(s => s !== key)
-                                                        : [...current, key];
+                                                        ? current.filter(s => s !== status.id)
+                                                        : [...current, status.id];
                                                     handleChange('status', newVal);
                                                 }}
                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${isSelected ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
                                             >
-                                                {label}
+                                                {status.label}
                                             </button>
                                         );
                                     })}
@@ -91,8 +109,8 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                     onChange={(e) => handleChange('lastCallOutcome', e.target.value)}
                                 >
                                     <option value="all">Any Outcome</option>
-                                    {Object.entries(LAST_CALL_RESULTS).map(([key, label]) => (
-                                        <option key={key} value={key}>{label}</option>
+                                    {LAST_CALL_RESULTS.map((result) => (
+                                        <option key={result.id} value={result.id}>{result.label}</option>
                                     ))}
                                 </select>
                             </div>

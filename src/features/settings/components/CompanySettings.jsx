@@ -117,7 +117,7 @@ export function CompanySettings() {
             case 'bulk-actions':
                 // REPLACED OLD VIEW WITH NEW CAMPAIGN DASHBOARD
                 return currentCompanyProfile?.features?.campaignsEnabled ? (
-                    <CampaignsDashboard />
+                    <CampaignsDashboard companyId={currentCompanyProfile?.id} />
                 ) : (
                     <div className="space-y-8 max-w-4xl animate-in fade-in">
                         <SectionHeader title="Bulk Actions" subtitle="Manage reactivation campaigns and mass messaging." />
@@ -148,7 +148,7 @@ export function CompanySettings() {
                     </button>
                 </div>
                 <div className="flex-1">
-                    <CampaignsDashboard />
+                    <CampaignsDashboard companyId={currentCompanyProfile?.id} />
                 </div>
             </div>
         );

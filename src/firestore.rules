@@ -126,6 +126,11 @@ service cloud.firestore {
         allow read, write: if isCompanyTeam(companyId) || isSuperAdmin();
       }
 
+      // CAMPAIGN DRAFTS: Persistent storage for wizard states
+      match /campaign_drafts/{draftId} {
+        allow read, write: if isCompanyTeam(companyId) || isSuperAdmin();
+      }
+
       // SEGMENTS (Audience Intelligence)
       match /segments/{segmentId} {
         allow read: if isCompanyTeam(companyId) || isSuperAdmin();

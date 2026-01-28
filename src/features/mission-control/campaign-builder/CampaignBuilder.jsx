@@ -113,18 +113,26 @@ const CampaignBuilder = ({ companyId, onClose, onSuccess }) => {
                 },
             });
 
-            console.log('Campaign launched:', result.data);
-
-            if (onSuccess) {
-                onSuccess(result.data);
+            if (result.data.success) {
+                console.log('Campaign launched:', result.data);
+                if (onSuccess) {
+                    onSuccess(result.data);
+                }
+            } else {
+                throw new Error(result.data.message || 'Launch failed');
             }
         } catch (err) {
             console.error('Launch error:', err);
-            throw err;
+            // Provide user-friendly error message
+            const friendlyMsg = err.message?.includes('bulk-actions-queue')
+                ? 'Campaign infrastructure not ready. Please contact support.'
+                : (err.message || 'Failed to launch campaign');
+            throw new Error(friendlyMsg);
         } finally {
             setIsExecuting(false);
         }
     };
+
 
     const canLaunch = audienceData.targetCount > 0 && messageData.message.length > 0;
 

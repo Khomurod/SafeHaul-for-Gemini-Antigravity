@@ -28,20 +28,24 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
             const result = await initBulkSession(payload);
 
             if (result.data.success) {
-                showSuccess("Campaign Launched Successfully!");
+                const statusMsg = result.data.status === 'scheduled' ? 'scheduled' : 'launched';
+                showSuccess(`Campaign ${statusMsg}! Targeting ${result.data.targetCount} drivers. Session: ${result.data.sessionId?.slice(0, 8)}...`);
                 if (onLaunchSuccess) onLaunchSuccess();
-                // Navigate back to dashboard or show success state
-                // navigate('/campaigns'); // Optional
             } else {
                 showError(result.data.message || "Launch failed");
             }
         } catch (err) {
             console.error("Launch Error:", err);
-            showError(err.message || "Failed to launch campaign");
+            // Extract user-friendly message from Firebase error
+            const friendlyMsg = err.message?.includes('bulk-actions-queue')
+                ? "Campaign infrastructure not ready. Please contact support."
+                : (err.message || "Failed to launch campaign");
+            showError(friendlyMsg);
         } finally {
             setIsLaunching(false);
         }
     };
+
 
     // Validation
     const errors = [];

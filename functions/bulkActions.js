@@ -50,8 +50,8 @@ exports.initBulkSession = onCall(async (request) => {
             if (filters.leadType === 'global') {
                 baseRef = db.collection('leads');
             } else if (filters.leadType === 'leads') {
-                // Assigned SafeHaul Leads (distributed by dealer)
-                baseRef = db.collection('companies').doc(companyId).collection('leads').where('isPlatformLead', '==', true);
+                // Assigned SafeHaul Leads (And Imported Leads) - RELAXED FILTER
+                baseRef = db.collection('companies').doc(companyId).collection('leads');
             } else {
                 // Direct Company Applications
                 baseRef = db.collection('companies').doc(companyId).collection('applications');
@@ -123,7 +123,8 @@ exports.initBulkSession = onCall(async (request) => {
             }
 
             // --- 3. EXECUTE QUERY ---
-            const limitCount = Math.min(filters.limit || 50, 200); // Increased cap for advanced users
+            // CRITICAL FIX: Ignore frontend preview limit (50). Use a high cap for execution.
+            const limitCount = 5000; // Increased from 200 to 5000 for true bulk actions
             const snapshot = await q.limit(limitCount).get();
             targetIds = snapshot.docs.map(doc => doc.id);
         }
@@ -470,7 +471,31 @@ async function enqueueWorker(companyId, sessionId, delaySeconds) {
     if (delaySeconds > 0) {
         task.scheduleTime = { seconds: Date.now() / 1000 + delaySeconds };
     }
-    await tasksClient.createTask({ parent: queuePath, task });
+
+    try {
+        await tasksClient.createTask({ parent: queuePath, task });
+        console.log(`[enqueueWorker] Task created for session ${sessionId} with delay ${delaySeconds}s`);
+    } catch (err) {
+        console.error(`[enqueueWorker] CRITICAL: Failed to create Cloud Task for session ${sessionId}:`, err.message);
+        console.error(`  - Queue Path: ${queuePath}`);
+        console.error(`  - Task URL: ${url}`);
+        console.error(`  - Ensure 'bulk-actions-queue' exists in Cloud Tasks for region ${LOCATION}`);
+
+        // Update session to failed status so UI can show feedback
+        try {
+            await db.collection('companies').doc(companyId)
+                .collection('bulk_sessions').doc(sessionId)
+                .update({
+                    status: 'failed',
+                    error: `Cloud Tasks Enqueue Failed: ${err.message}. Ensure the 'bulk-actions-queue' exists in GCP region ${LOCATION}.`,
+                    failedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+        } catch (updateErr) {
+            console.error(`[enqueueWorker] Also failed to update session ${sessionId} to 'failed':`, updateErr.message);
+        }
+
+        throw err; // Re-throw to propagate to the caller
+    }
 }
 
 

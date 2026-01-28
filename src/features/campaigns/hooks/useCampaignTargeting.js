@@ -60,7 +60,9 @@ export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
                     if (filters.leadType === 'global') {
                         baseRef = collection(db, 'leads');
                     } else if (filters.leadType === 'leads') {
-                        baseRef = query(collection(db, 'companies', companyId, 'leads'), where('isPlatformLead', '==', true));
+                        // Allow ALL leads in the company's subcollection, not just platform leads
+                        // This fixes issues where imported/migrated leads aren't shown
+                        baseRef = collection(db, 'companies', companyId, 'leads');
                     } else {
                         baseRef = collection(db, 'companies', companyId, 'applications');
                     }
