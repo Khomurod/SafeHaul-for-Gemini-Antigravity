@@ -167,6 +167,16 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                 <span>{previewLeads.length} Loaded</span>
                             </p>
 
+                            {/* Confirmation Button */}
+                            <div className="mb-4 shrink-0">
+                                <button
+                                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                    onClick={() => onChange(filters, finalCount)} // Re-trigger update to confirm
+                                >
+                                    <CheckCircle2 size={18} /> Confirm {finalCount} Recipients
+                                </button>
+                            </div>
+
                             <div className="space-y-2 overflow-y-auto pr-1 custom-scrollbar flex-1">
                                 {previewLeads.map(lead => {
                                     const isExcluded = filters.excludedLeadIds?.includes(lead.id);

@@ -3,9 +3,30 @@ import {
     ArrowLeft, Calendar, Users, MessageSquare,
     BarChart3, Clock, CheckCircle2, AlertCircle
 } from 'lucide-react';
+import { CampaignResultsTable } from './CampaignResultsTable';
+import { useParams } from 'react-router-dom';
 
 export function CampaignDetails({ campaign, onClose }) {
+    // If used in dashboard, campaign object is passed.
+    // If we were using routing, we'd use useParams.
+    // Since this is a modal-like view in Dashboard, we expect `campaign`.
+    // However, we need `companyId` for the table. It's usually in the campaign doc ref path
+    // but better to pass it or extract it.
+    // The Dashboard passes `campaign` which is from state.
+    // We can assume we have access to context or need to pass companyId.
+
+    // Let's assume the parent passes companyId if possible, or we extract from campaign data if stored?
+    // Firestore docs don't store parent ID by default in data unless we put it there.
+    // The Dashboard has `companyId`. We should pass it.
+
+    // Wait, the current signature is ({ campaign, onClose }).
+    // I need to update Dashboard to pass companyId or use context.
+    // Let's rely on props update in Dashboard.
+
     if (!campaign) return null;
+
+    // Fallback if companyId not in campaign (it likely isn't)
+    // We will update Dashboard to pass `companyId` as a prop to CampaignDetails.
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -156,6 +177,9 @@ export function CampaignDetails({ campaign, onClose }) {
                             )}
                          </div>
                     </div>
+
+                    {/* NEW: Individual Results Table */}
+                    <CampaignResultsTable companyId={campaign.companyId} campaignId={campaign.id} />
 
                 </div>
             </div>

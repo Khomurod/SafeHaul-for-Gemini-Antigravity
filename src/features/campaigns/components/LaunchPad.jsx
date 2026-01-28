@@ -9,8 +9,6 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     const navigate = useNavigate();
     const { showSuccess, showError } = useToast();
     const [isLaunching, setIsLaunching] = useState(false);
-    const [scheduleTime, setScheduleTime] = useState('');
-
     const handleLaunch = async () => {
         if (!companyId) return showError("Company ID missing");
 
@@ -23,14 +21,13 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
                 name: campaign.name,
                 filters: campaign.filters,
                 messageConfig: campaign.messageConfig,
-                scheduledFor: scheduleTime ? new Date(scheduleTime).toISOString() : null
+                scheduledFor: null // User requested removal of scheduling ("action and shot")
             };
 
             const result = await initBulkSession(payload);
 
             if (result.data.success) {
-                const statusMsg = result.data.status === 'scheduled' ? 'scheduled' : 'launched';
-                showSuccess(`Campaign ${statusMsg}! Targeting ${result.data.targetCount} drivers. Session: ${result.data.sessionId?.slice(0, 8)}...`);
+                showSuccess(`Campaign launched! Targeting ${result.data.targetCount} drivers. Session: ${result.data.sessionId?.slice(0, 8)}...`);
                 if (onLaunchSuccess) onLaunchSuccess();
             } else {
                 showError(result.data.message || "Launch failed");
@@ -87,17 +84,6 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
                     </div>
                 )}
 
-                <div className="mb-8 text-left">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Schedule (Optional)</label>
-                    <input
-                        type="datetime-local"
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-                        value={scheduleTime}
-                        onChange={(e) => setScheduleTime(e.target.value)}
-                    />
-                    <p className="text-xs text-slate-400 mt-2 font-medium">Leave blank to send immediately.</p>
-                </div>
-
                 <div className="flex gap-4">
                     <button
                         disabled={!isValid || isLaunching}
@@ -105,7 +91,7 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
                         className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-black text-lg shadow-lg shadow-blue-200 flex items-center justify-center gap-3 transition-all"
                     >
                         {isLaunching ? <Loader2 size={24} className="animate-spin" /> : <Rocket size={24} />}
-                        {scheduleTime ? 'Schedule Launch' : 'Launch Now'}
+                        Launch Immediately
                     </button>
                 </div>
             </div>
