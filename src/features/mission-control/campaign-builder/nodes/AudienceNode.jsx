@@ -4,7 +4,7 @@ import { Handle, Position } from 'reactflow';
 import { Users, ChevronDown, Search, Check, X } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, limit, getCountFromServer } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
-import { APPLICATION_STATUSES, getDbValue } from '@/features/company-admin/views/campaigns/constants/campaignConstants';
+import { APPLICATION_STATUSES, getDbValue } from '@/features/campaigns/constants/campaignConstants';
 
 /**
  * AudienceNode - ReactFlow node for selecting campaign targets
