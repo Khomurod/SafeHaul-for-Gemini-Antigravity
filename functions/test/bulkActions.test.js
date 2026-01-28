@@ -282,4 +282,60 @@ describe('Bulk Actions Tests', () => {
 
         expect(result.targetCount).toBe(1);
     });
+
+    it('should map status IDs to DB values', async () => {
+        const wrapped = test.wrap(bulkActions.initBulkSession);
+        const data = {
+            companyId: 'company123',
+            filters: {
+                leadType: 'leads',
+                status: ['new', 'contacted']
+            },
+            messageConfig: { method: 'sms', message: 'Hello' }
+        };
+        const context = {
+            auth: { uid: 'user123' }
+        };
+
+        const mockWhere = jestMock.fn().mockReturnThis();
+        const mockDocWithGet = {
+            collection: jestMock.fn(),
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) })
+        };
+        const mockCollection = {
+            doc: jestMock.fn().mockReturnValue(mockDocWithGet),
+            where: mockWhere, // We want to spy on this
+            limit: jestMock.fn().mockReturnThis(),
+            get: jestMock.fn().mockResolvedValue({
+                docs: [{ id: 'lead1' }]
+            }),
+            add: jestMock.fn(),
+        };
+
+        // We need to ensure db.collection returns mockCollection for the leads
+        // db.collection('companies').doc(...).collection('leads')
+
+        const companyDoc = {
+            collection: jestMock.fn((colName) => {
+                if (colName === 'leads') return mockCollection;
+                if (colName === 'bulk_sessions') return { doc: jestMock.fn(() => ({ set: jestMock.fn(), id: 'sess1' })) };
+                return { doc: jestMock.fn() };
+            }),
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) })
+        };
+
+        const companiesCollection = {
+            doc: jestMock.fn(() => companyDoc)
+        };
+
+        db.collection.mockImplementation((colName) => {
+            if (colName === 'companies') return companiesCollection;
+            return mockCollection;
+        });
+
+        await wrapped({ data, auth: context.auth });
+
+        // Verify status mapping: 'new' -> 'New Application', 'contacted' -> 'Contacted'
+        expect(mockWhere).toHaveBeenCalledWith('status', 'in', ['New Application', 'Contacted']);
+    });
 });
