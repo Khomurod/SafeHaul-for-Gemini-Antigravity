@@ -1,5 +1,6 @@
 import React from 'react';
 import { MessageSquare, Mail, Zap, Info } from 'lucide-react';
+import { DeviceMockup } from './DeviceMockup';
 
 export function ContentComposer({ messageConfig, onChange }) {
 
@@ -95,8 +96,26 @@ export function ContentComposer({ messageConfig, onChange }) {
                     </div>
                 </div>
 
-                {/* Right: Best Practices */}
-                <div className="lg:col-span-1">
+                {/* Right: Preview & Tips */}
+                <div className="lg:col-span-1 space-y-8">
+                    {/* Device Preview */}
+                    <div className="bg-slate-100 p-8 rounded-[3rem] border border-slate-200 shadow-inner">
+                        <DeviceMockup type={messageConfig.method}>
+                            <div className="p-6">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 rounded-full bg-slate-200"></div>
+                                    <div className="flex-1">
+                                        <div className="h-2 w-20 bg-slate-200 rounded mb-2"></div>
+                                        <div className="h-1.5 w-32 bg-slate-100 rounded"></div>
+                                    </div>
+                                </div>
+                                <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tl-none text-sm font-medium shadow-md leading-relaxed">
+                                    {messageConfig.message || 'Type something to see a preview...'}
+                                </div>
+                            </div>
+                        </DeviceMockup>
+                    </div>
+
                     <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
                         <h3 className="flex items-center gap-2 font-bold text-blue-900 mb-4">
                             <Zap size={18} className="text-blue-500" /> Pro Tips
