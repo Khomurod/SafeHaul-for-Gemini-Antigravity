@@ -12,6 +12,7 @@ const bulkActions = require('./bulkActions');
 exports.initBulkSession = bulkActions.initBulkSession;
 exports.processBulkBatch = bulkActions.processBulkBatch;
 exports.retryFailedAttempts = bulkActions.retryFailedAttempts;
+exports.resumeBulkSession = bulkActions.resumeBulkSession;
 
 // Templates - REMOVED: All CRUD operations moved to frontend SDK
 
