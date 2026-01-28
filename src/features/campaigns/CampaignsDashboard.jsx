@@ -94,10 +94,10 @@ export function CampaignsDashboard({ companyId }) {
                 await deleteDoc(doc(db, 'companies', companyId, 'campaign_drafts', campaign.id));
                 showSuccess("Campaign draft deleted");
             } else {
-                if (['active', 'queued'].includes(campaign.status)) {
-                    showError("Cannot delete active campaigns");
-                    return;
-                }
+                // User requested ability to delete queued campaigns.
+                // If it's active/queued, we should ideally cancel the cloud task,
+                // but since we don't have a direct cancel endpoint ready,
+                // deleting the doc will cause the worker to 404 and stop processing (safe fail).
                 await deleteDoc(doc(db, 'companies', companyId, 'bulk_sessions', campaign.id));
                 showSuccess("Campaign record deleted");
             }

@@ -513,13 +513,14 @@ exports.processBulkBatch = functions.https.onRequest(async (req, res) => {
 
         // --- 3. BATCH WRITE RESULTS & UPDATE SESSION ---
         const batchWrite = db.batch();
-        const attemptsRef = sessionRef.collection('attempts');
+        // Change collection name to 'logs' for clarity and easier frontend fetching
+        const logsRef = sessionRef.collection('logs');
 
         let batchSuccessCount = 0;
         let batchFailCount = 0;
 
         results.forEach(res => {
-            const docRef = attemptsRef.doc(); // Auto-ID
+            const docRef = logsRef.doc(res.leadId); // Use leadId as key to avoid duplicates
             // Remove 'isSuccess' helper from data stored to DB
             const { isSuccess, ...dbData } = res;
             batchWrite.set(docRef, dbData);
