@@ -16,7 +16,7 @@ export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
         recruiterId: 'all',
         status: [],
         leadType: 'applications',
-        limit: 50,
+        limit: 100,
         createdAfter: '',
         notContactedSince: '',
         lastCallOutcome: 'all'
@@ -135,7 +135,19 @@ export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
 
         const timer = setTimeout(fetchTargetingData, 500);
         return () => { isCancelled = true; clearTimeout(timer); };
-    }, [filters, companyId, currentUser, isAuthLoading]);
+    }, [
+        filters.leadType,
+        filters.status,
+        filters.recruiterId,
+        filters.createdAfter,
+        filters.notContactedSince,
+        filters.lastCallOutcome,
+        filters.segmentId,
+        filters.limit,
+        companyId,
+        currentUser,
+        isAuthLoading
+    ]);
 
     return {
         filters, setFilters,
