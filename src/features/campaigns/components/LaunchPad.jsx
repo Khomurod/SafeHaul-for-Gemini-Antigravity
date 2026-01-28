@@ -20,6 +20,7 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
 
             const payload = {
                 companyId,
+                name: campaign.name,
                 filters: campaign.filters,
                 messageConfig: campaign.messageConfig,
                 scheduledFor: scheduleTime ? new Date(scheduleTime).toISOString() : null

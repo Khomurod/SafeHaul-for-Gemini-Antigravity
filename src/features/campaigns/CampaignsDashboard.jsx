@@ -31,6 +31,38 @@ export function CampaignsDashboard({ companyId }) {
         return () => unsub();
     }, [companyId]);
 
+    // 1b. Fetch Live/Past Sessions
+    useEffect(() => {
+        if (!companyId) return;
+        const q = query(
+            collection(db, 'companies', companyId, 'bulk_sessions'),
+            orderBy('createdAt', 'desc')
+        );
+        const unsub = onSnapshot(q, (snap) => {
+            setSessions(snap.docs.map(d => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    name: data.name,
+                    status: data.status,
+                    createdAt: data.createdAt,
+                    updatedAt: data.lastUpdateAt || data.createdAt, // Map for CampaignCard
+                    messageConfig: data.config, // Map for CampaignCard
+                    matchCount: data.progress?.totalCount || data.targetIds?.length || 0,
+                    progress: data.progress, // Pass full progress for bar
+                    ...data
+                };
+            }));
+        });
+        return () => unsub();
+    }, [companyId]);
+
+    // Stats Calculation
+    const liveCount = sessions.filter(s => ['active', 'queued', 'scheduled'].includes(s.status)).length;
+    const totalOutreach = sessions.reduce((acc, s) => acc + (s.progress?.processedCount || 0), 0);
+    // Approximate response rate (mock calculation for now, or need real data source)
+    const responseRate = '0%';
+
     // 2. Create New Campaign Draft
     const handleNewCampaign = async () => {
         if (!companyId) return;
@@ -90,9 +122,9 @@ export function CampaignsDashboard({ companyId }) {
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
                 {[
-                    { label: 'Live Campaigns', value: '0', icon: Zap, color: 'blue' },
-                    { label: 'Total Outreach', value: '0', icon: Users, color: 'emerald' },
-                    { label: 'Response Rate', value: '0%', icon: TrendingUp, color: 'amber' },
+                    { label: 'Live Campaigns', value: liveCount, icon: Zap, color: 'blue' },
+                    { label: 'Total Outreach', value: totalOutreach, icon: Users, color: 'emerald' },
+                    { label: 'Response Rate', value: responseRate, icon: TrendingUp, color: 'amber' },
                     { label: 'Carrier Score', value: '100', icon: BarChart3, color: 'indigo' },
                 ].map((stat, i) => (
                     <div key={i} className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm flex items-center gap-5">
@@ -142,12 +174,12 @@ export function CampaignsDashboard({ companyId }) {
                     <Loader2 size={48} className="animate-spin mb-4" />
                     <span className="font-bold text-lg tracking-tight uppercase tracking-widest">Synchronizing...</span>
                 </div>
-            ) : campaigns.length === 0 ? (
+            ) : (activeTab === 'drafts' ? campaigns : sessions).length === 0 ? (
                 <div className="py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center animate-in zoom-in-95 duration-700">
                     <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-6">
                         <Rocket size={48} />
                     </div>
-                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">No Campaigns Found</h3>
+                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">No {activeTab === 'drafts' ? 'Drafts' : 'Campaigns'} Found</h3>
                     <p className="text-slate-500 font-medium mb-10 text-center max-w-sm">
                         Ready to reactivate your driver database? Create your first automated messaging sequence.
                     </p>
@@ -160,11 +192,11 @@ export function CampaignsDashboard({ companyId }) {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in slide-in-from-bottom-5 duration-700">
-                    {campaigns.map(campaign => (
+                    {(activeTab === 'drafts' ? campaigns : sessions).map(campaign => (
                         <CampaignCard
                             key={campaign.id}
                             campaign={campaign}
-                            onClick={() => setSelectedCampaignId(campaign.id)}
+                            onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : null} // Disable editing for history for now, or show report
                         />
                     ))}
                 </div>

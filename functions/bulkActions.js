@@ -47,7 +47,7 @@ const tasksClient = new CloudTasksClient(TASKS_CLIENT_OPTS);
 exports.initBulkSession = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
 
-    const { companyId, filters, messageConfig, scheduledFor } = request.data;
+    const { companyId, filters, messageConfig, scheduledFor, name } = request.data;
     const userId = request.auth.uid;
 
     if (!companyId || !filters || !messageConfig) {
@@ -205,6 +205,7 @@ exports.initBulkSession = onCall(async (request) => {
 
         const sessionData = {
             id: sessionRef.id,
+            name: name || "Untitled Campaign",
             status: initialStatus,
             creatorId: userId,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),

@@ -33,15 +33,44 @@ export function CampaignCard({ campaign, onClick }) {
                 {campaign.messageConfig?.message || 'No content defined...'}
             </p>
 
-            <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-5">
-                <div className="flex items-center gap-2 text-slate-400">
-                    <Users size={16} />
-                    <span className="text-xs font-bold text-slate-600">{campaign.matchCount || 0} leads</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-400">
-                    <MessageSquare size={16} />
-                    <span className="text-xs font-bold text-slate-600 uppercase">{campaign.messageConfig?.method || 'SMS'}</span>
-                </div>
+            <div className="border-t border-slate-100 pt-5">
+                {campaign.progress ? (
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Progress</span>
+                            <span className="text-[10px] font-bold text-slate-600">
+                                {campaign.progress.processedCount} / {campaign.progress.totalCount}
+                            </span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-blue-500 transition-all duration-500"
+                                style={{ width: `${(campaign.progress.processedCount / (campaign.progress.totalCount || 1)) * 100}%` }}
+                            />
+                        </div>
+                        <div className="mt-3 flex gap-4">
+                            {campaign.progress.failedCount > 0 && (
+                                <span className="text-[10px] font-bold text-red-500">
+                                    {campaign.progress.failedCount} Failed
+                                </span>
+                            )}
+                            <span className="text-[10px] font-bold text-slate-400 ml-auto uppercase">
+                                {campaign.messageConfig?.method || 'SMS'}
+                            </span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="flex items-center gap-2 text-slate-400">
+                            <Users size={16} />
+                            <span className="text-xs font-bold text-slate-600">{campaign.matchCount || 0} leads</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-400">
+                            <MessageSquare size={16} />
+                            <span className="text-xs font-bold text-slate-600 uppercase">{campaign.messageConfig?.method || 'SMS'}</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="mt-4 flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-blue-500 transition-all">
