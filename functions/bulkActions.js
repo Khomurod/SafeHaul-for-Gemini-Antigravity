@@ -248,7 +248,35 @@ exports.initBulkSession = onCall(async (request) => {
 /**
  * Bulk session controls (pause/resume/cancel) have been refactored
  * to use direct Firestore SDK updates for better performance.
+ * 
+ * EXCEPTION: Resume requires a server-side kick to restart the worker.
  */
+exports.resumeBulkSession = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
+
+    const { companyId, sessionId } = request.data;
+    const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
+
+    const sessionSnap = await sessionRef.get();
+    if (!sessionSnap.exists) throw new HttpsError('not-found', 'Session not found');
+
+    const session = sessionSnap.data();
+    if (session.status === 'completed') {
+        return { success: false, message: 'Session already completed' };
+    }
+
+    // 1. Set status to active
+    await sessionRef.update({
+        status: 'active',
+        resumedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 2. Kickstart the worker again (immediate)
+    // We pass 0 delay to start processing immediately
+    await enqueueWorker(companyId, sessionId, 0);
+
+    return { success: true, message: 'Session resumed' };
+});
 
 
 /**
@@ -565,7 +593,21 @@ exports.processBulkBatch = functions.https.onRequest(async (req, res) => {
 
 async function enqueueWorker(companyId, sessionId, delaySeconds) {
     const queuePath = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
-    const url = `https://${LOCATION}-${PROJECT_ID}.cloudfunctions.net/processBulkBatch`;
+
+    // V2 URL Logic: Cloud Run URLs follow a different pattern than V1.
+    // For this project 'truckerapp-system' in 'us-central1', the discovered URL is:
+    // https://processbulkbatch-kswpqm6w2q-uc.a.run.app (uc = us-central1)
+
+    let url = process.env.PROCESS_BULK_BATCH_URL;
+    if (!url) {
+        if (PROJECT_ID === 'truckerapp-system' && LOCATION === 'us-central1') {
+            url = `https://processbulkbatch-kswpqm6w2q-uc.a.run.app`;
+        } else {
+            // Fallback to V1 pattern (might fail if deployed as V2)
+            url = `https://${LOCATION}-${PROJECT_ID}.cloudfunctions.net/processBulkBatch`;
+        }
+    }
+
     const payload = { companyId, sessionId };
     const task = {
         httpRequest: {
