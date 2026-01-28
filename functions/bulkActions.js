@@ -10,7 +10,7 @@ const { isBlacklisted } = require("./blacklist");
 const PROJECT_ID = admin.instanceId().app.options.projectId || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
 
 // Allow region to be configured, default to us-central1 if not set
-const LOCATION = process.env.FUNCTION_REGION || 'us-central1';
+const LOCATION = process.env.FUNCTION_REGION || process.env.GCP_REGION || 'us-central1';
 const QUEUE_NAME = "bulk-actions-queue";
 const TASKS_CLIENT_OPTS = {};
 // Initialize client with fallback if needed, but usually default is fine in Cloud Functions
@@ -31,6 +31,8 @@ exports.initBulkSession = onCall(async (request) => {
     }
 
     try {
+        console.log(`[initBulkSession] Initializing session. Project: ${PROJECT_ID}, Region: ${LOCATION}`);
+
         // --- 0. FETCH RECRUITER & COMPANY NAMES (Phase 7) ---
         let recruiterName = "Recruiter";
         let companyName = "SafeHaul";
