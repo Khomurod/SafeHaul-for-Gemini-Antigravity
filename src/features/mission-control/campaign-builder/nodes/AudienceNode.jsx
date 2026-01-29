@@ -122,6 +122,7 @@ const AudienceNode = memo(({ data, selected }) => {
                     <motion.button
                         className="p-2 rounded-lg hover:bg-white/10"
                         onClick={() => setIsExpanded(!isExpanded)}
+                        aria-label={isExpanded ? "Collapse audience details" : "Expand audience details"}
                         animate={{ rotate: isExpanded ? 180 : 0 }}
                     >
                         <ChevronDown className="w-5 h-5 text-slate-400" />
