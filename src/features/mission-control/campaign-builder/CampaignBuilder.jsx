@@ -99,19 +99,28 @@ const CampaignBuilder = ({ companyId, onClose, onSuccess }) => {
         setIsExecuting(true);
         try {
             const initBulkSession = httpsCallable(functions, 'initBulkSession');
-            const result = await initBulkSession({
+
+            // Construct payload with all scalability parameters
+            const payload = {
                 companyId,
                 filters: {
+                    // Map legacy fields
                     leadType: audienceData.filters?.source || 'applications',
                     status: audienceData.filters?.statuses || [],
                     recruiterId: audienceData.filters?.recruiterId || 'all',
+
+                    // Pass through new scalability fields
+                    excludeRecentDays: audienceData.filters?.excludeRecentDays,
+                    campaignLimit: audienceData.filters?.campaignLimit,
                 },
                 messageConfig: {
                     method: messageData.method,
                     message: messageData.message,
                     subject: messageData.subject,
                 },
-            });
+            };
+
+            const result = await initBulkSession(payload);
 
             if (result.data.success) {
                 console.log('Campaign launched:', result.data);

@@ -51,44 +51,93 @@ class RingCentralAdapter extends BaseAdapter {
                 text: text
             };
 
-            // Only add 'from' if we determined one. 
-            // If not, RingCentral uses the authorized user's default number (risky, but valid fallback)
-            if (fromNumber) {
-                payload.from = { phoneNumber: fromNumber };
-            }
+            // 5. Attempt Send with Fallback Logic
+            try {
+                // First Attempt: Preferred 'From' Number
+                const payload = {
+                    to: [{ phoneNumber: to }],
+                    text: text
+                };
+                if (fromNumber) {
+                    payload.from = { phoneNumber: fromNumber };
+                }
 
-            console.log(`[RC Adapter] Sending SMS | From: ${fromNumber || 'Default'} | To: ${to}`);
+                console.log(`[RC Adapter] Sending SMS | From: ${fromNumber || 'Default'} | To: ${to}`);
+                await this.rc.post('/restapi/v1.0/account/~/extension/~/sms', payload);
+                return true;
 
-            await this.rc.post('/restapi/v1.0/account/~/extension/~/sms', payload);
+            } catch (primaryError) {
+                // Check if we can fallback
+                // We fallback if:
+                // 1. We tried to send from a specific number (fromNumber is set)
+                // 2. AND that number is NOT the default number (no point retrying same number)
+                // 3. AND the error suggests a numbering/permission mismatch
 
-            return true;
-        } catch (error) {
-            const responseData = error.response?.data;
-            const errorCode = responseData?.errorCode || 'Unknown';
-            const errorMsg = responseData?.message || error.message;
+                const isPermissionError =
+                    (primaryError.message || "").includes('PhoneNumber.from') ||
+                    (primaryError.response?.data?.errorCode === 'FeatureNotAvailable') ||
+                    (primaryError.response?.data?.errorCode === 'InvalidParameter');
 
-            console.error("RingCentral Send Error:", JSON.stringify(responseData || error.message));
+                const canFallback = fromNumber && fromNumber !== this.config.defaultPhoneNumber && isPermissionError;
 
-            let userFriendlyError = `RingCentral Error [${errorCode}]: ${errorMsg}`;
+                if (canFallback) {
+                    console.warn(`[RC Adapter] Primary send failed (${primaryError.message}). Falling back to Default Line (${this.config.defaultPhoneNumber}).`);
 
-            switch (errorCode) {
-                case 'InvalidAuthentication':
-                    userFriendlyError = "Authentication with RingCentral failed. Please verify your JWT token and credentials.";
-                    break;
-                case 'InvalidRequest':
-                    if (errorMsg.includes('PhoneNumber.from')) {
-                        userFriendlyError = "Invalid 'From' number. Please ensure the selected number is provisioned for SMS in your RingCentral account.";
+                    try {
+                        const fallbackPayload = {
+                            to: [{ phoneNumber: to }],
+                            text: text,
+                            from: { phoneNumber: this.config.defaultPhoneNumber }
+                        };
+
+                        await this.rc.post('/restapi/v1.0/account/~/extension/~/sms', fallbackPayload);
+                        console.log(`[RC Adapter] Fallback success!`);
+                        return true;
+
+                    } catch (fallbackError) {
+                        console.error(`[RC Adapter] Fallback also failed: ${fallbackError.message}`);
+                        // Update error info to reflect the fallback failure, but keep context
+                        throw this._normalizeError(fallbackError);
                     }
-                    break;
-                case 'FeatureNotAvailable':
-                    userFriendlyError = "SMS feature is not available for this account or user. Please check your RingCentral plan and permissions.";
-                    break;
+                }
+
+                // If no fallback possible, throw original
+                throw this._normalizeError(primaryError);
             }
 
-            // Return Detailed Error to Frontend
-            // format: "RingCentral Error [FeatureNotAvailable]: The requested feature is not available"
-            throw new Error(userFriendlyError);
+        } catch (error) {
+            // Error is already normalized if re-thrown above, but double check
+            if (error.message && error.message.startsWith('RingCentral Error')) throw error;
+            throw this._normalizeError(error);
         }
+    }
+
+    _normalizeError(error) {
+        const responseData = error.response?.data;
+        const errorCode = responseData?.errorCode || 'Unknown';
+        const errorMsg = responseData?.message || error.message;
+
+        console.error("RingCentral Send Error:", JSON.stringify(responseData || error.message));
+
+        let userFriendlyError = `RingCentral Error [${errorCode}]: ${errorMsg}`;
+
+        switch (errorCode) {
+            case 'InvalidAuthentication':
+                userFriendlyError = "Authentication with RingCentral failed. Please verify your JWT token and credentials.";
+                break;
+            case 'InvalidRequest':
+                if (errorMsg.includes('PhoneNumber.from')) {
+                    userFriendlyError = "Invalid 'From' number. The assigned line is not authorized for this account. (Fallback failed)";
+                }
+                break;
+            case 'FeatureNotAvailable':
+                userFriendlyError = "SMS feature is not available for this line/user. (Fallback failed)";
+                break;
+            case 'RateLimitExceeded': // Catch rate limits specifically
+                userFriendlyError = "RingCentral Rate Limit Exceeded. Please slow down.";
+                break;
+        }
+        return new Error(userFriendlyError);
     }
 
     async fetchAvailablePhoneNumbers() {

@@ -12,7 +12,11 @@ const bulkActions = require('./bulkActions');
 exports.initBulkSession = bulkActions.initBulkSession;
 exports.processBulkBatch = bulkActions.processBulkBatch;
 exports.retryFailedAttempts = bulkActions.retryFailedAttempts;
+exports.getFilterCount = bulkActions.getFilterCount;
+exports.getFilteredLeadsPage = bulkActions.getFilteredLeadsPage;
 exports.resumeBulkSession = bulkActions.resumeBulkSession;
+exports.pauseBulkSession = bulkActions.pauseBulkSession;
+exports.cancelBulkSession = bulkActions.cancelBulkSession;
 
 // Templates - REMOVED: All CRUD operations moved to frontend SDK
 
@@ -63,7 +67,8 @@ exports.handleLeadOutcome = leadDistribution.handleLeadOutcome;
 exports.migrateDriversToLeads = leadDistribution.migrateDriversToLeads;
 exports.confirmDriverInterest = leadDistribution.confirmDriverInterest;
 exports.runLeadDistribution = leadDistribution.runLeadDistribution;
-exports.planLeadDistribution = leadDistribution.planLeadDistribution;
+exports.runLeadDistribution = leadDistribution.runLeadDistribution;
+// exports.planLeadDistribution = leadDistribution.planLeadDistribution; // REMOVED
 exports.distributeDailyLeads = leadDistribution.distributeDailyLeads;
 exports.getLeadSupplyAnalytics = leadDistribution.getLeadSupplyAnalytics;
 // Lead Pool Management (new)

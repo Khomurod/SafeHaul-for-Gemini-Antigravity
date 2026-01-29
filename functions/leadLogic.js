@@ -71,12 +71,21 @@ async function runLeadDistribution(forceRotate = false) {
         // 3. Create a Cloud Task for EACH company (parallel execution)
         const queuePath = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
 
-        let workerUrl = `https://processcompanydistribution-kswpqm6w2q-uc.a.run.app/processCompanyDistribution`;
+        // Dynamic Worker URL Construction (Option 1)
+        let workerUrl = process.env.PROCESS_COMPANY_DISTRIBUTION_URL;
 
-        // Use environment variable if set (allows override)
-        if (process.env.PROCESS_COMPANY_DISTRIBUTION_URL) {
-            workerUrl = process.env.PROCESS_COMPANY_DISTRIBUTION_URL;
+        if (!workerUrl) {
+            // Fallback: Construct standard Firebase URL (Works for V1 and V2 Compatibility Proxy)
+            // Pattern: https://[REGION]-[PROJECT_ID].cloudfunctions.net/[FUNCTION_NAME]
+            workerUrl = `https://${LOCATION}-${PROJECT_ID}.cloudfunctions.net/processCompanyDistribution`;
         }
+
+        if (process.env.FUNCTIONS_EMULATOR) {
+            // Local Emulator URL pattern
+            workerUrl = `http://127.0.0.1:5001/${PROJECT_ID}/${LOCATION}/processCompanyDistribution`;
+        }
+
+        console.log(`Using Worker URL: ${workerUrl}`);
 
         const taskPromises = companies.map(async (company) => {
             const isPaid = company.planType?.toLowerCase() === 'paid';

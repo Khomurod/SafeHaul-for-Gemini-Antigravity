@@ -8,6 +8,7 @@ import { db } from '@lib/firebase';
 import { CampaignCard } from './components/CampaignCard';
 import { CampaignEditor } from './CampaignEditor';
 import { CampaignDetails } from './components/CampaignDetails';
+import DetailedReportModal from '../company-admin/components/DetailedReportModal';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 
 export function CampaignsDashboard({ companyId }) {
@@ -17,6 +18,7 @@ export function CampaignsDashboard({ companyId }) {
     const [activeTab, setActiveTab] = useState('drafts'); // 'drafts' | 'history'
     const [selectedCampaignId, setSelectedCampaignId] = useState(null);
     const [viewingSession, setViewingSession] = useState(null);
+    const [selectedReportSessionId, setSelectedReportSessionId] = useState(null);
     const { showSuccess, showError } = useToast();
 
     // 1. Fetch Drafts
@@ -231,10 +233,18 @@ export function CampaignsDashboard({ companyId }) {
                             campaign={campaign}
                             onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : setViewingSession(campaign)}
                             onDelete={handleDeleteCampaign}
+                            onViewReport={() => setSelectedReportSessionId(campaign.id)}
                         />
                     ))}
                 </div>
             )}
+
+            <DetailedReportModal
+                companyId={companyId}
+                sessionId={selectedReportSessionId}
+                isOpen={!!selectedReportSessionId}
+                onClose={() => setSelectedReportSessionId(null)}
+            />
         </div>
     );
 }

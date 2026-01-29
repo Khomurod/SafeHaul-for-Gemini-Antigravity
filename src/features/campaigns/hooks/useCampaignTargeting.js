@@ -1,157 +1,76 @@
-import { useState, useEffect } from 'react';
-import { db } from '@lib/firebase';
-import {
-    collection, query, where, getDocs,
-    limit, Timestamp, getCountFromServer
-} from 'firebase/firestore';
-import {
-    APPLICATION_STATUSES,
-    LAST_CALL_RESULTS,
-    getDbValue,
-    ERROR_MESSAGES
-} from '../constants/campaignConstants';
+import { useState, useEffect, useRef } from 'react';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase/config';
+import { ERROR_MESSAGES } from '../constants/campaignConstants';
 
-export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
-    const [filters, setFilters] = useState({
-        recruiterId: 'all',
-        status: [],
-        leadType: 'applications',
-        limit: 100,
-        createdAfter: '',
-        notContactedSince: '',
-        lastCallOutcome: 'all'
-    });
-
-    const [previewLeads, setPreviewLeads] = useState([]);
-    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+export function useCampaignTargeting(companyId, filters, currentUser) {
     const [matchCount, setMatchCount] = useState(0);
-    const [previewError, setPreviewError] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // Debounce ref to prevent rapid-fire queries
+    const timeoutRef = useRef(null);
 
     useEffect(() => {
-        let isCancelled = false;
+        // --- 1. DEFENSIVE GUARDS ---
+        if (!currentUser || !companyId) return;
 
-        const fetchTargetingData = async () => {
-            // --- 1. DEFENSIVE GUARDS (Bulletproof Logic) ---
-            if (isAuthLoading) {
-                setPreviewError(ERROR_MESSAGES.LOADING);
-                return;
-            }
-            if (!currentUser) {
-                setPreviewError(ERROR_MESSAGES.MISSING_AUTH);
-                return;
-            }
-            if (!companyId) {
-                setPreviewError(ERROR_MESSAGES.MISSING_COMPANY);
-                return;
-            }
-
-            setIsPreviewLoading(true);
-            setPreviewError(null);
+        const fetchCount = async () => {
+            setIsLoading(true);
+            setError(null);
 
             try {
-                let q;
+                const getCountFn = httpsCallable(functions, 'getFilterCount');
 
-                // --- 2. SMART SEGMENT BYPASS ---
-                if (filters.segmentId && filters.segmentId !== 'all') {
-                    q = query(collection(db, 'companies', companyId, 'segments', filters.segmentId, 'members'));
-                } else {
-                    // --- 3. DYNAMIC FILTERING (Using Unified Dictionary) ---
-                    let baseRef;
-                    if (filters.leadType === 'global') {
-                        baseRef = collection(db, 'leads');
-                    } else if (filters.leadType === 'leads') {
-                        // Allow ALL leads in the company's subcollection, not just platform leads
-                        // This fixes issues where imported/migrated leads aren't shown
-                        baseRef = collection(db, 'companies', companyId, 'leads');
-                    } else {
-                        baseRef = collection(db, 'companies', companyId, 'applications');
-                    }
+                // Prepare backend-compatible filters
+                const backendFilters = {
+                    ...filters,
+                    // Map booleans/strings to backend expectations if necessary
+                    excludeRecentDays: filters.excludeRecentDays ? 7 : null,
+                    campaignLimit: filters.campaignLimit ? parseInt(filters.campaignLimit) : null
+                };
 
-                    q = query(baseRef);
+                const result = await getCountFn({ companyId, filters: backendFilters });
+                let count = result.data.count || 0;
 
-                    // Status Filter (Mapped from Dictionary)
-                    if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
-                        const dbStatuses = filters.status.map(s => getDbValue(s, APPLICATION_STATUSES));
-                        q = query(q, where('status', 'in', dbStatuses));
-                    }
-
-                    // Recruiter Filter
-                    if (filters.recruiterId === 'my_leads') {
-                        q = query(q, where('assignedTo', '==', currentUser.uid));
-                    } else if (filters.recruiterId && filters.recruiterId !== 'all') {
-                        q = query(q, where('assignedTo', '==', filters.recruiterId));
-                    }
-
-                    // Created After Filter
-                    if (filters.createdAfter) {
-                        const date = new Date(filters.createdAfter);
-                        q = query(q, where('createdAt', '>=', Timestamp.fromDate(date)));
-                    }
-
-                    // Not Contacted Since Filter
-                    if (filters.notContactedSince) {
-                        const days = parseInt(filters.notContactedSince);
-                        const date = new Date();
-                        date.setDate(date.getDate() - days);
-                        q = query(q, where('lastContactedAt', '<=', Timestamp.fromDate(date)));
-                    }
-
-                    // Last Call Outcome Filter (Mapped from Dictionary)
-                    if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
-                        const dbOutcome = getDbValue(filters.lastCallOutcome, LAST_CALL_RESULTS);
-                        q = query(q, where('lastCallOutcome', '==', dbOutcome));
-                    }
+                // Apply client-side cap visualization if set
+                if (backendFilters.campaignLimit) {
+                    count = Math.min(count, backendFilters.campaignLimit);
                 }
 
-                // Fetch Count
-                const countSnap = await getCountFromServer(q);
-                const count = countSnap.data().count;
-
-                if (!isCancelled) {
-                    setMatchCount(count);
-                    // --- 4. ZERO RESULTS HANDLING ---
-                    if (count === 0) {
-                        setPreviewError(ERROR_MESSAGES.ZERO_RESULTS);
-                    }
-                }
-
-                // Fetch Preview
-                const snap = await getDocs(query(q, limit(filters.limit)));
-                if (!isCancelled) {
-                    setPreviewLeads(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-                }
+                setMatchCount(count);
+                if (count === 0) setError(ERROR_MESSAGES.ZERO_RESULTS);
 
             } catch (err) {
                 console.error("Targeting Error:", err);
-                if (!isCancelled) {
-                    setPreviewLeads([]);
-                    setMatchCount(0);
-                    setPreviewError(err.message);
-                }
+                setMatchCount(0);
+                setError("Failed to calculate audience.");
             } finally {
-                if (!isCancelled) setIsPreviewLoading(false);
+                setIsLoading(false);
             }
         };
 
-        const timer = setTimeout(fetchTargetingData, 500);
-        return () => { isCancelled = true; clearTimeout(timer); };
+        // Clear previous timeout
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+        // Set new timeout (Debounce 500ms)
+        timeoutRef.current = setTimeout(fetchCount, 500);
+
+        return () => clearTimeout(timeoutRef.current);
     }, [
+        // Deep dependency check on relevant filter keys to trigger re-fetch
         filters.leadType,
-        filters.status,
+        filters.status?.join(','), // Join array to primitive for stable comparison
         filters.recruiterId,
         filters.createdAfter,
         filters.notContactedSince,
         filters.lastCallOutcome,
         filters.segmentId,
-        filters.limit,
+        filters.excludeRecentDays,
+        filters.campaignLimit,
         companyId,
-        currentUser,
-        isAuthLoading
+        currentUser
     ]);
 
-    return {
-        filters, setFilters,
-        previewLeads, isPreviewLoading,
-        matchCount, previewError
-    };
+    return { matchCount, isLoading, error };
 }

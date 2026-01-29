@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Rocket, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Rocket, Loader2, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -9,6 +9,7 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     const navigate = useNavigate();
     const { showSuccess, showError } = useToast();
     const [isLaunching, setIsLaunching] = useState(false);
+
     const handleLaunch = async () => {
         if (!companyId) return showError("Company ID missing");
 
@@ -16,10 +17,14 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
         try {
             const initBulkSession = httpsCallable(functions, 'initBulkSession');
 
+            // Extract rawData if present in filters (passed from AudienceBuilder)
+            const { rawData, ...cleanFilters } = campaign.filters || {};
+
             const payload = {
                 companyId,
                 name: campaign.name,
-                filters: campaign.filters,
+                filters: cleanFilters,
+                rawData: rawData || null,
                 messageConfig: campaign.messageConfig,
                 scheduledFor: null // User requested removal of scheduling ("action and shot")
             };
@@ -52,14 +57,17 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
 
     const isValid = errors.length === 0;
 
+    // Time Estimation (Sequential: 3s per lead)
+    const estimatedMinutes = Math.ceil(((campaign.matchCount || 0) * 3) / 60);
+
     return (
         <div className="max-w-2xl mx-auto text-center pt-12">
-            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl">
-                <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Rocket size={40} className="text-blue-600" />
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Rocket size={32} className="text-blue-600" />
                 </div>
 
-                <h2 className="text-3xl font-black text-slate-900 mb-2">Ready for Liftoff?</h2>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Ready for Liftoff?</h2>
                 <p className="text-slate-500 mb-8 max-w-md mx-auto">
                     You are about to message <strong>{campaign.matchCount || 0}</strong> recipients via <strong>{campaign.messageConfig?.method === 'email' ? 'Email' : 'SMS'}</strong>.
                 </p>
@@ -78,8 +86,15 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
                         </ul>
                     </div>
                 ) : (
-                    <div className="bg-emerald-50 p-6 rounded-2xl mb-8 flex items-center justify-center gap-2 text-emerald-800 font-bold">
-                        <CheckCircle size={20} /> All Systems Go
+                    <div className="bg-emerald-50 p-6 rounded-2xl mb-8 flex flex-col items-center justify-center gap-2 text-emerald-800 font-bold">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle size={20} /> All Systems Go
+                        </div>
+                        {campaign.matchCount > 0 && (
+                            <div className="text-xs font-medium text-emerald-600 flex items-center gap-1">
+                                <Clock size={12} /> Est. Duration: ~{estimatedMinutes} min
+                            </div>
+                        )}
                     </div>
                 )}
 

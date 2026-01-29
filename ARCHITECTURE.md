@@ -67,15 +67,55 @@ The Lead Distribution system (`functions/leadLogic.js`) operates on a **Dealer A
 
 ---
 
-## 5. SMS Integration (Digital Wallet)
+## 5. SMS Integration (The "Digital Wallet")
 
-SafeHaul uses a multi-tenant **Digital Wallet** to manage SMS provider credentials.
+SafeHaul uses a robust, multi-tenant system to manage SMS provider credentials (RingCentral) and routing.
 
-### A. Factory Pattern
-`SMSAdapterFactory` fetches encrypted credentials (`sms_provider`), decrypts them using the server's `SMS_ENCRYPTION_KEY`, and instantiates the correct provider adapter (e.g., RingCentral).
+### A. Factory Pattern (`SMSAdapterFactory.js`)
+*   **Role**: The Gatekeeper.
+*   **Process**:
+    1.  Fetches encrypted credentials (`sms_provider`) from `companies/{id}/integrations`.
+    2.  Decrypts them using the server-side `SMS_ENCRYPTION_KEY`.
+    3.  Instantiates the correct provider adapter (e.g., `RingCentralAdapter`) with the decrypted config.
 
-### B. The Keychain
-Secure tokens (like JWTs) for individual phone lines are stored in `companies/{id}/integrations/sms_provider/keychain/{phoneNumber}`. This allows multiple recruiters to use separate lines under one company account.
+### B. The Keychain (User-Level Routing)
+*   **Concept**: A company has one main account, but many recruiters.
+*   **Storage**: `companies/{id}/integrations/sms_provider/keychain/{userId}`
+*   **Function**: Maps a specific `userId` to a specific `phoneNumber`.
+*   **Usage**: When `sendSMS` is called with a `userId`, the adapter looks up this map to determine which "From" number to use.
 
-### C. Security
-Credentials are **NEVER** exposed to the frontend. The frontend calls `sendSMS(from, to, body)`, and the backend handles routing and authentication behind the scenes.
+### C. Automatic Fallback Strategy (The "Safety Net")
+To prevent message failures when a recruiter's direct line is misconfigured or lacks SMS permissions:
+1.  **Attempt 1**: Send from the Recruiter's assigned Direct Number.
+2.  **Failure Check**: If RingCentral returns a permission error (`FeatureNotAvailable` or `Invalid 'From' Number`)...
+3.  **Attempt 2 (Fallback)**: The system **automatically** retries sending the message using the **Company's Default Main Number**.
+4.  **Result**: The message gets delivered, ensuring business continuity even with imperfect configuration.
+
+### D. Security
+*   Credentials are never sent to the client.
+*   Encryption keys exist only in the Cloud Functions environment variables.
+
+
+---
+
+## 6. Bulk Actions State Machine
+
+The Bulk Messaging system (`functions/bulkActions.js`) uses a resilient, recursive worker pattern to process thousands of messages without hitting timeout limits.
+
+### A. recursive Worker Pattern (`processBulkBatch`)
+Instead of a long-running function, the system processes messages in small batches (e.g., 20 at a time).
+1.  **Fetch Batch**: Worker fetches the next 20 IDs based on `currentPointer`.
+2.  **Process**: Sends SMS/Email and logs result.
+3.  **Recurse**: If more items remain, the worker **calls itself** via Cloud Tasks (or HTTP fetch in V2) to process the next batch.
+
+### B. "Zombie Worker" Prevention (CRITICAL)
+To prevent "zombie" processes that keep sending after a user clicks Stop, the worker implements a **Double-Check Strategy**:
+
+1.  **Entry Check**: At the very start, if `status` is `cancelled` or `paused`, exit immediately.
+2.  **Exit Check (The Zombie Killer)**: At the *end* of the batch, before updating the database or recursing, it **fetches the status again**.
+    *   *Why?* A user might have clicked "Stop" while the batch was processing (e.g., during the 3-second delay).
+    *   *Action*: If the fresh status is `cancelled`/`paused`, the worker aborts and **does not** schedule the next batch. This guaranteed termination.
+
+### C. Session State Source
+Features like Pause/Stop require the `companyId` and `sessionId`.
+- **Frontend**: We do **NOT** rely on URL parameters (which can be unreliable). We rely on the global **DataContext** (`currentCompanyProfile.id`) to ensure the correct ID is always available.

@@ -21,23 +21,9 @@ const RUNTIME_OPTS = {
 };
 
 // --- 1. PLANNING PHASE (6:00 AM Central Time) ---
-exports.planLeadDistribution = onSchedule({
-    schedule: "0 6 * * *",
-    timeZone: "America/Chicago",
-    timeoutSeconds: 540,
-    memory: '512MiB'
-}, async (event) => {
-    try {
-        console.log("Running scheduled daily PLANNING (6:00 AM CT)...");
-        // For now, planning just identifies counts and marks pool leads. 
-        // We can extend this to set a 'plannedFor' flag later.
-        const result = await runLeadDistribution(false); // Run without rotation to 'prime' the engine
-        console.log("Planning result:", result);
-    } catch (error) {
-        console.error("Planning failed:", error);
-        Sentry.captureException(error); // Report to Sentry
-    }
-});
+// --- 1. PLANNING PHASE (REMOVED) ---
+// Previously scheduled for 6:00 AM. Removed as "useless" dry-run for now.
+// To restore: Re-add onSchedule trigger calling runLeadDistribution(false).
 
 // --- 2. EXECUTION PHASE (7:00 AM Central Time) ---
 exports.runLeadDistribution = onSchedule({

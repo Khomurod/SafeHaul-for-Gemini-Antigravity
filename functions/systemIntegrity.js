@@ -23,14 +23,14 @@ async function repairCollection(collectionName, schemaKey, isSubcollection = fal
         queryRef = db.collection(collectionName);
     }
 
-    // Snapshot all docs (Warning: heavy read for large DBs)
-    const snapshot = await queryRef.get();
+    // Stream docs (Efficient for large DBs, avoids memory crash)
+    const stream = queryRef.stream();
     let batch = db.batch();
     let batchSize = 0;
     let fixedCount = 0;
     let scannedCount = 0;
 
-    for (const doc of snapshot.docs) {
+    for await (const doc of stream) {
         const data = doc.data();
         const updates = {};
         let needsUpdate = false;

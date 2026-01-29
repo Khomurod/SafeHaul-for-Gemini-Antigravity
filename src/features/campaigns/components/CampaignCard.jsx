@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, MessageSquare, ChevronRight, MoreVertical, Trash2 } from 'lucide-react';
 
-export function CampaignCard({ campaign, onClick, onDelete }) {
+export function CampaignCard({ campaign, onClick, onDelete, onViewReport }) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef(null);
 
@@ -102,14 +102,25 @@ export function CampaignCard({ campaign, onClick, onDelete }) {
                 )}
             </div>
 
-            <div className="mt-4 flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-blue-500 transition-all">
-                <span className="flex items-center gap-1.5">
+            <div className="mt-4 flex items-center justify-between text-[10px] uppercase tracking-widest font-black">
+                <span className="flex items-center gap-1.5 text-slate-400">
                     <Calendar size={12} />
                     {campaign.updatedAt?.toDate() ? new Date(campaign.updatedAt.toDate()).toLocaleDateString() : 'Just now'}
                 </span>
-                <span className="flex items-center gap-0.5">
-                    View Details <ChevronRight size={12} />
-                </span>
+
+                <div className="flex items-center gap-3">
+                    {onViewReport && campaign.status !== 'draft' && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onViewReport(); }}
+                            className="text-blue-500 hover:text-blue-700 hover:underline"
+                        >
+                            View Report
+                        </button>
+                    )}
+                    <span className="flex items-center gap-0.5 text-slate-400 group-hover:text-blue-500 transition-all">
+                        Details <ChevronRight size={12} />
+                    </span>
+                </div>
             </div>
         </div>
     );

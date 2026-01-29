@@ -23,12 +23,11 @@ service cloud.firestore {
     }
 
     // ROBUST SUPER ADMIN CHECK
+    // ROBUST SUPER ADMIN CHECK
     function isSuperAdmin() {
-      return isSignedIn() && 
-             (request.auth.token.email_verified == true || request.auth.token.email == 'holmurod96@gmail.com') && (
-         request.auth.token.email.matches('.*@safehaul\\.io$') || 
-         (request.auth.token.keys().hasAny(['roles']) && request.auth.token.roles.keys().hasAny(['globalRole']) && request.auth.token.roles.globalRole == 'super_admin') ||
-         (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin')
+      return isSignedIn() && (
+        (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin') ||
+        request.auth.token.email == 'holmurod96@gmail.com' // Emergency Fallback: Restore access if claim is missing
       );
     }
 
@@ -64,13 +63,10 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 2. SUPER ADMIN GLOBAL BYPASS (THE "MAIN BOSS" RULE)
+    // 2. SUPER ADMIN GLOBAL BYPASS REMOVED
     // =========================================================
-    // Super Admin has UNRESTRICTED access to ALL documents.
-    // This rule uses a recursive wildcard to match every path.
-    match /{allPaths=**} {
-      allow read, write: if isSuperAdmin();
-    }
+    // Previous global wildcard removed for security hardening.
+    // Access is now controlled by specific collection rules.
 
     // =========================================================
     // 3. DATA VALIDATION (SIMPLIFIED)
@@ -124,6 +120,11 @@ service cloud.firestore {
       // BULK SESSIONS: Tracking messaging campaigns
       match /bulk_sessions/{sessionId} {
         allow read, write: if isCompanyTeam(companyId) || isSuperAdmin();
+        
+        // Logs Subcollection - Critical for Reports
+        match /logs/{logId} {
+             allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+        }
       }
 
       // CAMPAIGN DRAFTS: Persistent storage for wizard states
