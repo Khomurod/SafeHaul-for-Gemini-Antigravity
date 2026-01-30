@@ -3,6 +3,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onRequest } = require("firebase-functions/v2/https");
 const { admin, db } = require("./firebaseAdmin");
+const { deleteCompanySchema, sendEmailSchema } = require("./shared/schema");
 
 // --- IN-MEMORY CACHE FOR SLUG RESOLUTION (REMOVED - HANDLED CLIENT SIDE) ---
 
@@ -14,15 +15,17 @@ exports.deleteCompany = onCall({
 }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
 
+    // INPUT VALIDATION
+    const { error, value } = deleteCompanySchema.validate(request.data);
+    if (error) throw new HttpsError('invalid-argument', error.message);
+    const { companyId } = value;
+
     // STRICTER AUTH: Use the custom claim we set in rules/auth logic
     const roles = request.auth.token.roles || {};
     const globalRole = request.auth.token.globalRole || roles.globalRole;
     const isSuperAdmin = globalRole === "super_admin";
 
     if (!isSuperAdmin) throw new HttpsError('permission-denied', 'Only Super Admins can delete companies.');
-
-    const { companyId } = request.data;
-    if (!companyId) throw new HttpsError('invalid-argument', 'Missing companyId.');
 
     // const { db, admin } = getServices(); // REMOVED
     const storage = admin.storage();
@@ -68,8 +71,10 @@ exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
     // SECURITY: Strict Auth Check
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
 
-    const { companyId, recipientEmail, triggerType, placeholders } = request.data;
-    if (!companyId || !recipientEmail) throw new HttpsError('invalid-argument', 'Missing parameters.');
+    // INPUT VALIDATION
+    const { error, value } = sendEmailSchema.validate(request.data);
+    if (error) throw new HttpsError('invalid-argument', error.message);
+    const { companyId, recipientEmail, triggerType, placeholders } = value;
 
     try {
         const { sendDynamicEmail } = require('./emailService');

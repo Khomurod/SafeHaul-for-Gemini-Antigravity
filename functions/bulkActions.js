@@ -42,30 +42,7 @@ const assertCompanyAdmin = async (userId, companyId) => {
     return; // ALLOW TEMPORARILY
 };
 
-// --- CONSTANTS (Synced with Frontend) ---
-const APPLICATION_STATUSES = [
-    { id: 'new', label: 'New Application', value: 'New Application' },
-    { id: 'contacted', label: 'Contacted', value: 'Contacted' },
-    { id: 'interview', label: 'Interview Scheduled', value: 'Interview Scheduled' },
-    { id: 'offer', label: 'Offer Sent', value: 'Offer Sent' },
-    { id: 'hired', label: 'Hired', value: 'Hired' },
-    { id: 'rejected', label: 'Rejected', value: 'Rejected' },
-    { id: 'withdrawn', label: 'Withdrawn', value: 'Withdrawn' },
-    { id: 'inactive', label: 'Inactive (30d+)', value: 'Inactive' }
-];
-
-const LAST_CALL_RESULTS = [
-    { id: 'no_answer', label: 'No Answer', value: 'No Answer' },
-    { id: 'left_voicemail', label: 'Left Voicemail', value: 'Left Voicemail' },
-    { id: 'busy', label: 'Busy', value: 'Busy' },
-    { id: 'wrong_number', label: 'Wrong Number', value: 'Wrong Number' },
-    { id: 'not_interested', label: 'Not Interested', value: 'Not Interested' }
-];
-
-const getDbValue = (id, dictionary) => {
-    const item = dictionary.find(i => i.id === id);
-    return item ? item.value : id;
-};
+const { APPLICATION_STATUSES, LAST_CALL_RESULTS, getDbValue } = require("./shared/constants");
 
 const PROJECT_ID = (admin.apps.length ? admin.app().options.projectId : null) || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
 
@@ -187,6 +164,10 @@ exports.getFilterCount = onCall(async (request) => {
     // No assertCompanyAdmin needed strictly for counting? Safer to add it.
     await assertCompanyAdmin(userId, companyId);
 
+    const { handleError } = require("./shared/errorHandler");
+
+    // ... inside getFilterCount ...
+
     try {
         if (filters.segmentId && filters.segmentId !== 'all') {
             const segmentSnap = await db.collection('companies').doc(companyId)
@@ -199,8 +180,7 @@ exports.getFilterCount = onCall(async (request) => {
         const countSnap = await q.count().get();
         return { count: countSnap.data().count };
     } catch (error) {
-        console.error("getFilterCount Error:", error);
-        throw new HttpsError('internal', error.message);
+        handleError(error, "getFilterCount", { companyId, userId });
     }
 });
 
@@ -248,15 +228,13 @@ exports.getFilteredLeadsPage = onCall(async (request) => {
             // Order required for cursor pagination
             q = q.orderBy(admin.firestore.FieldPath.documentId());
 
-            q = q.limit(pageSize);
+
+            // STRICT PAGINATION ENFORCEMENT
+            const safeLimit = Math.min(pageSize, 100); // Hard cap at 100
+            q = q.limit(safeLimit);
 
             if (lastDocId) {
-                const lastDocSnap = await buildLeadQuery(companyId, filters, userId)
-                    .orderBy(admin.firestore.FieldPath.documentId())
-                    .where(admin.firestore.FieldPath.documentId(), '==', lastDocId)
-                    .get(); // Inefficient to fetch last doc just for cursor? 
-                // Better to use startAfter(lastDocId) directly if using documentId order?
-                // Actually startAfter with ID string works if ordering by documentId!
+                // Directly use startAfter with ID if ordered by documentId
                 q = q.startAfter(lastDocId);
             }
 
@@ -276,8 +254,7 @@ exports.getFilteredLeadsPage = onCall(async (request) => {
             lastDocId: docs.length > 0 ? docs[docs.length - 1].id : null
         };
     } catch (error) {
-        console.error("getFilteredLeadsPage Error:", error);
-        throw new HttpsError('internal', error.message);
+        handleError(error, "getFilteredLeadsPage", { companyId, userId });
     }
 });
 

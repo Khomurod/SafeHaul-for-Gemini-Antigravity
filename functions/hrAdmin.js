@@ -129,6 +129,48 @@ exports.onMembershipWrite = onDocumentWritten({
 
     await auth.setCustomUserClaims(userId, newClaims);
     console.log(`Claims synced for user ${userId}. Global Admin: ${isGlobalAdmin}`);
+
+    // --- 2. Sync Team List to Company Document (Prevention of N+1 Queries) ---
+    const companyIdsToUpdate = new Set();
+    if (before && before.companyId) companyIdsToUpdate.add(before.companyId);
+    if (after && after.companyId) companyIdsToUpdate.add(after.companyId);
+
+    // Filter out undefined/null
+    const validCompanyIds = Array.from(companyIdsToUpdate).filter(cid => cid);
+
+    for (const cid of validCompanyIds) {
+        try {
+            const teamSnap = await db.collection('memberships').where('companyId', '==', cid).get();
+
+            // Parallel fetch of user profiles
+            const userPromises = teamSnap.docs.map(async (doc) => {
+                const m = doc.data();
+                try {
+                    const uSnap = await db.collection('users').doc(m.userId).get();
+                    const uData = uSnap.exists ? uSnap.data() : {};
+                    return {
+                        userId: m.userId,
+                        role: m.role,
+                        name: uData.name || uData.displayName || 'Unknown',
+                        email: uData.email || ''
+                    };
+                } catch (e) {
+                    console.error(`Error fetching user ${m.userId} for company ${cid}:`, e);
+                    return { userId: m.userId, role: m.role, name: 'Unknown', email: '' };
+                }
+            });
+
+            const resolvedTeam = await Promise.all(userPromises);
+
+            await db.collection('companies').doc(cid).update({
+                teamMembers: resolvedTeam,
+                teamUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`Updated teamMembers cache for Company ${cid} (${resolvedTeam.length} members).`);
+        } catch (companyError) {
+            console.error(`Failed to update team cache for company ${cid}:`, companyError);
+        }
+    }
 });
 
 // --- 3. DELETE USER ---

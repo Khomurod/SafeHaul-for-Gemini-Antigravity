@@ -326,30 +326,45 @@ exports.forceUnlockPool = onCall(RUNTIME_OPTS, async (request) => {
     }
 });
 
-// --- 11. BAD LEADS ANALYTICS ---
-// Analyzes pool for quality issues
+// --- 11. BAD LEADS ANALYTICS (OPTIMIZED) ---
+// Reads cached stats instead of scanning.
 exports.getBadLeadsAnalytics = onCall(RUNTIME_OPTS, async (request) => {
     if (!request.auth || request.auth.token.roles?.globalRole !== 'super_admin') {
         throw new HttpsError("permission-denied", "Super Admin only.");
     }
-
     try {
-        console.log("Analyzing lead pool for quality issues...");
+        const doc = await db.collection("system_settings").doc("lead_pool_stats").get();
+        if (!doc.exists) return { success: false, message: "Stats calculation pending. Please wait for scheduled job." };
+        return { success: true, ...doc.data() };
+    } catch (error) {
+        Sentry.captureException(error);
+        throw new HttpsError("internal", error.message);
+    }
+});
 
-        // Get all leads for analysis (expensive but necessary for quality checks)
+// --- 13. REBUILD LEAD STATS (Background Worker) ---
+// Scans database to populate the cache. Runs monthly to correct drift.
+exports.rebuildLeadStats = onSchedule({
+    schedule: "0 3 1 * *", // 1st of month at 3 AM
+    timeZone: "America/Chicago",
+    timeoutSeconds: 540,
+    memory: '1GiB'
+}, async (event) => {
+    try {
+        console.log("Starting full lead pool scan for analytics...");
         const leadsSnap = await db.collection("leads").get();
 
         let stats = {
             total: leadsSnap.size,
-            missingContact: 0,      // No phone AND no email
-            missingNames: 0,        // No firstName AND no lastName AND no fullName
-            placeholderEmails: 0,   // Contains @placeholder
-            shortPhones: 0,         // Phone < 10 digits
-            testData: 0,            // Name contains 'test' or 'health check'
-            duplicatePhones: 0      // Will be calculated separately
+            missingContact: 0,
+            missingNames: 0,
+            placeholderEmails: 0,
+            shortPhones: 0,
+            testData: 0,
+            duplicatePhones: 0
         };
 
-        const phoneMap = new Map(); // Track phone occurrences
+        const phoneMap = new Map();
 
         leadsSnap.forEach(doc => {
             const d = doc.data();
@@ -357,65 +372,40 @@ exports.getBadLeadsAnalytics = onCall(RUNTIME_OPTS, async (request) => {
             const email = d.email || '';
             const firstName = d.firstName || '';
             const lastName = d.lastName || '';
-            const fullName = d.fullName || '';
-            const name = `${firstName} ${lastName} ${fullName}`.toLowerCase();
+            const name = `${firstName} ${lastName} ${d.fullName || ''}`.toLowerCase();
 
-            // Missing contact info
-            if (!phone && !email) {
-                stats.missingContact++;
-            }
+            if (!phone && !email) stats.missingContact++;
+            if (!firstName && !lastName && !d.fullName) stats.missingNames++;
+            if (email.includes('placeholder') || email.includes('no_email')) stats.placeholderEmails++;
 
-            // Missing name
-            if (!firstName && !lastName && !fullName) {
-                stats.missingNames++;
-            }
-
-            // Placeholder email
-            if (email.includes('placeholder') || email.includes('no_email')) {
-                stats.placeholderEmails++;
-            }
-
-            // Short phone
             const cleanPhone = phone.replace(/\D/g, '');
-            if (cleanPhone && cleanPhone.length < 10) {
-                stats.shortPhones++;
-            }
+            if (cleanPhone && cleanPhone.length < 10) stats.shortPhones++;
+            if (name.includes('test') || name.includes('health check')) stats.testData++;
 
-            // Test data
-            if (name.includes('test') || name.includes('health check')) {
-                stats.testData++;
-            }
-
-            // Track phones for duplicate detection
             if (cleanPhone && cleanPhone.length >= 10) {
                 phoneMap.set(cleanPhone, (phoneMap.get(cleanPhone) || 0) + 1);
             }
         });
 
-        // Count duplicates
         for (const [phone, count] of phoneMap) {
-            if (count > 1) {
-                stats.duplicatePhones += count - 1; // Count the extras
-            }
+            if (count > 1) stats.duplicatePhones += count - 1;
         }
 
-        // Calculate total bad leads (unique, some may overlap)
-        stats.totalBad = stats.missingContact + stats.testData + stats.missingNames;
-
-        return {
-            success: true,
+        // Save Cache
+        await db.collection('system_settings').doc('lead_pool_stats').set({
             stats: stats,
             breakdown: {
                 critical: stats.missingContact + stats.testData,
                 warning: stats.placeholderEmails + stats.shortPhones + stats.missingNames,
                 info: stats.duplicatePhones
-            }
-        };
+            },
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        });
 
+        console.log("Lead stats rebuilt successfully.");
     } catch (error) {
-        console.error("Bad Leads Analytics Error:", error);
+        console.error("Rebuild Stats Failed:", error);
         Sentry.captureException(error);
-        throw new HttpsError("internal", error.message);
     }
 });
 

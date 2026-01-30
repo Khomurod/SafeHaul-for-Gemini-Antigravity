@@ -3,6 +3,7 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 // UPDATED: Import from shared singleton
 const { admin, db, auth } = require("./firebaseAdmin");
+const { LIFECYCLE_STATUSES } = require("./shared/constants");
 
 /**
  * SHARED HELPER: Finds or Creates the Auth User and syncs data to the Master Profile.
@@ -72,6 +73,10 @@ async function processDriverData(data, docId) {
 
   if (!driverUid) return;
 
+  const { encrypt } = require("./integrations/encryption");
+
+  // ... inside processDriverData ...
+
   // 2. Create Staging/Pending Update (Instead of Overwriting Master Profile)
   const driverDocRef = db.collection("drivers").doc(driverUid);
 
@@ -89,7 +94,8 @@ async function processDriverData(data, docId) {
         lastName: data.lastName || "",
         email: email,
         phone: data.phone || "",
-        // ... strict subset of safe fields
+        // STRICT ENCRYPTION for SSN
+        ssn: data.ssn ? encrypt(data.ssn) : null
       },
       qualifications: {
         experienceYears: data.experience || data['experience-years'] || "",
@@ -144,7 +150,7 @@ exports.onApplicationSubmitted = onDocumentCreated({
 
       // Update lifecycle to processing
       transaction.update(appRef, {
-        'lifecycle.status': 'processing',
+        'lifecycle.status': LIFECYCLE_STATUSES.PROCESSING,
         'lifecycle.processingStartedAt': admin.firestore.FieldValue.serverTimestamp(),
         'lifecycle.triggerVersion': '2.0-bulletproof',
       });
@@ -170,14 +176,26 @@ exports.onApplicationSubmitted = onDocumentCreated({
   }
 
   // VALIDATION: Ensure signature exists for PDF generation
-  if (!data.signature || (!data.signature.startsWith('data:image') && !data.signature.startsWith('TEXT_SIGNATURE:'))) {
-    console.error(`[onApplicationSubmitted] Application ${appId} missing valid signature. Skipping processing.`);
+  // STRICT ENFORCEMENT: Reject if missing or invalid format
+  const sig = data.signature;
+  const hasValidSig = sig && (typeof sig === 'string') && (
+    sig.startsWith('data:image/') ||
+    sig.startsWith('TEXT_SIGNATURE:')
+  );
+
+  if (!hasValidSig) {
+    console.error(`[onApplicationSubmitted] REJECTED: Application ${appId} missing valid signature.`);
+
+    // Set status to validation_error but DO NOT process further
     await appRef.update({
       status: 'validation_error',
-      statusMessage: 'Missing or invalid signature',
-      'lifecycle.status': 'failed',
+      statusMessage: 'Missing or invalid signature. Application rejected.',
+      'lifecycle.status': LIFECYCLE_STATUSES.FAILED,
       'lifecycle.failureReason': 'invalid_signature',
+      'lifecycle.rejectedAt': admin.firestore.FieldValue.serverTimestamp()
     });
+
+    // Abort Sync - Do not create driver profile for invalid app
     return;
   }
 
@@ -225,7 +243,7 @@ exports.onApplicationSubmitted = onDocumentCreated({
     }, { merge: true });
 
     await appRef.update({
-      'lifecycle.status': 'complete',
+      'lifecycle.status': LIFECYCLE_STATUSES.COMPLETE,
       'lifecycle.processingCompletedAt': admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -235,13 +253,41 @@ exports.onApplicationSubmitted = onDocumentCreated({
   }
 });
 
+// HELPER: Real-time Stats Verification
+async function updateLeadStats(data, delta) {
+  try {
+    const inc = admin.firestore.FieldValue.increment;
+    const updates = { 'stats.total': inc(delta) };
+
+    const phone = data.phone || data.normalizedPhone || '';
+    const email = data.email || '';
+    const firstName = data.firstName || '';
+    const lastName = data.lastName || '';
+    const name = `${firstName} ${lastName} ${data.fullName || ''}`.toLowerCase();
+
+    if (!phone && !email) updates['stats.missingContact'] = inc(delta);
+    if (!firstName && !lastName && !data.fullName) updates['stats.missingNames'] = inc(delta);
+    if (email.includes('placeholder') || email.includes('no_email')) updates['stats.placeholderEmails'] = inc(delta);
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone && cleanPhone.length < 10) updates['stats.shortPhones'] = inc(delta);
+    if (name.includes('test') || name.includes('health check')) updates['stats.testData'] = inc(delta);
+
+    await db.collection('system_settings').doc('lead_pool_stats').set(updates, { merge: true });
+  } catch (e) {
+    console.warn("Failed to update lead stats:", e);
+  }
+}
+
 // 2. Global Leads (Unbranded)
 exports.onLeadSubmitted = onDocumentCreated({
   document: "leads/{leadId}",
   maxInstances: 2
 }, async (event) => {
   if (!event.data) return;
-  await processDriverData(event.data.data(), event.params.leadId);
+  const data = event.data.data();
+  await processDriverData(data, event.params.leadId);
+  await updateLeadStats(data, 1);
 });
 
 // 4. Sync Driver Log Activity (Fix for Permission Error + Support both 'activities' and 'activity_logs')

@@ -29,39 +29,47 @@ export function useAppFetch(companyId, applicationId) {
   const isGlobal = companyId === 'general-leads';
 
   useEffect(() => {
-      if(!companyId || isGlobal) return;
-      const fetchTeam = async () => {
-          try {
-              const q = query(collection(db, "memberships"), where("companyId", "==", companyId));
-              const snap = await simpleRetry(() => getDocs(q));
-              const members = [];
-              for(const m of snap.docs) {
-                  try {
-                      const uSnap = await getDoc(doc(db, "users", m.data().userId));
-                      if(uSnap.exists()) members.push({ id: uSnap.id, name: uSnap.data().name });
-                  } catch (innerErr) {
-                     console.warn("Failed to fetch team member details", innerErr);
-                  }
-              }
-              setTeamMembers(members);
-          } catch(e) {
-              console.error("Failed to load team.", e);
-          }
-      };
-      fetchTeam();
-  }, [companyId, isGlobal]);
+    if (!companyId || isGlobal) return;
+
+    const fetchTeam = async () => {
+      // OPTIMIZATION: Use denormalized data if available
+      if (companyProfile?.teamMembers && Array.isArray(companyProfile.teamMembers)) {
+        setTeamMembers(companyProfile.teamMembers);
+        return;
+      }
+
+      // FALLBACK: Manual fetch (Optimized to Parallel)
+      try {
+        const q = query(collection(db, "memberships"), where("companyId", "==", companyId));
+        const snap = await simpleRetry(() => getDocs(q));
+
+        const userPromises = snap.docs.map(m => getDoc(doc(db, "users", m.data().userId)));
+        const userSnaps = await Promise.all(userPromises);
+
+        const members = userSnaps
+          .filter(s => s.exists())
+          .map(s => ({ id: s.id, name: s.data().name || s.data().displayName || 'Unknown' }));
+
+        setTeamMembers(members);
+      } catch (e) {
+        console.error("Failed to load team.", e);
+      }
+    };
+
+    fetchTeam();
+  }, [companyId, isGlobal, companyProfile]);
 
   const loadApplication = useCallback(async () => {
     if (!companyId || !applicationId) return;
     setLoading(true);
     setError('');
-    
+
     try {
       if (!isGlobal) {
-          const companyProf = await getCompanyProfile(companyId); 
-          setCompanyProfile(companyProf);
+        const companyProf = await getCompanyProfile(companyId);
+        setCompanyProfile(companyProf);
       } else {
-          setCompanyProfile({ companyName: "General Pool (SafeHaul)" });
+        setCompanyProfile({ companyName: "General Pool (SafeHaul)" });
       }
 
       let coll = 'applications';
@@ -69,36 +77,36 @@ export function useAppFetch(companyId, applicationId) {
       let docSnap;
 
       if (isGlobal) {
-          coll = 'leads';
-          docRef = doc(db, 'leads', applicationId);
+        coll = 'leads';
+        docRef = doc(db, 'leads', applicationId);
+        docSnap = await simpleRetry(() => getDoc(docRef));
+
+        if (!docSnap.exists()) {
+          coll = 'drivers';
+          docRef = doc(db, 'drivers', applicationId);
           docSnap = await simpleRetry(() => getDoc(docRef));
 
-          if (!docSnap.exists()) {
-              coll = 'drivers';
-              docRef = doc(db, 'drivers', applicationId);
-              docSnap = await simpleRetry(() => getDoc(docRef));
-              
-              if (docSnap.exists()) {
-                  const d = docSnap.data();
-                  const flattened = {
-                      ...d,
-                      ...d.personalInfo,
-                      ...d.driverProfile,
-                      experience: d.qualifications?.experienceYears || '',
-                      source: 'Bulk Import'
-                  };
-                  docSnap = { exists: () => true, data: () => flattened, id: docSnap.id, ref: docSnap.ref };
-              }
+          if (docSnap.exists()) {
+            const d = docSnap.data();
+            const flattened = {
+              ...d,
+              ...d.personalInfo,
+              ...d.driverProfile,
+              experience: d.qualifications?.experienceYears || '',
+              source: 'Bulk Import'
+            };
+            docSnap = { exists: () => true, data: () => flattened, id: docSnap.id, ref: docSnap.ref };
           }
+        }
       } else {
+        docRef = doc(db, "companies", companyId, coll, applicationId);
+        docSnap = await simpleRetry(() => getDoc(docRef));
+
+        if (!docSnap.exists()) {
+          coll = 'leads';
           docRef = doc(db, "companies", companyId, coll, applicationId);
           docSnap = await simpleRetry(() => getDoc(docRef));
-
-          if (!docSnap.exists()) {
-              coll = 'leads';
-              docRef = doc(db, "companies", companyId, coll, applicationId);
-              docSnap = await simpleRetry(() => getDoc(docRef));
-          }
+        }
       }
 
       if (docSnap.exists()) {
@@ -107,16 +115,16 @@ export function useAppFetch(companyId, applicationId) {
         setAppData(data);
         setCurrentStatus(data.status || 'New Application');
         setAssignedTo(data.assignedTo || '');
-     
+
         const getUrl = async (fileData) => {
           if (!fileData) return null;
           try {
-              if (fileData.storagePath) {
-                 return await getDownloadURL(ref(storage, fileData.storagePath));
-              }
-              return fileData.url || null;
-          } catch (e) { 
-              return null;
+            if (fileData.storagePath) {
+              return await getDownloadURL(ref(storage, fileData.storagePath));
+            }
+            return fileData.url || null;
+          } catch (e) {
+            return null;
           }
         };
 
@@ -125,9 +133,9 @@ export function useAppFetch(companyId, applicationId) {
           getUrl(data['med-card-upload']), getUrl(data['twic-card-upload']),
           getUrl(data['mvr-consent-upload']), getUrl(data['drug-test-consent-upload'])
         ]);
-        
+
         setFileUrls({ cdl, cdlBack, ssc, medical, twic, mvrConsent, drugTestConsent });
-        
+
       } else {
         setError(`Could not find record (ID: ${applicationId}).`);
       }
@@ -144,21 +152,21 @@ export function useAppFetch(companyId, applicationId) {
   }, [loadApplication]);
 
   return {
-      loading,
-      error,
-      appData,
-      setAppData,
-      companyProfile,
-      collectionName,
-      fileUrls,
-      setFileUrls,
-      teamMembers,
-      currentStatus,
-      setCurrentStatus,
-      assignedTo,
-      setAssignedTo,
-      isGlobal,
-      loadApplication,
-      simpleRetry
+    loading,
+    error,
+    appData,
+    setAppData,
+    companyProfile,
+    collectionName,
+    fileUrls,
+    setFileUrls,
+    teamMembers,
+    currentStatus,
+    setCurrentStatus,
+    assignedTo,
+    setAssignedTo,
+    isGlobal,
+    loadApplication,
+    simpleRetry
   };
 }
