@@ -32,10 +32,20 @@ const deleteCompanySchema = Joi.object({
     companyId: idSchema
 });
 
+const initBulkSessionSchema = Joi.object({
+    companyId: idSchema,
+    filters: Joi.object().required(),
+    messageConfig: Joi.object().required(),
+    scheduledFor: Joi.string().isoDate().allow(null),
+    name: Joi.string().allow('', null),
+    rawData: Joi.array().items(Joi.object()).allow(null)
+});
+
 module.exports = {
     emailSchema,
     idSchema,
     companyUpdateSchema,
     sendEmailSchema,
-    deleteCompanySchema
+    deleteCompanySchema,
+    initBulkSessionSchema
 };

@@ -26,8 +26,7 @@ service cloud.firestore {
     // ROBUST SUPER ADMIN CHECK
     function isSuperAdmin() {
       return isSignedIn() && (
-        (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin') ||
-        request.auth.token.email == 'holmurod96@gmail.com' // Emergency Fallback: Restore access if claim is missing
+        (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin')
       );
     }
 

@@ -37,9 +37,8 @@ const assertCompanyAdmin = async (userId, companyId) => {
         if (userData.role === 'admin') return;
     }
 
-    console.warn(`[Auth Failure] User ${userId} denied access to Company ${companyId}. Fields checked: ownerId, createdBy, adminId. BYPASSING FOR DEBUGGING.`);
-    // throw new HttpsError('permission-denied', 'You do not have administrative access to this company.');
-    return; // ALLOW TEMPORARILY
+    console.warn(`[Auth Failure] User ${userId} denied access to Company ${companyId}. Fields checked: ownerId, createdBy, adminId.`);
+    throw new HttpsError('permission-denied', 'You do not have administrative access to this company.');
 };
 
 const { APPLICATION_STATUSES, LAST_CALL_RESULTS, getDbValue } = require("./shared/constants");
@@ -265,7 +264,15 @@ exports.getFilteredLeadsPage = onCall(async (request) => {
 exports.initBulkSession = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
 
-    const { companyId, filters, messageConfig, scheduledFor, name, rawData } = request.data;
+    const { initBulkSessionSchema } = require("./shared/schema");
+
+    // VALIDATION: Strict Schema Check
+    const { error, value } = initBulkSessionSchema.validate(request.data);
+    if (error) {
+        throw new HttpsError('invalid-argument', `Validation Error: ${error.details[0].message}`);
+    }
+
+    const { companyId, filters, messageConfig, scheduledFor, name, rawData } = value;
     const userId = request.auth.uid;
 
     if (!companyId || !filters || !messageConfig) {

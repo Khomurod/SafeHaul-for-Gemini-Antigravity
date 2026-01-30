@@ -206,13 +206,26 @@ export async function getSavedJobs(driverId) {
 // --- Application Logic ---
 export async function uploadApplicationFile(companyId, userId, fieldName, file) {
     if (!file) return null;
+
+    // 1. Size Check (20MB)
+    if (file.size > 20 * 1024 * 1024) {
+        throw new Error("File exceeds 20MB limit.");
+    }
+
     const basePath = companyId
         ? `companies/${companyId}/applications/${userId}`
         : `global_leads/${userId}`;
 
-    // Fix: Sanitize filename to prevent path issues
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const storagePath = `${basePath}/${fieldName}/${Date.now()}_${sanitizedName}`;
+    // Fix: Sanitize filename to prevent path issues + Truncate
+    let cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    if (cleanName.length > 64) {
+        const parts = cleanName.split('.');
+        const ext = parts.pop();
+        const base = parts.join('.').substring(0, 64 - ext.length - 1);
+        cleanName = `${base}.${ext}`;
+    }
+
+    const storagePath = `${basePath}/${fieldName}/${Date.now()}_${cleanName}`;
     const fileRef = ref(storage, storagePath);
 
     // RETRY LOGIC (3 attempts)

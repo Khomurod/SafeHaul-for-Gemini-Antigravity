@@ -67,7 +67,6 @@ exports.handleLeadOutcome = leadDistribution.handleLeadOutcome;
 exports.migrateDriversToLeads = leadDistribution.migrateDriversToLeads;
 exports.confirmDriverInterest = leadDistribution.confirmDriverInterest;
 exports.runLeadDistribution = leadDistribution.runLeadDistribution;
-exports.runLeadDistribution = leadDistribution.runLeadDistribution;
 // exports.planLeadDistribution = leadDistribution.planLeadDistribution; // REMOVED
 exports.distributeDailyLeads = leadDistribution.distributeDailyLeads;
 exports.getLeadSupplyAnalytics = leadDistribution.getLeadSupplyAnalytics;

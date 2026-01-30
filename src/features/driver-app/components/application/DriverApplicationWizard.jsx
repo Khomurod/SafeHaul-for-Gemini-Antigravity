@@ -227,18 +227,54 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
     } catch (error) {
       console.error("Upload failed:", error);
-      showError("Upload failed. Please try again.");
+      let msg = "Upload failed. Please try again.";
+      if (error.message.includes("exceeds 20MB")) msg = "File is too large (Max 20MB).";
+      showError(msg);
       throw error; // Re-throw so UploadField can handle error state
     } finally {
       setIsUploading(false);
     }
   };
 
+  // VALIDATION HELPER
+  const validateForm = () => {
+    if (!schema?.sections) return [];
+    const missing = [];
+
+    // 1. Check sections
+    schema.sections.forEach(section => {
+      section.fields.forEach(field => {
+        if (field.required && !formData[field.id]) {
+          // Special case: boolean fields might be false but valid, check undefined/null/empty string
+          if (formData[field.id] !== 0 && formData[field.id] !== false) {
+            missing.push(field.label);
+          }
+        }
+      });
+    });
+
+    // 2. Custom Questions
+    customQuestions.forEach(q => {
+      if (q.required && !formData[q.id]) {
+        missing.push(q.label || q.question);
+      }
+    });
+
+    return missing;
+  };
+
   const handleFinalSubmit = async () => {
+    // 0. GENERIC VALIDATION
+    const missingFields = validateForm();
+    if (missingFields.length > 0) {
+      showError(`Missing required fields: ${missingFields.slice(0, 3).join(', ')}${missingFields.length > 3 ? '...' : ''}`);
+      return;
+    }
+
     // FIX: Add Validation for Signature and Certification
     if (!formData.signature || !formData['final-certification']) {
       showError("Please provide your signature and certify the application.");
-      setCurrentStep(8); // Jump to Step 9
+      setCurrentStep(schema?.sections?.length || 8); // Jump to last step (approx)
       return;
     }
 
