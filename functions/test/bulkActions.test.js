@@ -22,7 +22,11 @@ jestMock.mock('firebase-admin', () => {
         doc: docFn,
         where: jestMock.fn().mockReturnThis(),
         limit: jestMock.fn().mockReturnThis(),
-        get: jestMock.fn().mockResolvedValue({ docs: [] })
+        select: jestMock.fn().mockReturnThis(),
+        orderBy: jestMock.fn().mockReturnThis(),
+        startAfter: jestMock.fn().mockReturnThis(),
+        get: jestMock.fn().mockResolvedValue({ docs: [] }),
+        count: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ data: () => ({ count: 0 }) }) }))
     }));
 
     const docFn = jestMock.fn(() => ({
@@ -46,6 +50,9 @@ jestMock.mock('firebase-admin', () => {
     firestoreFn.Filter = {
         or: (...args) => ({ or: args }),
         where: (field, op, val) => ({ field, op, val })
+    };
+    firestoreFn.FieldPath = {
+        documentId: jestMock.fn(() => 'documentId')
     };
 
     return {
@@ -89,6 +96,7 @@ jestMock.mock('../blacklist', () => ({
 // Import the module under test
 process.env.GCLOUD_PROJECT = 'test-project';
 process.env.FUNCTION_REGION = 'us-central1';
+process.env.PROCESS_BULK_BATCH_URL = 'https://us-central1-test-project.cloudfunctions.net/processBulkBatch';
 
 const bulkActions = require('../bulkActions');
 const admin = require('firebase-admin');
@@ -129,6 +137,9 @@ describe('Bulk Actions Tests', () => {
             doc: jestMock.fn().mockReturnValue(mockDoc),
             where: jestMock.fn().mockReturnThis(),
             limit: jestMock.fn().mockReturnThis(),
+            select: jestMock.fn().mockReturnThis(),
+            orderBy: jestMock.fn().mockReturnThis(),
+            startAfter: jestMock.fn().mockReturnThis(),
             get: jestMock.fn().mockResolvedValue({
                 docs: [{ id: 'lead1' }, { id: 'lead2' }]
             }),
@@ -149,6 +160,9 @@ describe('Bulk Actions Tests', () => {
     });
 
     it('should process batch and enqueue next batch in processBulkBatch', async () => {
+        // Use fake timers to bypass the 3s delay per lead
+        jestMock.useFakeTimers();
+
         const req = {
             headers: { 'x-appengine-queuename': 'bulk-actions-queue' },
             body: { companyId: 'company123', sessionId: 'session123' }
@@ -175,8 +189,12 @@ describe('Bulk Actions Tests', () => {
             collection: jestMock.fn()
         };
 
+        const logsDocMock = {
+            set: jestMock.fn().mockResolvedValue(true),
+            get: jestMock.fn().mockResolvedValue({ exists: false })
+        };
         const attemptsCollectionMock = {
-            doc: jestMock.fn(() => ({})),
+            doc: jestMock.fn(() => logsDocMock),
         };
         sessionRefMock.collection.mockReturnValue(attemptsCollectionMock);
 
@@ -203,7 +221,8 @@ describe('Bulk Actions Tests', () => {
                      get: jestMock.fn().mockResolvedValue({
                          exists: true,
                          data: () => ({ firstName: 'John', phone: '1234567890' })
-                     })
+                     }),
+                     update: jestMock.fn().mockResolvedValue(true)
                  };
              }
              return { get: jestMock.fn().mockResolvedValue({ exists: false }) };
@@ -222,15 +241,44 @@ describe('Bulk Actions Tests', () => {
             sendSMS: jestMock.fn().mockResolvedValue(true)
         });
 
-        await bulkActions.processBulkBatch(req, res);
+        // Run the function - it will await delays, so we need to advance timers
+        const promise = bulkActions.processBulkBatch(req, res);
+
+        // Fast-forward time enough for all items in batch
+        // We do this in a loop or just runAllTimersAsync if available, but manual advance is safer
+        // Since the code awaits delay(), we need to advance time while the promise is pending.
+        // But processBulkBatch is async.
+
+        // Strategy: We can't easily await inside the function while advancing time outside unless we modify the delay implementation.
+        // Easier hack: Override global setTimeout to run immediately for this test?
+        // Or simply reduce the batch size in the test data?
+        // Code hardcodes BATCH_SIZE = 20. 20 * 3s = 60s.
+        // Let's spy on global.setTimeout instead to just resolve immediately?
+
+        // Actually, simpler approach: Just increase the test timeout significantly or reduce batch size?
+        // Code has const BATCH_SIZE = 20; hardcoded.
+
+        // Let's try mocking the delay helper if possible? No, it's internal.
+        // Let's just use jest.runAllTimersAsync if recent jest version, or runAllTimers.
+
+        // Better: mock setTimeout to be instant.
+        jestMock.spyOn(global, 'setTimeout').mockImplementation((fn) => fn());
+
+        await promise;
 
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.send).toHaveBeenCalledWith(expect.stringContaining('Processed batch'));
 
-        // Verify session update
+        jestMock.restoreAllMocks(); // Restore setTimeout
+
+        // Verify progress update (called during loop)
         expect(sessionRefMock.update).toHaveBeenCalledWith(expect.objectContaining({
-            currentPointer: 50, // Batch size 50
             'progress.processedCount': expect.anything(),
+        }));
+
+        // Verify batch completion update (called at end)
+        expect(sessionRefMock.update).toHaveBeenCalledWith(expect.objectContaining({
+            currentPointer: 20, // Batch size 20
         }));
 
         // Verify next task enqueue
@@ -269,6 +317,9 @@ describe('Bulk Actions Tests', () => {
             doc: jestMock.fn().mockReturnValue(mockDoc),
             where: jestMock.fn().mockReturnThis(),
             limit: jestMock.fn().mockReturnThis(),
+            select: jestMock.fn().mockReturnThis(),
+            orderBy: jestMock.fn().mockReturnThis(),
+            startAfter: jestMock.fn().mockReturnThis(),
             get: jestMock.fn().mockResolvedValue({
                 docs: [{ id: 'lead1' }, { id: 'lead2' }]
             }),
@@ -306,6 +357,9 @@ describe('Bulk Actions Tests', () => {
             doc: jestMock.fn().mockReturnValue(mockDocWithGet),
             where: mockWhere, // We want to spy on this
             limit: jestMock.fn().mockReturnThis(),
+            select: jestMock.fn().mockReturnThis(),
+            orderBy: jestMock.fn().mockReturnThis(),
+            startAfter: jestMock.fn().mockReturnThis(),
             get: jestMock.fn().mockResolvedValue({
                 docs: [{ id: 'lead1' }]
             }),
@@ -315,10 +369,15 @@ describe('Bulk Actions Tests', () => {
         // We need to ensure db.collection returns mockCollection for the leads
         // db.collection('companies').doc(...).collection('leads')
 
+        const teamCollection = {
+             doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: true }) }))
+        };
+
         const companyDoc = {
             collection: jestMock.fn((colName) => {
                 if (colName === 'leads') return mockCollection;
                 if (colName === 'bulk_sessions') return { doc: jestMock.fn(() => ({ set: jestMock.fn(), id: 'sess1' })) };
+                if (colName === 'team') return teamCollection;
                 return { doc: jestMock.fn() };
             }),
             get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) })

@@ -125,18 +125,18 @@ exports.facebookWebhook = onRequest(
                 const signature = req.headers['x-hub-signature'];
                 if (!signature) {
                     console.warn("Missing X-Hub-Signature");
-                    // return res.sendStatus(401); // Optional: Enforcement
-                } else {
-                    const elements = signature.split('=');
-                    const signatureHash = elements[1];
-                    const expectedHash = crypto.createHmac('sha1', APP_SECRET)
-                        .update(req.rawBody) // Firebase Functions preserves rawBody
-                        .digest('hex');
+                    return res.sendStatus(403);
+                }
 
-                    if (signatureHash !== expectedHash) {
-                        console.error("Invalid Signature");
-                        return res.sendStatus(403);
-                    }
+                const elements = signature.split('=');
+                const signatureHash = elements[1];
+                const expectedHash = crypto.createHmac('sha1', APP_SECRET)
+                    .update(req.rawBody) // Firebase Functions preserves rawBody
+                    .digest('hex');
+
+                if (signatureHash !== expectedHash) {
+                    console.error("Invalid Signature");
+                    return res.sendStatus(403);
                 }
             }
 
@@ -260,17 +260,20 @@ exports.facebookWebhookV1 = functions.https.onRequest(async (req, res) => {
     if (req.method === 'POST') {
         if (APP_SECRET) {
             const signature = req.headers['x-hub-signature'];
-            if (signature) {
-                const elements = signature.split('=');
-                const signatureHash = elements[1];
-                const expectedHash = crypto.createHmac('sha1', APP_SECRET)
-                    .update(req.rawBody)
-                    .digest('hex');
+            if (!signature) {
+                console.warn("Missing X-Hub-Signature V1");
+                return res.sendStatus(403);
+            }
 
-                if (signatureHash !== expectedHash) {
-                    console.error("Invalid Signature V1");
-                    return res.sendStatus(403);
-                }
+            const elements = signature.split('=');
+            const signatureHash = elements[1];
+            const expectedHash = crypto.createHmac('sha1', APP_SECRET)
+                .update(req.rawBody)
+                .digest('hex');
+
+            if (signatureHash !== expectedHash) {
+                console.error("Invalid Signature V1");
+                return res.sendStatus(403);
             }
         }
 
