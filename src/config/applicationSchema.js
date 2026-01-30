@@ -133,6 +133,26 @@ export const EXPERIENCE_SECTION = {
     ]
 };
 
+// NEW: Vehicle Experience Details for PDF Compliance
+export const VEHICLE_EXPERIENCE_DETAILS_SECTION = {
+    id: 'vehicleExperienceDetails',
+    title: 'Vehicle Experience Details',
+    stepNumber: 2,
+    fields: [
+        { key: 'expStraightTruckExp', label: 'Straight Truck: Years Experience', type: 'number', placeholder: 'e.g. 5' },
+        { key: 'expStraightTruckMiles', label: 'Straight Truck: Miles Driven', type: 'radio', options: MILES_DRIVEN_OPTIONS },
+
+        { key: 'expSemiTrailerExp', label: 'Tractor-Semi: Years Experience', type: 'number', placeholder: 'e.g. 10' },
+        { key: 'expSemiTrailerMiles', label: 'Tractor-Semi: Miles Driven', type: 'radio', options: MILES_DRIVEN_OPTIONS },
+
+        { key: 'expTwoTrailersExp', label: 'Twin Trailers: Years Experience', type: 'number', placeholder: 'e.g. 2' },
+        { key: 'expTwoTrailersMiles', label: 'Twin Trailers: Miles Driven', type: 'radio', options: MILES_DRIVEN_OPTIONS },
+
+        { key: 'expOtherExp', label: 'Other: Years Experience', type: 'number' },
+        { key: 'expOtherMiles', label: 'Other: Miles Driven', type: 'radio', options: MILES_DRIVEN_OPTIONS },
+    ]
+};
+
 // ============================================================================
 // SECTION 3: LICENSE INFORMATION (Step 3)
 // ============================================================================
@@ -172,8 +192,8 @@ export const CDL_UPLOADS_SECTION = {
     stepNumber: 3,
     configKey: 'cdlUpload',
     fields: [
-        { key: 'cdl-front', label: 'Upload CDL (Front)', type: 'file' },
-        { key: 'cdl-back', label: 'Upload CDL (Back)', type: 'file' },
+        { key: 'cdl-front', label: 'Upload CDL (Front)', type: 'file', required: true }, // FIX: Required
+        { key: 'cdl-back', label: 'Upload CDL (Back)', type: 'file', required: true },   // FIX: Required
     ]
 };
 
@@ -183,7 +203,7 @@ export const MEDICAL_CARD_SECTION = {
     stepNumber: 3,
     configKey: 'medCardUpload',
     fields: [
-        { key: 'medical-card-upload', label: 'Upload Medical Card', type: 'file' },
+        { key: 'medical-card-upload', label: 'Upload Medical Card', type: 'file', required: true }, // FIX: Required
         { key: 'medCardExpiration', label: 'Medical Card Expiration', type: 'date' },
     ]
 };
@@ -300,6 +320,7 @@ export const APPLICATION_SCHEMA = {
         QUALIFICATIONS_SECTION,
         DRUG_ALCOHOL_SECTION,
         EXPERIENCE_SECTION,
+        VEHICLE_EXPERIENCE_DETAILS_SECTION, // NEW
 
         // Step 3: License
         LICENSE_SECTION,

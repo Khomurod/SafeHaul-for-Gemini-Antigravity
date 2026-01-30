@@ -30,6 +30,9 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   const saveTimeoutRef = useRef(null);
   const lastFormDataRef = useRef({});
 
+  // NEW: Submission Guard to prevent "Ghost Drafts"
+  const isSubmitting = useRef(false);
+
   // NEW: Fetch application schema with custom questions
   const { schema, hasCustomQuestions } = useApplicationSchema(targetCompanyId);
   const customQuestions = schema?.sections?.find(s => s.isCustom)?.fields ||
@@ -51,9 +54,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   // 2. Load Draft (with recovery modal)
   useEffect(() => {
     const loadDraft = async () => {
-      if (!currentUser) return;
+      // Wait for targetCompanyId to be resolved before loading draft
+      if (!currentUser || !targetCompanyId) return;
+
       try {
-        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
+        // SECURITY FIX: Isolate drafts by Company ID
+        const draftId = `app_${targetCompanyId}`;
+        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
         const snap = await getDoc(draftRef);
 
         if (snap.exists()) {
@@ -84,7 +91,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       }
     };
     loadDraft();
-  }, [currentUser]);
+  }, [currentUser, targetCompanyId]);
 
   // Draft recovery handlers
   const handleResumeDraft = () => {
@@ -97,9 +104,10 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
   const handleStartFresh = async () => {
     // Clear old draft
-    if (currentUser) {
+    if (currentUser && targetCompanyId) {
       try {
-        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
+        const draftId = `app_${targetCompanyId}`;
+        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
         await deleteDoc(draftRef);
       } catch (err) {
         console.error("Failed to clear draft:", err);
@@ -118,7 +126,14 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
   // 3. Save Draft Helper (with debounce indicator)
   const saveDraft = useCallback(async (newData = {}) => {
-    if (!currentUser) return;
+    if (!currentUser || !targetCompanyId) return;
+
+    // GHOST DRAFT PREVENTION: Abort if submission has started
+    if (isSubmitting.current) {
+      console.log('Skipping draft save - submission in progress');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const mergedData = {
@@ -127,17 +142,20 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
         lastStep: currentStep,
         updatedAt: serverTimestamp(),
         lastSavedAt: new Date().toISOString(),
+        companyId: targetCompanyId // Explicitly track which company this draft is for
       };
       setFormData(mergedData);
       lastFormDataRef.current = mergedData;
-      const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
+
+      const draftId = `app_${targetCompanyId}`;
+      const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
       await setDoc(draftRef, mergedData, { merge: true });
     } catch (err) {
       console.error("Auto-save failed:", err);
     } finally {
       setIsSaving(false);
     }
-  }, [currentUser, formData, currentStep]);
+  }, [currentUser, formData, currentStep, targetCompanyId]);
 
   // 4. Aggressive Auto-Save: Debounced every 5 seconds
   useEffect(() => {
@@ -166,23 +184,16 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   // 5. Emergency save on page unload
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      if (currentUser && Object.keys(formData).length > 0) {
+      if (currentUser && Object.keys(formData).length > 0 && targetCompanyId && !isSubmitting.current) {
         // Attempt synchronous save (best effort)
-        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
-        const mergedData = {
-          ...formData,
-          lastStep: currentStep,
-          lastSavedAt: new Date().toISOString(),
-        };
-        // Use sendBeacon for reliability (if available)
-        // For Firestore, we rely on the periodic auto-save above
-        console.log('[DriverApplicationWizard] Page unload - draft should be saved');
+        // Note: For reliable unload saving, sendBeacon is preferred but specialized
+        console.log('[DriverApplicationWizard] Page unload - draft check');
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentUser, formData, currentStep]);
+  }, [currentUser, formData, currentStep, targetCompanyId]);
 
   // 6. Handlers
   const handleUpdateFormData = (name, value) => {
@@ -231,12 +242,16 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       return;
     }
 
+    // Set Guard Ref
+    isSubmitting.current = true;
+
     try {
       const activeCompanyId = targetCompanyId;
       await submitDriverApplication(currentUser, formData, activeCompanyId, job);
 
-      // Clear Draft
-      const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', 'application');
+      // Clear Draft (Company Specific)
+      const draftId = `app_${activeCompanyId}`;
+      const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
       await deleteDoc(draftRef);
 
       // Cleanup Session

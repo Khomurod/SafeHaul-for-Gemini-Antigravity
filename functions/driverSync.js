@@ -184,6 +184,39 @@ exports.onApplicationSubmitted = onDocumentCreated({
   // Process the driver data
   await processDriverData(data, appId);
 
+  // --- FAN-OUT FILES TO DQ_FILES (Fix for Recruiter Dashboard) ---
+  const fileMappings = [
+    { field: 'cdl-front', type: 'license_front', label: 'CDL Front' },
+    { field: 'cdl-back', type: 'license_back', label: 'CDL Back' },
+    { field: 'medical-card-upload', type: 'medical_card', label: 'Medical Card' },
+    { field: 'twic-card-upload', type: 'twic_card', label: 'TWIC Card' }
+  ];
+
+  const dqRef = appRef.collection('dq_files');
+
+  for (const mapping of fileMappings) {
+    const fileData = data[mapping.field];
+    if (fileData && fileData.url) {
+      // Check if already exists to prevent duplicates (though maxInstances=2 handles some overlap)
+      // We use a deterministic ID based on the file type
+      const docId = mapping.type;
+
+      await dqRef.doc(docId).set({
+        type: mapping.type,
+        label: mapping.label,
+        status: 'pending_review', // Default status for new uploads
+        fileUrl: fileData.url,
+        storagePath: fileData.ref || fileData.storagePath || '', // Handle varied naming
+        fileName: fileData.name || `${mapping.label}.jpg`,
+        uploadedAt: admin.firestore.FieldValue.serverTimestamp(),
+        uploadedBy: 'driver_app',
+        applicationId: appId
+      }, { merge: true });
+
+      console.log(`[onApplicationSubmitted] Fanned out ${mapping.type} to dq_files for ${appId}`);
+    }
+  }
+
   // Mark processing as complete
   try {
     await statusRef.set({
