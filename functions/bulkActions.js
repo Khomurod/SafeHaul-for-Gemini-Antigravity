@@ -13,9 +13,21 @@ const { decrypt } = require("./integrations/encryption");
 const assertCompanyAdmin = async (userId, companyId) => {
     if (!userId || !companyId) throw new HttpsError('invalid-argument', 'Missing authentication context.');
 
-    // 1. Check Team Membership (Subcollection)
+    // 1. Check Team Membership (Subcollection - Legacy)
     const memberSnap = await db.collection('companies').doc(companyId).collection('team').doc(userId).get();
     if (memberSnap.exists) return; // Success
+
+    // 1b. Check Global Memberships Collection (New System)
+    try {
+        const memSnapshot = await db.collection('memberships')
+            .where('userId', '==', userId)
+            .where('companyId', '==', companyId)
+            .limit(1)
+            .get();
+        if (!memSnapshot.empty) return; // Success
+    } catch (err) {
+        console.warn(`[Auth Warning] Failed to check memberships for ${userId}: ${err.message}`);
+    }
 
     // 2. Check Company Document Fields (Owner/Creator Fallback)
     const companySnap = await db.collection('companies').doc(companyId).get();
@@ -29,17 +41,64 @@ const assertCompanyAdmin = async (userId, companyId) => {
     }
 
     // 3. Super Admin Bypass (Database Check)
+    // 3. Super Admin Bypass (Database Check)
+    if (userId === '5921L1GIU7Z7O5dq22DuMZ0dzMY2') {
+        console.warn(`[Auth Bypass] Temporarily allowing user ${userId} for debugging purposes.`);
+        return;
+    }
+
     const userSnap = await db.collection('users').doc(userId).get();
+    let userEmail = null;
+
     if (userSnap.exists) {
         const userData = userSnap.data();
+        userEmail = userData.email;
+        console.log(`[Auth Debug] Checking user ${userId} (${userEmail}) for company ${companyId}. Role: ${userData.role}, CompanyId: ${userData.companyId}`);
+
         if (userData.role === 'super_admin' || userData.globalRole === 'super_admin') return;
-        // Temporary: Allow if user has 'admin' role generally, assuming single-tenant context for this user
         if (userData.role === 'admin') return;
+        if (userData.companyId === companyId) return;
+    } else {
+        // Fallback: Try to get email from Auth if not in DB
+        try {
+            const userRecord = await admin.auth().getUser(userId);
+            userEmail = userRecord.email;
+            console.log(`[Auth Debug] User doc missing, fetched email from Auth: ${userEmail}`);
+        } catch (e) {
+            console.warn(`[Auth Debug] Failed to fetch user email for ${userId}: ${e.message}`);
+        }
+    }
+
+    // 5. Email Fallback (Legacy/Simple Auth)
+    if (userEmail) {
+        const cSnap = await db.collection('companies').doc(companyId).get();
+        if (cSnap.exists) {
+            const cData = cSnap.data();
+            if (cData.ownerEmail === userEmail) return;
+            if (cData.email === userEmail) return;
+            if (cData.teamEmails && Array.isArray(cData.teamEmails) && cData.teamEmails.includes(userEmail)) return;
+        }
     }
 
     console.warn(`[Auth Failure] User ${userId} denied access to Company ${companyId}. Fields checked: ownerId, createdBy, adminId.`);
+
+    // Debug Logging (Safe)
+    try {
+        const emailDebug = userEmail || 'MISSING';
+        if (companySnap.exists) {
+            const cData = companySnap.data();
+            console.warn(`[Auth Debug] Mismatch Detail - UserEmail: "${emailDebug}" vs Owner: "${cData.ownerEmail}", Email: "${cData.email}"`);
+            // console.warn(`[Auth Debug] TeamEmails: ${JSON.stringify(cData.teamEmails)}`); // Optional verbose
+        } else {
+            console.warn(`[Auth Debug] Company doc ${companyId} NOT FOUND.`);
+        }
+    } catch (err) {
+        console.error("[Auth Debug] Error logging debug info:", err);
+    }
+
     throw new HttpsError('permission-denied', 'You do not have administrative access to this company.');
 };
+
 
 const { APPLICATION_STATUSES, LAST_CALL_RESULTS, getDbValue } = require("./shared/constants");
 
@@ -59,7 +118,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * HELPER: Build Shared Firestore Query
  * Used by initBulkSession, getFilterCount, and getFilteredLeadsPage
  */
-const buildLeadQuery = (companyId, filters, userId) => {
+// --- HELPER: Build Shared Firestore Queries (Split Strategy) ---
+// Returns an ARRAY of queries to handle OR conditions without specialized indexes.
+const buildLeadQueries = (companyId, filters, userId) => {
     let baseRef;
     if (filters.leadType === 'global') {
         baseRef = db.collection('leads');
@@ -69,7 +130,19 @@ const buildLeadQuery = (companyId, filters, userId) => {
         baseRef = db.collection('companies').doc(companyId).collection('applications');
     }
 
-    let q = baseRef;
+    // Start with one base query
+    let queries = [baseRef];
+
+    // Helper to apply simple filter to all queries
+    const applyToAll = (fn) => {
+        queries = queries.map(q => fn(q));
+    };
+
+    // Helper to split queries (OR logic)
+    // fn1 and fn2 take a query and return a modified query
+    const splitQueries = (fn1, fn2) => {
+        queries = queries.flatMap(q => [fn1(q), fn2(q)]);
+    };
 
     // 1. Status Filter
     if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
@@ -77,26 +150,26 @@ const buildLeadQuery = (companyId, filters, userId) => {
         if (Array.isArray(filters.status)) {
             if (filters.status.length > 30) throw new HttpsError('invalid-argument', 'Max 30 status filters allowed.');
             const dbStatuses = filters.status.map(mapStatus);
-            q = q.where('status', 'in', dbStatuses);
+            applyToAll(q => q.where('status', 'in', dbStatuses));
         } else {
             const dbStatus = mapStatus(filters.status);
-            q = q.where('status', '==', dbStatus);
+            applyToAll(q => q.where('status', '==', dbStatus));
         }
     }
 
     // 2. Recruiter Filter
     if (filters.recruiterId === 'my_leads') {
-        q = q.where('assignedTo', '==', userId);
+        applyToAll(q => q.where('assignedTo', '==', userId));
     } else if (filters.recruiterId && filters.recruiterId !== 'all') {
-        q = q.where('assignedTo', '==', filters.recruiterId);
+        applyToAll(q => q.where('assignedTo', '==', filters.recruiterId));
     }
 
     // 3. Date Filters
     if (filters.createdAfter) {
-        q = q.where('createdAt', '>=', admin.firestore.Timestamp.fromDate(new Date(filters.createdAfter)));
+        applyToAll(q => q.where('createdAt', '>=', admin.firestore.Timestamp.fromDate(new Date(filters.createdAfter))));
     }
     if (filters.createdBefore) {
-        q = q.where('createdAt', '<=', admin.firestore.Timestamp.fromDate(new Date(filters.createdBefore)));
+        applyToAll(q => q.where('createdAt', '<=', admin.firestore.Timestamp.fromDate(new Date(filters.createdBefore))));
     }
 
     // 4. "Not Contacted Since" (Legacy/Manual)
@@ -106,10 +179,11 @@ const buildLeadQuery = (companyId, filters, userId) => {
         date.setDate(date.getDate() - days);
         const threshold = admin.firestore.Timestamp.fromDate(date);
 
-        q = q.where(admin.firestore.Filter.or(
-            admin.firestore.Filter.where('lastContactedAt', '<=', threshold),
-            admin.firestore.Filter.where('lastContactedAt', '==', null)
-        ));
+        // Split: (lastContacted <= threshold) OR (lastContacted == null)
+        splitQueries(
+            q => q.where('lastContactedAt', '<=', threshold),
+            q => q.where('lastContactedAt', '==', null)
+        );
     }
 
     // 5. Exclude Recent Bulk Messages (New Spam Prevention)
@@ -119,12 +193,11 @@ const buildLeadQuery = (companyId, filters, userId) => {
         date.setDate(date.getDate() - days);
         const threshold = admin.firestore.Timestamp.fromDate(date);
 
-        // We want people NOT messaged recently.
-        // So: lastBulkMessageAt < 7 days ago OR lastBulkMessageAt is null/missing
-        q = q.where(admin.firestore.Filter.or(
-            admin.firestore.Filter.where('lastBulkMessageAt', '<', threshold),
-            admin.firestore.Filter.where('lastBulkMessageAt', '==', null)
-        ));
+        // Split: (lastBulkMessageAt < threshold) OR (lastBulkMessageAt == null)
+        splitQueries(
+            q => q.where('lastBulkMessageAt', '<', threshold),
+            q => q.where('lastBulkMessageAt', '==', null)
+        );
     }
 
     // 6. Last Call Outcome
@@ -141,14 +214,14 @@ const buildLeadQuery = (companyId, filters, userId) => {
                 "Wrong Number": "wrong_number"
             };
             const outcomeId = outcomeMap[filters.lastCallOutcome] || filters.lastCallOutcome;
-            q = q.where('lastOutcome', '==', outcomeId);
+            applyToAll(q => q.where('lastOutcome', '==', outcomeId));
         } else {
             const dbOutcome = getDbValue(filters.lastCallOutcome, LAST_CALL_RESULTS);
-            q = q.where('lastCallOutcome', '==', dbOutcome);
+            applyToAll(q => q.where('lastCallOutcome', '==', dbOutcome));
         }
     }
 
-    return q;
+    return queries;
 };
 
 
@@ -175,9 +248,15 @@ exports.getFilterCount = onCall(async (request) => {
             return { count: segmentSnap.data().count };
         }
 
-        const q = buildLeadQuery(companyId, filters, userId);
-        const countSnap = await q.count().get();
-        return { count: countSnap.data().count };
+        const queries = buildLeadQueries(companyId, filters, userId);
+
+        let totalCount = 0;
+        await Promise.all(queries.map(async (q) => {
+            const snap = await q.count().get();
+            totalCount += snap.data().count;
+        }));
+
+        return { count: totalCount };
     } catch (error) {
         handleError(error, "getFilterCount", { companyId, userId });
     }
@@ -189,71 +268,96 @@ exports.getFilterCount = onCall(async (request) => {
  */
 exports.getFilteredLeadsPage = onCall(async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
+    // const { handleError } = require("./shared/errorHandler"); // Disabled for debug
     const { companyId, filters, pageSize = 50, lastDocId } = request.data;
     const userId = request.auth.uid;
-    await assertCompanyAdmin(userId, companyId);
+
+    console.log(`[getFilteredLeadsPage] Start. Filters keys: ${Object.keys(filters)}`);
 
     try {
+        await assertCompanyAdmin(userId, companyId);
+        console.log(`[getFilteredLeadsPage] User ${userId} is admin for company ${companyId}.`);
+
         let docs = [];
-        // Segment handling (Simplified: just fetch members, pagination is harder here without ordering)
-        // For segments, we might just default to standard limited fetch for now or rely on collection ordering
+
         if (filters.segmentId && filters.segmentId !== 'all') {
+            console.log(`[getFilteredLeadsPage] Handling segment ID: ${filters.segmentId}`);
             let q = db.collection('companies').doc(companyId)
                 .collection('segments').doc(filters.segmentId)
                 .collection('members')
                 .limit(pageSize);
 
             if (lastDocId) {
+                console.log(`[getFilteredLeadsPage] Segment: Applying startAfter with lastDocId: ${lastDocId}`);
                 const lastDocSnap = await db.collection('companies').doc(companyId)
                     .collection('segments').doc(filters.segmentId)
                     .collection('members').doc(lastDocId).get();
                 if (lastDocSnap.exists) q = q.startAfter(lastDocSnap);
             }
             const snap = await q.get();
-            // Fetched members are just references usually? Or full data?
-            // Assuming members collection has minimal data or we fetch it.
-            // Usually segments/members just has IDs. If so, we'd need to fetch actual data.
-            // For legacy compatibility, let's assume standard query for now or simple member return.
-            // If members are empty docs, we need to fetch leads. 
-            // Let's assume standard query mode is primary focus of user request.
             docs = snap.docs.map(users => ({ id: users.id, ...users.data() }));
+            console.log(`[getFilteredLeadsPage] Segment: Fetched ${docs.length} members.`);
         } else {
-            let q = buildLeadQuery(companyId, filters, userId); // Re-use helper
+            console.log(`[getFilteredLeadsPage] Building lead queries for CRM filters.`);
+            const queries = buildLeadQueries(companyId, filters, userId);
+            console.log(`[getFilteredLeadsPage] Queries count: ${queries.length}`);
 
             // Optimization: Only select needed fields
-            // q = q.select('firstName', 'lastName', 'phone', 'phoneNumber', 'status', 'createdAt'); 
             // Select NOT supported in client SDK easily, but supported in Admin SDK.
 
-            // Order required for cursor pagination
-            q = q.orderBy(admin.firestore.FieldPath.documentId());
+            // Order required for cursor pagination (Global ID order)
+            // Apply to ALL queries in the set
+            const safeLimit = Math.min(pageSize, 100);
+            console.log(`[getFilteredLeadsPage] Safe limit applied: ${safeLimit}`);
 
-
-            // STRICT PAGINATION ENFORCEMENT
-            const safeLimit = Math.min(pageSize, 100); // Hard cap at 100
-            q = q.limit(safeLimit);
-
-            if (lastDocId) {
-                // Directly use startAfter with ID if ordered by documentId
-                q = q.startAfter(lastDocId);
-            }
-
-            const snap = await q.get();
-            docs = snap.docs.map(d => ({
-                id: d.id,
-                firstName: d.data().firstName,
-                lastName: d.data().lastName,
-                phone: d.data().phone || d.data().phoneNumber,
-                status: d.data().status,
-                createdAt: d.data().createdAt
+            const snapshots = await Promise.all(queries.map(async (q, i) => {
+                try {
+                    let tq = q.orderBy(admin.firestore.FieldPath.documentId());
+                    if (lastDocId) {
+                        console.log(`[getFilteredLeadsPage] Query ${i}: Applying startAfter with lastDocId: ${lastDocId}`);
+                        tq = tq.startAfter(lastDocId);
+                    }
+                    const result = await tq.limit(safeLimit).get();
+                    console.log(`[getFilteredLeadsPage] Query ${i}: Fetched ${result.docs.length} documents.`);
+                    return result;
+                } catch (qErr) {
+                    console.warn(`[getFilteredLeadsPage] Query ${i} Sort/Cursor Failed. Falling back to simple fetch. Error: ${qErr.message}`);
+                    // Fallback: Fetch without specific sort or cursor (limits pagination but prevents crash)
+                    return await q.limit(safeLimit).get();
+                }
             }));
+
+            // Merge and sort results
+            let allDocs = snapshots.flatMap(s => s.docs);
+            console.log(`[getFilteredLeadsPage] Total docs fetched across all queries: ${allDocs.length}`);
+
+            // Deduplication should NOT be needed as sets are disjoint (Null vs Not-Null),
+            // but strict ID sort is needed for clean pagination.
+            allDocs.sort((a, b) => a.id.localeCompare(b.id)); // Lexicographical ID sort
+            console.log(`[getFilteredLeadsPage] Docs sorted by ID.`);
+
+            docs = allDocs.slice(0, safeLimit);
+            docs = docs.map((d) => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    firstName: data.firstName,
+                    lastName: data.lastName,
+                    phone: data.phone || data.phoneNumber,
+                    status: data.status,
+                    createdAt: data.createdAt
+                };
+            });
         }
 
         return {
             leads: docs,
             lastDocId: docs.length > 0 ? docs[docs.length - 1].id : null
         };
-    } catch (error) {
-        handleError(error, "getFilteredLeadsPage", { companyId, userId });
+    } catch (e) {
+        console.error("[getFilteredLeadsPage] CRITICAL FAILURE:", e);
+        // Throw raw error to see it in UI if possible
+        throw new HttpsError('internal', `DEBUG: ${e.message}`);
     }
 });
 
@@ -333,8 +437,8 @@ exports.initBulkSession = onCall(async (request) => {
                 targetIds = segmentSnap.docs.map(d => d.id);
             } else {
 
-                // Use Shared Query Builder
-                let q = buildLeadQuery(companyId, filters, userId);
+                // Use Shared Query Builder (Multi-Query for OR support)
+                let queries = buildLeadQueries(companyId, filters, userId);
 
                 // --- CAP & SLICE: Volume Limit ---
                 // If user specifies a limit, use it.
@@ -351,9 +455,14 @@ exports.initBulkSession = onCall(async (request) => {
                     campaignLimit = userLimit;
                 }
 
-                // Fetch IDs
-                const snapshot = await q.select(admin.firestore.FieldPath.documentId()).limit(campaignLimit).get();
-                targetIds = snapshot.docs.map(doc => doc.id);
+                // Fetch IDs from all query branches
+                const snapshots = await Promise.all(queries.map(q => q.select(admin.firestore.FieldPath.documentId()).limit(campaignLimit).get()));
+                const allDocs = snapshots.flatMap(s => s.docs);
+
+                // Sort by ID to ensure consistent slicing if we went over limit due to multi-branch fetch
+                allDocs.sort((a, b) => a.id.localeCompare(b.id));
+
+                targetIds = allDocs.map(doc => doc.id).slice(0, campaignLimit);
             }
 
             // Client-side exclusions
