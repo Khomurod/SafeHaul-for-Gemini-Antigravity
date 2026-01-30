@@ -81,26 +81,14 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                     <h2 className="text-2xl font-black text-slate-900 mb-2">Target Audience</h2>
                     <p className="text-slate-500">Define criteria or upload a custom list.</p>
                 </div>
-                <div
-                    className="flex bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm"
-                    role="tablist"
-                    aria-label="Audience source selection"
-                >
+                <div className="flex bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
                     <button
-                        role="tab"
-                        aria-selected={activeTab === 'crm'}
-                        aria-controls="panel-crm"
-                        id="tab-crm"
                         onClick={() => setActiveTab('crm')}
                         className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'crm' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                     >
                         CRM Filters
                     </button>
                     <button
-                        role="tab"
-                        aria-selected={activeTab === 'upload'}
-                        aria-controls="panel-upload"
-                        id="tab-upload"
                         onClick={() => setActiveTab('upload')}
                         className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'upload' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                     >
@@ -115,7 +103,7 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                 <div className="lg:col-span-4 space-y-6">
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-full">
                         {activeTab === 'crm' ? (
-                            <div role="tabpanel" id="panel-crm" aria-labelledby="tab-crm">
+                            <>
                                 <h3 className="flex items-center gap-2 font-bold text-slate-900 mb-6 pb-4 border-b border-slate-100">
                                     <Filter size={18} className="text-blue-600" /> Filter Criteria
                                 </h3>
@@ -157,7 +145,6 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                                 return (
                                                     <button
                                                         key={status.id}
-                                                        aria-pressed={isActive}
                                                         onClick={() => {
                                                             const current = localFilters.status || [];
                                                             const newVal = isActive ? current.filter(s => s !== status.id) : [...current, status.id];
@@ -197,15 +184,10 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                         <p className="text-[10px] text-slate-400 mt-1">Leave empty to message all matches.</p>
                                     </div>
                                 </div>
-                            </div>
+                            </>
                         ) : (
                             /* UPLOAD MODE UI (Simplified for brevity, logic maintained) */
-                            <div
-                                className="text-center py-8"
-                                role="tabpanel"
-                                id="panel-upload"
-                                aria-labelledby="tab-upload"
-                            >
+                            <div className="text-center py-8">
                                 <UploadCloud className="mx-auto text-slate-300 mb-4" size={48} />
                                 <h3 className="font-bold text-slate-900">Import Contacts</h3>
                                 {/* ... Reuse existing upload UI logic here ... */}

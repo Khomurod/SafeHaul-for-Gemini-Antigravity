@@ -20,7 +20,7 @@
         "prefer-arrow-callback": "error",
         "quotes": [
             "error",
-            "double",
+            "single",
             {
                 "allowTemplateLiterals": true
             }
@@ -33,7 +33,7 @@
         "valid-jsdoc": "off",
         "indent": [
             "error",
-            2
+            4
         ],
         "object-curly-spacing": [
             "warn",
@@ -48,10 +48,11 @@
     "overrides": [
         {
             "files": [
-                "**/*.spec.*"
+                "**/*.spec.*",
+                "**/*.test.js"
             ],
             "env": {
-                "mocha": true
+                "jest": true
             },
             "rules": {}
         }
