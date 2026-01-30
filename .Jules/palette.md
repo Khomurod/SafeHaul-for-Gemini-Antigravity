@@ -1,0 +1,3 @@
+## 2024-05-24 - Accessibility Improvements in Tab Interfaces
+**Learning:** The application frequently implements tab interfaces using generic `div` and `button` elements without semantic roles, relying solely on visual styling for state indication. This makes navigation confusing for screen reader users who miss the context of "tabs" and "selected" states.
+**Action:** When encountering tab-like navigation (switching content views), systematically add `role="tablist"`, `role="tab"`, `aria-selected`, and `role="tabpanel"`. For toggle buttons (like filters), use `aria-pressed` to communicate state without relying on color changes.

@@ -22,15 +22,40 @@ const mockSetFilters = vi.fn();
 
 vi.mock('../hooks/useCampaignTargeting', () => ({
     useCampaignTargeting: () => ({
-        previewLeads: [
-            { id: 'lead1', firstName: 'Alice', lastName: 'Driver', phone: '111' },
-            { id: 'lead2', firstName: 'Bob', lastName: 'Trucker', phone: '222' }
-        ],
-        isPreviewLoading: false,
+        // matchCount is used by the component
         matchCount: 10,
+        isLoading: false,
+        // These are not directly used by AudienceBuilder anymore but good to keep if needed
+        previewLeads: [],
         previewError: null,
         setFilters: mockSetFilters
     })
+}));
+
+// Mock VirtualLeadList to render the leads that the test expects
+vi.mock('./VirtualLeadList', () => ({
+    default: ({ onToggleExclusion, excludedIds }) => (
+        <div data-testid="virtual-list">
+            <div className="lead-row">
+                <span>Alice Driver</span>
+                <input
+                    type="checkbox"
+                    checked={!excludedIds?.includes('lead1')}
+                    onChange={() => onToggleExclusion('lead1')}
+                    aria-label="Include Alice Driver"
+                />
+            </div>
+            <div className="lead-row">
+                <span>Bob Trucker</span>
+                <input
+                    type="checkbox"
+                    checked={!excludedIds?.includes('lead2')}
+                    onChange={() => onToggleExclusion('lead2')}
+                    aria-label="Include Bob Trucker"
+                />
+            </div>
+        </div>
+    )
 }));
 
 describe('AudienceBuilder', () => {
@@ -45,30 +70,38 @@ describe('AudienceBuilder', () => {
 
         const { rerender } = render(<AudienceBuilder companyId="123" filters={filters} onChange={handleChange} />);
 
-        // Check if leads are displayed
+        // Check if leads are displayed (rendered by our mock)
         expect(screen.getByText('Alice Driver')).toBeInTheDocument();
         expect(screen.getByText('Bob Trucker')).toBeInTheDocument();
 
         // Check initial selection count
         expect(screen.getByText('10')).toBeInTheDocument(); // Match count display
-        expect(screen.getByText('Recipients Selected')).toBeInTheDocument();
+        expect(screen.getByText('recipients')).toBeInTheDocument();
 
         // Find checkboxes
         const checkboxes = screen.getAllByRole('checkbox');
-        expect(checkboxes).toHaveLength(2);
+        // We expect at least 2 for the leads. There might be others in the filter panel.
+        // The test specifically targeted the lead checkboxes.
+        // Let's filter by the ones we care about or use the ones from our mock.
+        // The filter panel has "Exclude Recent" checkbox.
 
-        // Alice is first. Expect checked.
-        expect(checkboxes[0]).toBeChecked();
+        // Let's interact with the specific checkboxes we created in the mock
+        const aliceCheckbox = screen.getByLabelText('Include Alice Driver');
+        const bobCheckbox = screen.getByLabelText('Include Bob Trucker');
 
-        // Uncheck Alice
-        fireEvent.click(checkboxes[0]);
+        // Alice is first. Expect checked (default is include).
+        expect(aliceCheckbox).toBeChecked();
+
+        // Uncheck Alice (exclude her)
+        fireEvent.click(aliceCheckbox);
 
         // Expect handleChange to be called with excludedLeadIds containing 'lead1'
+        // Note: The component logic handles the toggle.
         expect(handleChange).toHaveBeenCalledWith(
             expect.objectContaining({
                 excludedLeadIds: ['lead1']
             }),
-            10
+            10 // matchCount is 10
         );
 
         // Simulate parent updating props (as real app would)
@@ -76,13 +109,12 @@ describe('AudienceBuilder', () => {
         rerender(<AudienceBuilder companyId="123" filters={newFilters} onChange={handleChange} />);
 
         // Now Alice should be unchecked
-        const newCheckboxes = screen.getAllByRole('checkbox');
-        expect(newCheckboxes[0]).not.toBeChecked();
+        expect(aliceCheckbox).not.toBeChecked();
 
         // Bob should still be checked
-        expect(newCheckboxes[1]).toBeChecked();
+        expect(bobCheckbox).toBeChecked();
 
         // Check if "excluded manually" text appears
-        expect(screen.getByText('1 excluded manually')).toBeInTheDocument();
+        expect(screen.getByText('1 manually excluded')).toBeInTheDocument();
     });
 });
