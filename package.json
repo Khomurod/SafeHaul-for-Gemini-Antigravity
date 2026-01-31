@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "npm run lint:frontend && npm run lint:backend",
     "lint:frontend": "eslint .",
-    "lint:backend": "cd functions && npm run lint",
+    "lint:backend": "cd functions && ESLINT_USE_FLAT_CONFIG=false npm run lint",
     "preview": "vite preview",
     "test": "vitest"
   },
