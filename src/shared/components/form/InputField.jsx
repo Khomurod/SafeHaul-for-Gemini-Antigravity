@@ -1,6 +1,4 @@
-import React from 'react';
-
-const InputField = ({ label, id, name, type = 'text', value, onChange, required = false, placeholder, className = "" }) => {
+const InputField = ({ label, id, name, type = 'text', value, onChange, required = false, placeholder, error, className = "" }) => {
     const isFile = type === 'file';
 
     const handleChange = (e) => {
@@ -36,10 +34,19 @@ const InputField = ({ label, id, name, type = 'text', value, onChange, required 
         value: value || ""
     };
 
+    const baseClasses = "w-full p-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 text-gray-700";
+    const statusClasses = error
+        ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+        : "border-gray-300 focus:ring-blue-500 focus:border-blue-500";
+
+    const combinedClasses = `${baseClasses} ${statusClasses} ${className} ${isFile ? fileClasses : ''}`;
+
+    const errorId = error ? `${id}-error` : undefined;
+
     return (
         <div>
             <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
-                {label} {required && <span className="text-red-500">*</span>}
+                {label} {required && <span className="text-red-500" aria-hidden="true">*</span>}
                 {isFile && fileStatusText && (
                     <span className={`ml-2 text-xs font-normal ${isFileUploaded ? 'text-green-600' : 'text-blue-500'}`}>
                         ({fileStatusText})
@@ -52,10 +59,18 @@ const InputField = ({ label, id, name, type = 'text', value, onChange, required 
                 name={name}
                 onChange={handleChange}
                 required={required}
+                aria-required={required}
+                aria-invalid={!!error}
+                aria-describedby={errorId}
                 placeholder={placeholder}
-                className={'w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 ' + className + ' ' + (isFile ? fileClasses : '')}
+                className={combinedClasses}
                 {...fileInputProps}
             />
+            {error && (
+                <p id={errorId} className="mt-1 text-sm text-red-600">
+                    {error}
+                </p>
+            )}
         </div>
     );
 };

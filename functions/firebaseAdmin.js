@@ -5,8 +5,8 @@ const { getStorage } = require("firebase-admin/storage");
 // 1. Initialize App with Explicit Bucket
 if (!admin.apps.length) {
   admin.initializeApp({
-      // This tells Firebase exactly where to look for files
-      storageBucket: "truckerapp-system.firebasestorage.app" 
+    // This tells Firebase exactly where to look for files
+    storageBucket: "truckerapp-system.firebasestorage.app"
   });
 }
 
