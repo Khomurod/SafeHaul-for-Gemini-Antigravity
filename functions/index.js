@@ -1,5 +1,5 @@
-const functions = require('firebase-functions/v1');
-const admin = require('firebase-admin');
+const functions = require("firebase-functions/v1");
+const admin = require("firebase-admin");
 
 // Initialize Admin SDK once
 if (!admin.apps.length) {
@@ -8,7 +8,7 @@ if (!admin.apps.length) {
 
 // Bulk Actions (Resilient session-based)
 // Note: pause/resume/cancel moved to frontend direct Firestore writes
-const bulkActions = require('./bulkActions');
+const bulkActions = require("./bulkActions");
 exports.initBulkSession = bulkActions.initBulkSession;
 exports.processBulkBatch = bulkActions.processBulkBatch;
 exports.retryFailedAttempts = bulkActions.retryFailedAttempts;
@@ -22,15 +22,15 @@ exports.cancelBulkSession = bulkActions.cancelBulkSession;
 
 
 // --- IMPORT MODULES ---
-const driverSync = require('./driverSync');
-const hrAdmin = require('./hrAdmin');
-const companyAdmin = require('./companyAdmin');
-const leadDistribution = require('./leadDistribution');
-const digitalSealing = require('./digitalSealing');
-const notifySigner = require('./notifySigner');
-const publicSigning = require('./publicSigning');
-const systemIntegrity = require('./systemIntegrity');
-const statsAggregator = require('./statsAggregator');
+const driverSync = require("./driverSync");
+const hrAdmin = require("./hrAdmin");
+const companyAdmin = require("./companyAdmin");
+const leadDistribution = require("./leadDistribution");
+const digitalSealing = require("./digitalSealing");
+const notifySigner = require("./notifySigner");
+const publicSigning = require("./publicSigning");
+const systemIntegrity = require("./systemIntegrity");
+const statsAggregator = require("./statsAggregator");
 
 
 // --- EXPORTS ---
@@ -79,10 +79,10 @@ exports.getCompanyDistributionStatus = leadDistribution.getCompanyDistributionSt
 // 6. System Integrity
 exports.syncSystemStructure = systemIntegrity.syncSystemStructure;
 exports.runSecurityAudit = systemIntegrity.runSecurityAudit;
-exports.getSignedUploadUrl = require('./storageSecure').getSignedUploadUrl;
+exports.getSignedUploadUrl = require("./storageSecure").getSignedUploadUrl;
 
 // NEW: Email Testing
-exports.testEmailConnection = require('./testEmailConnection').testEmailConnection;
+exports.testEmailConnection = require("./testEmailConnection").testEmailConnection;
 
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
@@ -90,12 +90,12 @@ exports.runMigration = companyAdmin.runMigration;
 // 8. Global Search - REMOVED: Moved to frontend parallel Firestore queries
 
 // 9. Scheduled Jobs
-const customJobs = require('./customJobs');
+const customJobs = require("./customJobs");
 exports.debugAppCounts = customJobs.debugAppCounts;
 
 // 10. Integrations
-const facebook = require('./integrations/facebook');
-const smsIntegrations = require('./integrations/index');
+const facebook = require("./integrations/facebook");
+const smsIntegrations = require("./integrations/index");
 
 exports.connectFacebookPage = facebook.connectFacebookPage;
 exports.facebookWebhook = facebook.facebookWebhook;
@@ -121,16 +121,16 @@ exports.onLegacyActivityCreated = statsAggregator.onLegacyActivityCreated;
 exports.onLeadsActivityLogCreated = statsAggregator.onLeadsActivityLogCreated; // NEW: Leads trigger
 
 // 12. Cloud Tasks Worker
-exports.processCompanyDistribution = require('./workers/distributeWorker').processCompanyDistribution;
+exports.processCompanyDistribution = require("./workers/distributeWorker").processCompanyDistribution;
 
 // 13. Stats Backfill (Admin Tools)
-const statsBackfill = require('./statsBackfill');
+const statsBackfill = require("./statsBackfill");
 exports.backfillCompanyStats = statsBackfill.backfillCompanyStats;
 exports.backfillAllStats = statsBackfill.backfillAllStats;
 
 // 14. Engagement Engine (Smart Segments & Compliance)
-const segments = require('./segments');
-const blacklist = require('./blacklist');
+const segments = require("./segments");
+const blacklist = require("./blacklist");
 
 exports.onApplicationUpdateSegments = segments.onApplicationUpdateSegments;
 exports.onApplicationCreatedSegments = segments.onApplicationCreatedSegments;
