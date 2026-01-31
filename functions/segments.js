@@ -62,6 +62,7 @@ async function updateSegments(companyId, recordId, data) {
   const batch = db.batch();
 
   for (const ruleKey in RULES) {
+    if (!Object.prototype.hasOwnProperty.call(RULES, ruleKey)) continue;
     const rule = RULES[ruleKey];
     const isMember = rule.check(data);
     const segmentMemberRef = db.collection("companies").doc(companyId)

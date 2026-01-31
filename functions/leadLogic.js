@@ -466,9 +466,13 @@ async function harvestNotesBeforeDelete(docSnap, data) {
     if (originalId && notesToShare.length > 0) {
       await db.collection("leads").doc(originalId).update({
         sharedHistory: admin.firestore.FieldValue.arrayUnion(...notesToShare)
-      }).catch(() => { });
+      }).catch(() => {
+      // Ignore update error
+      });
     }
-  } catch (e) { }
+  } catch (e) {
+  // Ignore harvest error
+  }
 }
 
 

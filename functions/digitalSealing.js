@@ -175,6 +175,8 @@ exports.sealDocument = functions.firestore
         tempSigPaths.forEach((p) => {
           if (fs.existsSync(p)) fs.unlinkSync(p);
         });
-      } catch (e) { }
+      } catch (e) {
+      // Ignore cleanup errors
+      }
     }
   });

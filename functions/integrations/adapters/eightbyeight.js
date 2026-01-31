@@ -20,13 +20,11 @@ class EightByEightAdapter extends BaseAdapter {
       // 1. Explicit Override (For Testing/Diagnostics)
       if (explicitFromNumber) {
         fromNumber = explicitFromNumber;
-      }
-      // 2. Direct Assignment (if userId provided)
-      else if (userId && this.config.assignments && this.config.assignments[userId]) {
+      } else if (userId && this.config.assignments && this.config.assignments[userId]) {
+        // 2. Direct Assignment (if userId provided)
         fromNumber = this.config.assignments[userId];
-      }
-      // 3. Default Company Number
-      else if (this.config.defaultPhoneNumber) {
+      } else if (this.config.defaultPhoneNumber) {
+        // 3. Default Company Number
         fromNumber = this.config.defaultPhoneNumber;
       }
 

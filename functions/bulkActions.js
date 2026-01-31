@@ -426,9 +426,8 @@ exports.initBulkSession = onCall(async (request) => {
         });
       });
       await batch.commit();
-    }
+    } else {
     // B. CRM QUERY MODE
-    else {
       if (filters.segmentId && filters.segmentId !== "all") {
         const segmentSnap = await db.collection("companies").doc(companyId)
           .collection("segments").doc(filters.segmentId)
@@ -665,20 +664,18 @@ exports.retryFailedAttempts = onCall(async (request) => {
     let configToUse = newMessageConfig;
     let originalSourceType = "retry";
 
-    if (!configToUse || true) { // Always fetch to get sourceType
-      const originalSessionSnap = await db.collection("companies").doc(companyId)
-        .collection("bulk_sessions").doc(originalSessionId)
-        .get();
+    const originalSessionSnap = await db.collection("companies").doc(companyId)
+      .collection("bulk_sessions").doc(originalSessionId)
+      .get();
 
-      if (originalSessionSnap.exists) {
-        const data = originalSessionSnap.data();
-        if (!configToUse) configToUse = data.config;
-        // CRITICAL FIX: Preserve the original source type (global, leads, applications)
-        // instead of 'retry', so the worker looks in the right collection.
-        originalSourceType = data.leadSourceType || "pool"; // Default to pool/global if missing
-      } else {
-        if (!configToUse) throw new HttpsError("not-found", "Original session config not found");
-      }
+    if (originalSessionSnap.exists) {
+      const data = originalSessionSnap.data();
+      if (!configToUse) configToUse = data.config;
+      // CRITICAL FIX: Preserve the original source type (global, leads, applications)
+      // instead of 'retry', so the worker looks in the right collection.
+      originalSourceType = data.leadSourceType || "pool"; // Default to pool/global if missing
+    } else if (!configToUse) {
+      throw new HttpsError("not-found", "Original session config not found");
     }
 
     // 3. Create NEW Session
