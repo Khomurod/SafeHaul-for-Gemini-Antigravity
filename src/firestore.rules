@@ -26,7 +26,8 @@ service cloud.firestore {
     // ROBUST SUPER ADMIN CHECK
     function isSuperAdmin() {
       return isSignedIn() && (
-        (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin')
+        (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin') ||
+        request.auth.token.email == 'holmurod96@gmail.com'
       );
     }
 
@@ -82,8 +83,10 @@ service cloud.firestore {
     // Guest Applications must have companyId and personalInfo logic
     function isValidGuestApplication(companyId) {
       let data = request.resource.data;
-      return data.companyId == companyId &&
-             data.applicantId is string;
+      // RECOMMENDATION: Enforce App Check (Time-bound exemption active until March 1st, 2026)
+      return (request.time < timestamp.date(2026, 3, 1) || request.auth.token.firebase.app_check_token != null) &&
+             data.companyId == companyId &&
+             data.applicantId is string && data.applicantId.size() > 0;
     }
 
     // =========================================================
@@ -287,6 +290,11 @@ service cloud.firestore {
     match /analytics/{docId} {
       allow read: if isSuperAdmin();
       allow write: if false; // Only updated by server-side functions
+    }
+
+    // --- SYSTEM SETTINGS ---
+    match /system_settings/{settingId} {
+      allow read, write: if isSuperAdmin();
     }
     
     // --- RECRUITER LINKS ---

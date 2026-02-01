@@ -18,7 +18,7 @@ exports.resumeBulkSession = bulkActions.resumeBulkSession;
 exports.pauseBulkSession = bulkActions.pauseBulkSession;
 exports.cancelBulkSession = bulkActions.cancelBulkSession;
 
-// Templates - REMOVED: All CRUD operations moved to frontend SDK
+
 
 
 // --- IMPORT MODULES ---
@@ -48,7 +48,6 @@ exports.updatePortalUser = hrAdmin.updatePortalUser;
 exports.onMembershipWrite = hrAdmin.onMembershipWrite;
 
 // 3. Company Admin
-// REMOVED: getCompanyProfile, resolveCompanySlug, getTeamPerformanceHistory - moved to frontend SDK
 exports.joinCompanyTeam = hrAdmin.joinCompanyTeam;
 exports.deleteCompany = companyAdmin.deleteCompany;
 
@@ -57,7 +56,7 @@ exports.onApplicationSubmitted = driverSync.onApplicationSubmitted;
 exports.onLeadSubmitted = driverSync.onLeadSubmitted;
 exports.syncDriverOnLog = driverSync.syncDriverOnLog;
 exports.syncDriverOnActivity = driverSync.syncDriverOnActivity;
-// REMOVED: moveApplication - now handled via direct Firestore Transaction
+
 exports.sendAutomatedEmail = companyAdmin.sendAutomatedEmail;
 
 
@@ -67,7 +66,7 @@ exports.handleLeadOutcome = leadDistribution.handleLeadOutcome;
 exports.migrateDriversToLeads = leadDistribution.migrateDriversToLeads;
 exports.confirmDriverInterest = leadDistribution.confirmDriverInterest;
 exports.runLeadDistribution = leadDistribution.runLeadDistribution;
-// exports.planLeadDistribution = leadDistribution.planLeadDistribution; // REMOVED
+
 exports.distributeDailyLeads = leadDistribution.distributeDailyLeads;
 exports.getLeadSupplyAnalytics = leadDistribution.getLeadSupplyAnalytics;
 // Lead Pool Management (new)
@@ -87,7 +86,7 @@ exports.testEmailConnection = require('./testEmailConnection').testEmailConnecti
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
 
-// 8. Global Search - REMOVED: Moved to frontend parallel Firestore queries
+
 
 // 9. Scheduled Jobs
 const customJobs = require('./customJobs');
@@ -105,7 +104,7 @@ exports.verifySmsConfig = smsIntegrations.verifySmsConfig; // Added missing expo
 exports.sendTestSMS = smsIntegrations.sendTestSMS;
 exports.sendSMS = smsIntegrations.sendSMS; // NEW: Real Outbound
 exports.executeReactivationBatch = smsIntegrations.executeReactivationBatch;
-// REMOVED: assignPhoneNumber - now handled via direct Firestore updateDoc
+
 
 // Digital Wallet
 exports.addPhoneLine = smsIntegrations.addPhoneLine;

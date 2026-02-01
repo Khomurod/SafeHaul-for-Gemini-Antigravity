@@ -27,14 +27,26 @@ export const auth = getAuth(app);
 // Use memory-only cache and forced long polling to prevent "Unexpected state (ID: ca9)" 
 // assertion failures caused by transport synchronization errors or IndexedDB corruption.
 // HMR Safety: Check if db is already initialized.
+// HMR Safety: Check if db is already initialized.
 let firestore;
 try {
-  firestore = getFirestore(app);
-} catch (e) {
+  // 1. Force Clear Persistence (Nuclear Option for "Unexpected State")
+  // This deletes the local IndexedDB to resolve corruption/lock contentions
+  try {
+    const dbName = 'firestore/[DEFAULT]/truckerapp-system/main';
+    const req = indexedDB.deleteDatabase(dbName);
+    req.onsuccess = () => console.log("✅ Persistence cleared");
+    req.onerror = () => console.log("⚠️ Persistence clear skipped");
+  } catch (err) { /* ignore in non-browser envs */ }
+
+  // 2. Try to initialize with custom settings first
   firestore = initializeFirestore(app, {
     localCache: memoryLocalCache(),
     experimentalForceLongPolling: true
   });
+} catch (e) {
+  // If already initialized, use existing instance
+  firestore = getFirestore(app);
 }
 
 export const db = firestore;

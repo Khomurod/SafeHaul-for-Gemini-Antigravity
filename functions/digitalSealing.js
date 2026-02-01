@@ -8,7 +8,10 @@ const fs = require('fs');
 // Fail-fast: If pdf-lib is missing, crash immediately at cold start
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
-exports.sealDocument = functions.firestore
+exports.sealDocument = functions.runWith({
+    memory: '1GB',
+    timeoutSeconds: 300
+}).firestore
     .document('companies/{companyId}/signing_requests/{requestId}')
     .onUpdate(async (change, context) => {
         const newData = change.after.data();
