@@ -6,6 +6,9 @@ export function CampaignCard({ campaign, onClick, onDelete, onViewReport }) {
     const menuRef = useRef(null);
 
     useEffect(() => {
+        // Optimization: Only attach listener when menu is open
+        if (!showMenu) return;
+
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
                 setShowMenu(false);
@@ -13,7 +16,7 @@ export function CampaignCard({ campaign, onClick, onDelete, onViewReport }) {
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    }, [showMenu]);
 
     const getStatusColor = (status) => {
         switch (status) {

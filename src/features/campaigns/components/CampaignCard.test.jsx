@@ -73,4 +73,39 @@ describe('CampaignCard', () => {
 
         expect(onDelete).toHaveBeenCalledWith(campaign);
     });
+
+    it('optimizes event listeners by only attaching when menu is open', () => {
+        const addSpy = vi.spyOn(document, 'addEventListener');
+        const removeSpy = vi.spyOn(document, 'removeEventListener');
+
+        const campaign = {
+            id: '4',
+            name: 'Event Test',
+            status: 'draft'
+        };
+
+        const { unmount } = render(<CampaignCard campaign={campaign} />);
+
+        // Initially, no listener should be attached (Optimization target)
+        // Note: This expectation will FAIL before the fix is implemented, which is intentional.
+        expect(addSpy).not.toHaveBeenCalledWith('mousedown', expect.any(Function));
+
+        // Open menu
+        const menuButton = screen.getAllByRole('button')[0];
+        fireEvent.click(menuButton);
+
+        // Now listener should be attached
+        expect(addSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
+
+        // Close menu (simulated by clicking outside or toggling)
+        // Here we just toggle it closed by clicking the button again
+        fireEvent.click(menuButton);
+
+        // Listener should be removed (clean up)
+        expect(removeSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
+
+        unmount();
+        addSpy.mockRestore();
+        removeSpy.mockRestore();
+    });
 });
