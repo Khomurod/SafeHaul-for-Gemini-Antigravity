@@ -1,5 +1,5 @@
 // src/features/companies/components/DashboardTable.jsx
-import React, { useState, useEffect, useMemo, memo } from 'react';
+import React, { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, CheckSquare, Square, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 
 import { DashboardToolbar } from './DashboardToolbar';
@@ -117,11 +117,11 @@ export const DashboardTable = memo(function DashboardTable({
         setSearchQuery('');
     };
 
-    const toggleRowSelection = (id) => {
+    const toggleRowSelection = useCallback((id) => {
         setSelectedRowIds(prev =>
             prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
         );
-    };
+    }, []);
 
     const toggleSelectAllPage = () => {
         if (selectedRowIds.length === data.length) {

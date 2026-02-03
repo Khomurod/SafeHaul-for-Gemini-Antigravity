@@ -1,5 +1,5 @@
 // src/features/company-admin/components/CompanyAdminDashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
 import { auth } from '@lib/firebase';
@@ -85,14 +85,14 @@ export function CompanyAdminDashboard() {
         return () => unsubscribe();
     }, []);
 
-    const handlePhoneClick = (e, item) => {
+    const handlePhoneClick = useCallback((e, item) => {
         if (e) e.stopPropagation();
         if (item && item.phone) {
             setCallModalData({ lead: item });
         } else {
             showError("No phone number available for this driver.");
         }
-    };
+    }, [showError]);
 
     const handleSearchClick = () => {
         if (currentCompanyProfile?.features?.searchDB === true) {
