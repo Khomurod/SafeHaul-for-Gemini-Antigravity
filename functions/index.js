@@ -45,7 +45,11 @@ exports.submitPublicEnvelope = publicSigning.submitPublicEnvelope;
 exports.createPortalUser = hrAdmin.createPortalUser;
 exports.deletePortalUser = hrAdmin.deletePortalUser;
 exports.updatePortalUser = hrAdmin.updatePortalUser;
+exports.updatePortalUser = hrAdmin.updatePortalUser;
 exports.onMembershipWrite = hrAdmin.onMembershipWrite;
+
+// 2b. User Onboarding (New)
+exports.onDriverProfileCreated = require('./userOnboarding').onDriverProfileCreated;
 
 // 3. Company Admin
 exports.joinCompanyTeam = hrAdmin.joinCompanyTeam;
@@ -56,6 +60,7 @@ exports.onApplicationSubmitted = driverSync.onApplicationSubmitted;
 exports.onLeadSubmitted = driverSync.onLeadSubmitted;
 exports.syncDriverOnLog = driverSync.syncDriverOnLog;
 exports.syncDriverOnActivity = driverSync.syncDriverOnActivity;
+exports.onCompanyLeadSubmitted = driverSync.onCompanyLeadSubmitted;
 
 exports.sendAutomatedEmail = companyAdmin.sendAutomatedEmail;
 

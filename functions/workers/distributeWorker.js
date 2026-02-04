@@ -15,12 +15,24 @@ exports.processCompanyDistribution = onRequest(
         secrets: ["SMS_ENCRYPTION_KEY"]
     },
     async (req, res) => {
-        // 1. Security: Only allow Cloud Tasks to call this
-        // Cloud Tasks automatically adds these headers
+        // 1. Security: Strictly allow only Cloud Tasks
+        // Google Cloud automatically strips these headers from external requests.
         const hasQueueHeader = req.headers["x-appengine-queuename"] || req.headers["x-cloudtasks-queuename"];
+
+        if (req.method !== 'POST') {
+            return res.status(405).send("Method Not Allowed");
+        }
+
         if (!hasQueueHeader && !process.env.FUNCTIONS_EMULATOR) {
-            console.error("Access Forbidden: Missing Queue Header");
-            return res.status(403).send("Forbidden");
+            console.error("Access Forbidden: Missing Cloud Tasks Headers (Potential External Attack)");
+            return res.status(403).send("Forbidden: internal-only");
+        }
+
+        // Optional: Log the presence of OIDC token for audit (verification requires extra lib)
+        if (req.headers.authorization) {
+            // console.log("OIDC Token present."); 
+        } else if (!process.env.FUNCTIONS_EMULATOR) {
+            console.warn("Warning: No OIDC Token in Cloud Task request.");
         }
 
         const { companyId, quotaOverride, forceRotate } = req.body;

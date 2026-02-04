@@ -323,16 +323,42 @@ exports.forceUnlockPool = onCall(RUNTIME_OPTS, async (request) => {
     }
 });
 
-// --- 11. BAD LEADS ANALYTICS (OPTIMIZED) ---
-// Reads cached stats instead of scanning.
+// --- 11. BAD LEADS ANALYTICS (OPTIMIZED - SHARD AWARE) ---
+// Reads cached stats + aggregates shards.
 exports.getBadLeadsAnalytics = onCall(RUNTIME_OPTS, async (request) => {
     if (!request.auth || request.auth.token.roles?.globalRole !== 'super_admin') {
         throw new HttpsError("permission-denied", "Super Admin only.");
     }
     try {
         const doc = await db.collection("system_settings").doc("lead_pool_stats").get();
-        if (!doc.exists) return { success: false, message: "Stats calculation pending. Please wait for scheduled job." };
-        return { success: true, ...doc.data() };
+        let baseStats = doc.exists ? doc.data() : { stats: {} };
+
+        // AGGREGATE SHARDS
+        const shardsSnap = await db.collection("system_settings").doc("lead_pool_stats")
+            .collection("shards").get();
+
+        let aggregated = { ...baseStats.stats };
+
+        shardsSnap.forEach(shard => {
+            const d = shard.data();
+            // Deep merge / Sum
+            for (const [key, val] of Object.entries(d.stats || {})) {
+                aggregated[key] = (aggregated[key] || 0) + val;
+            }
+        });
+
+        // Mix in breakdown structure if missing
+        return {
+            success: true,
+            stats: aggregated,
+            breakdown: {
+                critical: (aggregated.missingContact || 0) + (aggregated.testData || 0),
+                warning: (aggregated.placeholderEmails || 0) + (aggregated.shortPhones || 0) + (aggregated.missingNames || 0),
+                info: aggregated.duplicatePhones || 0
+            },
+            lastUpdated: baseStats.lastUpdated
+        };
+
     } catch (error) {
         Sentry.captureException(error);
         throw new HttpsError("internal", error.message);
@@ -388,10 +414,13 @@ exports.rebuildLeadStats = onSchedule({
                 if (name.includes('test') || name.includes('health check')) stats.testData++;
 
                 if (cleanPhone && cleanPhone.length >= 10) {
-                    // Note: In extremely large datasets, this Map could still cause OOM.
-                    // For <100k leads, it's fine (~10MB RAM). For 1M+, we'd need a different strategy (e.g. Distributed Counter or BigQuery).
-                    // Current instance is 1GiB, so we have room for ~5M phone numbers in memory.
-                    phoneMap.set(cleanPhone, (phoneMap.get(cleanPhone) || 0) + 1);
+                    // OOM SAFEGUARD: Stop tracking duplicates if memory pressure is high
+                    if (phoneMap.size < 500000) {
+                        phoneMap.set(cleanPhone, (phoneMap.get(cleanPhone) || 0) + 1);
+                    } else if (phoneMap.size === 500000) {
+                        console.warn("Warning: Lead pool exceeded memory limit for duplicate tracking. Partial stats only.");
+                        phoneMap.set("OOM_LIMIT_REACHED", 1);
+                    }
                 }
             });
 

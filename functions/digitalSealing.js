@@ -37,6 +37,20 @@ exports.sealDocument = functions.runWith({
             if (srcPath.startsWith('gs://')) {
                 srcPath = srcPath.replace(`gs://${bucket.name}/`, '');
             }
+
+            // SECURITY: Path Traversal Prevention
+            // Ensure path MUST start with allowed prefixes for this company
+            const allowedPrefixes = [
+                `companies/${companyId}/`,
+                `secure_documents/${companyId}/`
+            ];
+
+            const isAllowed = allowedPrefixes.some(prefix => srcPath.startsWith(prefix));
+            if (!isAllowed) {
+                console.error(`[Security] unauthorized access attempt. Company ${companyId} tried to access ${srcPath}`);
+                throw new Error("Security Violation: Unauthorized document path.");
+            }
+
             await bucket.file(srcPath).download({ destination: tempPdfPath });
 
             // 3. Load PDF
