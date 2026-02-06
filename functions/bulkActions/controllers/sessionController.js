@@ -25,17 +25,44 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
     if (targetIds && Array.isArray(targetIds) && targetIds.length > 0) {
         // Direct Selection (e.g. from table selection)
         finalTargetIds = targetIds;
+
+    } else if (leadSourceType === 'import' && request.data.rawData && Array.isArray(request.data.rawData)) {
+        // C. Import: Raw Data Handling
+        // We defer ID generation until after session creation used to guarantee unique IDs
+        // or we generate them later. For now, we leave finalTargetIds empty and rely on the check below.
+        finalTargetIds = [];
+
     } else {
         // Query Based
         const queries = buildLeadQueries(companyId, filters, request.auth.uid);
 
-        // Execute all queries to get IDs (Streaming preferable but for <10k, Promise.all is okay-ish on 540s timeout)
-        // Optimization: Use select('serializedId') or just ID
+        // Execute all queries to get IDs
         try {
-            const snapshots = await Promise.all(queries.map(q => q.select().get()));
+            // Need to fetch DATA to filter in-memory for missing fields (Cloud Firestore limitation)
+            const snapshots = await Promise.all(queries.map(q => q.get()));
             const idSet = new Set();
+
+            // Filter Setup
+            let excludeThreshold = null;
+            if (filters.excludeRecentDays) {
+                const days = parseInt(filters.excludeRecentDays);
+                const date = new Date();
+                date.setDate(date.getDate() - days);
+                excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+            }
+
             snapshots.forEach(snap => {
-                snap.docs.forEach(d => idSet.add(d.id));
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    let include = true;
+                    // In-Memory Filter: Exclude Recent
+                    if (excludeThreshold) {
+                        if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
+                            include = false;
+                        }
+                    }
+                    if (include) idSet.add(d.id);
+                });
             });
             finalTargetIds = Array.from(idSet);
         } catch (qErr) {
@@ -43,13 +70,52 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
         }
     }
 
-    if (finalTargetIds.length === 0) {
+
+    if (finalTargetIds.length === 0 && (!request.data.rawData || leadSourceType !== 'import')) {
+        // Only return error if NOT import (since import logic handles IDs below)
         return { success: false, message: "No leads found matching criteria." };
     }
 
     // B. Create Session Doc
     const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc();
     const sessionId = sessionRef.id;
+
+    // Handle Import Persistence NOW if applicable
+    if (leadSourceType === 'import' && request.data.rawData) {
+        const rawItems = request.data.rawData;
+        const batchArray = [];
+        let batch = db.batch();
+        let count = 0;
+
+        for (let i = 0; i < rawItems.length; i++) {
+            const item = rawItems[i];
+            const importId = `imp_${i}_${Date.now()}`; // Simple unique ID within session context
+            finalTargetIds.push(importId);
+
+            const targetRef = sessionRef.collection('targets').doc(importId);
+            batch.set(targetRef, {
+                ...item,
+                importedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            count++;
+
+            if (count >= 490) { // Safety margin < 500
+                batchArray.push(batch);
+                batch = db.batch();
+                count = 0;
+            }
+        }
+        if (count > 0) batchArray.push(batch);
+
+        // Execute all batches
+        await Promise.all(batchArray.map(b => b.commit()));
+    }
+
+    // Validate count again after import processing
+    if (finalTargetIds.length === 0) {
+        return { success: false, message: "No leads found matching criteria (or empty import)." };
+    }
+
 
     // Persist targets to subcollection if too large for single doc array (Map limit 1MB)
     // 50k IDs * 20 chars = 1MB. So > 10k is risky.

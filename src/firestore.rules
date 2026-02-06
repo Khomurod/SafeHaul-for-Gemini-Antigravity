@@ -23,12 +23,15 @@ service cloud.firestore {
     }
 
     // ROBUST SUPER ADMIN CHECK
-    // ROBUST SUPER ADMIN CHECK
+    // Checks multiple possible locations for the globalRole claim
     function isSuperAdmin() {
       return isSignedIn() && (
-        (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin') 
-        // TODO: Add UID fallback for disaster recovery if needed.
-        // || request.auth.uid == 'ADMIN_UID_HERE'
+        // Direct globalRole claim
+        (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin') ||
+        // Nested in roles object (legacy/alternate structure)
+        (request.auth.token.keys().hasAny(['roles']) && 
+         request.auth.token.roles.keys().hasAny(['globalRole']) && 
+         request.auth.token.roles.globalRole == 'super_admin')
       );
     }
 

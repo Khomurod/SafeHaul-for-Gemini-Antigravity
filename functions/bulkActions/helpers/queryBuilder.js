@@ -72,19 +72,11 @@ const buildLeadQueries = (companyId, filters, userId) => {
         );
     }
 
-    // 5. Exclude Recent Bulk Messages (New Spam Prevention)
-    if (filters.excludeRecentDays) {
-        const days = parseInt(filters.excludeRecentDays);
-        const date = new Date();
-        date.setDate(date.getDate() - days);
-        const threshold = admin.firestore.Timestamp.fromDate(date);
 
-        // Split: (lastBulkMessageAt < threshold) OR (lastBulkMessageAt == null)
-        splitQueries(
-            q => q.where('lastBulkMessageAt', '<', threshold),
-            q => q.where('lastBulkMessageAt', '==', null)
-        );
-    }
+    // 5. Exclude Recent Bulk Messages (New Spam Prevention)
+    // NOTE: Moved to in-memory filtering in sessionController.js to handle missing fields correctly.
+    // if (filters.excludeRecentDays) { ... }
+
 
     // 6. Last Call Outcome
     if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {

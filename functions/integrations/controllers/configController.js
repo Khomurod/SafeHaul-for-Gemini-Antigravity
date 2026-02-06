@@ -32,7 +32,13 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
         .where('companyId', '==', companyId);
 
     const membershipSnap = await membershipRef.get();
-    const isSuperAdmin = request.auth.token.role === 'super_admin' || request.auth.token.globalRole === 'super_admin';
+
+    // Robust Super Admin Check
+    const token = request.auth.token;
+    const roles = token.roles || {};
+    const globalRole = token.globalRole || roles.globalRole;
+    const isSuperAdmin = globalRole === 'super_admin';
+
     const isCompanyAdmin = !membershipSnap.empty && membershipSnap.docs[0].data().role === 'company_admin';
 
     if (!isSuperAdmin && !isCompanyAdmin) {
@@ -170,6 +176,26 @@ exports.verifySmsConfig = onCall(encryptedCallOptions, async (request) => {
         throw new HttpsError('invalid-argument', 'Missing companyId.');
     }
 
+    // Check Permissions (Aligned with companyAdmin.js)
+    const db = admin.firestore();
+    const membershipRef = db.collection('memberships')
+        .where('userId', '==', request.auth.uid)
+        .where('companyId', '==', companyId);
+
+    const membershipSnap = await membershipRef.get();
+
+    // Robust Super Admin Check
+    const token = request.auth.token;
+    const roles = token.roles || {};
+    const globalRole = token.globalRole || roles.globalRole;
+    const isSuperAdmin = globalRole === 'super_admin';
+
+    const isCompanyAdmin = !membershipSnap.empty && membershipSnap.docs[0].data().role === 'company_admin';
+
+    if (!isSuperAdmin && !isCompanyAdmin) {
+        throw new HttpsError('permission-denied', 'Only Company Admins can verify SMS configs.');
+    }
+
     try {
         const adapter = await SMSAdapterFactory.getAdapter(companyId);
         if (adapter instanceof RingCentralAdapter) {
@@ -294,7 +320,13 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
         .where('companyId', '==', companyId);
 
     const membershipSnap = await membershipRef.get();
-    const isSuperAdmin = request.auth.token.role === 'super_admin';
+
+    // Robust Super Admin Check
+    const token = request.auth.token;
+    const roles = token.roles || {};
+    const globalRole = token.globalRole || roles.globalRole;
+    const isSuperAdmin = globalRole === 'super_admin';
+
     const isCompanyAdmin = !membershipSnap.empty && membershipSnap.docs[0].data().role === 'company_admin';
 
     if (!isSuperAdmin && !isCompanyAdmin) {
@@ -354,7 +386,7 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
     const roles = token.roles || {};
     const globalRole = token.globalRole || roles.globalRole;
 
-    const isSuperAdmin = globalRole === 'super_admin' || token.email?.endsWith('@safehaul.io');
+    const isSuperAdmin = globalRole === 'super_admin';
     const isCompanyAdmin = roles[companyId] === 'company_admin';
 
     if (!isSuperAdmin && !isCompanyAdmin) {
@@ -529,7 +561,7 @@ exports.removePhoneLine = onCall(encryptedCallOptions, async (request) => {
     const roles = token.roles || {};
     const globalRole = token.globalRole || roles.globalRole;
 
-    const isSuperAdmin = globalRole === 'super_admin' || token.email?.endsWith('@safehaul.io');
+    const isSuperAdmin = globalRole === 'super_admin';
     const isCompanyAdmin = roles[companyId] === 'company_admin';
 
     if (!isSuperAdmin && !isCompanyAdmin) {

@@ -17,16 +17,44 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
     // Build Queries
     const queries = buildLeadQueries(companyId, filters || {}, request.auth.uid);
 
-    // Run Count Aggregation (Parallel)
+    // Run Count Aggregation
     try {
-        const counts = await Promise.all(queries.map(async (q) => {
-            const snap = await q.count().get();
-            return snap.data().count;
-        }));
+        let total = 0;
 
-        const total = counts.reduce((a, b) => a + b, 0);
+        // If Exclude Recent is active, we must fetch data to filter in-memory (to handle missing fields)
+        if (filters.excludeRecentDays) {
+            const days = parseInt(filters.excludeRecentDays);
+            const date = new Date();
+            date.setDate(date.getDate() - days);
+            const excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+
+            // Fetch only needed field to save bandwidth
+            const snapshots = await Promise.all(queries.map(q => q.select('lastBulkMessageAt').get()));
+
+            const idSet = new Set();
+            snapshots.forEach(snap => {
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    // Include if field is missing OR date is OLD (< threshold)
+                    // Exclude if field exists AND date is RECENT (>= threshold)
+                    if (!data.lastBulkMessageAt || data.lastBulkMessageAt < excludeThreshold) {
+                        idSet.add(d.id);
+                    }
+                });
+            });
+            total = idSet.size;
+
+        } else {
+            // Fast Server-Side Count
+            const counts = await Promise.all(queries.map(async (q) => {
+                const snap = await q.count().get();
+                return snap.data().count;
+            }));
+            total = counts.reduce((a, b) => a + b, 0);
+        }
 
         return { count: total };
+
     } catch (err) {
         console.error("Filter Count Error:", err);
         throw new HttpsError('internal', err.message);
@@ -60,17 +88,37 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
         mainQuery = mainQuery.orderBy('createdAt', 'desc');
 
         if (lastDocId) {
-            // We need the actual doc snapshot to start after.
-            // This is expensive/hard without generic query.
-            // We skip detailed cursor pagination for preview on complex filters for now.
-            // Fallback: Just offset? No, limit.
+            // ... cursor logic omitted for preview ...
         }
 
-        const snap = await mainQuery.limit(limit).get();
+        // Fetch larger batch to allow for in-memory filtering
+        // We fetch 3x the limit to try and fill the page after exclusions
+        const fetchLimit = limit * 3;
+        const snap = await mainQuery.limit(fetchLimit).get();
 
-        const leads = snap.docs.map(d => {
+        let leads = [];
+
+        let excludeThreshold = null;
+        if (filters.excludeRecentDays) {
+            const days = parseInt(filters.excludeRecentDays);
+            const date = new Date();
+            date.setDate(date.getDate() - days);
+            excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+        }
+
+        for (const d of snap.docs) {
+            if (leads.length >= limit) break; // Filled the page
+
             const data = d.data();
-            return {
+
+            // In-Memory Filter: Exclude Recent
+            if (excludeThreshold) {
+                if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
+                    continue; // Skip this lead
+                }
+            }
+
+            leads.push({
                 id: d.id,
                 firstName: data.firstName,
                 lastName: data.lastName,
@@ -79,8 +127,8 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
                 status: data.status,
                 createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : null,
                 lastContactedAt: data.lastContactedAt ? data.lastContactedAt.toDate().toISOString() : null
-            };
-        });
+            });
+        }
 
         return { leads };
 
