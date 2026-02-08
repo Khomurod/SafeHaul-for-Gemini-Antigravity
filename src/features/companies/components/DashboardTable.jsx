@@ -31,7 +31,8 @@ export const DashboardTable = memo(function DashboardTable({
 
     // NEW PROPS
     canAssign,
-    onAssignLeads
+    onAssignLeads,
+    teamMembers = []
 }) {
 
     const [visibleColumns, setVisibleColumns] = useState(() => {
@@ -149,10 +150,10 @@ export const DashboardTable = memo(function DashboardTable({
                 visibleColumns={visibleColumns}
                 setVisibleColumns={setVisibleColumns}
 
-                // Pass Selection Data
                 selectedCount={selectedRowIds.length}
                 canAssign={canAssign}
                 onAssignLeads={() => onAssignLeads(selectedRowIds)}
+                teamMembers={teamMembers}
             />
 
             <div className={`flex-1 overflow-auto min-h-0 bg-white relative scrollbar-thin scrollbar-thumb-gray-200`}>

@@ -44,12 +44,12 @@ export function ApplicationDetailViewV2({
 
     // Tab Navigation
     const navItems = [
-        { id: 'overview', label: 'Overview', icon: Briefcase },
+        { id: 'application', label: 'Application', icon: Briefcase },
+        { id: 'dq', label: 'DQ Files', icon: UserCheck },
+        { id: 'files', label: 'Files', icon: Folder },
         { id: 'contact', label: 'Contact', icon: Mail },
-        { id: 'notes', label: 'Notes', icon: MessageSquare },
-        { id: 'dq', label: 'DQ File', icon: UserCheck },
         { id: 'pev', label: 'PEV', icon: Briefcase },
-        { id: 'docs', label: 'Documents', icon: Folder },
+        { id: 'notes', label: 'Notes', icon: MessageSquare },
         { id: 'activity', label: 'Activity', icon: Clock }
     ];
 
@@ -75,7 +75,7 @@ export function ApplicationDetailViewV2({
                 return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
                     <PEVTab companyId={companyId} applicationId={applicationId} appData={appData} />
                 </React.Suspense>;
-            case 'docs':
+            case 'files':
                 return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
                     <GeneralDocumentsTab companyId={companyId} applicationId={applicationId} appData={appData} fileUrls={fileUrls} collectionName={collectionName} />
                 </React.Suspense>;
@@ -83,6 +83,7 @@ export function ApplicationDetailViewV2({
                 return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
                     <ActivityHistoryTab companyId={companyId} applicationId={applicationId} collectionName={collectionName} />
                 </React.Suspense>;
+            case 'application':
             default:
                 return <ApplicationOverview
                     appData={appData}

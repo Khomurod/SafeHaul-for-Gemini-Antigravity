@@ -84,7 +84,7 @@ function AppRoutes() {
         {/* Company Admin / HR */}
         {/* Company Admin / HR */}
         <Route path="/company" element={
-          <ProtectedRoute allowedRoles={['company_admin', 'super_admin']}>
+          <ProtectedRoute allowedRoles={['company_admin', 'super_admin', 'hr_user', 'recruiter']}>
             <CompanyAppShell />
           </ProtectedRoute>
         }>

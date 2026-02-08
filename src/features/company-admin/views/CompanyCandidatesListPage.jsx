@@ -135,6 +135,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                         // Assignment
                         canAssign={canAssign}
                         onAssignLeads={handleOpenAssignment}
+                        teamMembers={dashboard.teamMembers}
                     />
                 </div>
             </div>

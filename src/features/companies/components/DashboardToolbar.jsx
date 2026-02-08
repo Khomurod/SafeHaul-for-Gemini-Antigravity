@@ -123,7 +123,8 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     // NEW PROPS
     selectedCount = 0,
     onAssignLeads,
-    canAssign
+    canAssign,
+    teamMembers = []
 }) {
     const [showFilters, setShowFilters] = useState(false);
     const [showViewMenu, setShowViewMenu] = useState(false);
@@ -323,13 +324,17 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                         {/* Filter: Assignee */}
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Assigned To</label>
-                            <input
-                                type="text"
-                                placeholder="Search recruiter..."
+                            <select
                                 className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                                 value={filters?.assignee || ''}
                                 onChange={(e) => handleFilterChange('assignee', e.target.value)}
-                            />
+                            >
+                                <option value="">All</option>
+                                <option value="__unassigned__">Unassigned</option>
+                                {teamMembers.map(m => (
+                                    <option key={m.id} value={m.id}>{m.name || m.displayName || m.email}</option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* Clear Button */}

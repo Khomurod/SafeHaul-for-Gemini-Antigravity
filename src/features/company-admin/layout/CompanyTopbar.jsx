@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
 import { LogOut, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { NotificationDropdown } from '../components/NotificationDropdown';
+import { getPortalUser } from '@features/auth';
 
 // Helper to get user role label
 const getUserRoleLabel = (claims, companyId) => {
@@ -18,6 +19,26 @@ export const CompanyTopbar = () => {
     const navigate = useNavigate();
     const companyId = currentCompanyProfile?.id;
 
+    const [displayName, setDisplayName] = useState(currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User');
+
+    useEffect(() => {
+        const fetchUserName = async () => {
+            if (!currentUser?.uid) return;
+            try {
+                // Try to get name from Firestore profile which is more reliable
+                const userDoc = await getPortalUser(currentUser.uid);
+                if (userDoc?.name) {
+                    setDisplayName(userDoc.name);
+                } else if (currentUser.displayName) {
+                    setDisplayName(currentUser.displayName);
+                }
+            } catch (error) {
+                console.error("Error fetching user name:", error);
+            }
+        };
+        fetchUserName();
+    }, [currentUser]);
+
     const handleLogout = async () => {
         try {
             await logout();
@@ -31,9 +52,8 @@ export const CompanyTopbar = () => {
         navigate('/company/settings');
     };
 
-    // Get display name with fallback
-    const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
     const roleLabel = getUserRoleLabel(currentUserClaims, companyId);
+    // Use displayName for initials
     const initials = displayName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || 'U';
 
     return (

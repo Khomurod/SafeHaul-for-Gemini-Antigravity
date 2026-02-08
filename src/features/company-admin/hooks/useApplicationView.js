@@ -19,7 +19,7 @@ export function useApplicationView(companyId, applicationId, onStatusUpdate, onC
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [showMoveModal, setShowMoveModal] = useState(false);
     const [showOfferModal, setShowOfferModal] = useState(false);
-    const [activeSection, setActiveSection] = useState('overview'); // 'overview' | 'contact' | 'notes' | 'dq' | 'pev' | 'docs' | 'activity'
+    const [activeSection, setActiveSection] = useState('application'); // 'application' | 'dq' | 'files' | 'contact' | 'pev' | 'notes' | 'activity'
     const [dqFiles, setDqFiles] = useState([]);
 
     // --- DQ Logic ---
@@ -88,11 +88,23 @@ export function useApplicationView(companyId, applicationId, onStatusUpdate, onC
         if (onClosePanel) onClosePanel();
     };
 
+    // --- Device Detection Helper ---
+    const isMobile = () => {
+        return window.matchMedia('(pointer: coarse)').matches ||
+            /Mobi|Android/i.test(navigator.userAgent);
+    };
+
     const handleWorkflowAction = (action) => {
         switch (action) {
             case 'call':
                 if (appData?.phone) {
-                    window.location.href = `tel:${appData.phone}`;
+                    // M7 FIX: Mobile = tel: link only, Desktop = modal only, never both
+                    if (isMobile()) {
+                        window.location.href = `tel:${appData.phone}`;
+                        // Exit early - no modal on mobile
+                        return;
+                    }
+                    // Desktop: open call outcome modal via callback
                     if (onPhoneClick) onPhoneClick(null, appData);
                 }
                 break;

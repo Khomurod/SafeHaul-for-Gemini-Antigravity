@@ -194,19 +194,19 @@ describe('Bulk Actions Tests', () => {
         const bulkSessionsCollection = { doc: jestMock.fn() };
 
         mockCollection.doc.mockImplementation((id) => {
-             // If this is the leads collection or companies collection
-             // We can't easily distinguish from args alone without tracking path.
-             // But the code: db.collection('companies').doc(companyId)...
-             if (id === 'company123') return companiesDoc;
-             if (id && id.startsWith('lead')) {
-                 return {
-                     get: jestMock.fn().mockResolvedValue({
-                         exists: true,
-                         data: () => ({ firstName: 'John', phone: '1234567890' })
-                     })
-                 };
-             }
-             return { get: jestMock.fn().mockResolvedValue({ exists: false }) };
+            // If this is the leads collection or companies collection
+            // We can't easily distinguish from args alone without tracking path.
+            // But the code: db.collection('companies').doc(companyId)...
+            if (id === 'company123') return companiesDoc;
+            if (id && id.startsWith('lead')) {
+                return {
+                    get: jestMock.fn().mockResolvedValue({
+                        exists: true,
+                        data: () => ({ firstName: 'John', phone: '1234567890' })
+                    })
+                };
+            }
+            return { get: jestMock.fn().mockResolvedValue({ exists: false }) };
         });
 
         companiesDoc.collection.mockImplementation((name) => {
