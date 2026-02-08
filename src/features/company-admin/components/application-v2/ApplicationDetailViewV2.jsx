@@ -5,6 +5,7 @@ import { useApplicationView } from '@features/company-admin/hooks/useApplication
 // Components
 import { CandidateHero } from './CandidateHero';
 import { ApplicationOverview } from './ApplicationOverview';
+import { WorkflowProgressBar } from './WorkflowProgressBar';
 
 // Tabs (Lazy)
 const DQFileTab = React.lazy(() => import('../tabs').then(m => ({ default: m.DQFileTab })));
@@ -144,13 +145,16 @@ export function ApplicationDetailViewV2({
                 <div className="flex-1 overflow-y-auto bg-gray-50">
                     <div className="p-6 space-y-6">
                         {!loading && appData && (
-                            <CandidateHero
-                                appData={appData}
-                                currentStatus={currentStatus}
-                                handleStatusUpdate={handleStatusUpdate}
-                                canEdit={canEdit}
-                                onPhoneClick={onPhoneClick}
-                            />
+                            <>
+                                <CandidateHero
+                                    appData={appData}
+                                    currentStatus={currentStatus}
+                                    handleStatusUpdate={handleStatusUpdate}
+                                    canEdit={canEdit}
+                                    onPhoneClick={onPhoneClick}
+                                />
+                                <WorkflowProgressBar currentStatus={currentStatus} />
+                            </>
                         )}
 
                         <div className="flex items-center gap-1 p-1.5 bg-gray-100/80 rounded-2xl backdrop-blur-sm">

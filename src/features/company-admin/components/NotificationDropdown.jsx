@@ -1,8 +1,6 @@
-// src/features/company-admin/components/NotificationDropdown.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, X, Check, Clock, User, Briefcase, FileText } from 'lucide-react';
-import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
-import { db } from '@lib/firebase';
+import { useCompanyNotifications } from '../hooks/useCompanyNotifications';
 
 // Icon mapping for notification types
 const getNotificationIcon = (type) => {
@@ -29,35 +27,15 @@ const timeAgo = (date) => {
 
 export function NotificationDropdown({ companyId }) {
     const [isOpen, setIsOpen] = useState(false);
-    const [notifications, setNotifications] = useState([]);
-    const [loading, setLoading] = useState(true);
     const dropdownRef = useRef(null);
 
-    // Listen for notifications
-    useEffect(() => {
-        if (!companyId) return;
-
-        const notificationsRef = collection(db, 'companies', companyId, 'notifications');
-        const q = query(
-            notificationsRef,
-            orderBy('createdAt', 'desc'),
-            limit(20)
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const items = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setNotifications(items);
-            setLoading(false);
-        }, (error) => {
-            console.error('Error fetching notifications:', error);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [companyId]);
+    const {
+        notifications,
+        unreadCount,
+        loading,
+        markAsRead,
+        markAllAsRead
+    } = useCompanyNotifications(companyId);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -69,33 +47,6 @@ export function NotificationDropdown({ companyId }) {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    // Count unread
-    const unreadCount = notifications.filter(n => !n.read).length;
-
-    // Mark single as read
-    const markAsRead = async (notificationId) => {
-        try {
-            const notifRef = doc(db, 'companies', companyId, 'notifications', notificationId);
-            await updateDoc(notifRef, { read: true });
-        } catch (error) {
-            console.error('Error marking notification as read:', error);
-        }
-    };
-
-    // Mark all as read
-    const markAllAsRead = async () => {
-        try {
-            const batch = writeBatch(db);
-            notifications.filter(n => !n.read).forEach(n => {
-                const notifRef = doc(db, 'companies', companyId, 'notifications', n.id);
-                batch.update(notifRef, { read: true });
-            });
-            await batch.commit();
-        } catch (error) {
-            console.error('Error marking all as read:', error);
-        }
-    };
 
     return (
         <div className="relative" ref={dropdownRef}>

@@ -48,9 +48,6 @@ export const CompanyTopbar = () => {
         }
     };
 
-    const handleSwitchCompany = () => {
-        navigate('/company/settings');
-    };
 
     const roleLabel = getUserRoleLabel(currentUserClaims, companyId);
     // Use displayName for initials
@@ -90,16 +87,6 @@ export const CompanyTopbar = () => {
                 </div>
 
                 <div className="h-8 w-px bg-gray-200 mx-1"></div>
-
-                {/* Switch Company Button */}
-                <button
-                    onClick={handleSwitchCompany}
-                    className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-sm font-medium"
-                    title="Switch Company"
-                >
-                    <Building2 size={18} />
-                    <span className="hidden lg:inline">Switch</span>
-                </button>
 
                 {/* Logout Button */}
                 <button

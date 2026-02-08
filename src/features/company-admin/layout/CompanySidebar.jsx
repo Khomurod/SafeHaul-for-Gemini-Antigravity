@@ -57,6 +57,13 @@ export const CompanySidebar = () => {
   const menuItems = [
     {
       type: 'item',
+      label: 'Switch Company',
+      icon: Building2,
+      path: '/company/settings'
+    },
+    { type: 'element', element: <div className="my-2 border-t border-gray-200" /> },
+    {
+      type: 'item',
       label: 'Dashboard',
       icon: LayoutDashboard,
       path: '/company/dashboard'
