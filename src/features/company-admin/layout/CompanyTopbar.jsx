@@ -15,7 +15,7 @@ const getUserRoleLabel = (claims, companyId) => {
 };
 
 export const CompanyTopbar = () => {
-    const { currentUser, logout, currentCompanyProfile, currentUserClaims } = useData();
+    const { currentUser, handleLogout, currentCompanyProfile, currentUserClaims } = useData();
     const navigate = useNavigate();
     const companyId = currentCompanyProfile?.id;
 
@@ -39,10 +39,9 @@ export const CompanyTopbar = () => {
         fetchUserName();
     }, [currentUser]);
 
-    const handleLogout = async () => {
+    const onLogout = async () => {
         try {
-            await logout();
-            navigate('/login');
+            await handleLogout();
         } catch (error) {
             console.error('Logout failed', error);
         }
