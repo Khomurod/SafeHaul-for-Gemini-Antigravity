@@ -154,6 +154,14 @@ service cloud.firestore {
         allow read: if isCompanyTeam(companyId) || isSuperAdmin();
       }
 
+      // NOTIFICATIONS: Company activity notifications
+      match /notifications/{notificationId} {
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow create: if isCompanyAdmin(companyId) || isSuperAdmin();
+        allow update: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
+      }
+
       // SECURE SETTINGS: Email Config & System Keys
       // Moved from public document to private subcollection
       match /system_settings/email_config {

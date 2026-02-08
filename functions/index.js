@@ -139,3 +139,11 @@ const blacklist = require('./blacklist');
 exports.onApplicationUpdateSegments = segments.onApplicationUpdateSegments;
 exports.onApplicationCreatedSegments = segments.onApplicationCreatedSegments;
 exports.handleOptOut = blacklist.handleOptOut;
+
+// 15. In-App Notifications
+const notificationTriggers = require('./notificationTriggers');
+exports.onApplicationStatusChanged = notificationTriggers.onApplicationStatusChanged;
+exports.onLeadAssigned = notificationTriggers.onLeadAssigned;
+exports.onNewApplicationNotification = notificationTriggers.onNewApplicationNotification;
+exports.onCallbackScheduled = notificationTriggers.onCallbackScheduled;
+exports.onLeadCallbackScheduled = notificationTriggers.onLeadCallbackScheduled;

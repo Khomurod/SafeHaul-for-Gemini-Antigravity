@@ -12,6 +12,22 @@ import { ALL_COLUMNS } from './tableConfig';
 
 const getColWidth = (key) => ALL_COLUMNS.find(c => c.key === key)?.widthClass || '';
 
+// Generate consistent avatar color based on name
+const getAvatarGradient = (name) => {
+    const gradients = [
+        'from-blue-500 to-indigo-600',
+        'from-purple-500 to-pink-600',
+        'from-green-500 to-teal-600',
+        'from-orange-500 to-red-600',
+        'from-cyan-500 to-blue-600',
+        'from-rose-500 to-pink-600',
+        'from-amber-500 to-orange-600',
+        'from-emerald-500 to-green-600'
+    ];
+    const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return gradients[hash % gradients.length];
+};
+
 const getStatusBadgeStyles = (status) => {
     const s = (status || '').toLowerCase();
 
@@ -161,11 +177,11 @@ export function DashboardBody({
                     <tr
                         key={item.id}
                         onClick={() => onSelect(item)}
-                        className={`cursor-pointer transition-colors group ${isSelected
-                            ? 'bg-blue-50/60'
+                        className={`cursor-pointer transition-all duration-200 group border-b border-gray-50 ${isSelected
+                            ? 'bg-blue-50/80 shadow-sm'
                             : isChecked
                                 ? 'bg-blue-50/30'
-                                : 'hover:bg-gray-50'
+                                : 'hover:bg-gradient-to-r hover:from-gray-50 hover:to-white'
                             }`}
                     >
                         {/* CHECKBOX COLUMN */}
@@ -190,9 +206,9 @@ export function DashboardBody({
                         {visibleColumns.includes('name') && (
                             <td className={`px-6 py-4 align-middle overflow-hidden text-left ${getColWidth('name')} ${(!showCheckboxes) ? `border-l-4 ${isSelected ? 'border-l-blue-600' : 'border-l-transparent'}` : ''}`}>
                                 <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border shrink-0 transition-colors ${isSelected
-                                        ? 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-gray-100 text-gray-600 border-gray-200 group-hover:bg-white'
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold border shrink-0 transition-all shadow-sm ${isSelected
+                                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400 scale-105'
+                                        : `bg-gradient-to-br ${getAvatarGradient(name)} text-white border-transparent group-hover:scale-105`
                                         }`}>
                                         {name.charAt(0).toUpperCase()}
                                     </div>

@@ -100,10 +100,10 @@ export function ApplicationDetailViewV2({
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 z-[60] backdrop-blur-sm flex justify-end transition-opacity duration-300" onClick={onClosePanel}>
-            <div className="bg-gray-50 w-[90%] md:w-[80%] lg:w-[70%] xl:w-[65%] h-full shadow-2xl flex flex-col transform transition-transform duration-300" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-slate-900/70 z-[60] backdrop-blur-md flex justify-end transition-opacity duration-300" onClick={onClosePanel}>
+            <div className="bg-white w-[90%] md:w-[80%] lg:w-[70%] xl:w-[65%] h-full shadow-2xl flex flex-col transform transition-transform duration-300 border-l border-gray-200" onClick={e => e.stopPropagation()}>
                 {/* Top Bar */}
-                <div className="p-4 border-b border-gray-200 bg-white flex justify-between items-center shrink-0 shadow-sm z-10">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50 flex justify-between items-center shrink-0 z-10">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
                             <label className="text-xs font-bold text-gray-400 uppercase">Assignee:</label>
@@ -140,8 +140,8 @@ export function ApplicationDetailViewV2({
                 </div>
 
                 {/* Main Content */}
-                <div className="flex-1 overflow-y-auto">
-                    <div className="p-6 space-y-5">
+                <div className="flex-1 overflow-y-auto bg-gray-50">
+                    <div className="p-6 space-y-6">
                         {!loading && appData && (
                             <CandidateHero
                                 appData={appData}
@@ -152,14 +152,16 @@ export function ApplicationDetailViewV2({
                             />
                         )}
 
-                        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl">
+                        <div className="flex items-center gap-1 p-1.5 bg-gray-100/80 rounded-2xl backdrop-blur-sm">
                             {navItems.map(item => (
                                 <button
                                     key={item.id}
                                     onClick={() => setActiveSection(item.id)}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeSection === item.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${activeSection === item.id
+                                        ? 'bg-white text-blue-600 shadow-md ring-1 ring-gray-200/50'
+                                        : 'text-gray-500 hover:text-gray-800 hover:bg-white/50'}`}
                                 >
-                                    <item.icon size={16} />
+                                    <item.icon size={16} className={activeSection === item.id ? 'text-blue-500' : ''} />
                                     <span className="hidden sm:inline">{item.label}</span>
                                 </button>
                             ))}
