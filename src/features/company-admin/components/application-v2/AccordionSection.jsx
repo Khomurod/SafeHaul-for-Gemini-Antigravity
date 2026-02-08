@@ -47,8 +47,9 @@ export function AccordionSection({
             {/* Header - Always Visible */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full flex items-center justify-between gap-4 text-left group transition-colors hover:bg-gray-50/50 ${headerStyles[variant]}`}
+                className={`focus-ring w-full flex items-center justify-between gap-4 text-left group transition-colors hover:bg-gray-50/50 ${headerStyles[variant]}`}
                 aria-expanded={isOpen}
+                aria-controls={`accordion-content-${title.replace(/\s+/g, '-').toLowerCase()}`}
             >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                     {icon && (

@@ -66,6 +66,16 @@ service cloud.firestore {
              request.auth.token.roles.keys().size() > 0;
     }
 
+    // PARENT OWNERSHIP CHECK FOR SUBCOLLECTIONS (M6 Fix)
+    // Checks if the signed-in user owns the parent application document
+    function isParentApplicationOwner(companyId, applicationId) {
+      let app = get(/databases/$(database)/documents/companies/$(companyId)/applications/$(applicationId));
+      return app != null && (
+        app.data.applicantId == request.auth.uid || 
+        app.data.driverId == request.auth.uid
+      );
+    }
+
     // =========================================================
     // 2. SUPER ADMIN GLOBAL BYPASS REMOVED
     // =========================================================
@@ -219,11 +229,13 @@ service cloud.firestore {
 
         // Application Subcollections
         match /dq_files/{fileId} { 
-          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid));
+          // M6 FIX: Use parent ownership check instead of checking file doc's applicantId
+          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (isSignedIn() && isParentApplicationOwner(companyId, applicationId));
           allow write: if isCompanyTeam(companyId) || isSuperAdmin(); 
         }
         match /general_documents/{fileId} { 
-          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid));
+          // M6 FIX: Use parent ownership check instead of checking file doc's applicantId
+          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (isSignedIn() && isParentApplicationOwner(companyId, applicationId));
           allow write: if isCompanyTeam(companyId) || isSuperAdmin(); 
         }
         match /internal_notes/{noteId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }

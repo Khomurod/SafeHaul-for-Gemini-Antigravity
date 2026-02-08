@@ -1,11 +1,18 @@
-import React from 'react';
-import { X, Download, FileSignature, Edit2, Save, Trash2, ArrowRight, MessageSquare, Clock, Folder, UserCheck, Mail, Briefcase } from 'lucide-react';
+import React, { Suspense, useState, useEffect } from 'react';
+import { X, Download, FileSignature, Edit2, Save, Trash2, ArrowRight, MessageSquare, Clock, Folder, UserCheck, Mail, Briefcase, Loader2 } from 'lucide-react';
 import { useApplicationView } from '@features/company-admin/hooks/useApplicationView';
+import { db } from '@lib/firebase';
+import { collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useData } from '@/context/DataContext';
+import { useToast } from '@shared/components/feedback';
+
 
 // Components
 import { CandidateHero } from './CandidateHero';
 import { ApplicationOverview } from './ApplicationOverview';
 import { WorkflowProgressBar } from './WorkflowProgressBar';
+import { ApplicationLeftColumn } from './ApplicationLeftColumn';
+import { ApplicationRightColumn } from './ApplicationRightColumn';
 
 // Tabs (Lazy)
 const DQFileTab = React.lazy(() => import('../tabs').then(m => ({ default: m.DQFileTab })));
@@ -18,6 +25,20 @@ import { SendOfferModal } from '../modals';
 import { MoveApplicationModal, DeleteConfirmModal } from '@shared/components/modals/ApplicationModals.jsx';
 import { ContactTab } from '@features/companies';
 
+// Loading Spinner Component
+const LoadingSpinner = () => (
+    <div className="flex items-center justify-center h-64">
+        <Loader2 size={32} className="text-blue-600 animate-spin" />
+    </div>
+);
+
+// Tab Fallback
+const TabFallback = () => (
+    <div className="h-64 flex items-center justify-center text-gray-400">
+        <Loader2 size={20} className="animate-spin mr-2" /> Loading...
+    </div>
+);
+
 export function ApplicationDetailViewV2({
     companyId,
     applicationId,
@@ -26,6 +47,9 @@ export function ApplicationDetailViewV2({
     isCompanyAdmin,
     onPhoneClick
 }) {
+    const { currentUser } = useData();
+    const { showSuccess, showError } = useToast();
+
     const {
         // From useApplicationDetails
         loading, error, appData, collectionName, fileUrls, currentStatus,
@@ -43,7 +67,62 @@ export function ApplicationDetailViewV2({
         handleDownloadPdf, handleManagementComplete, handleWorkflowAction
     } = useApplicationView(companyId, applicationId, onStatusUpdate, onClosePanel, onPhoneClick);
 
-    // Tab Navigation
+    // --- Activity & Notes State (for right column) ---
+    const [activities, setActivities] = useState([]);
+    const [notes, setNotes] = useState([]);
+    const [isLoadingNotes, setIsLoadingNotes] = useState(true);
+
+    // --- Subscribe to activities and notes ---
+    useEffect(() => {
+        if (!companyId || !applicationId || !collectionName) return;
+
+        // Activities subscription
+        const activitiesRef = collection(db, 'companies', companyId, collectionName, applicationId, 'activity_logs');
+        const activitiesQuery = query(activitiesRef, orderBy('timestamp', 'desc'), limit(20));
+
+        const unsubActivities = onSnapshot(activitiesQuery, (snapshot) => {
+            setActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (err) => console.error('Activities subscription error:', err));
+
+        // Notes subscription
+        const notesRef = collection(db, 'companies', companyId, collectionName, applicationId, 'notes');
+        const notesQuery = query(notesRef, orderBy('createdAt', 'desc'), limit(10));
+
+        const unsubNotes = onSnapshot(notesQuery, (snapshot) => {
+            setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsLoadingNotes(false);
+        }, (err) => {
+            console.error('Notes subscription error:', err);
+            setIsLoadingNotes(false);
+        });
+
+        return () => {
+            unsubActivities();
+            unsubNotes();
+        };
+    }, [companyId, applicationId, collectionName]);
+
+    // --- Add Note Handler ---
+    const handleAddNote = async (content) => {
+        if (!companyId || !applicationId || !collectionName) return;
+
+        try {
+            const notesRef = collection(db, 'companies', companyId, collectionName, applicationId, 'notes');
+            await addDoc(notesRef, {
+                content,
+                author: currentUser?.displayName || currentUser?.email || 'Unknown',
+                authorId: currentUser?.uid,
+                createdAt: serverTimestamp(),
+                pinned: false
+            });
+            showSuccess('Note added');
+        } catch (err) {
+            console.error('Error adding note:', err);
+            showError('Failed to add note');
+        }
+    };
+
+    // Tab Navigation - simplified for two-column layout
     const navItems = [
         { id: 'application', label: 'Application', icon: Briefcase },
         { id: 'dq', label: 'DQ Files', icon: UserCheck },
@@ -54,58 +133,89 @@ export function ApplicationDetailViewV2({
         { id: 'activity', label: 'Activity', icon: Clock }
     ];
 
+    // Render tab content (for non-application tabs)
+    const renderTabContent = () => {
+        switch (activeSection) {
+            case 'contact':
+                return <Suspense fallback={<TabFallback />}>
+                    <ContactTab companyId={companyId} recordId={applicationId} collectionName={collectionName} email={appData.email} phone={appData.phone} applicantData={appData} />
+                </Suspense>;
+            case 'notes':
+                return <Suspense fallback={<TabFallback />}>
+                    <NotesTab companyId={companyId} applicationId={applicationId} collectionName={collectionName} />
+                </Suspense>;
+            case 'dq':
+                return <Suspense fallback={<TabFallback />}>
+                    <DQFileTab companyId={companyId} applicationId={applicationId} collectionName={collectionName} />
+                </Suspense>;
+            case 'pev':
+                return <Suspense fallback={<TabFallback />}>
+                    <PEVTab companyId={companyId} applicationId={applicationId} appData={appData} />
+                </Suspense>;
+            case 'files':
+                return <Suspense fallback={<TabFallback />}>
+                    <GeneralDocumentsTab companyId={companyId} applicationId={applicationId} appData={appData} fileUrls={fileUrls} collectionName={collectionName} />
+                </Suspense>;
+            case 'activity':
+                return <Suspense fallback={<TabFallback />}>
+                    <ActivityHistoryTab companyId={companyId} applicationId={applicationId} collectionName={collectionName} />
+                </Suspense>;
+            default:
+                return null;
+        }
+    };
+
+    // Render main content
     const renderContent = () => {
-        if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>;
+        if (loading) return <LoadingSpinner />;
         if (error) return <div className="flex items-center justify-center h-64"><p className="text-red-500">{error}</p></div>;
         if (!appData) return <div className="flex items-center justify-center h-64"><p className="text-gray-500">No data available</p></div>;
 
-        switch (activeSection) {
-            case 'contact':
-                return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
-                    <ContactTab companyId={companyId} recordId={applicationId} collectionName={collectionName} email={appData.email} phone={appData.phone} applicantData={appData} />
-                </React.Suspense>;
-            case 'notes':
-                return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
-                    <NotesTab companyId={companyId} applicationId={applicationId} collectionName={collectionName} />
-                </React.Suspense>;
-            case 'dq':
-                return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
-                    <DQFileTab companyId={companyId} applicationId={applicationId} collectionName={collectionName} />
-                </React.Suspense>;
-            case 'pev':
-                return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
-                    <PEVTab companyId={companyId} applicationId={applicationId} appData={appData} />
-                </React.Suspense>;
-            case 'files':
-                return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
-                    <GeneralDocumentsTab companyId={companyId} applicationId={applicationId} appData={appData} fileUrls={fileUrls} collectionName={collectionName} />
-                </React.Suspense>;
-            case 'activity':
-                return <React.Suspense fallback={<div className="h-64 flex center text-gray-400">Loading...</div>}>
-                    <ActivityHistoryTab companyId={companyId} applicationId={applicationId} collectionName={collectionName} />
-                </React.Suspense>;
-            case 'application':
-            default:
-                return <ApplicationOverview
-                    appData={appData}
-                    dqStatus={dqStatus}
-                    currentStatus={currentStatus}
-                    onWorkflowAction={handleWorkflowAction}
-                    dqFiles={dqFiles}
-                    setActiveSection={setActiveSection}
-                    isEditing={isEditing}
-                    onDataChange={handleDataChange}
-                    canEditAllFields={canEditAllFields}
-                    onPhoneClick={onPhoneClick}
-                />;
+        // For the 'application' tab, render the two-column layout
+        if (activeSection === 'application') {
+            return (
+                <div className="two-column-layout flex flex-col lg:flex-row gap-6">
+                    {/* Left Column - Main content, full width on mobile */}
+                    <div className="left-column flex-1 min-w-0">
+                        <ApplicationLeftColumn
+                            appData={appData}
+                            currentStatus={currentStatus}
+                            dqStatus={dqStatus}
+                            fileUrls={fileUrls}
+                            isEditing={isEditing}
+                            onDataChange={handleDataChange}
+                            canEditAllFields={canEditAllFields}
+                            onPhoneClick={onPhoneClick}
+                            onViewDocument={(key, url) => window.open(url, '_blank')}
+                            setActiveSection={setActiveSection}
+                        />
+                    </div>
+
+                    {/* Right Column - Sidebar, hidden on mobile/tablet, shown on desktop */}
+                    <div className="right-column hidden lg:block w-full lg:w-80 xl:w-96 shrink-0">
+                        <ApplicationRightColumn
+                            appData={appData}
+                            activities={activities}
+                            notes={notes}
+                            dqStatus={dqStatus}
+                            onAddNote={handleAddNote}
+                            onPhoneClick={onPhoneClick}
+                            isLoadingNotes={isLoadingNotes}
+                        />
+                    </div>
+                </div>
+            );
         }
+
+        // For other tabs, render full-width
+        return renderTabContent();
     };
 
     return (
         <div className="fixed inset-0 bg-slate-900/70 z-[60] backdrop-blur-md flex justify-end transition-opacity duration-300" onClick={onClosePanel}>
-            <div className="bg-white w-[90%] md:w-[80%] lg:w-[70%] xl:w-[65%] h-full shadow-2xl flex flex-col transform transition-transform duration-300 border-l border-gray-200" onClick={e => e.stopPropagation()}>
-                {/* Top Bar */}
-                <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50 flex justify-between items-center shrink-0 z-10">
+            <div className="bg-white w-[95%] md:w-[90%] lg:w-[85%] xl:w-[80%] h-full shadow-2xl flex flex-col transform transition-transform duration-300 border-l border-gray-200" onClick={e => e.stopPropagation()}>
+                {/* Top Bar - Sticky */}
+                <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50 flex justify-between items-center shrink-0 z-20 shadow-sm">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
                             <label className="text-xs font-bold text-gray-400 uppercase">Assignee:</label>
@@ -143,7 +253,7 @@ export function ApplicationDetailViewV2({
 
                 {/* Main Content */}
                 <div className="flex-1 overflow-y-auto bg-gray-50">
-                    <div className="p-6 space-y-6">
+                    <div className="p-6 space-y-5">
                         {!loading && appData && (
                             <>
                                 <CandidateHero
@@ -157,7 +267,8 @@ export function ApplicationDetailViewV2({
                             </>
                         )}
 
-                        <div className="flex items-center gap-1 p-1.5 bg-gray-100/80 rounded-2xl backdrop-blur-sm">
+                        {/* Tab Navigation */}
+                        <div className="flex items-center gap-1 p-1.5 bg-gray-100/80 rounded-2xl backdrop-blur-sm sticky top-0 z-10">
                             {navItems.map(item => (
                                 <button
                                     key={item.id}
@@ -172,13 +283,14 @@ export function ApplicationDetailViewV2({
                             ))}
                         </div>
 
+                        {/* Tab Content */}
                         {renderContent()}
                     </div>
                 </div>
 
-                {/* Footer Actions */}
-                {(canEdit || isSuperAdmin) && activeSection === 'overview' && !loading && (
-                    <div className="p-4 border-t border-gray-200 bg-white flex justify-between items-center shrink-0 z-10">
+                {/* Footer Actions - Sticky */}
+                {(canEdit || isSuperAdmin) && activeSection === 'application' && !loading && (
+                    <div className="p-4 border-t border-gray-200 bg-white flex justify-between items-center shrink-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                         <div className="flex gap-3">
                             {isSuperAdmin && !isEditing && (
                                 <button className="px-4 py-2 bg-indigo-100 text-indigo-700 font-bold rounded-lg hover:bg-indigo-200 transition flex items-center gap-2" onClick={() => setShowMoveModal(true)}>
@@ -193,7 +305,7 @@ export function ApplicationDetailViewV2({
                                 <>
                                     <button className="px-4 py-2 text-gray-600 hover:underline font-medium" onClick={() => { setIsEditing(false); loadApplication(); }}>Cancel</button>
                                     <button className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition flex items-center gap-2 shadow-md" onClick={handleSaveEdit} disabled={isSaving}>
-                                        <Save size={16} /> Save
+                                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
                                     </button>
                                 </>
                             )}

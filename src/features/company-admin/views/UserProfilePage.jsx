@@ -3,7 +3,7 @@ import { useData } from '@/context/DataContext';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { auth, storage, db } from '@lib/firebase';
 import { updateProfile, updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { User, Mail, Lock, Save, Camera, Upload, AlertCircle } from 'lucide-react';
 import { getPortalUser } from '@features/auth/services/userService';
@@ -123,6 +123,20 @@ export const UserProfilePage = () => {
         }
         setIsSavingProfile(true);
         try {
+            // Username uniqueness check
+            const trimmedUsername = profileData.username.trim();
+            if (trimmedUsername) {
+                const usersRef = collection(db, 'users');
+                const q = query(usersRef, where('username', '==', trimmedUsername));
+                const snapshot = await getDocs(q);
+                const otherUsers = snapshot.docs.filter(doc => doc.id !== currentUser.uid);
+                if (otherUsers.length > 0) {
+                    showError('This username is already taken. Please choose a different one.');
+                    setIsSavingProfile(false);
+                    return;
+                }
+            }
+
             // 1. Update Auth
             if (currentUser.displayName !== profileData.displayName) {
                 await updateProfile(auth.currentUser, {
@@ -133,7 +147,7 @@ export const UserProfilePage = () => {
             // 2. Update Firestore
             await updateDoc(doc(db, "users", currentUser.uid), {
                 name: profileData.displayName.trim(),
-                username: profileData.username.trim()
+                username: trimmedUsername
             });
 
             showSuccess('Profile updated successfully!');

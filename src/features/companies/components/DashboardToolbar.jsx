@@ -12,46 +12,35 @@ const DRIVER_TYPE_OPTIONS = [
 ];
 
 // --- SECTION TIMER COMPONENT ---
+// M5 FIX: Now fetches rotationEndsAt from system_settings instead of local 7AM calculation
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@lib/firebase';
+
 function BatchTimer({ startTime }) {
     const [timeLeft, setTimeLeft] = useState('--:--:--');
     const [isUrgent, setIsUrgent] = useState(false);
     const [status, setStatus] = useState('pending'); // pending, active, expired
+    const [rotationEndsAt, setRotationEndsAt] = useState(null);
+
+    // Listen to system_settings/distribution for rotationEndsAt
+    useEffect(() => {
+        const unsub = onSnapshot(doc(db, 'system_settings', 'distribution'), (snap) => {
+            if (snap.exists() && snap.data().rotationEndsAt) {
+                setRotationEndsAt(snap.data().rotationEndsAt.toDate());
+            }
+        });
+        return () => unsub();
+    }, []);
 
     useEffect(() => {
+        if (!rotationEndsAt) {
+            setStatus('pending');
+            return;
+        }
+
         const calculate = () => {
             const now = new Date();
-
-            // 1. Get current time parts in CT
-            const formatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: 'America/Chicago',
-                year: 'numeric', month: 'numeric', day: 'numeric',
-                hour: 'numeric', minute: 'numeric', second: 'numeric',
-                hour12: false
-            });
-
-            const parts = formatter.formatToParts(now);
-            const getPart = (type) => {
-                const part = parts.find(p => p.type === type);
-                return part ? parseInt(part.value) : 0;
-            };
-
-            const ctYear = getPart('year');
-            const ctMonth = getPart('month');
-            const ctDay = getPart('day');
-            const ctHour = getPart('hour');
-            const ctMin = getPart('minute');
-            const ctSec = getPart('second');
-
-            // 2. Construct "Next 7 AM" in CT
-            // We treat the CT parts as if they were local to calculate the diff
-            const ctNowAsLocal = new Date(ctYear, ctMonth - 1, ctDay, ctHour, ctMin, ctSec);
-            const ctTargetAsLocal = new Date(ctYear, ctMonth - 1, ctDay, 7, 0, 0);
-
-            if (ctHour >= 7) {
-                ctTargetAsLocal.setDate(ctTargetAsLocal.getDate() + 1);
-            }
-
-            const diff = ctTargetAsLocal.getTime() - ctNowAsLocal.getTime();
+            const diff = rotationEndsAt.getTime() - now.getTime();
 
             if (diff <= 0) {
                 setTimeLeft("00:00:00");
@@ -74,7 +63,7 @@ function BatchTimer({ startTime }) {
         calculate();
         const interval = setInterval(calculate, 1000);
         return () => clearInterval(interval);
-    }, []);
+    }, [rotationEndsAt]);
 
     // Render based on status
     if (status === 'pending') {

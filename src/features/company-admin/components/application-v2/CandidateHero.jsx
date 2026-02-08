@@ -1,6 +1,12 @@
 import React from 'react';
 import { Phone, Mail, MessageCircle, MapPin, Calendar, Briefcase, Clock } from 'lucide-react';
-import { formatPhoneNumber, normalizePhone } from '@shared/utils/helpers';
+import { formatPhoneNumber } from '@shared/utils/helpers';
+
+// Local helper for phone normalization
+const normalizePhone = (phone) => {
+    if (!phone) return '';
+    return phone.replace(/\D/g, '');
+};
 
 /**
  * CandidateHero - Top header showing candidate info, quick stats, and contact actions
@@ -15,7 +21,6 @@ export function CandidateHero({
     if (!appData) return null;
 
     const fullName = `${appData.firstName || ''} ${appData.lastName || ''}`.trim() || 'Unknown';
-    const initials = `${appData.firstName?.[0] || ''}${appData.lastName?.[0] || ''}`.toUpperCase() || '?';
 
     // Calculate experience display
     const experience = appData['experience-years'] || appData.experience || 'N/A';
@@ -82,14 +87,7 @@ export function CandidateHero({
             <div className="p-6">
                 <div className="flex items-start gap-5">
 
-                    {/* Avatar */}
-                    <div className="shrink-0">
-                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
-                            <span className="text-2xl font-bold text-white">{initials}</span>
-                        </div>
-                    </div>
-
-                    {/* Info */}
+                    {/* Info - No Avatar */}
                     <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-4">
                             <div>

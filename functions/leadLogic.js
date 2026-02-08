@@ -126,11 +126,23 @@ async function runLeadDistribution(forceRotate = false) {
         const queued = results.filter(r => r.status === "queued").length;
         const failed = results.filter(r => r.status === "failed").length;
 
-        console.log(`Cloud Tasks created: ${queued} queued, ${failed} failed`);
+        // M5 FIX: Write rotationEndsAt timestamp for frontend SafeHaul timer
+        // Calculate next 7 AM in local server time as the rotation end time
+        const nextRotation = new Date();
+        nextRotation.setDate(nextRotation.getDate() + 1);
+        nextRotation.setHours(7, 0, 0, 0);
+
+        await db.collection("system_settings").doc("distribution").set({
+            rotationEndsAt: admin.firestore.Timestamp.fromDate(nextRotation),
+            lastDistributedAt: admin.firestore.Timestamp.now()
+        }, { merge: true });
+
+        console.log(`Cloud Tasks created: ${queued} queued, ${failed} failed. Next rotation: ${nextRotation.toISOString()}`);
         return {
             success: true,
             message: `Dealer V4 Complete: ${queued} tasks queued, ${failed} failed`,
-            details: results
+            details: results,
+            rotationEndsAt: nextRotation.toISOString()
         };
 
     } catch (globalError) {

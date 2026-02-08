@@ -61,6 +61,11 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                             include = false;
                         }
                     }
+
+                    // In-Memory Filter: Excluded Leads
+                    if (filters.excludedLeadIds && filters.excludedLeadIds.includes(d.id)) {
+                        include = false;
+                    }
                     if (include) idSet.add(d.id);
                 });
             });

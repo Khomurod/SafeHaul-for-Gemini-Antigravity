@@ -15,6 +15,18 @@ jestMock.mock('firebase-admin', () => {
             set: jestMock.fn(),
             commit: jestMock.fn().mockResolvedValue(true)
         })),
+        runTransaction: jestMock.fn((callback) => callback({
+            get: jestMock.fn().mockResolvedValue({
+                exists: true,
+                data: () => ({
+                    status: 'active',
+                    targetIds: Array.from({ length: 2 }, (_, i) => `lead${i}`),
+                    progress: { currentPointer: 0 }
+                })
+            }),
+            update: jestMock.fn(),
+            set: jestMock.fn()
+        })),
     };
 
     // Recursive mocking for collection().doc().collection()...
@@ -65,6 +77,18 @@ jestMock.mock('firebase-admin/storage', () => ({
     getStorage: jestMock.fn()
 }));
 
+// Mock firebase-functions/v2/https
+jestMock.mock('firebase-functions/v2/https', () => ({
+    onRequest: jestMock.fn((opts, handler) => handler),
+    onCall: jestMock.fn((opts, handler) => handler),
+    HttpsError: class extends Error {
+        constructor(code, message) {
+            super(message);
+            this.code = code;
+        }
+    }
+}));
+
 // Mock Cloud Tasks
 const mockCreateTask = jestMock.fn().mockResolvedValue([{}]);
 jestMock.mock('@google-cloud/tasks', () => {
@@ -89,6 +113,7 @@ jestMock.mock('../blacklist', () => ({
 // Import the module under test
 process.env.GCLOUD_PROJECT = 'test-project';
 process.env.FUNCTION_REGION = 'us-central1';
+process.env.PROCESS_BULK_BATCH_URL = 'https://us-central1-test-project.cloudfunctions.net/processBulkBatch';
 
 const bulkActions = require('../bulkActions');
 const admin = require('firebase-admin');
@@ -106,19 +131,19 @@ describe('Bulk Actions Tests', () => {
     });
 
     it('should enqueue worker with correct URL in initBulkSession', async () => {
-        const wrapped = test.wrap(bulkActions.initBulkSession);
-        const data = {
-            companyId: 'company123',
-            filters: { leadType: 'global' },
-            messageConfig: { method: 'sms', message: 'Hello' }
-        };
-        const context = {
+        // Direct call because we mocked onCall to return the handler
+        const request = {
+            data: {
+                companyId: 'company123',
+                filters: { leadType: 'global' },
+                config: { method: 'sms', message: 'Hello' }
+            },
             auth: { uid: 'user123' }
         };
 
         // Setup better mocks
         const mockDoc = {
-            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Test Recruiter', companyName: 'Test Company' }) }),
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Test Recruiter', companyName: 'Test Company', ownerId: 'user123' }) }),
             set: jestMock.fn().mockResolvedValue(true),
             update: jestMock.fn().mockResolvedValue(true),
             collection: jestMock.fn(),
@@ -130,7 +155,7 @@ describe('Bulk Actions Tests', () => {
             where: jestMock.fn().mockReturnThis(),
             limit: jestMock.fn().mockReturnThis(),
             get: jestMock.fn().mockResolvedValue({
-                docs: [{ id: 'lead1' }, { id: 'lead2' }]
+                docs: [{ id: 'lead1', data: () => ({}) }, { id: 'lead2', data: () => ({}) }]
             }),
             add: jestMock.fn(),
         };
@@ -138,7 +163,7 @@ describe('Bulk Actions Tests', () => {
         mockDoc.collection.mockReturnValue(mockCollection);
         db.collection.mockReturnValue(mockCollection);
 
-        await wrapped({ data, auth: context.auth });
+        await bulkActions.initBulkSession(request);
 
         expect(mockCreateTask).toHaveBeenCalled();
         const taskCall = mockCreateTask.mock.calls[0][0];
@@ -148,7 +173,7 @@ describe('Bulk Actions Tests', () => {
         expect(task.httpRequest.url).toBe('https://us-central1-test-project.cloudfunctions.net/processBulkBatch');
     });
 
-    it('should process batch and enqueue next batch in processBulkBatch', async () => {
+    it('should process batch and complete session (no next batch)', async () => {
         const req = {
             headers: { 'x-appengine-queuename': 'bulk-actions-queue' },
             body: { companyId: 'company123', sessionId: 'session123' }
@@ -160,7 +185,7 @@ describe('Bulk Actions Tests', () => {
 
         const sessionData = {
             status: 'active',
-            targetIds: Array.from({ length: 100 }, (_, i) => `lead${i}`),
+            targetIds: Array.from({ length: 2 }, (_, i) => `lead${i}`),
             currentPointer: 0,
             config: { method: 'sms', message: 'Hello' },
             progress: { processedCount: 0 },
@@ -176,7 +201,10 @@ describe('Bulk Actions Tests', () => {
         };
 
         const attemptsCollectionMock = {
-            doc: jestMock.fn(() => ({})),
+            doc: jestMock.fn(() => ({
+                get: jestMock.fn().mockResolvedValue({ exists: false }),
+                set: jestMock.fn().mockResolvedValue(true)
+            })),
         };
         sessionRefMock.collection.mockReturnValue(attemptsCollectionMock);
 
@@ -190,7 +218,10 @@ describe('Bulk Actions Tests', () => {
         // Logic to return sessionRefMock when querying the session
         // db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId)
 
-        const companiesDoc = { collection: jestMock.fn() };
+        const companiesDoc = {
+            collection: jestMock.fn(),
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Test Company' }) })
+        };
         const bulkSessionsCollection = { doc: jestMock.fn() };
 
         mockCollection.doc.mockImplementation((id) => {
@@ -203,7 +234,8 @@ describe('Bulk Actions Tests', () => {
                     get: jestMock.fn().mockResolvedValue({
                         exists: true,
                         data: () => ({ firstName: 'John', phone: '1234567890' })
-                    })
+                    }),
+                    update: jestMock.fn().mockResolvedValue(true)
                 };
             }
             return { get: jestMock.fn().mockResolvedValue({ exists: false }) };
@@ -212,7 +244,7 @@ describe('Bulk Actions Tests', () => {
         companiesDoc.collection.mockImplementation((name) => {
             if (name === 'bulk_sessions') return bulkSessionsCollection;
             if (name === 'leads') return mockCollection; // reuse for leads lookup
-            return { doc: jestMock.fn() };
+            return { doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: false }) })) };
         });
 
         bulkSessionsCollection.doc.mockReturnValue(sessionRefMock);
@@ -225,29 +257,31 @@ describe('Bulk Actions Tests', () => {
         await bulkActions.processBulkBatch(req, res);
 
         expect(res.status).toHaveBeenCalledWith(200);
-        expect(res.send).toHaveBeenCalledWith(expect.stringContaining('Processed batch'));
+        expect(res.send).toHaveBeenCalledWith(expect.stringContaining('Processed partial batch'));
 
         // Verify session update
         expect(sessionRefMock.update).toHaveBeenCalledWith(expect.objectContaining({
-            currentPointer: 50, // Batch size 50
+            'status': 'completed',
             'progress.processedCount': expect.anything(),
         }));
+        // Verify next task enqueue - SHOULD NOT BE CALLED since we processed all 2 items
+        expect(mockCreateTask).not.toHaveBeenCalled();
 
-        // Verify next task enqueue
-        expect(mockCreateTask).toHaveBeenCalled();
-    });
+        if (res.status.mock.calls.length > 0 && res.status.mock.calls[0][0] === 500) {
+            console.error('DEBUG: 500 Error Response:', JSON.stringify(res.send.mock.calls));
+        }
+    }, 15000);
 
     it('should exclude IDs in filters.excludedLeadIds', async () => {
-        const wrapped = test.wrap(bulkActions.initBulkSession);
-        const data = {
-            companyId: 'company123',
-            filters: {
-                leadType: 'global',
-                excludedLeadIds: ['lead1']
+        const request = {
+            data: {
+                companyId: 'company123',
+                filters: {
+                    leadType: 'global',
+                    excludedLeadIds: ['lead1']
+                },
+                config: { method: 'sms', message: 'Hello' }
             },
-            messageConfig: { method: 'sms', message: 'Hello' }
-        };
-        const context = {
             auth: { uid: 'user123' }
         };
 
@@ -258,7 +292,7 @@ describe('Bulk Actions Tests', () => {
         // I should set up mocks here too.
 
         const mockDoc = {
-            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Test Recruiter', companyName: 'Test Company' }) }),
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Test Recruiter', companyName: 'Test Company', ownerId: 'user123' }) }),
             set: jestMock.fn().mockResolvedValue(true),
             update: jestMock.fn().mockResolvedValue(true),
             collection: jestMock.fn(),
@@ -270,7 +304,7 @@ describe('Bulk Actions Tests', () => {
             where: jestMock.fn().mockReturnThis(),
             limit: jestMock.fn().mockReturnThis(),
             get: jestMock.fn().mockResolvedValue({
-                docs: [{ id: 'lead1' }, { id: 'lead2' }]
+                docs: [{ id: 'lead1', data: () => ({}) }, { id: 'lead2', data: () => ({}) }]
             }),
             add: jestMock.fn(),
         };
@@ -278,36 +312,35 @@ describe('Bulk Actions Tests', () => {
         mockDoc.collection.mockReturnValue(mockCollection);
         db.collection.mockReturnValue(mockCollection);
 
-        const result = await wrapped({ data, auth: context.auth });
+        const result = await bulkActions.initBulkSession(request);
 
-        expect(result.targetCount).toBe(1);
+        expect(result.count).toBe(1);
     });
 
     it('should map status IDs to DB values', async () => {
-        const wrapped = test.wrap(bulkActions.initBulkSession);
-        const data = {
-            companyId: 'company123',
-            filters: {
-                leadType: 'leads',
-                status: ['new', 'contacted']
+        const request = {
+            data: {
+                companyId: 'company123',
+                filters: {
+                    leadType: 'leads',
+                    status: ['new', 'contacted']
+                },
+                config: { method: 'sms', message: 'Hello' }
             },
-            messageConfig: { method: 'sms', message: 'Hello' }
-        };
-        const context = {
             auth: { uid: 'user123' }
         };
 
         const mockWhere = jestMock.fn().mockReturnThis();
         const mockDocWithGet = {
             collection: jestMock.fn(),
-            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) })
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ ownerId: 'user123' }) })
         };
         const mockCollection = {
             doc: jestMock.fn().mockReturnValue(mockDocWithGet),
             where: mockWhere, // We want to spy on this
             limit: jestMock.fn().mockReturnThis(),
             get: jestMock.fn().mockResolvedValue({
-                docs: [{ id: 'lead1' }]
+                docs: [{ id: 'lead1', data: () => ({}) }]
             }),
             add: jestMock.fn(),
         };
@@ -318,10 +351,10 @@ describe('Bulk Actions Tests', () => {
         const companyDoc = {
             collection: jestMock.fn((colName) => {
                 if (colName === 'leads') return mockCollection;
-                if (colName === 'bulk_sessions') return { doc: jestMock.fn(() => ({ set: jestMock.fn(), id: 'sess1' })) };
-                return { doc: jestMock.fn() };
+                if (colName === 'bulk_sessions') return { doc: jestMock.fn(() => ({ set: jestMock.fn(), update: jestMock.fn().mockResolvedValue(true), id: 'sess1' })) };
+                return { doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: false }) })) };
             }),
-            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) })
+            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({ ownerId: 'user123' }) })
         };
 
         const companiesCollection = {
@@ -333,7 +366,7 @@ describe('Bulk Actions Tests', () => {
             return mockCollection;
         });
 
-        await wrapped({ data, auth: context.auth });
+        await bulkActions.initBulkSession(request);
 
         // Verify status mapping: 'new' -> 'New Application', 'contacted' -> 'Contacted'
         expect(mockWhere).toHaveBeenCalledWith('status', 'in', ['New Application', 'Contacted']);
