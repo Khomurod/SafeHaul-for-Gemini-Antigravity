@@ -54,6 +54,7 @@ exports.onDriverProfileCreated = require('./userOnboarding').onDriverProfileCrea
 // 3. Company Admin
 exports.joinCompanyTeam = hrAdmin.joinCompanyTeam;
 exports.deleteCompany = companyAdmin.deleteCompany;
+exports.syncPublicProfile = companyAdmin.syncPublicProfile;
 
 // 4. Applications & Driver Sync
 exports.onApplicationSubmitted = driverSync.onApplicationSubmitted;

@@ -162,14 +162,17 @@ async function dealLeadsToCompany(company, planLimit, forceRotate) {
 
     if (needed <= 0) return `${company.companyName}: Full (${activeWorkingCount}/${planLimit})`;
 
+    // MEMORY SAFETY: Cap the buffer to prevent OOM crashes
+    const MAX_BATCH_SIZE = 500;
     const buffer = Math.ceil(needed * 1.5);
+    const safeBuffer = Math.min(buffer, MAX_BATCH_SIZE);
     let candidates = [];
 
-    const freshSnap = await db.collection("leads").where("unavailableUntil", "==", null).limit(buffer).get();
+    const freshSnap = await db.collection("leads").where("unavailableUntil", "==", null).limit(safeBuffer).get();
     freshSnap.forEach(doc => candidates.push(doc));
 
-    if (candidates.length < buffer) {
-        const remaining = buffer - candidates.length;
+    if (candidates.length < safeBuffer) {
+        const remaining = Math.min(safeBuffer - candidates.length, MAX_BATCH_SIZE);
         const expiredSnap = await db.collection("leads").where("unavailableUntil", "<=", nowTs).limit(remaining).get();
         expiredSnap.forEach(doc => candidates.push(doc));
     }

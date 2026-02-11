@@ -97,9 +97,9 @@ service cloud.firestore {
     // Guest Applications must have companyId and personalInfo logic
     function isValidGuestApplication(companyId) {
       let data = request.resource.data;
-      // RECOMMENDATION: Enforce App Check (Time-bound exemption active until March 1st, 2026)
-      return (request.time < timestamp.date(2026, 3, 1) || request.auth.token.firebase.app_check_token != null) &&
-             data.companyId == companyId &&
+      // TODO: Enforce App Check before going live globally:
+      // return (request.auth.token.firebase.app_check_token != null) &&
+      return data.companyId == companyId &&
              data.applicantId is string && data.applicantId.size() > 0;
     }
 
@@ -107,13 +107,16 @@ service cloud.firestore {
     // 4. COLLECTION RULES
     // =========================================================
 
-    // --- COMPANIES ---
+    // --- PUBLIC PROFILES (Safe, sanitized data for public pages) ---
+    match /public_profiles/{companyId} {
+      allow read: if true; // Safe because it only contains sanitized data
+    }
+
+    // --- COMPANIES (Locked down — sensitive data) ---
     match /companies/{companyId} {
-      // PUBLIC READ: Essential for branding, landing pages, and application forms
-      allow get: if true; 
-      
-      // LIST: Super Admin can list all. Public limited to 1 (for slug lookups)
-      allow list: if isSuperAdmin() || request.query.limit <= 1;
+      // LOCKED: Only team members and super admins can read company data
+      allow get: if isCompanyTeam(companyId) || isSuperAdmin();
+      allow list: if isSuperAdmin();
 
       // WRITE: Super Admin or Company Admin
       allow create, delete: if isSuperAdmin();
