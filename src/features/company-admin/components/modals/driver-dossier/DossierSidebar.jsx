@@ -9,7 +9,10 @@ import {
     User,
     CheckCircle2,
     AlertCircle,
-    Clock
+    Clock,
+    Mail,
+    Send,
+    Building2
 } from 'lucide-react';
 import { StatusBadge } from '@shared/components/badges/StatusBadge';
 import { formatPhoneNumber } from '@shared/utils/helpers';
@@ -32,102 +35,94 @@ export function DossierSidebar({
     ];
 
     const getInitials = (first, last) => {
-        return `${first?.charAt(0) || ''}${last?.charAt(0) || ''}`.toUpperCase();
-    };
+        // Contact Logic
+        const email = appData?.email || '';
 
-    const fullName = appData ? `${appData.firstName || ''} ${appData.lastName || ''}`.trim() : 'Loading...';
-    const phone = appData?.phone || '';
+        // Sanitize for Telegram (remove non-digits)
+        const telegramLink = phone ? `https://t.me/+${phone.replace(/\D/g, '')}` : '#';
 
-    // Calculate DQ Color
-    const getDQColor = () => {
-        if (!dqStatus) return 'text-gray-400';
-        if (dqStatus.complete === dqStatus.total) return 'text-green-600';
-        return 'text-amber-500';
-    };
-
-    return (
-        <div className="flex flex-col h-full">
-            {/* 1. Identity Header */}
-            <div className="p-6 border-b border-gray-200/60 bg-white">
-                <div className="flex flex-col items-center text-center">
-                    {/* Avatar */}
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg mb-4 ring-4 ring-blue-50">
-                        {loading ? (
-                            <div className="w-full h-full rounded-full bg-gray-100 animate-pulse" />
-                        ) : (
-                            <span className="text-2xl font-bold text-white tracking-wider">
-                                {getInitials(appData?.firstName, appData?.lastName)}
-                            </span>
-                        )}
+        return (
+            <div className="flex flex-col h-full">
+                {/* Identity Header */}
+                <div className="p-6 border-b border-gray-200 bg-white">
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-2xl font-bold border-2 border-white shadow-sm">
+                            {appData?.firstName?.[0]}{appData?.lastName?.[0]}
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-gray-900 text-lg leading-tight">
+                                {appData?.firstName} {appData?.lastName}
+                            </h3>
+                            <div className="mt-1">{getStatusBadge(currentStatus)}</div>
+                        </div>
                     </div>
+                </div>
 
-                    {/* Name & Status */}
-                    <h3 className="text-lg font-bold text-gray-900 mb-2 truncate max-w-full">
-                        {loading ? '...' : fullName}
-                    </h3>
-                    <div className="mb-1">
-                        {!loading && <StatusBadge status={currentStatus} />}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-2 font-medium bg-gray-100 px-2 py-1 rounded-full">
-                        Driver ID: {appData?.driverId || '---'}
+                {/* Navigation */}
+                <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+                    {navItems.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => setActiveTab(item.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === item.id
+                                ? 'bg-white text-blue-700 shadow-sm border border-gray-200 translate-x-1'
+                                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                                }`}
+                        >
+                            <item.icon size={18} className={activeTab === item.id ? 'text-blue-600' : 'text-gray-400'} />
+                            <span>{item.label}</span>
+                            {item.id === 'dq' && dqStatus === 'incomplete' && (
+                                <div className="ml-auto w-2 h-2 rounded-full bg-red-500" />
+                            )}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Contact Footer (Grid Layout) */}
+                <div className="p-4 border-t border-gray-200 bg-white">
+                    <div className="grid grid-cols-3 gap-2">
+                        {/* Phone */}
+                        <a
+                            href={`tel:${phone}`}
+                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-colors ${phone
+                                ? 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700 hover:text-blue-700'
+                                : 'border-gray-100 bg-gray-50 text-gray-300 pointer-events-none'
+                                }`}
+                            title={phone || "No Phone"}
+                        >
+                            <Phone size={18} className="mb-1" />
+                            <span className="text-[10px] font-bold">Call</span>
+                        </a>
+
+                        {/* Email */}
+                        <a
+                            href={`mailto:${email}`}
+                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-colors ${email
+                                ? 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700 hover:text-blue-700'
+                                : 'border-gray-100 bg-gray-50 text-gray-300 pointer-events-none'
+                                }`}
+                            title={email || "No Email"}
+                        >
+                            <Mail size={18} className="mb-1" />
+                            <span className="text-[10px] font-bold">Email</span>
+                        </a>
+
+                        {/* Telegram */}
+                        <a
+                            href={telegramLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-colors ${phone
+                                ? 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700 hover:text-blue-700'
+                                : 'border-gray-100 bg-gray-50 text-gray-300 pointer-events-none'
+                                }`}
+                            title="Open Telegram"
+                        >
+                            <Send size={18} className="mb-1" />
+                            <span className="text-[10px] font-bold">Telegram</span>
+                        </a>
                     </div>
                 </div>
             </div>
-
-            {/* 2. Navigation */}
-            <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-                {navItems.map((item) => (
-                    <button
-                        key={item.id}
-                        onClick={() => setActiveTab(item.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 group
-                            ${activeTab === item.id
-                                ? 'bg-white text-blue-700 shadow-[0_2px_8px_-2px_rgba(59,130,246,0.15)] ring-1 ring-blue-100'
-                                : 'text-gray-500 hover:bg-white hover:text-gray-900 hover:shadow-sm'
-                            }`}
-                    >
-                        <item.icon
-                            size={18}
-                            className={`transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`}
-                        />
-                        <span>{item.label}</span>
-
-                        {/* Badges/Indicators */}
-                        {item.id === 'dq' && dqStatus && (
-                            <div className="ml-auto">
-                                {dqStatus.complete === dqStatus.total ? (
-                                    <CheckCircle2 size={14} className="text-green-500" />
-                                ) : (
-                                    <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-amber-500 rounded-full">
-                                        !
-                                    </span>
-                                )}
-                            </div>
-                        )}
-                    </button>
-                ))}
-            </div>
-
-            {/* 3. Contact Footer (Sticky) */}
-            <div className="p-4 border-t border-gray-200 bg-white/50 backdrop-blur-sm">
-                <div className="bg-white rounded-xl border border-gray-100 p-3 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.1)]">
-                    <p className="text-[10px] uppercase font-bold text-gray-400 mb-1 ml-1">Contact</p>
-                    <div className="flex items-center justify-between">
-                        <span className="font-semibold text-gray-700 text-sm">
-                            {formatPhoneNumber(phone) || 'No Phone'}
-                        </span>
-                        {phone && (
-                            <a
-                                href={`tel:${phone}`}
-                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-                                title="Call Driver"
-                            >
-                                <Phone size={16} />
-                            </a>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
+        );
+    }

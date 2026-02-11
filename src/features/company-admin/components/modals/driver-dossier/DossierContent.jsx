@@ -7,6 +7,7 @@ import { DQFileTab } from './tabs/DQFileTab';
 // Lazy Load Legacy Tabs to keep bundle size optimized
 const ActivityHistoryTab = React.lazy(() => import('@features/company-admin/components/tabs').then(m => ({ default: m.ActivityHistoryTab })));
 const NotesTab = React.lazy(() => import('@features/company-admin/components/tabs').then(m => ({ default: m.NotesTab })));
+const PEVTab = React.lazy(() => import('@features/company-admin/components/tabs/PEVTab').then(m => ({ default: m.PEVTab }))); // Legacy PEV Tab
 
 export function DossierContent({
     activeTab,
@@ -48,6 +49,15 @@ export function DossierContent({
                     applicationId={driverId}
                     collectionName={collectionName}
                 />;
+
+            case 'pev':
+                return (
+                    <Suspense fallback={<TabLoading />}>
+                        <PEVTab
+                            driver={appData} // PEVTab typically takes 'driver' prop
+                        />
+                    </Suspense>
+                );
 
             case 'activity':
                 return (

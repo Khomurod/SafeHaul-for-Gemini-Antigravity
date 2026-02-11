@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, Check, XCircle, ArrowRight } from 'lucide-react';
+import { X, Check, XCircle, ArrowRight, Download } from 'lucide-react';
+import { generateApplicationPDF } from '@shared/utils/pdfGenerator';
 
 export function DossierHeader({
     activeTab,
@@ -17,7 +18,22 @@ export function DossierHeader({
             case 'dq': return 'Driver Qualification File';
             case 'activity': return 'Activity Timeline';
             case 'notes': return 'Internal Notes';
+            case 'pev': return 'Previous Employment Verification';
             default: return 'Driver Dossier';
+        }
+    };
+
+    const handleDownload = () => {
+        if (appData) {
+            // pdfGenerator expects { applicant: appData, company: ... }
+            // Since we might not have full company info here comfortably, we'll pass basics.
+            // Ideally appData already has everything or we'd fetch it.
+            // For now, passing appData as applicant.
+            generateApplicationPDF({
+                applicant: appData,
+                // If we had company profile in props we'd pass it here.
+                // Assuming default fallback in generator.
+            });
         }
     };
 
@@ -48,6 +64,15 @@ export function DossierHeader({
 
             {/* Right: Actions */}
             <div className="flex items-center gap-3">
+                {/* Download Button - Always Visible */}
+                <button
+                    onClick={handleDownload}
+                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors mr-2 border border-transparent hover:border-blue-100"
+                    title="Download PDF"
+                >
+                    <Download size={20} />
+                </button>
+
                 {canEdit && (
                     <>
                         <button

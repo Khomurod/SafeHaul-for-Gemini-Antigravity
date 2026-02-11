@@ -10,37 +10,90 @@ import {
     Clock,
     Briefcase,
     Eye,
-    EyeOff
+    Eye,
+    EyeOff,
+    FileText
 } from 'lucide-react';
 import { formatDate } from '@shared/utils/helpers';
+import { APPLICATION_SCHEMA } from '@/config/applicationSchema';
+import { SchemaSection } from '@shared/components/schema/SchemaRenderer';
 
 export function ApplicationTab({ appData }) {
+    const [viewMode, setViewMode] = useState('summary'); // 'summary' | 'full'
+
     if (!appData) return null;
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-
-                {/* 1. Identity Card (Col Span 6) */}
-                <div className="md:col-span-6">
-                    <IdentityCard appData={appData} />
-                </div>
-
-                {/* 2. License Card (Col Span 6) */}
-                <div className="md:col-span-6">
-                    <LicenseCard appData={appData} />
-                </div>
-
-                {/* 3. Stats / Summary (Col Span 12) */}
-                <div className="md:col-span-12">
-                    <SafetyCard appData={appData} />
-                </div>
-
-                {/* 4. Experience Timeline (Col Span 12) */}
-                <div className="md:col-span-12">
-                    <ExperienceTimeline appData={appData} />
-                </div>
+            {/* Toggle Header */}
+            <div className="flex items-center justify-between bg-gray-50 p-1 rounded-lg border border-gray-200 w-fit">
+                <button
+                    onClick={() => setViewMode('summary')}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'summary'
+                        ? 'bg-white text-blue-600 shadow-sm border border-gray-200'
+                        : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                >
+                    Summary View
+                </button>
+                <button
+                    onClick={() => setViewMode('full')}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'full'
+                        ? 'bg-white text-blue-600 shadow-sm border border-gray-200'
+                        : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                >
+                    <div className="flex items-center gap-2">
+                        <FileText size={14} />
+                        Full Application
+                    </div>
+                </button>
             </div>
+
+            {viewMode === 'summary' ? (
+                /* Summary View (Cards) */
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 animate-in fade-in duration-300">
+
+                    {/* 1. Identity Card (Col Span 6) */}
+                    <div className="md:col-span-6">
+                        <IdentityCard appData={appData} />
+                    </div>
+
+                    {/* 2. License Card (Col Span 6) */}
+                    <div className="md:col-span-6">
+                        <LicenseCard appData={appData} />
+                    </div>
+
+                    {/* 3. Stats / Summary (Col Span 12) */}
+                    <div className="md:col-span-12">
+                        <SafetyCard appData={appData} />
+                    </div>
+
+                    {/* 4. Experience Timeline (Col Span 12) */}
+                    <div className="md:col-span-12">
+                        <ExperienceTimeline appData={appData} />
+                    </div>
+                </div>
+            ) : (
+                /* Full Application View (Schema Renderer) */
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 animate-in fade-in duration-300">
+                    <div className="max-w-4xl mx-auto space-y-8">
+                        {APPLICATION_SCHEMA.sections.map(section => (
+                            <div key={section.id} className="border-b border-gray-100 pb-8 last:border-0 last:pb-0">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    {section.title}
+                                </h3>
+                                <SchemaSection
+                                    sectionId={section.id}
+                                    data={appData}
+                                    mode="display"
+                                    isEditing={false} // Read Only
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
