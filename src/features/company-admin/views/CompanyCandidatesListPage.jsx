@@ -7,7 +7,8 @@ import { SafeHaulLeadsDriverModal } from '@shared/components/modals/SafeHaulLead
 import { CallOutcomeModal } from '@shared/components/modals/CallOutcomeModal';
 import { LeadAssignmentModal } from '../components/LeadAssignmentModal';
 
-const ApplicationDetailView = React.lazy(() => import('../components/application-v2').then(m => ({ default: m.ApplicationDetailViewV2 })));
+import { DriverProfileModal } from '../components/modals/driver-dossier/DriverProfileModal';
+// const ApplicationDetailView = React.lazy(() => import('../components/application-v2').then(m => ({ default: m.ApplicationDetailViewV2 })));
 
 export const CompanyCandidatesListPage = ({ scope }) => {
     // Scope maps to: 'applications', 'find_driver' (SafeHaul Leads), 'company_leads', 'my_leads'
@@ -67,19 +68,15 @@ export const CompanyCandidatesListPage = ({ scope }) => {
             );
         }
 
-        // Applications, Company Leads, My Leads use the full Application Detail View
+        // Applications, Company Leads, My Leads use the NEW Driver Dossier Modal
         return (
-            <React.Suspense fallback={<div className="fixed inset-0 bg-white/50 z-[60] flex items-center justify-center backdrop-blur-sm"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
-                <ApplicationDetailView
-                    key={selectedApp.id}
-                    companyId={companyId}
-                    applicationId={selectedApp.id}
-                    onClosePanel={() => setSelectedApp(null)}
-                    onStatusUpdate={dashboard.refreshData}
-                    isCompanyAdmin={isCompanyAdmin}
-                    onPhoneClick={(e) => handlePhoneClick(e, selectedApp)}
-                />
-            </React.Suspense>
+            <DriverProfileModal
+                key={selectedApp.id}
+                companyId={companyId}
+                driverId={selectedApp.id}
+                isOpen={true}
+                onClose={() => setSelectedApp(null)}
+            />
         );
     };
 
