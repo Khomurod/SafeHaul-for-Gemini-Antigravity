@@ -1,8 +1,7 @@
 // src/features/companies/components/DashboardToolbar.jsx
 
-import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
-import { Search, Filter, X, Zap, Briefcase, Info, Clock, Eye, CheckSquare, Square, RefreshCw, Users } from 'lucide-react';
-import { ALL_COLUMNS } from './tableConfig';
+import React, { useState, useMemo, memo } from 'react';
+import { Search, Filter, X, Zap, Briefcase, Info, Clock, RefreshCw, Users } from 'lucide-react';
 
 // --- CONFIGURATION ---
 const DRIVER_TYPE_OPTIONS = [
@@ -109,15 +108,12 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     visibleColumns,
     setVisibleColumns,
 
-    // NEW PROPS
     selectedCount = 0,
     onAssignLeads,
     canAssign,
     teamMembers = []
 }) {
     const [showFilters, setShowFilters] = useState(false);
-    const [showViewMenu, setShowViewMenu] = useState(false);
-    const menuRef = useRef(null);
 
     // Helper: Dynamic Tab Title
     const getTabTitle = () => {
@@ -138,30 +134,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
         return filters && (filters.state || filters.driverType || filters.dob || filters.assignee);
     }, [filters]);
 
-    // Handle toggling columns
-    const toggleColumn = (key) => {
-        if (visibleColumns.includes(key)) {
-            // Prevent hiding the last column
-            if (visibleColumns.length <= 1) return;
-            setVisibleColumns(visibleColumns.filter(c => c !== key));
-        } else {
-            // Restore original order based on config
-            const newSet = new Set([...visibleColumns, key]);
-            const newOrder = ALL_COLUMNS.filter(col => newSet.has(col.key)).map(col => col.key);
-            setVisibleColumns(newOrder);
-        }
-    };
 
-    // Close menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
-                setShowViewMenu(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
 
     return (
         <div className="p-4 border-b border-gray-200 bg-white z-30 flex flex-col gap-3 shrink-0 relative">
@@ -220,48 +193,6 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
-                    </div>
-
-                    {/* View / Column Toggle */}
-                    <div className="relative" ref={menuRef}>
-                        <button
-                            onClick={() => setShowViewMenu(!showViewMenu)}
-                            className={`p-2 rounded-lg border transition-all flex items-center gap-2 text-sm font-medium ${showViewMenu
-                                ? 'bg-blue-50 border-blue-200 text-blue-700'
-                                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                }`}
-                            title="Customize Columns"
-                        >
-                            <Eye size={16} />
-                            <span className="hidden sm:inline">View</span>
-                        </button>
-
-                        {/* Dropdown Menu */}
-                        {showViewMenu && (
-                            <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                <div className="p-3 border-b border-gray-100 bg-gray-50">
-                                    <span className="text-xs font-bold text-gray-500 uppercase">Show Columns</span>
-                                </div>
-                                <div className="p-2 space-y-1">
-                                    {ALL_COLUMNS.map(col => {
-                                        const isVisible = visibleColumns.includes(col.key);
-                                        return (
-                                            <button
-                                                key={col.key}
-                                                onClick={() => toggleColumn(col.key)}
-                                                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-left"
-                                            >
-                                                {isVisible ?
-                                                    <CheckSquare size={16} className="text-blue-600" /> :
-                                                    <Square size={16} className="text-gray-400" />
-                                                }
-                                                {col.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* Filter Toggle Button */}

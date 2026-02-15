@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
-import { LogOut, Building2, ArrowLeftRight } from 'lucide-react';
+import { LogOut, ArrowLeftRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { getPortalUser } from '@features/auth';
@@ -53,7 +53,7 @@ export const CompanyTopbar = () => {
     const initials = displayName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || 'U';
 
     return (
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-20 shadow-sm">
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-40 shadow-sm">
             {/* Left: Company Name */}
             <div className="flex items-center gap-4">
                 <h1 className="text-lg font-semibold text-gray-900">

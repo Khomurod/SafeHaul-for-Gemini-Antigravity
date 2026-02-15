@@ -1,24 +1,24 @@
 // src/features/super-admin/views/UnifiedDriverList.jsx
 import React, { useState, useMemo, useCallback } from 'react';
 import { db } from '@lib/firebase';
-import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, deleteDoc } from 'firebase/firestore';
 import {
     Search, Trash2, Filter, X, Eye, MessageSquare, UserPlus,
     FileText, Zap, User, Briefcase, Share2, Loader2, Clock,
-    CheckSquare, Square, ChevronUp, ChevronDown, MapPin
+    ChevronUp, ChevronDown, MapPin
 } from 'lucide-react';
 import { getFieldValue, formatPhoneNumber } from '@shared/utils/helpers';
 import { useToast } from '@shared/components/feedback';
 import { StatusBadge } from '@shared/components/badges';
-import { SkeletonTable } from '@shared/components/table';
+import { ModernDriverTable } from '@shared/components/table';
 
 // ========== FILTER CHIPS COMPONENT ==========
 const FilterChip = ({ label, active, onClick, onClear }) => (
     <button
         onClick={onClick}
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full border transition-all ${active
-                ? 'bg-blue-100 text-blue-700 border-blue-300'
-                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+            ? 'bg-blue-100 text-blue-700 border-blue-300'
+            : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
             }`}
     >
         {label}
@@ -287,19 +287,136 @@ export function UnifiedDriverList({
 
     const hasActiveFilters = search || Object.values(filters).some(v => v !== 'All');
 
-    // --- Column Definitions ---
-    const columns = [
-        { key: 'name', label: 'Driver Name', sortable: true, width: 'min-w-[200px]' },
-        { key: 'status', label: 'Status', sortable: true, width: 'w-[120px]' },
-        { key: 'source', label: 'Source', sortable: false, width: 'w-[130px]' },
-        { key: 'position', label: 'Position', sortable: false, width: 'w-[140px]' },
-        { key: 'driverType', label: 'Driver Type', sortable: false, width: 'w-[140px]' },
-        { key: 'location', label: 'Location', sortable: false, width: 'w-[140px]' },
-        { key: 'experience', label: 'Exp', sortable: true, width: 'w-[80px]' },
-        { key: 'docs', label: 'Docs', sortable: false, width: 'w-[100px]' },
-        { key: 'lastActivity', label: 'Last Activity', sortable: false, width: 'w-[100px]' },
-        { key: 'actions', label: '', sortable: false, width: 'w-[100px]' }
-    ];
+    // --- Modern Table Column Config ---
+    const tableColumns = useMemo(() => [
+        // Identity: Name + Contact
+        {
+            key: 'identity',
+            header: 'Driver',
+            render: (item) => (
+                <div className="min-w-[180px]">
+                    <p className="text-sm font-semibold text-slate-900">
+                        {item.firstName} {item.lastName}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate max-w-[200px] mt-0.5">
+                        {item.phone ? formatPhoneNumber(item.phone) : ''}
+                        {item.phone && item.email ? ' • ' : ''}
+                        {item.email || ''}
+                    </p>
+                </div>
+            ),
+        },
+        // Status + Stale
+        {
+            key: 'status',
+            header: 'Status',
+            render: (item) => {
+                const stale = isStale(item.createdAt);
+                return (
+                    <div className="flex flex-col gap-1">
+                        <StatusBadge status={item.status || 'New'} />
+                        {stale && <StatusBadge status="Stale" size="sm" />}
+                    </div>
+                );
+            },
+        },
+        // Source
+        {
+            key: 'source',
+            header: 'Source',
+            render: (item) => <SourceBadge type={item.sourceType} />,
+        },
+        // Context: Location + Driver Type
+        {
+            key: 'context',
+            header: 'Location / Type',
+            render: (item) => (
+                <div>
+                    {(item.city || item.state) ? (
+                        <p className="text-sm font-semibold text-slate-900 flex items-center gap-1">
+                            <MapPin size={12} className="text-slate-400" />
+                            {item.city}{item.city && item.state ? ', ' : ''}{item.state}
+                        </p>
+                    ) : (
+                        <p className="text-sm text-slate-300">—</p>
+                    )}
+                    <p className="text-xs text-slate-500 mt-0.5">
+                        {Array.isArray(item.driverType)
+                            ? item.driverType.join(', ')
+                            : item.driverType || '—'}
+                    </p>
+                </div>
+            ),
+        },
+        // Details: Position + Exp + Docs
+        {
+            key: 'details',
+            header: 'Position / Docs',
+            render: (item) => {
+                const docsStatus = getDocsStatus(item);
+                return (
+                    <div>
+                        <p className="text-sm text-slate-700 font-medium">
+                            {item.positionApplyingTo || 'Driver'}
+                            {item.yearsExperience ? ` · ${item.yearsExperience}y exp` : ''}
+                        </p>
+                        <span className={`text-xs font-medium mt-0.5 inline-block ${docsStatus === 'Complete' ? 'text-emerald-600' :
+                                docsStatus === 'Missing' ? 'text-amber-600' : 'text-slate-500'
+                            }`}>
+                            Docs: {docsStatus}
+                        </span>
+                    </div>
+                );
+            },
+        },
+        // Activity
+        {
+            key: 'activity',
+            header: 'Activity',
+            render: (item) => (
+                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                    <Clock size={12} />
+                    {getRelativeTime(item.updatedAt || item.createdAt)}
+                </span>
+            ),
+        },
+        // Actions — hover-reveal
+        {
+            key: 'actions',
+            header: '',
+            headerClassName: 'w-[100px]',
+            cellClassName: 'w-[100px]',
+            stopPropagation: true,
+            render: (item) => (
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                        onClick={() => onAppClick(item)}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="View"
+                    >
+                        <Eye size={15} />
+                    </button>
+                    <button
+                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                        title="Message"
+                    >
+                        <MessageSquare size={15} />
+                    </button>
+                    <button
+                        onClick={(e) => handleDelete(e, item)}
+                        disabled={deletingId === item.id}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete"
+                    >
+                        {deletingId === item.id
+                            ? <Loader2 size={15} className="animate-spin" />
+                            : <Trash2 size={15} />
+                        }
+                    </button>
+                </div>
+            ),
+        },
+    ], [deletingId]);
 
     return (
         <div className="space-y-4 h-full flex flex-col">
@@ -396,7 +513,7 @@ export function UnifiedDriverList({
             </div>
 
             {/* Table Container */}
-            <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-hidden flex flex-col">
 
                 {/* Bulk Action Bar */}
                 {selectedIds.size > 0 && (
@@ -410,219 +527,33 @@ export function UnifiedDriverList({
                     />
                 )}
 
-                {/* Table */}
-                <div className="overflow-auto flex-1">
-                    <table className="w-full text-left border-collapse min-w-[1200px]">
-                        <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                            <tr>
-                                {/* Checkbox Column */}
-                                <th className="w-12 px-4 py-3 border-b border-gray-200">
-                                    <button
-                                        onClick={toggleSelectAll}
-                                        className="p-1 text-gray-400 hover:text-blue-600 transition"
-                                    >
-                                        {selectedIds.size === paginatedData.length && paginatedData.length > 0
-                                            ? <CheckSquare size={18} className="text-blue-600" />
-                                            : <Square size={18} />
-                                        }
-                                    </button>
-                                </th>
-
-                                {columns.map(col => (
-                                    <th
-                                        key={col.key}
-                                        className={`px-4 py-3 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider ${col.width} ${col.sortable ? 'cursor-pointer hover:text-gray-700' : ''}`}
-                                        onClick={() => col.sortable && handleSort(col.key)}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            {col.label}
-                                            {col.sortable && sortConfig.key === col.key && (
-                                                <span className="text-blue-600">
-                                                    {sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {isLoading ? (
-                                <SkeletonTable rows={10} columns={11} />
-                            ) : paginatedData.length === 0 ? (
-                                <tr>
-                                    <td colSpan={11} className="p-12 text-center">
-                                        <div className="text-gray-400">
-                                            <Search size={32} className="mx-auto mb-3 opacity-50" />
-                                            <p className="font-medium">No drivers match your filters.</p>
-                                            {hasActiveFilters && (
-                                                <button
-                                                    onClick={clearAllFilters}
-                                                    className="mt-2 text-blue-600 hover:underline text-sm"
-                                                >
-                                                    Clear Filters
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                paginatedData.map(item => {
-                                    const stale = isStale(item.createdAt);
-                                    const docsStatus = getDocsStatus(item);
-                                    const isNew = (item.status || 'New') === 'New';
-
-                                    return (
-                                        <tr
-                                            key={item.id}
-                                            onClick={() => onAppClick(item)}
-                                            className={`hover:bg-blue-50 cursor-pointer transition-colors group ${isNew ? 'border-l-4 border-l-blue-500' : ''}`}
-                                        >
-                                            {/* Checkbox */}
-                                            <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                                                <button
-                                                    onClick={(e) => toggleSelect(item.id, e)}
-                                                    className="p-1 text-gray-400 hover:text-blue-600 transition"
-                                                >
-                                                    {selectedIds.has(item.id)
-                                                        ? <CheckSquare size={18} className="text-blue-600" />
-                                                        : <Square size={18} />
-                                                    }
-                                                </button>
-                                            </td>
-
-                                            {/* Driver Name */}
-                                            <td className="px-4 py-3">
-                                                <div className="font-semibold text-gray-900">
-                                                    {item.firstName} {item.lastName}
-                                                </div>
-                                                <div className="text-xs text-gray-400 truncate max-w-[180px]">
-                                                    {item.phone ? formatPhoneNumber(item.phone) : item.email}
-                                                </div>
-                                            </td>
-
-                                            {/* Status */}
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col gap-1">
-                                                    <StatusBadge status={item.status || 'New'} />
-                                                    {stale && <StatusBadge status="Stale" size="sm" />}
-                                                </div>
-                                            </td>
-
-                                            {/* Source */}
-                                            <td className="px-4 py-3">
-                                                <SourceBadge type={item.sourceType} />
-                                            </td>
-
-                                            {/* Position */}
-                                            <td className="px-4 py-3 text-sm text-gray-700">
-                                                {item.positionApplyingTo || 'Driver'}
-                                            </td>
-
-                                            {/* Driver Type */}
-                                            <td className="px-4 py-3 text-sm text-gray-600">
-                                                {Array.isArray(item.driverType)
-                                                    ? item.driverType.join(', ')
-                                                    : item.driverType || '--'}
-                                            </td>
-
-                                            {/* Location */}
-                                            <td className="px-4 py-3">
-                                                {(item.city || item.state) ? (
-                                                    <span className="inline-flex items-center gap-1 text-sm text-gray-600">
-                                                        <MapPin size={12} className="text-gray-400" />
-                                                        {item.city}{item.city && item.state ? ', ' : ''}{item.state}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-gray-300">--</span>
-                                                )}
-                                            </td>
-
-                                            {/* Experience */}
-                                            <td className="px-4 py-3 text-sm text-gray-700 font-medium">
-                                                {item.yearsExperience ? `${item.yearsExperience}y` : '--'}
-                                            </td>
-
-                                            {/* Docs */}
-                                            <td className="px-4 py-3">
-                                                <span className={`text-sm font-medium ${docsStatus === 'Complete' ? 'text-green-600' :
-                                                        docsStatus === 'Missing' ? 'text-amber-600' :
-                                                            'text-gray-600'
-                                                    }`}>
-                                                    {docsStatus}
-                                                </span>
-                                            </td>
-
-                                            {/* Last Activity */}
-                                            <td className="px-4 py-3">
-                                                <span className="inline-flex items-center gap-1 text-sm text-gray-500">
-                                                    <Clock size={12} />
-                                                    {getRelativeTime(item.updatedAt || item.createdAt)}
-                                                </span>
-                                            </td>
-
-                                            {/* Actions */}
-                                            <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={() => onAppClick(item)}
-                                                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
-                                                        title="View"
-                                                    >
-                                                        <Eye size={16} />
-                                                    </button>
-                                                    <button
-                                                        className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition"
-                                                        title="Message"
-                                                    >
-                                                        <MessageSquare size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => handleDelete(e, item)}
-                                                        disabled={deletingId === item.id}
-                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
-                                                        title="Delete"
-                                                    >
-                                                        {deletingId === item.id
-                                                            ? <Loader2 size={16} className="animate-spin" />
-                                                            : <Trash2 size={16} />
-                                                        }
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Footer / Pagination */}
-                <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center text-sm text-gray-600 shrink-0">
-                    <div>
-                        Showing <span className="font-semibold">{paginatedData.length}</span> of <span className="font-semibold">{filteredData.length}</span> records
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(p => p - 1)}
-                            className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition"
-                        >
-                            Previous
-                        </button>
-                        <span className="px-3 text-gray-500">
-                            Page {currentPage} of {totalPages || 1}
-                        </span>
-                        <button
-                            disabled={currentPage >= totalPages}
-                            onClick={() => setCurrentPage(p => p + 1)}
-                            className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition"
-                        >
-                            Next
-                        </button>
-                    </div>
-                </div>
+                {/* Modern Driver Table */}
+                <ModernDriverTable
+                    data={paginatedData}
+                    columns={tableColumns}
+                    onRowClick={onAppClick}
+                    isLoading={isLoading}
+                    emptyMessage="No drivers match your filters."
+                    emptyIcon={hasActiveFilters ? (
+                        <div className="text-center">
+                            <Search size={32} className="mx-auto mb-3 opacity-30 text-slate-400" />
+                            <button onClick={clearAllFilters} className="mt-1 text-blue-600 hover:underline text-sm">Clear Filters</button>
+                        </div>
+                    ) : undefined}
+                    showCheckboxes={true}
+                    selectedIds={selectedIds}
+                    onToggleSelect={(id, e) => toggleSelect(id, e || { stopPropagation: () => { } })}
+                    onToggleSelectAll={toggleSelectAll}
+                    pagination={{
+                        currentPage,
+                        totalPages: totalPages || 1,
+                        onNext: () => setCurrentPage(p => p + 1),
+                        onPrev: () => setCurrentPage(p => p - 1),
+                        hasPrev: currentPage > 1,
+                        hasNext: currentPage < totalPages,
+                        label: `Showing ${paginatedData.length} of ${filteredData.length} records`,
+                    }}
+                />
             </div>
         </div>
     );

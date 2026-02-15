@@ -34,9 +34,9 @@ if (recaptchaSiteKey && !isLocalhost) {
     provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
     isTokenAutoRefreshEnabled: true
   });
-  console.log("✅ App Check initialized (reCAPTCHA Enterprise)");
+  // App Check initialized
 } else if (isLocalhost) {
-  console.log("ℹ️ App Check skipped on localhost (production only)");
+  // App Check skipped on localhost (production only)
 } else {
   console.warn("⚠️ App Check NOT initialized: VITE_RECAPTCHA_ENTERPRISE_SITE_KEY not set");
 }
@@ -54,8 +54,8 @@ try {
   try {
     const dbName = 'firestore/[DEFAULT]/truckerapp-system/main';
     const req = indexedDB.deleteDatabase(dbName);
-    req.onsuccess = () => console.log("✅ Persistence cleared");
-    req.onerror = () => console.log("⚠️ Persistence clear skipped");
+    req.onsuccess = () => { };
+    req.onerror = () => { };
   } catch (err) { /* ignore in non-browser envs */ }
 
   // 2. Try to initialize with custom settings first
@@ -72,4 +72,3 @@ export const db = firestore;
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
-console.log("Firebase has been connected safely (HMR-Optimized)!");

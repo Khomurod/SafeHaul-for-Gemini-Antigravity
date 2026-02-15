@@ -79,8 +79,7 @@ export function DataProvider({ children }) {
           setHasDriverProfile(isDriver);
           setHasEmployerProfile(isSuperAdmin || hasCompanyRoles);
 
-          console.log('[DataContext] User claims:', claims);
-          console.log('[DataContext] Profile detection:', { isDriver, hasCompanyRoles, isSuperAdmin });
+          // Debug logs removed — claims/profile data should not be exposed in browser console
 
           // 3. Cache Platform Stats (Super Admin Only)
           if (isSuperAdmin) {
