@@ -24,20 +24,19 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // --- APP CHECK: Bot Mitigation (reCAPTCHA Enterprise) ---
-// Proves to Firebase that requests come from your real web app, not scripts/bots.
-// Debug mode is enabled for localhost so development is not blocked.
+// Only initialized in PRODUCTION. On localhost, App Check is skipped entirely
+// to avoid 403 errors from unregistered debug tokens.
 const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY;
-if (recaptchaSiteKey) {
-  // Enable debug tokens for localhost development
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-  }
+const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
+if (recaptchaSiteKey && !isLocalhost) {
   initializeAppCheck(app, {
     provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
     isTokenAutoRefreshEnabled: true
   });
   console.log("✅ App Check initialized (reCAPTCHA Enterprise)");
+} else if (isLocalhost) {
+  console.log("ℹ️ App Check skipped on localhost (production only)");
 } else {
   console.warn("⚠️ App Check NOT initialized: VITE_RECAPTCHA_ENTERPRISE_SITE_KEY not set");
 }
