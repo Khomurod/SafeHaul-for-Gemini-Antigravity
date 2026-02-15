@@ -287,19 +287,21 @@ export function SupplementalSection({ appData }) {
 
                                         // Number (linear scale or number input)
                                         if (typeof answer === 'number') {
-                                            // Check if it looks like a rating (1-5 or 1-10)
+                                            // Check if it looks like a rating (1-10)
                                             if (answer >= 1 && answer <= 10) {
+                                                const maxScale = answer <= 5 ? 5 : 10;
+                                                const dots = Array.from({ length: maxScale }, (_, i) => i + 1);
                                                 return (
                                                     <div className="flex items-center gap-2">
                                                         <div className="flex gap-0.5">
-                                                            {[1, 2, 3, 4, 5].map(star => (
+                                                            {dots.map(dot => (
                                                                 <div
-                                                                    key={star}
-                                                                    className={`w-4 h-4 rounded-full ${star <= answer ? 'bg-blue-500' : 'bg-gray-200'}`}
+                                                                    key={dot}
+                                                                    className={`w-4 h-4 rounded-full ${dot <= answer ? 'bg-blue-500' : 'bg-gray-200'}`}
                                                                 />
                                                             ))}
                                                         </div>
-                                                        <span className="text-sm font-bold text-gray-700">{answer}/5</span>
+                                                        <span className="text-sm font-bold text-gray-700">{answer}/{maxScale}</span>
                                                     </div>
                                                 );
                                             }
@@ -395,7 +397,7 @@ export function SupplementalSection({ appData }) {
                         )}
 
                         <div className="mt-2 text-sm text-gray-500 flex items-center gap-2">
-                            <FileSignature size={16} /> Signed on: <span className="font-medium text-gray-800">{appData['signature-date'] || 'Unknown Date'}</span>
+                            <FileSignature size={16} /> Signed on: <span className="font-medium text-gray-800">{appData.signatureDate || appData['signature-date'] || 'Unknown Date'}</span>
                         </div>
                     </div>
                 </div>

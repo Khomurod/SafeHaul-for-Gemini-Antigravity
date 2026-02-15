@@ -49,6 +49,8 @@ export const UserProfilePage = () => {
                 try {
                     const userDoc = await getPortalUser(currentUser.uid);
                     if (userDoc) {
+                        // Prefer Firestore name over Auth displayName
+                        data.displayName = userDoc.name || userDoc.displayName || data.displayName;
                         data.username = userDoc.username || '';
                         // Prefer Firestore photo if available, else Auth
                         if (userDoc.photoURL) data.photoURL = userDoc.photoURL;

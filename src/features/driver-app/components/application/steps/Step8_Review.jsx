@@ -108,12 +108,25 @@ const Step8_Review = ({ formData, onNavigate }) => {
                 <ReviewItem label="3+ Years at Current?" value={formData['residence-3-years'] === 'yes' ? 'Yes' : 'No'} />
 
                 {formData['residence-3-years'] === 'no' && (
-                    <ReviewItem
-                        label="Previous Address"
-                        value={`${formData.prevStreet}, ${formData.prevCity}, ${formData.prevState} ${formData.prevZip}`}
-                        fullWidth
-                        className="mt-2 pt-2 border-t border-gray-100"
-                    />
+                    <div className="col-span-2 mt-2 pt-2 border-t border-gray-100">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Previous Address(es)</span>
+                        {Array.isArray(formData.previousAddresses) && formData.previousAddresses.length > 0 ? (
+                            formData.previousAddresses.map((addr, i) => (
+                                <ReviewItem
+                                    key={i}
+                                    label={`Previous Address ${i + 1}`}
+                                    value={`${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}`}
+                                    fullWidth
+                                />
+                            ))
+                        ) : (
+                            <ReviewItem
+                                label="Previous Address"
+                                value={`${formData.prevStreet || ''}, ${formData.prevCity || ''}, ${formData.prevState || ''} ${formData.prevZip || ''}`}
+                                fullWidth
+                            />
+                        )}
+                    </div>
                 )}
             </ReviewSection>
 

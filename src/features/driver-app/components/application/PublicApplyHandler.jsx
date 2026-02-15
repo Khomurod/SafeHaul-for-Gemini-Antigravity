@@ -210,7 +210,7 @@ export function PublicApplyHandler() {
       function sanitizeData(data) {
         if (data === undefined) return null;
         if (data === null) return null;
-        if (data instanceof Date) return data;
+        if (data instanceof Date) return data.toISOString();
         if (Array.isArray(data)) return data.map(sanitizeData);
         if (typeof data === 'object') {
           const sanitized = {};

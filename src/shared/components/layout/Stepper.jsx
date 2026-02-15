@@ -95,7 +95,10 @@ const Stepper = ({
         if (isSignatureStep) {
             setTimeout(() => {
                 initializeSignatureCanvas();
-                clearCanvas();
+                // Only clear canvas if there is no saved signature already
+                if (!formData.signature) {
+                    clearCanvas();
+                }
             }, 100);
         }
     }, [step, isSignatureStep]);
@@ -129,6 +132,7 @@ const Stepper = ({
                             formData={formData}
                             updateFormData={updateFormData}
                             onNavigate={onNavigate}
+                            handleFileUpload={handleFileUpload}
                         />
                     ) : (
                         <CurrentStepComponent
@@ -139,6 +143,7 @@ const Stepper = ({
                             onFinalSubmit={onFinalSubmit}
                             handleFileUpload={handleFileUpload}
                             isUploading={isUploading}
+                            isSubmitting={submissionStatus === 'submitting'}
                         />
                     )}
                 </form>

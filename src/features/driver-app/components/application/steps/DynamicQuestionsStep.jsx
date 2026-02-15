@@ -272,7 +272,7 @@ export function DynamicQuestionsStep({
             {/* Navigation */}
             <div className="flex justify-between pt-6">
                 <button
-                    onClick={() => onNavigate('prev')}
+                    onClick={() => onNavigate('back')}
                     className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
                 >
                     Back

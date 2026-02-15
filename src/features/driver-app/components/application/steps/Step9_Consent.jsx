@@ -56,7 +56,7 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, is
                 {`@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&display=swap');`}
             </style>
 
-            <h3 className="text-xl font-semibold text-gray-800">Step 9 of 9: Agreements & Signature</h3>
+            <h3 className="text-xl font-semibold text-gray-800">Agreements & Signature</h3>
 
             {/* Agreements Section (Kept for context) */}
             <div className="space-y-4">

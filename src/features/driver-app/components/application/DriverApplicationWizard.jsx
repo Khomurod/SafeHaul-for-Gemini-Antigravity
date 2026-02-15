@@ -274,12 +274,16 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     // FIX: Add Validation for Signature and Certification
     if (!formData.signature || !formData['final-certification']) {
       showError("Please provide your signature and certify the application.");
-      setCurrentStep(schema?.sections?.length || 8); // Jump to last step (approx)
+      // Jump to the actual consent/signature step (last step)
+      // Base wizard = 9 steps (indices 0-8), with custom questions = 10 steps (indices 0-9)
+      const consentStepIndex = (customQuestions && customQuestions.length > 0) ? 9 : 8;
+      setCurrentStep(consentStepIndex);
       return;
     }
 
     // Set Guard Ref
     isSubmitting.current = true;
+    setSubmissionStatus('submitting');
 
     try {
       const activeCompanyId = targetCompanyId;
@@ -313,6 +317,9 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       console.error("Submission Error:", error);
       setSubmissionStatus('error');
       showError("Failed to submit application.");
+    } finally {
+      // Always reset submission guard so the form isn't permanently blocked
+      isSubmitting.current = false;
     }
   };
 

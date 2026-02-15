@@ -45,7 +45,14 @@ function draw(e) {
     lastPos = pos;
 }
 
+let abortController;
+
 export function initializeSignatureCanvas() {
+    // Clean up any previous event listeners to prevent leaks
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+    const { signal } = abortController;
+
     canvas = document.getElementById('signature-canvas');
     if (!canvas) return;
 
@@ -58,18 +65,18 @@ export function initializeSignatureCanvas() {
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#333';
 
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseleave', stopDrawing);
+    canvas.addEventListener('mousedown', startDrawing, { signal });
+    canvas.addEventListener('mouseup', stopDrawing, { signal });
+    canvas.addEventListener('mousemove', draw, { signal });
+    canvas.addEventListener('mouseleave', stopDrawing, { signal });
 
-    canvas.addEventListener('touchstart', startDrawing, { passive: false });
-    canvas.addEventListener('touchend', stopDrawing, { passive: false });
-    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchstart', startDrawing, { passive: false, signal });
+    canvas.addEventListener('touchend', stopDrawing, { passive: false, signal });
+    canvas.addEventListener('touchmove', draw, { passive: false, signal });
 
     const clearBtn = document.getElementById('clear-signature');
     if (clearBtn) {
-        clearBtn.addEventListener('click', clearCanvas);
+        clearBtn.addEventListener('click', clearCanvas, { signal });
     }
 }
 

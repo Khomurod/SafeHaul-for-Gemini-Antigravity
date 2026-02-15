@@ -37,7 +37,7 @@ const DynamicRow = ({ listKey, formData, updateFormData, renderRow, initialItemS
                             type="button"
                             onClick={() => handleDelete(index)}
                             className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1 rounded-full bg-white transition duration-150"
-                            aria-label={'Remove ' + addButtonLabel.replace('Add', '') + ' #' + (index + 1)}
+                            aria-label={'Remove ' + (addButtonLabel || 'Item').replace('Add', '').trim() + ' #' + (index + 1)}
                         >
                             <MinusCircle size={20} />
                         </button>

@@ -30,6 +30,9 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         return res.status(400).send("Missing companyId or sessionId");
     }
 
+    let batchSuccessCount = 0;
+    let batchFailCount = 0;
+
     try {
         const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
         const sessionSnap = await sessionRef.get();
@@ -156,9 +159,6 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
 
 
         // --- SEQUENTIAL LOOP ---
-        let batchSuccessCount = 0;
-        let batchFailCount = 0;
-
         console.log(`[BatchWorker] DEBUG: Starting batch for Session ${sessionId}`);
         console.log(`[BatchWorker] DEBUG: targetIds total: ${targetIds.length}`);
         console.log(`[BatchWorker] DEBUG: batchIds size: ${batchIds.length}`);
