@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 // ... Configuration remains the same ...
 const firebaseConfig = {
@@ -21,6 +22,25 @@ const firebaseConfig = {
 
 // Initialize Firebase with HMR safety
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+
+// --- APP CHECK: Bot Mitigation (reCAPTCHA Enterprise) ---
+// Proves to Firebase that requests come from your real web app, not scripts/bots.
+// Debug mode is enabled for localhost so development is not blocked.
+const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY;
+if (recaptchaSiteKey) {
+  // Enable debug tokens for localhost development
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+
+  initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+    isTokenAutoRefreshEnabled: true
+  });
+  console.log("✅ App Check initialized (reCAPTCHA Enterprise)");
+} else {
+  console.warn("⚠️ App Check NOT initialized: VITE_RECAPTCHA_ENTERPRISE_SITE_KEY not set");
+}
 
 export const auth = getAuth(app);
 

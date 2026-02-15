@@ -97,10 +97,21 @@ service cloud.firestore {
     // Guest Applications must have companyId and personalInfo logic
     function isValidGuestApplication(companyId) {
       let data = request.resource.data;
-      // TODO: Enforce App Check before going live globally:
-      // return (request.auth.token.firebase.app_check_token != null) &&
-      return data.companyId == companyId &&
+      // ENFORCED: Require App Check token for guest (unauthenticated) applications
+      // This proves the request comes from the genuine web app, not a script/bot
+      return (request.appcheck.token.recaptchaV3.score > 0.0) &&
+             data.companyId == companyId &&
              data.applicantId is string && data.applicantId.size() > 0;
+    }
+
+    // DETERMINISTIC ID CHECK: Ensures the Firestore document ID matches
+    // the applicantId field in the submission data. The client generates
+    // a SHA-256 hash as both the doc ID and applicantId, so they must match.
+    // Also validates that the companyId field matches the URL path companyId.
+    function isDeterministicApplicationId(companyId, applicationId) {
+      let data = request.resource.data;
+      return applicationId == data.applicantId &&
+             data.companyId == companyId;
     }
 
     // =========================================================
@@ -206,11 +217,11 @@ service cloud.firestore {
       // APPLICATIONS (The Core Record)
       match /applications/{applicationId} {
         // CREATE: 
-        // 1. Auth User (Driver) -> Submitting their own app
-        // 2. Guest -> Submitting via public link (TODO: Add App Check enforcement here for production)
-        // 3. Super Admin / Company Team (Manual Entry)
-        allow create: if (isSignedIn() && isValidAuthenticatedApplication()) || 
-                         (isValidGuestApplication(companyId)) || 
+        // 1. Auth User (Driver) -> Submitting their own app (MUST use deterministic ID)
+        // 2. Guest -> Submitting via public link (MUST use deterministic ID + App Check)
+        // 3. Super Admin / Company Team (Manual Entry — bypasses ID check)
+        allow create: if (isSignedIn() && isValidAuthenticatedApplication() && isDeterministicApplicationId(companyId, applicationId)) || 
+                         (isValidGuestApplication(companyId) && isDeterministicApplicationId(companyId, applicationId)) || 
                          isCompanyTeam(companyId);
 
         // READ:

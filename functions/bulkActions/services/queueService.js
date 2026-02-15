@@ -33,7 +33,11 @@ async function enqueueWorker(companyId, sessionId, delaySeconds) {
         httpRequest: {
             httpMethod: "POST",
             url,
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                // SECURITY: Inject shared secret for worker endpoint authentication
+                "X-SafeHaul-Internal-Auth": process.env.BULK_WORKER_SECRET || ''
+            },
             body: Buffer.from(JSON.stringify(payload)).toString("base64"),
             oidcToken: {
                 serviceAccountEmail, // Uses dynamic account

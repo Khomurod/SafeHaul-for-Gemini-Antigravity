@@ -114,6 +114,7 @@ jestMock.mock('../blacklist', () => ({
 process.env.GCLOUD_PROJECT = 'test-project';
 process.env.FUNCTION_REGION = 'us-central1';
 process.env.PROCESS_BULK_BATCH_URL = 'https://us-central1-test-project.cloudfunctions.net/processBulkBatch';
+process.env.BULK_WORKER_SECRET = 'test-secret-for-unit-tests';
 
 const bulkActions = require('../bulkActions');
 const admin = require('firebase-admin');
@@ -175,7 +176,10 @@ describe('Bulk Actions Tests', () => {
 
     it('should process batch and complete session (no next batch)', async () => {
         const req = {
-            headers: { 'x-appengine-queuename': 'bulk-actions-queue' },
+            headers: {
+                'x-appengine-queuename': 'bulk-actions-queue',
+                'x-safehaul-internal-auth': process.env.BULK_WORKER_SECRET
+            },
             body: { companyId: 'company123', sessionId: 'session123' }
         };
         const res = {

@@ -9,8 +9,21 @@ const { decrypt } = require("../../integrations/encryption");
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, async (req, res) => {
-    // Validate Task Queue Token (OIDC) or simple payload check
-    // In V2 onRequest, we can check req.body directly.
+    // --- SECURITY GATE: Shared Secret Verification ---
+    // Reject requests that don't carry the internal auth header.
+    // This prevents external actors from triggering the worker even if they know the URL.
+    const workerSecret = process.env.BULK_WORKER_SECRET;
+    if (!workerSecret) {
+        console.error("[processBulkBatch] CRITICAL: BULK_WORKER_SECRET env var is not set. Rejecting all requests for safety.");
+        return res.status(500).send("Server misconfiguration.");
+    }
+
+    const incomingSecret = req.headers['x-safehaul-internal-auth'];
+    if (!incomingSecret || incomingSecret !== workerSecret) {
+        console.warn("[processBulkBatch] Unauthorized request blocked. Missing or invalid internal auth header.");
+        return res.status(403).send("Forbidden");
+    }
+
     const { companyId, sessionId } = req.body;
 
     if (!companyId || !sessionId) {
