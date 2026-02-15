@@ -2,7 +2,7 @@ import React, { Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { ApplicationTab } from './tabs/ApplicationTab';
 import { DocumentsTab } from './tabs/DocumentsTab';
-import { DQFileTab } from './tabs/DQFileTab';
+import { DQFileTab } from '@features/company-admin/components/tabs/DQFileTab';
 
 // Lazy Load Legacy Tabs to keep bundle size optimized
 const ActivityHistoryTab = React.lazy(() => import('@features/company-admin/components/tabs').then(m => ({ default: m.ActivityHistoryTab })));
@@ -50,7 +50,6 @@ export function DossierContent({
                     companyId={companyId}
                     applicationId={driverId}
                     collectionName={collectionName}
-                    canEdit={canEdit}
                 />;
 
             case 'pev':

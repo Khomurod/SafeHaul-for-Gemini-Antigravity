@@ -16,24 +16,30 @@ export function DocumentsTab({ fileUrls = {}, appData }) {
     // This logic mimics InlineDocumentsStrip but formatted for a grid
     const allDocs = [];
 
-    // 1. Helper to push docs
+    // 1. Helper to push docs — checks fileUrls (resolved URLs), then appData direct (file objects with .url)
     const addDoc = (key, label, date = null) => {
-        if (fileUrls[key] || (appData?.uploadedDocuments && appData.uploadedDocuments[key])) {
+        const resolvedUrl = fileUrls[key];
+        const appDirectUrl = appData?.[key]?.url;
+        const uploadedUrl = appData?.uploadedDocuments?.[key];
+        const url = resolvedUrl || appDirectUrl || uploadedUrl;
+
+        if (url) {
             allDocs.push({
                 id: key,
                 label: label,
-                url: fileUrls[key] || appData.uploadedDocuments[key],
-                date: date || appData?.updatedAt, // Fallback
-                type: 'pdf/image' // Generic for now
+                url: url,
+                date: date || appData?.updatedAt,
+                type: 'pdf/image'
             });
         }
     };
 
-    // 2. Add Standard Docs
-    addDoc('cdl_front', 'CDL Front');
-    addDoc('cdl_back', 'CDL Back');
-    addDoc('medical_card', 'Medical Card');
-    addDoc('social_security_card', 'SSN Card');
+    // 2. Add Standard Docs (keys match applicationSchema.js)
+    addDoc('cdl-front', 'CDL Front');
+    addDoc('cdl-back', 'CDL Back');
+    addDoc('medical-card-upload', 'Medical Card');
+    addDoc('ssc-upload', 'SSN Card');
+    addDoc('twic-card-upload', 'TWIC Card');
 
     // 3. Add Dynamic Uploads (if any exist in appData that aren't above)
     // For now, we'll stick to the core ones to match the prompt's simplicity, 

@@ -1,6 +1,6 @@
 // src/features/companies/components/DashboardToolbar.jsx
 
-import React, { useState, useMemo, memo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { Search, Filter, X, Zap, Briefcase, Info, Clock, RefreshCw, Users } from 'lucide-react';
 
 // --- CONFIGURATION ---

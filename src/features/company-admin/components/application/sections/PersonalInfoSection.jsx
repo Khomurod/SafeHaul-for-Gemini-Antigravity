@@ -37,30 +37,56 @@ export function PersonalInfoSection({
 
     return (
         <Section title="Personal Information">
-            <InfoGrid>
+            {/* ─── Identity Block ─── */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
+                <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-3">Identity</h4>
+                <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <InfoItem label="First Name" value={appData.firstName} isEditing={isEditing} onChange={v => handleDataChange('firstName', v)} />
+                        <InfoItem label="Middle Name" value={appData.middleName} isEditing={isEditing} onChange={v => handleDataChange('middleName', v)} />
+                        <InfoItem label="Last Name" value={appData.lastName} isEditing={isEditing} onChange={v => handleDataChange('lastName', v)} />
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="col-span-1">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Suffix</label>
+                            {isEditing ? (
+                                <input
+                                    type="text"
+                                    value={appData.suffix || ''}
+                                    onChange={(e) => handleDataChange('suffix', e.target.value)}
+                                    className="w-full p-2 border border-gray-300 rounded"
+                                    placeholder="Jr."
+                                />
+                            ) : (
+                                <p className="text-lg font-medium text-gray-900">{appData.suffix || '-'}</p>
+                            )}
+                        </div>
+                    </div>
 
-                {/* Row 1: Name */}
-                <InfoItem label="First Name" value={appData.firstName} isEditing={isEditing} onChange={v => handleDataChange('firstName', v)} />
-                <InfoItem label="Middle" value={appData.middleName} isEditing={isEditing} onChange={v => handleDataChange('middleName', v)} />
-                <InfoItem label="Last Name" value={appData.lastName} isEditing={isEditing} onChange={v => handleDataChange('lastName', v)} />
-
-                {/* NEW: Suffix */}
-                <div className="col-span-1">
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Suffix</label>
-                    {isEditing ? (
-                        <input
-                            type="text"
-                            value={appData.suffix || ''}
-                            onChange={(e) => handleDataChange('suffix', e.target.value)}
-                            className="w-full p-2 border border-gray-300 rounded"
-                            placeholder="Jr."
-                        />
-                    ) : (
-                        <p className="text-lg font-medium text-gray-900">{appData.suffix || '-'}</p>
+                    {/* Other Names (Aliases) */}
+                    {appData['known-by-other-name'] === 'yes' && (
+                        <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 mt-2">
+                            <label className="flex items-center gap-2 text-xs font-bold text-yellow-800 uppercase mb-1">
+                                <User size={14} /> Known By Other Name(s)
+                            </label>
+                            {isEditing ? (
+                                <input
+                                    type="text"
+                                    value={appData.otherName || ''}
+                                    onChange={(e) => handleDataChange('otherName', e.target.value)}
+                                    className="w-full p-2 border border-yellow-300 rounded"
+                                />
+                            ) : (
+                                <p className="text-sm font-medium text-gray-900">{appData.otherName}</p>
+                            )}
+                        </div>
                     )}
                 </div>
+            </div>
 
-                {/* Row 2: Contact & Identity */}
+            {/* ─── Demographics Block ─── */}
+            <InfoGrid>
+                {/* Contact & Identity */}
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
                     {isEditing ? (
@@ -104,24 +130,6 @@ export function PersonalInfoSection({
                     )}
                 </div>
 
-                {/* NEW: Other Names (Aliases) */}
-                {appData['known-by-other-name'] === 'yes' && (
-                    <div className="col-span-full bg-yellow-50 p-3 rounded-lg border border-yellow-200 mt-2">
-                        <label className="flex items-center gap-2 text-xs font-bold text-yellow-800 uppercase mb-1">
-                            <User size={14} /> Known By Other Name(s)
-                        </label>
-                        {isEditing ? (
-                            <input
-                                type="text"
-                                value={appData.otherName || ''}
-                                onChange={(e) => handleDataChange('otherName', e.target.value)}
-                                className="w-full p-2 border border-yellow-300 rounded"
-                            />
-                        ) : (
-                            <p className="text-sm font-medium text-gray-900">{appData.otherName}</p>
-                        )}
-                    </div>
-                )}
 
                 {/* Row 3: Current Address */}
                 <div className="col-span-full pt-4 border-t border-gray-100">
