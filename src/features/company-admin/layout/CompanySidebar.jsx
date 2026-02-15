@@ -57,13 +57,6 @@ export const CompanySidebar = () => {
   const menuItems = [
     {
       type: 'item',
-      label: 'Switch Company',
-      icon: Building2,
-      path: '/company/settings'
-    },
-    { type: 'element', element: <div className="my-2 border-t border-gray-200" /> },
-    {
-      type: 'item',
       label: 'Dashboard',
       icon: LayoutDashboard,
       path: '/company/dashboard'
@@ -91,7 +84,10 @@ export const CompanySidebar = () => {
     ] : []),
 
     { type: 'element', element: <div className="my-2 border-t border-gray-200" /> },
-    { type: 'item', label: 'Profile', icon: Settings, path: '/company/profile' },
+    { type: 'item', label: 'Profile', icon: User, path: '/company/profile' },
+    ...(isCompanyAdmin ? [
+      { type: 'item', label: 'Settings', icon: Settings, path: '/company/settings' },
+    ] : []),
   ];
 
   const NavItem = ({ item, isChild = false }) => {

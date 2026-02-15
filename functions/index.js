@@ -45,7 +45,6 @@ exports.submitPublicEnvelope = publicSigning.submitPublicEnvelope;
 exports.createPortalUser = hrAdmin.createPortalUser;
 exports.deletePortalUser = hrAdmin.deletePortalUser;
 exports.updatePortalUser = hrAdmin.updatePortalUser;
-exports.updatePortalUser = hrAdmin.updatePortalUser;
 exports.onMembershipWrite = hrAdmin.onMembershipWrite;
 
 // 2b. User Onboarding (New)

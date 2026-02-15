@@ -267,7 +267,7 @@ service cloud.firestore {
       
       // TEAM MEMBERS
       match /team/{userId} {
-        allow read: if isSignedIn(); // Allow reading to resolve names
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
         allow write: if isCompanyAdmin(companyId) || isSuperAdmin();
       }
 
@@ -327,7 +327,7 @@ service cloud.firestore {
     // --- NOTIFICATIONS ---
     match /notifications/{notificationId} {
       allow read, update, delete: if isSignedIn() && resource.data.recipientId == request.auth.uid;
-      allow create: if isSignedIn(); // System/Functions create these, but allow client logic for now
+      allow create: if false; // Server-only: notifications created by Cloud Functions (Admin SDK bypasses rules)
     }
 
     // --- ANALYTICS ---
