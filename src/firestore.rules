@@ -338,7 +338,8 @@ service cloud.firestore {
 
     // --- SYSTEM SETTINGS ---
     match /system_settings/{settingId} {
-      allow read, write: if isSuperAdmin();
+      allow read: if isStaff() || isSuperAdmin();
+      allow write: if isSuperAdmin();
     }
     
     // --- RECRUITER LINKS ---
