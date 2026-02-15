@@ -5,6 +5,7 @@ import { generateApplicationPDF } from '@shared/utils/pdfGenerator';
 export function DossierHeader({
     activeTab,
     appData,
+    companyProfile,
     currentStatus,
     onClose,
     onStatusUpdate,
@@ -25,14 +26,10 @@ export function DossierHeader({
 
     const handleDownload = () => {
         if (appData) {
-            // pdfGenerator expects { applicant: appData, company: ... }
-            // Since we might not have full company info here comfortably, we'll pass basics.
-            // Ideally appData already has everything or we'd fetch it.
-            // For now, passing appData as applicant.
             generateApplicationPDF({
                 applicant: appData,
-                // If we had company profile in props we'd pass it here.
-                // Assuming default fallback in generator.
+                company: companyProfile,
+                agreements: [] // Agreements are fetched inside generator if needed, or passed here
             });
         }
     };

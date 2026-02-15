@@ -9,8 +9,10 @@ import {
     Eye
 } from 'lucide-react';
 import { formatDate } from '@shared/utils/helpers';
+import { useToast } from '@shared/components/feedback/ToastProvider';
 
-export function DQFileTab({ companyId, applicationId, collectionName }) {
+export function DQFileTab({ companyId, applicationId, collectionName, canEdit }) {
+    const { showInfo } = useToast();
     const [dqFiles, setDqFiles] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -52,6 +54,10 @@ export function DQFileTab({ companyId, applicationId, collectionName }) {
             return { status: 'complete', file: match };
         }
         return { status: 'missing', file: null };
+    };
+
+    const handleUploadClick = () => {
+        showInfo("Document upload coming in Phase 5", "This feature is part of the next update.");
     };
 
     if (loading) return <div className="p-10 text-center text-gray-400">Loading DQ Files...</div>;
@@ -100,9 +106,14 @@ export function DQFileTab({ companyId, applicationId, collectionName }) {
                                             <Eye size={14} /> View
                                         </a>
                                     ) : (
-                                        <button className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2 transition">
-                                            <Upload size={14} /> Upload
-                                        </button>
+                                        canEdit && (
+                                            <button
+                                                onClick={handleUploadClick}
+                                                className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2 transition"
+                                            >
+                                                <Upload size={14} /> Upload
+                                            </button>
+                                        )
                                     )}
                                 </div>
                             </div>

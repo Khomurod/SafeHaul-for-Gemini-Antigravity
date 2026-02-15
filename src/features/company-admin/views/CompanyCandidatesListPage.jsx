@@ -8,7 +8,7 @@ import { CallOutcomeModal } from '@shared/components/modals/CallOutcomeModal';
 import { LeadAssignmentModal } from '../components/LeadAssignmentModal';
 
 import { DriverProfileModal } from '../components/modals/driver-dossier/DriverProfileModal';
-// const ApplicationDetailView = React.lazy(() => import('../components/application-v2').then(m => ({ default: m.ApplicationDetailViewV2 })));
+
 
 export const CompanyCandidatesListPage = ({ scope }) => {
     // Scope maps to: 'applications', 'find_driver' (SafeHaul Leads), 'company_leads', 'my_leads'

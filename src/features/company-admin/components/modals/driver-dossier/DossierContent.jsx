@@ -19,7 +19,8 @@ export function DossierContent({
     setIsEditing,
     handleSaveEdit,
     isSaving,
-    fileUrls
+    fileUrls,
+    canEdit
 }) {
     // Shared Loading Fallback
     const TabLoading = () => (
@@ -35,6 +36,7 @@ export function DossierContent({
                     appData={appData}
                     isEditing={isEditing}
                     setIsEditing={setIsEditing}
+                    canEdit={canEdit}
                 />;
 
             case 'documents':
@@ -48,13 +50,16 @@ export function DossierContent({
                     companyId={companyId}
                     applicationId={driverId}
                     collectionName={collectionName}
+                    canEdit={canEdit}
                 />;
 
             case 'pev':
                 return (
                     <Suspense fallback={<TabLoading />}>
                         <PEVTab
-                            driver={appData} // PEVTab typically takes 'driver' prop
+                            companyId={companyId}
+                            applicationId={driverId}
+                            appData={appData}
                         />
                     </Suspense>
                 );

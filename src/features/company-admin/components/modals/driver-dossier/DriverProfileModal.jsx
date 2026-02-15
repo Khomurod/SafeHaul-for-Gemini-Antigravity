@@ -25,6 +25,7 @@ export function DriverProfileModal({
         loading,
         error,
         appData,
+        companyProfile,
         currentStatus,
         isEditing,
         setIsEditing,
@@ -83,6 +84,7 @@ export function DriverProfileModal({
                         <DossierHeader
                             activeTab={activeTab}
                             appData={appData}
+                            companyProfile={companyProfile}
                             currentStatus={currentStatus}
                             onClose={onClose}
                             onStatusUpdate={handleStatusUpdate}
@@ -113,6 +115,7 @@ export function DriverProfileModal({
                                 handleSaveEdit={handleSaveEdit}
                                 isSaving={isSaving}
                                 fileUrls={fileUrls}
+                                canEdit={canEdit}
                             />
                         )}
                     </div>

@@ -10,7 +10,6 @@ import {
     Clock,
     Briefcase,
     Eye,
-    Eye,
     EyeOff,
     FileText
 } from 'lucide-react';
