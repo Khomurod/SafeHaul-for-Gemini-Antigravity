@@ -5,6 +5,17 @@ const { assertCompanyAdmin } = require("../helpers/auth");
 
 const cors = require("cors")({ origin: true });
 
+/**
+ * Safely convert a Firestore Timestamp, Date, string, or number to an ISO string.
+ * Returns null if the value is falsy or cannot be converted.
+ */
+const safeToISO = (val) => {
+    if (!val) return null;
+    if (typeof val.toDate === 'function') return val.toDate().toISOString();
+    if (val instanceof Date) return val.toISOString();
+    try { return new Date(val).toISOString(); } catch { return null; }
+};
+
 exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
 
@@ -125,8 +136,8 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
                 phone: data.phone || data.phoneNumber,
                 email: data.email,
                 status: data.status,
-                createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : null,
-                lastContactedAt: data.lastContactedAt ? data.lastContactedAt.toDate().toISOString() : null
+                createdAt: safeToISO(data.createdAt),
+                lastContactedAt: safeToISO(data.lastContactedAt)
             });
         }
 

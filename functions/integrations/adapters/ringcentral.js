@@ -18,6 +18,23 @@ class RingCentralAdapter extends BaseAdapter {
             clientId: config.clientId,
             clientSecret: config.clientSecret
         });
+
+        this._loggedIn = false; // Track login state for session caching
+    }
+
+    /**
+     * Login only if not already authenticated. Reuses existing session.
+     */
+    async ensureLoggedIn() {
+        if (this._loggedIn) {
+            try {
+                // Check if platform token is still valid
+                const platform = this.rc.platform();
+                if (await platform.loggedIn()) return;
+            } catch { /* fall through to re-login */ }
+        }
+        await this.rc.login({ jwt: this.config.jwt });
+        this._loggedIn = true;
     }
 
     async sendSMS(to, text, userId = null, explicitFromNumber = null) {
@@ -42,8 +59,8 @@ class RingCentralAdapter extends BaseAdapter {
                 fromNumber = this.config.phoneNumber;
             }
 
-            // Login with JWT
-            await this.rc.login({ jwt: this.config.jwt });
+            // Login with JWT (cached — only authenticates once per adapter instance)
+            await this.ensureLoggedIn();
 
             // Send Request
             const payload = {
@@ -63,7 +80,7 @@ class RingCentralAdapter extends BaseAdapter {
                 }
 
                 console.log(`[RC Adapter] Sending SMS | From: ${fromNumber || 'Default'} | To: ${to}`);
-                await this.rc.post('/restapi/v1.0/account/~/extension/~/sms', payload);
+                await this._sendWithRetry('/restapi/v1.0/account/~/extension/~/sms', payload);
                 return true;
 
             } catch (primaryError) {
@@ -90,7 +107,7 @@ class RingCentralAdapter extends BaseAdapter {
                             from: { phoneNumber: this.config.defaultPhoneNumber }
                         };
 
-                        await this.rc.post('/restapi/v1.0/account/~/extension/~/sms', fallbackPayload);
+                        await this._sendWithRetry('/restapi/v1.0/account/~/extension/~/sms', fallbackPayload);
                         console.log(`[RC Adapter] Fallback success!`);
                         return true;
 
@@ -138,6 +155,35 @@ class RingCentralAdapter extends BaseAdapter {
                 break;
         }
         return new Error(userFriendlyError);
+    }
+
+    /**
+     * Send with retry on rate limit errors (exponential backoff).
+     * Retries up to 3 times with delays: 5s, 10s, 20s.
+     */
+    async _sendWithRetry(url, payload, maxRetries = 3) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                await this.rc.post(url, payload);
+                return; // Success
+            } catch (err) {
+                const msg = err.response?.data?.message || err.message || '';
+                const isRateLimit = msg.toLowerCase().includes('rate') ||
+                    err.response?.status === 429;
+
+                if (isRateLimit && attempt < maxRetries) {
+                    const waitSec = 5 * Math.pow(2, attempt); // 5s, 10s, 20s
+                    console.warn(`[RC Adapter] Rate limited (attempt ${attempt + 1}/${maxRetries + 1}). Waiting ${waitSec}s...`);
+                    await new Promise(r => setTimeout(r, waitSec * 1000));
+
+                    // Re-authenticate in case token expired during wait
+                    this._loggedIn = false;
+                    await this.ensureLoggedIn();
+                    continue;
+                }
+                throw err; // Non-rate-limit error or exhausted retries
+            }
+        }
     }
 
     async fetchAvailablePhoneNumbers() {

@@ -128,6 +128,11 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
             try {
                 // Use factory to get appropriate adapter (accounts for per-line credentials/JWTs)
                 adapter = await SMSAdapterFactory.getAdapterForUser(companyId, senderId);
+                // Pre-authenticate once for the entire batch (avoids per-message login rate limits)
+                if (adapter.ensureLoggedIn) {
+                    await adapter.ensureLoggedIn();
+                    console.log('[BatchWorker] SMS adapter pre-authenticated successfully.');
+                }
             } catch (e) {
                 console.error("Failed to load SMS Adapter:", e);
                 // Fail the whole batch? Or just default?
