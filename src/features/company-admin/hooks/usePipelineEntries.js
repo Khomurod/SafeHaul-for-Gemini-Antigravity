@@ -143,9 +143,10 @@ export function usePipelineEntries(companyId) {
     const updateComments = useCallback((entryId, value) => {
         if (!companyId || !entryId) return;
 
-        // Optimistic local update (immediate)
+        // Optimistic local update (immediate) — do NOT update _localLastModifiedAt
+        // because that would trigger a re-sort and unmount the editing cell
         setRawEntries(prev => prev.map(e =>
-            e.id === entryId ? { ...e, comments: value, _localLastModifiedAt: Date.now() } : e
+            e.id === entryId ? { ...e, comments: value } : e
         ));
 
         // Clear existing debounce timer for this entry

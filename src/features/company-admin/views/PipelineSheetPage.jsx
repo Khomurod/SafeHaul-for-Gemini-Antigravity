@@ -50,6 +50,24 @@ function isStale(entry) {
     return Date.now() - ts > 24 * 60 * 60 * 1000;
 }
 
+// --- Stable component overrides for TableVirtuoso ---
+// MUST be defined outside the render function to prevent remounting rows on every state change.
+const VirtuosoTable = (props) => (
+    <table {...props} className="w-full table-fixed border-collapse" />
+);
+const VirtuosoTableHead = React.forwardRef((props, ref) => (
+    <thead {...props} ref={ref} className="sticky top-0 z-10" />
+));
+const VirtuosoTableRow = (props) => (
+    <tr {...props} className="hover:brightness-95 transition-colors" />
+);
+
+const TABLE_COMPONENTS = {
+    Table: VirtuosoTable,
+    TableHead: VirtuosoTableHead,
+    TableRow: VirtuosoTableRow,
+};
+
 // --- Click-to-Edit Text Cell ---
 function EditableCell({ value, onSave, placeholder = '—', type = 'text', className = '' }) {
     const [editing, setEditing] = useState(false);
@@ -289,6 +307,9 @@ export function PipelineSheetPage() {
     // --- Table Header ---
     const fixedHeaderContent = () => (
         <tr className="bg-gray-50">
+            <th className="w-[45px] px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                #
+            </th>
             <th className="w-[180px] px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
                 Driver Name
             </th>
@@ -316,6 +337,11 @@ export function PipelineSheetPage() {
         const stale = isStale(entry);
         return (
             <>
+                {/* Row Number */}
+                <td className={`px-2 py-1 border-b border-gray-100 text-center text-xs font-medium text-gray-400 ${getRowBg(entry.hiringStage)}`}>
+                    {index + 1}
+                </td>
+
                 {/* Driver Name */}
                 <td className={`px-1 py-1 border-b border-gray-100 ${getRowBg(entry.hiringStage)}`}>
                     <EditableCell
@@ -397,9 +423,9 @@ export function PipelineSheetPage() {
     };
 
     return (
-        <div className="h-full flex flex-col bg-gray-50">
+        <div className="absolute inset-0 flex flex-col bg-gray-50">
             {/* Header Toolbar */}
-            <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
+            <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
                 <div className="flex items-center gap-3">
                     <h1 className="text-xl font-bold text-gray-900">Pipeline</h1>
                     <span className="px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
@@ -416,29 +442,13 @@ export function PipelineSheetPage() {
             </div>
 
             {/* Virtualized Table — fills remaining height */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0">
                 <TableVirtuoso
                     data={entries}
                     style={{ height: '100%' }}
                     fixedHeaderContent={fixedHeaderContent}
                     itemContent={itemContent}
-                    components={{
-                        Table: (props) => (
-                            <table {...props} className="w-full table-fixed border-collapse" />
-                        ),
-                        TableHead: React.forwardRef((props, ref) => (
-                            <thead {...props} ref={ref} className="sticky top-0 z-10" />
-                        )),
-                        TableRow: (props) => {
-                            const entry = entries[props['data-index']];
-                            return (
-                                <tr
-                                    {...props}
-                                    className={`${getRowBg(entry?.hiringStage)} hover:brightness-95 transition-colors`}
-                                />
-                            );
-                        },
-                    }}
+                    components={TABLE_COMPONENTS}
                 />
             </div>
         </div>

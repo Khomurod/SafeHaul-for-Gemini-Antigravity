@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db } from '@lib/firebase';
 import {
     collection, query, where, getDocs,
@@ -70,7 +70,7 @@ export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
                     // Status Filter (Mapped from Dictionary)
                     if (filters.status && filters.status.length > 0 && filters.status !== 'all') {
                         const dbStatuses = filters.status.map(s => getDbValue(s, APPLICATION_STATUSES));
-                        
+
                         // FIX: Firestore 'in' query limit is 10. 
                         // For preview purposes, we only query the first 10 selected statuses.
                         // The backend 'initBulkSession' handles the full list properly.
@@ -149,4 +149,21 @@ export function useCampaignTargeting(companyId, currentUser, isAuthLoading) {
         previewLeads, isPreviewLoading,
         matchCount, previewError
     };
+}
+
+// --- Stub: useCampaignDraft ---
+// CampaignEditor.jsx imports { useCampaignDraft } and expects { saveDraft, isSaving }.
+// TODO: Implement real draft persistence when Campaigns feature is built out.
+export function useCampaignDraft(companyId) {
+    const saveDraft = useCallback(async (campaignId, data) => {
+        if (!companyId || !campaignId) return;
+        try {
+            const { doc, setDoc } = await import('firebase/firestore');
+            await setDoc(doc(db, 'companies', companyId, 'campaign_drafts', campaignId), data, { merge: true });
+        } catch (error) {
+            console.error('[CampaignDraft] Failed to save:', error);
+        }
+    }, [companyId]);
+
+    return { saveDraft, isSaving: false };
 }
