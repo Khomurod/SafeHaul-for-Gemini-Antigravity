@@ -46,7 +46,7 @@ async function enqueueWorker(companyId, sessionId, delaySeconds) {
         }
     };
     if (delaySeconds > 0) {
-        task.scheduleTime = { seconds: Date.now() / 1000 + delaySeconds };
+        task.scheduleTime = { seconds: Math.floor(Date.now() / 1000 + delaySeconds) };
     }
 
     try {

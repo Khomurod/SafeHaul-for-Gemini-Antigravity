@@ -51,25 +51,50 @@ const buildLeadQueries = (companyId, filters, userId) => {
     }
 
     // 3. Date Filters
+    // 3. Date Filters
     if (filters.createdAfter) {
-        applyToAll(q => q.where('createdAt', '>=', admin.firestore.Timestamp.fromDate(new Date(filters.createdAfter))));
+        const d = new Date(filters.createdAfter);
+        if (!isNaN(d.getTime())) {
+            const seconds = Math.floor(d.getTime() / 1000);
+            const ts = new admin.firestore.Timestamp(seconds, 0);
+            console.log(`DEBUG QueryBuilder: Applying createdAfter >= ${ts.toDate().toISOString()} (Seconds: ${seconds})`);
+            applyToAll(q => q.where('createdAt', '>=', ts));
+        } else {
+            console.warn(`DEBUG QueryBuilder: Invalid createdAfter date: ${filters.createdAfter}`);
+        }
     }
     if (filters.createdBefore) {
-        applyToAll(q => q.where('createdAt', '<=', admin.firestore.Timestamp.fromDate(new Date(filters.createdBefore))));
+        const d = new Date(filters.createdBefore);
+        if (!isNaN(d.getTime())) {
+            const seconds = Math.floor(d.getTime() / 1000);
+            const ts = new admin.firestore.Timestamp(seconds, 0);
+            console.log(`DEBUG QueryBuilder: Applying createdBefore <= ${ts.toDate().toISOString()} (Seconds: ${seconds})`);
+            applyToAll(q => q.where('createdAt', '<=', ts));
+        } else {
+            console.warn(`DEBUG QueryBuilder: Invalid createdBefore date: ${filters.createdBefore}`);
+        }
     }
 
     // 4. "Not Contacted Since" (Legacy/Manual)
     if (filters.notContactedSince) {
         const days = parseInt(filters.notContactedSince);
-        const date = new Date();
-        date.setDate(date.getDate() - days);
-        const threshold = admin.firestore.Timestamp.fromDate(date);
+        if (!isNaN(days)) {
+            const d = new Date();
+            d.setDate(d.getDate() - days);
 
-        // Split: (lastContacted <= threshold) OR (lastContacted == null)
-        splitQueries(
-            q => q.where('lastContactedAt', '<=', threshold),
-            q => q.where('lastContactedAt', '==', null)
-        );
+            // Safe creation
+            if (!isNaN(d.getTime())) {
+                const seconds = Math.floor(d.getTime() / 1000);
+                const threshold = new admin.firestore.Timestamp(seconds, 0);
+                console.log(`DEBUG QueryBuilder: Applying notContactedSince <= ${threshold.toDate().toISOString()} (Seconds: ${seconds})`);
+
+                // Split: (lastContacted <= threshold) OR (lastContacted == null)
+                splitQueries(
+                    q => q.where('lastContactedAt', '<=', threshold),
+                    q => q.where('lastContactedAt', '==', null)
+                );
+            }
+        }
     }
 
 
@@ -78,7 +103,16 @@ const buildLeadQueries = (companyId, filters, userId) => {
     // if (filters.excludeRecentDays) { ... }
 
 
-    // 6. Last Call Outcome
+    // 6. Campaign Limit
+    if (filters.campaignLimit) {
+        const limit = parseInt(filters.campaignLimit);
+        if (!isNaN(limit) && limit > 0) {
+            console.log(`DEBUG QueryBuilder: Applying limit ${limit}`);
+            applyToAll(q => q.limit(limit));
+        }
+    }
+
+    // 7. Last Call Outcome
     if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
         if (filters.leadType === 'global') {
             const outcomeMap = {

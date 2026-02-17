@@ -34,21 +34,49 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
     } else {
         // Query Based
+        console.log("DEBUG: Building queries with filters:", JSON.stringify(filters));
         const queries = buildLeadQueries(companyId, filters, request.auth.uid);
+        console.log(`DEBUG: Generated ${queries.length} queries.`);
+
+        // Apply .select() to only fetch fields needed for in-memory filtering.
+        // This prevents crashes from corrupt Timestamp fields in documents.
+        const fieldsNeeded = ['lastBulkMessageAt'];
+        const selectQueries = queries.map(q => q.select(...fieldsNeeded));
 
         // Execute all queries to get IDs
         try {
-            // Need to fetch DATA to filter in-memory for missing fields (Cloud Firestore limitation)
-            const snapshots = await Promise.all(queries.map(q => q.get()));
+            // Execute sequentially to identify which one fails
+            const snapshots = [];
+            for (let i = 0; i < selectQueries.length; i++) {
+                try {
+                    console.log(`DEBUG: Executing query #${i}...`);
+                    const snap = await selectQueries[i].get();
+                    snapshots.push(snap);
+                    console.log(`DEBUG: Query #${i} returned ${snap.size} docs.`);
+                } catch (innerErr) {
+                    console.error(`DEBUG: Query #${i} failed:`, innerErr.message);
+                    throw innerErr;
+                }
+            }
+
             const idSet = new Set();
 
             // Filter Setup
             let excludeThreshold = null;
             if (filters.excludeRecentDays) {
-                const days = parseInt(filters.excludeRecentDays);
+                // excludeRecentDays can be: true (boolean), or a number like 7
+                // If boolean true, default to 7 days
+                let days = parseInt(filters.excludeRecentDays);
+                if (isNaN(days) || days <= 0) {
+                    days = 7; // Default: exclude leads contacted in last 7 days
+                    console.log("DEBUG: excludeRecentDays was not a number, defaulting to 7 days");
+                }
                 const date = new Date();
                 date.setDate(date.getDate() - days);
-                excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+                // Hardened Timestamp creation
+                const seconds = Math.floor(date.getTime() / 1000);
+                excludeThreshold = new admin.firestore.Timestamp(seconds, 0);
+                console.log(`DEBUG: Exclude Threshold: ${excludeThreshold.toDate().toISOString()} (days=${days})`);
             }
 
             snapshots.forEach(snap => {

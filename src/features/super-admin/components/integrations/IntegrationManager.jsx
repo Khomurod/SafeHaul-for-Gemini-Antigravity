@@ -46,18 +46,23 @@ export function IntegrationManager({ companyId, companyName, onBack }) {
                     // exist and show a placeholder. User can enter new credentials if needed.
                     const existingClientId = data.config?.clientId;
                     const existingClientSecret = data.config?.clientSecret;
+                    const existingApiKey = data.config?.apiKey;
+                    const existingApiSecret = data.config?.apiSecret;
 
                     // Check if credentials exist (encrypted values contain a colon separator)
-                    const credsExist = !!(existingClientId && existingClientId.includes(':'));
-                    setHasExistingCredentials(credsExist);
+                    const rcCredsExist = !!(existingClientId && existingClientId.includes(':'));
+                    const eightCredsExist = !!(existingApiKey && existingApiKey.includes(':'));
+                    setHasExistingCredentials(rcCredsExist || eightCredsExist);
 
                     setConfig(prev => ({
                         ...prev,
                         isSandbox: data.config?.isSandbox === 'true' || data.config?.isSandbox === true,
                         phoneNumber: data.config?.phoneNumber || '',
-                        // Leave clientId/clientSecret empty - user enters new values if updating
+                        // Leave credentials empty - user enters new values if updating
                         clientId: '',
                         clientSecret: '',
+                        apiKey: '',
+                        apiSecret: '',
                         subAccountId: data.config?.subAccountId || ''
                     }));
                 }
@@ -84,23 +89,39 @@ export function IntegrationManager({ companyId, companyName, onBack }) {
 
             // CRITICAL: If credentials exist and user didn't enter new ones, 
             // don't send empty credentials (would overwrite with blank)
-            const hasNewClientId = payloadConfig.clientId && payloadConfig.clientId.trim() !== '';
-            const hasNewClientSecret = payloadConfig.clientSecret && payloadConfig.clientSecret.trim() !== '';
+            // Provider-aware credential handling
+            if (provider === 'ringcentral') {
+                const hasNewClientId = payloadConfig.clientId && payloadConfig.clientId.trim() !== '';
+                const hasNewClientSecret = payloadConfig.clientSecret && payloadConfig.clientSecret.trim() !== '';
 
-            // If user has existing credentials but didn't enter new ones, 
-            // mark these fields as "preserve" so backend knows not to overwrite
-            if (hasExistingCredentials && !hasNewClientId) {
-                payloadConfig.clientId = '__PRESERVE__';
-            }
-            if (hasExistingCredentials && !hasNewClientSecret) {
-                payloadConfig.clientSecret = '__PRESERVE__';
-            }
+                if (hasExistingCredentials && !hasNewClientId) {
+                    payloadConfig.clientId = '__PRESERVE__';
+                }
+                if (hasExistingCredentials && !hasNewClientSecret) {
+                    payloadConfig.clientSecret = '__PRESERVE__';
+                }
 
-            // If NO existing credentials AND user didn't enter new ones, that's an error
-            if (!hasExistingCredentials && (!hasNewClientId || !hasNewClientSecret)) {
-                showError("Client ID and Client Secret are required.");
-                setIsLoading(false);
-                return;
+                if (!hasExistingCredentials && (!hasNewClientId || !hasNewClientSecret)) {
+                    showError("Client ID and Client Secret are required.");
+                    setIsLoading(false);
+                    return;
+                }
+            } else if (provider === '8x8') {
+                const hasNewApiKey = payloadConfig.apiKey && payloadConfig.apiKey.trim() !== '';
+                const hasNewApiSecret = payloadConfig.apiSecret && payloadConfig.apiSecret.trim() !== '';
+
+                if (hasExistingCredentials && !hasNewApiKey) {
+                    payloadConfig.apiKey = '__PRESERVE__';
+                }
+                if (hasExistingCredentials && !hasNewApiSecret) {
+                    payloadConfig.apiSecret = '__PRESERVE__';
+                }
+
+                if (!hasExistingCredentials && (!hasNewApiKey || !hasNewApiSecret)) {
+                    showError("API Key and API Secret are required.");
+                    setIsLoading(false);
+                    return;
+                }
             }
 
             // 1. Sanitize Phone Number (RingCentral needs E.164, e.g. +15551234567)
@@ -294,29 +315,74 @@ export function IntegrationManager({ companyId, companyName, onBack }) {
                     {provider === '8x8' && (
                         <>
                             <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    API Key
+                                    {hasExistingCredentials && (
+                                        <span className="ml-2 text-green-600 font-normal normal-case">✓ Saved</span>
+                                    )}
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        className="w-full p-2 pl-10 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                                        value={config.apiKey || ''}
+                                        onChange={e => updateConfig('apiKey', e.target.value)}
+                                        placeholder={hasExistingCredentials ? "(Leave blank to keep existing)" : "Paste Key from 8x8 Admin Console"}
+                                        required={!hasExistingCredentials}
+                                    />
+                                    <Key size={16} className="absolute left-3 top-2.5 text-gray-400" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    API Secret
+                                    {hasExistingCredentials && (
+                                        <span className="ml-2 text-green-600 font-normal normal-case">✓ Saved</span>
+                                    )}
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="password"
+                                        className="w-full p-2 pl-10 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                                        value={config.apiSecret || ''}
+                                        onChange={e => updateConfig('apiSecret', e.target.value)}
+                                        placeholder={hasExistingCredentials ? "(Leave blank to keep existing)" : "Paste Secret from 8x8 Admin Console"}
+                                        required={!hasExistingCredentials}
+                                    />
+                                    <Lock size={16} className="absolute left-3 top-2.5 text-gray-400" />
+                                </div>
+                            </div>
+                            <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">SubAccount ID</label>
                                 <input
                                     type="text"
-                                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
                                     value={config.subAccountId || ''}
                                     onChange={e => updateConfig('subAccountId', e.target.value)}
-                                    placeholder="Enter SubAccount ID"
+                                    placeholder="e.g. yourcompany_hq"
                                     required
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">API Key</label>
-                                <div className="relative">
-                                    <input
-                                        type="password"
-                                        className="w-full p-2 pl-10 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={config.apiKey || ''}
-                                        onChange={e => updateConfig('apiKey', e.target.value)}
-                                        placeholder="••••••••••••••••"
-                                        required
-                                    />
-                                    <Key size={16} className="absolute left-3 top-2.5 text-gray-400" />
-                                </div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Sender Phone Number
+                                    <span className="text-red-500 ml-1">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                                    value={config.phoneNumber || ''}
+                                    onChange={e => updateConfig('phoneNumber', e.target.value)}
+                                    placeholder="+1234567890 (your 8x8 provisioned number)"
+                                    required
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">US carriers require a real phone number — alphanumeric sender IDs are rejected</p>
+                            </div>
+                            <div className="p-3 bg-orange-50 border border-orange-100 rounded text-[11px] text-orange-800">
+                                <p className="font-bold mb-1">How to find these values:</p>
+                                <p>1. Log into <b>8x8 Admin Console</b> → API Keys → copy <b>Key</b> & <b>Secret</b></p>
+                                <p>2. <b>SubAccount ID</b>: found under Pricing/SubAccounts (usually ends with <code>_hq</code>)</p>
+                                <p>3. <b>Sender Phone Number</b>: your SMS-enabled number from 8x8 (check under Numbers/DID)</p>
                             </div>
                         </>
                     )}

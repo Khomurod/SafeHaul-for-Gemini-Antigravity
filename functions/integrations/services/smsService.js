@@ -26,17 +26,20 @@ exports.sendTestSMS = onCall(encryptedCallOptions, async (request) => {
 
         // Pass 'fromNumber' as the 4th argument (explicit override for testing)
         // Pass request.auth.uid as 3rd arg (userId context)
-        await adapter.sendSMS(
+        const result = await adapter.sendSMS(
             testPhoneNumber,
             "SafeHaul Diagnostic Test: This message confirms your line is active.",
             request.auth.uid,
             fromNumber || null
         );
 
+        console.log("[sendTestSMS] Adapter result:", JSON.stringify(result));
+
         return {
             success: true,
             message: "Test message sent successfully.",
-            sentFrom: fromNumber || 'default'
+            sentFrom: fromNumber || 'default',
+            adapterResponse: result
         };
 
     } catch (error) {

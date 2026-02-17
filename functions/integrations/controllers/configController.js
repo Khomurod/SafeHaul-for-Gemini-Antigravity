@@ -113,8 +113,20 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
 
     try {
         // Determine Default Number
-        // Only pick a new one if it's currently null/empty
-        let defaultPhoneNumber = (existingDoc && existingDoc.exists) ? existingDoc.data().defaultPhoneNumber : null;
+        // Only pick a new one if it's currently null/empty or if the provider changed
+        const previousProvider = (existingDoc && existingDoc.exists) ? existingDoc.data().provider : null;
+        const providerChanged = previousProvider && previousProvider !== provider;
+
+        let defaultPhoneNumber = null;
+        if (!providerChanged && existingDoc && existingDoc.exists) {
+            defaultPhoneNumber = existingDoc.data().defaultPhoneNumber || null;
+        }
+
+        // For 8x8: use the phoneNumber from the form config if provided
+        if (provider === '8x8' && config.phoneNumber) {
+            defaultPhoneNumber = config.phoneNumber;
+        }
+
         if (!defaultPhoneNumber && inventory && inventory.length > 0) {
             defaultPhoneNumber = inventory[0].phoneNumber;
         }
@@ -204,6 +216,9 @@ exports.verifySmsConfig = onCall(encryptedCallOptions, async (request) => {
             const idData = await idResp.json();
             const identity = `${idData.contact?.firstName} ${idData.contact?.lastName} (Ext: ${idData.extensionNumber}) - Acc: ${idData.account?.id}`;
             return { success: true, message: `Successfully connected to RingCentral as ${identity}.` };
+        } else if (adapter instanceof EightByEightAdapter) {
+            const result = await adapter.verifyConnection();
+            return { success: true, message: `Successfully connected to 8x8. ${result.identity}` };
         } else {
             return { success: true, message: 'Configuration for this provider is valid.' };
         }

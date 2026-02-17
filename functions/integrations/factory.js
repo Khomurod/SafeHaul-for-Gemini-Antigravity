@@ -104,31 +104,34 @@ class SMSAdapterFactory {
         config.inventory = data.inventory || [];
 
         // 4. NEW: Per-Line Credentials Retrieval (Multi-Tenant Architecture)
-        // If a specific target phone is requested, get its dedicated keychain entry
-        let keychainEntry = null;
-        const phoneToLookup = targetPhoneNumber || config.defaultPhoneNumber;
+        // Only applicable for RingCentral (8x8 uses OAuth Key+Secret, no per-line JWTs)
+        if (data.provider !== '8x8') {
+            // If a specific target phone is requested, get its dedicated keychain entry
+            let keychainEntry = null;
+            const phoneToLookup = targetPhoneNumber || config.defaultPhoneNumber;
 
-        if (phoneToLookup) {
-            try {
-                keychainEntry = await this.getKeychainEntry(companyId, phoneToLookup);
+            if (phoneToLookup) {
+                try {
+                    keychainEntry = await this.getKeychainEntry(companyId, phoneToLookup);
 
-                // Always use the per-line JWT
-                config.jwt = keychainEntry.jwt;
+                    // Always use the per-line JWT
+                    config.jwt = keychainEntry.jwt;
 
-                // Use per-line credentials if available, otherwise keep global
-                if (keychainEntry.clientId && keychainEntry.clientSecret) {
-                    config.clientId = keychainEntry.clientId;
-                    config.clientSecret = keychainEntry.clientSecret;
-                    config.isSandbox = keychainEntry.isSandbox;
-                    console.log(`[Factory] Using per-line credentials for ${phoneToLookup}`);
-                } else {
-                    console.log(`[Factory] Using global credentials for ${phoneToLookup}`);
-                }
-            } catch (keychainError) {
-                console.warn(`Keychain lookup failed for ${phoneToLookup}:`, keychainError.message);
-                // Fall through to legacy JWT/credentials if available
-                if (!config.jwt) {
-                    throw keychainError;
+                    // Use per-line credentials if available, otherwise keep global
+                    if (keychainEntry.clientId && keychainEntry.clientSecret) {
+                        config.clientId = keychainEntry.clientId;
+                        config.clientSecret = keychainEntry.clientSecret;
+                        config.isSandbox = keychainEntry.isSandbox;
+                        console.log(`[Factory] Using per-line credentials for ${phoneToLookup}`);
+                    } else {
+                        console.log(`[Factory] Using global credentials for ${phoneToLookup}`);
+                    }
+                } catch (keychainError) {
+                    console.warn(`Keychain lookup failed for ${phoneToLookup}:`, keychainError.message);
+                    // Fall through to legacy JWT/credentials if available
+                    if (!config.jwt) {
+                        throw keychainError;
+                    }
                 }
             }
         }
