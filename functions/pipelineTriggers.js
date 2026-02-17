@@ -4,23 +4,9 @@
 
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 
-// --- Lazy Database Connection ---
-let dbInstance = null;
-
-function getDb() {
-    if (!dbInstance) {
-        const admin = require("firebase-admin");
-        const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-
-        if (!admin.apps.length) {
-            admin.initializeApp();
-        }
-
-        dbInstance = getFirestore();
-        dbInstance.settings({ ignoreUndefinedProperties: true });
-    }
-    return dbInstance;
-}
+// Note: This trigger does NOT need a Firestore client instance.
+// It uses event.data.after.ref.update() to write back to the same document,
+// and only needs FieldValue for serverTimestamp().
 
 // --- Helper: Format current time to CST display string ---
 // Returns: "Mon, 10:45 AM"

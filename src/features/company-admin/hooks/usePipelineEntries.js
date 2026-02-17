@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc,
-    serverTimestamp, Timestamp
+    serverTimestamp
 } from 'firebase/firestore';
 import { db } from '@lib/firebase';
 
@@ -41,6 +41,8 @@ export function usePipelineEntries(companyId) {
     const [rawEntries, setRawEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const debounceTimers = useRef({});
+    const rawEntriesRef = useRef(rawEntries);
+    rawEntriesRef.current = rawEntries;
 
     // --- Real-Time Listener ---
     useEffect(() => {
@@ -170,8 +172,8 @@ export function usePipelineEntries(companyId) {
     const deleteEntry = useCallback(async (entryId) => {
         if (!companyId || !entryId) return;
 
-        // Optimistic removal
-        const previousEntries = rawEntries;
+        // Snapshot current entries for revert via ref (avoids stale closure)
+        const previousEntries = rawEntriesRef.current;
         setRawEntries(prev => prev.filter(e => e.id !== entryId));
 
         const docRef = doc(db, 'companies', companyId, 'pipeline_entries', entryId);
@@ -182,7 +184,7 @@ export function usePipelineEntries(companyId) {
             // Revert
             setRawEntries(previousEntries);
         }
-    }, [companyId, rawEntries]);
+    }, [companyId]);
 
     // --- Cleanup debounce timers on unmount ---
     useEffect(() => {

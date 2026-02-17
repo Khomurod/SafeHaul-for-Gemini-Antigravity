@@ -5,7 +5,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { TableVirtuoso } from 'react-virtuoso';
 import { useData } from '@/context/DataContext';
 import { usePipelineEntries } from '../hooks/usePipelineEntries';
-import { formatPhoneNumber } from '@shared/utils/helpers';
+// formatPhoneNumber available from '@shared/utils/helpers' if display formatting is needed later
 import { Plus, Loader2, Trash2, ClipboardList } from 'lucide-react';
 
 // --- Constants ---
@@ -368,8 +368,8 @@ export function PipelineSheetPage() {
 
                 {/* Last Checked */}
                 <td className={`px-2 py-1 border-b border-gray-100 text-sm ${stale
-                        ? 'bg-purple-100 text-purple-800 font-bold border border-purple-200'
-                        : getRowBg(entry.hiringStage) + ' text-gray-600'
+                    ? 'bg-purple-100 text-purple-800 font-bold border border-purple-200'
+                    : getRowBg(entry.hiringStage) + ' text-gray-600'
                     }`}>
                     {entry.lastCheckedDisplay || '—'}
                     {stale && (
@@ -384,8 +384,8 @@ export function PipelineSheetPage() {
                     <button
                         onClick={() => handleDelete(entry.id)}
                         className={`p-1 rounded transition-colors ${confirmDelete === entry.id
-                                ? 'bg-red-100 text-red-600 hover:bg-red-200'
-                                : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                            ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                            : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
                             }`}
                         title={confirmDelete === entry.id ? 'Click again to confirm delete' : 'Delete entry'}
                     >
