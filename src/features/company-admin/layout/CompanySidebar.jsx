@@ -13,7 +13,8 @@ import {
   Settings,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  GitBranch
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 
@@ -71,6 +72,7 @@ export const CompanySidebar = () => {
         { label: 'SafeHaul Leads', path: '/company/drivers/leads/safehaul', icon: Truck },
         { label: 'Company Leads', path: '/company/drivers/leads/company', icon: Building2 },
         { label: 'My Leads', path: '/company/drivers/leads/my', icon: User },
+        { label: 'Pipeline', path: '/company/drivers/pipeline', icon: GitBranch },
       ]
     },
     { type: 'element', element: <div className="my-2 border-t border-gray-200" /> },
