@@ -147,3 +147,7 @@ exports.onLeadAssigned = notificationTriggers.onLeadAssigned;
 exports.onNewApplicationNotification = notificationTriggers.onNewApplicationNotification;
 exports.onCallbackScheduled = notificationTriggers.onCallbackScheduled;
 exports.onLeadCallbackScheduled = notificationTriggers.onLeadCallbackScheduled;
+
+// 16. Pipeline Tracking
+const pipelineTriggers = require('./pipelineTriggers');
+exports.onPipelineEntryWrite = pipelineTriggers.onPipelineEntryWrite;

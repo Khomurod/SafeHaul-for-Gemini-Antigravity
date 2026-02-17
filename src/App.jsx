@@ -16,6 +16,7 @@ const CompanyCandidatesListPage = React.lazy(() => import('@features/company-adm
 const SearchDriversPage = React.lazy(() => import('@features/company-admin/views/SearchDriversPage').then(m => ({ default: m.SearchDriversPage })));
 const ImportLeadsPage = React.lazy(() => import('@features/company-admin/views/ImportLeadsPage').then(m => ({ default: m.ImportLeadsPage })));
 const QuickAddLeadPage = React.lazy(() => import('@features/company-admin/views/QuickAddLeadPage').then(m => ({ default: m.QuickAddLeadPage })));
+const PipelineSheetPage = React.lazy(() => import('@features/company-admin/views/PipelineSheetPage').then(m => ({ default: m.PipelineSheetPage })));
 const UserProfilePage = React.lazy(() => import('@features/company-admin/views/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
 const CompanySettings = React.lazy(() => import('@features/settings/components/CompanySettings').then(m => ({ default: m.CompanySettings })));
 const DriverDashboard = React.lazy(() => import('@features/driver-app/components/DriverDashboard').then(m => ({ default: m.DriverDashboard })));
@@ -98,6 +99,7 @@ function AppRoutes() {
           <Route path="drivers/leads/safehaul" element={<CompanyCandidatesListPage scope="find_driver" />} />
           <Route path="drivers/leads/company" element={<CompanyCandidatesListPage scope="company_leads" />} />
           <Route path="drivers/leads/my" element={<CompanyCandidatesListPage scope="my_leads" />} />
+          <Route path="drivers/pipeline" element={<PipelineSheetPage />} />
 
           <Route path="search" element={<SearchDriversPage />} />
           <Route path="e-docs" element={<DocumentsManager />} />

@@ -2,18 +2,15 @@ const admin = require("firebase-admin");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 
-// 1. Initialize App with Explicit Bucket
+// 1. Initialize App
 if (!admin.apps.length) {
-  admin.initializeApp({
-      // This tells Firebase exactly where to look for files
-      storageBucket: "truckerapp-system.firebasestorage.app" 
-  });
+  admin.initializeApp();
 }
 
 // 2. Get Instances
 const db = getFirestore();
 const auth = admin.auth();
-const storage = getStorage(); // This was missing before!
+const storage = getStorage();
 
 // 3. Settings
 db.settings({ ignoreUndefinedProperties: true });
