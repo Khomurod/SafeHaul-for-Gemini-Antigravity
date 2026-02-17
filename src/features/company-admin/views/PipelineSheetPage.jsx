@@ -185,7 +185,7 @@ function EditableSelectCell({ value, options, onSave, className = '' }) {
 }
 
 // --- Comments Cell (debounced) ---
-function CommentsCell({ value, onSave }) {
+function CommentsCell({ value, onSave, onEditStart, onEditEnd }) {
     const [localValue, setLocalValue] = useState(value || '');
     const [editing, setEditing] = useState(false);
     const textareaRef = useRef(null);
@@ -212,7 +212,7 @@ function CommentsCell({ value, onSave }) {
         return (
             <div
                 className="cursor-pointer px-2 py-1 min-h-[28px] rounded hover:bg-gray-100 transition-colors"
-                onClick={() => setEditing(true)}
+                onClick={() => { setEditing(true); onEditStart?.(); }}
                 title={value || 'Click to add comments'}
             >
                 <span className={value ? 'text-gray-900 text-sm whitespace-pre-wrap line-clamp-2' : 'text-gray-400 italic text-sm'}>
@@ -227,7 +227,7 @@ function CommentsCell({ value, onSave }) {
             ref={textareaRef}
             value={localValue}
             onChange={handleChange}
-            onBlur={() => setEditing(false)}
+            onBlur={() => { setEditing(false); onEditEnd?.(); }}
             className="w-full px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none bg-white"
             rows={3}
         />
@@ -248,6 +248,8 @@ export function PipelineSheetPage() {
         updateField,
         updateComments,
         deleteEntry,
+        beginEdit,
+        endEdit,
         entryCount,
     } = usePipelineEntries(companyId);
 
@@ -387,8 +389,11 @@ export function PipelineSheetPage() {
                 {/* Comments */}
                 <td className={`px-1 py-1 border-b border-gray-100 ${getRowBg(entry.hiringStage)}`}>
                     <CommentsCell
+                        key={entry.id}
                         value={entry.comments}
                         onSave={(val) => updateComments(entry.id, val)}
+                        onEditStart={() => beginEdit(entry.id)}
+                        onEditEnd={endEdit}
                     />
                 </td>
 
@@ -446,6 +451,7 @@ export function PipelineSheetPage() {
                 <TableVirtuoso
                     data={entries}
                     style={{ height: '100%' }}
+                    computeItemKey={(index, entry) => entry.id}
                     fixedHeaderContent={fixedHeaderContent}
                     itemContent={itemContent}
                     components={TABLE_COMPONENTS}

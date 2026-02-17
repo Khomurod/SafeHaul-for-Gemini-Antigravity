@@ -5,6 +5,7 @@ const { enqueueWorker } = require("../services/queueService");
 const { isBlacklisted } = require("../../blacklist");
 const SMSAdapterFactory = require("../../integrations/factory");
 const { decrypt } = require("../../integrations/encryption");
+const { normalizePhone } = require("../../utils/phoneUtils");
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
@@ -289,6 +290,20 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                         lastBulkMessageAt: admin.firestore.FieldValue.serverTimestamp(),
                         lastContactedAt: admin.firestore.FieldValue.serverTimestamp()
                     }).catch(() => { });
+                }
+
+                // 4.6 Update Phone Ledger (7-Day SMS Dedup for all sources)
+                if (success && config.method === 'sms') {
+                    const normPhone = normalizePhone(recipientIdentity);
+                    if (normPhone) {
+                        db.collection('companies').doc(companyId)
+                            .collection('sms_sent_phones').doc(normPhone)
+                            .set({
+                                lastSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                                sessionId: sessionId
+                            }, { merge: true })
+                            .catch(() => { });
+                    }
                 }
 
                 // 5. Safety Delay (3s requirement)

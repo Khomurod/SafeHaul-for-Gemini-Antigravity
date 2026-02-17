@@ -3,6 +3,7 @@ const { admin, db } = require("../../firebaseAdmin");
 const { assertCompanyAdmin } = require("../helpers/auth");
 const { buildLeadQueries } = require("../helpers/queryBuilder");
 const { enqueueWorker } = require("../services/queueService");
+const { normalizePhone } = require("../../utils/phoneUtils");
 
 /**
  * 1. Initialize Bulk Session
@@ -114,16 +115,27 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
     const sessionId = sessionRef.id;
 
     // Handle Import Persistence NOW if applicable
+    let importFilteredCount = 0;
     if (leadSourceType === 'import' && request.data.rawData) {
         const rawItems = request.data.rawData;
+        const excludeRecentImport = filters.excludeRecentDays !== false; // default ON for imports
         const batchArray = [];
         let batch = db.batch();
         let count = 0;
+
+        // Build phone-to-importId mapping for 7-day filter
+        const phoneToIdMap = new Map(); // normalizedPhone -> importId
 
         for (let i = 0; i < rawItems.length; i++) {
             const item = rawItems[i];
             const importId = `imp_${i}_${Date.now()}`; // Simple unique ID within session context
             finalTargetIds.push(importId);
+
+            // Track phone mapping for dedup filter
+            const normPhone = normalizePhone(item.phone || item.phoneNumber || '');
+            if (normPhone) {
+                phoneToIdMap.set(normPhone, importId);
+            }
 
             const targetRef = sessionRef.collection('targets').doc(importId);
             batch.set(targetRef, {
@@ -142,6 +154,72 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
         // Execute all batches
         await Promise.all(batchArray.map(b => b.commit()));
+
+        // --- 7-Day Phone Filter for Imports ---
+        if (excludeRecentImport && phoneToIdMap.size > 0) {
+            try {
+                // Calculate threshold (7 days ago)
+                const thresholdDate = new Date();
+                thresholdDate.setDate(thresholdDate.getDate() - 7);
+                const thresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
+
+                // Query sms_sent_phones in batches of 10 (Firestore 'in' query limit)
+                const phoneNumbers = Array.from(phoneToIdMap.keys());
+                const recentPhones = new Set();
+
+                for (let i = 0; i < phoneNumbers.length; i += 10) {
+                    const chunk = phoneNumbers.slice(i, i + 10);
+                    // Get docs by ID (phone numbers are doc IDs)
+                    const docRefs = chunk.map(p =>
+                        db.collection('companies').doc(companyId)
+                            .collection('sms_sent_phones').doc(p)
+                    );
+                    const snapshots = await db.getAll(...docRefs);
+
+                    snapshots.forEach(snap => {
+                        if (snap.exists) {
+                            const data = snap.data();
+                            if (data.lastSentAt && data.lastSentAt >= thresholdTs) {
+                                recentPhones.add(snap.id);
+                            }
+                        }
+                    });
+                }
+
+                // Remove recently-messaged contacts from finalTargetIds
+                if (recentPhones.size > 0) {
+                    const idsToRemove = new Set();
+                    recentPhones.forEach(phone => {
+                        const importId = phoneToIdMap.get(phone);
+                        if (importId) {
+                            idsToRemove.add(importId);
+                        }
+                    });
+
+                    // Filter out the IDs
+                    finalTargetIds = finalTargetIds.filter(id => !idsToRemove.has(id));
+                    importFilteredCount = idsToRemove.size;
+
+                    // Clean up target docs for filtered items (fire-and-forget)
+                    const cleanupBatch = db.batch();
+                    let cleanupCount = 0;
+                    idsToRemove.forEach(id => {
+                        cleanupBatch.delete(sessionRef.collection('targets').doc(id));
+                        cleanupCount++;
+                    });
+                    if (cleanupCount > 0) {
+                        cleanupBatch.commit().catch(e =>
+                            console.error('Failed to cleanup filtered target docs:', e)
+                        );
+                    }
+
+                    console.log(`[initBulkSession] 7-day filter removed ${importFilteredCount} recently-messaged phones from import`);
+                }
+            } catch (filterErr) {
+                // Non-fatal: if filter fails, proceed with all contacts
+                console.error('[initBulkSession] 7-day phone filter error (proceeding without filter):', filterErr);
+            }
+        }
     }
 
     // Validate count again after import processing
@@ -206,7 +284,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
         throw e;
     }
 
-    return { success: true, sessionId: sessionId, count: finalTargetIds.length };
+    return { success: true, sessionId: sessionId, targetCount: finalTargetIds.length, filteredCount: importFilteredCount };
 });
 
 

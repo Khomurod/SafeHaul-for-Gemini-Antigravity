@@ -40,9 +40,11 @@ function sortEntries(entries) {
 export function usePipelineEntries(companyId) {
     const [rawEntries, setRawEntries] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [editingId, setEditingId] = useState(null);
     const debounceTimers = useRef({});
     const rawEntriesRef = useRef(rawEntries);
     rawEntriesRef.current = rawEntries;
+    const prevSortedRef = useRef([]);
 
     // --- Real-Time Listener ---
     useEffect(() => {
@@ -71,7 +73,24 @@ export function usePipelineEntries(companyId) {
     }, [companyId]);
 
     // --- Sorted entries via useMemo ---
-    const entries = useMemo(() => sortEntries(rawEntries), [rawEntries]);
+    // Freeze sort order while a cell is being actively edited to prevent row jumping.
+    const entries = useMemo(() => {
+        if (editingId) {
+            // Preserve current row order but pick up updated field values
+            const map = new Map(rawEntries.map(e => [e.id, e]));
+            const result = prevSortedRef.current
+                .map(e => map.get(e.id))
+                .filter(Boolean);
+            // Append any brand-new entries not yet in the previous order
+            const existing = new Set(result.map(e => e.id));
+            rawEntries.forEach(e => { if (!existing.has(e.id)) result.push(e); });
+            prevSortedRef.current = result;
+            return result;
+        }
+        const sorted = sortEntries(rawEntries);
+        prevSortedRef.current = sorted;
+        return sorted;
+    }, [rawEntries, editingId]);
 
     // --- Add Entry ---
     const addEntry = useCallback(async (data = {}) => {
@@ -187,6 +206,10 @@ export function usePipelineEntries(companyId) {
         }
     }, [companyId]);
 
+    // --- Edit-lock helpers (freeze sort while editing) ---
+    const beginEdit = useCallback((entryId) => setEditingId(entryId), []);
+    const endEdit = useCallback(() => setEditingId(null), []);
+
     // --- Cleanup debounce timers on unmount ---
     useEffect(() => {
         return () => {
@@ -201,6 +224,8 @@ export function usePipelineEntries(companyId) {
         updateField,
         updateComments,
         deleteEntry,
+        beginEdit,
+        endEdit,
         entryCount: entries.length,
     };
 }

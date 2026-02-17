@@ -41,7 +41,7 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
         if (activeTab === 'upload') {
             onChange({ ...localFilters, leadType: 'import', rawData: csvData }, csvData.length);
         }
-    }, [csvData, activeTab]);
+    }, [csvData, activeTab, localFilters.excludeRecentDays]);
 
     // Effect: Sync CRM count to parent
     useEffect(() => {
@@ -241,6 +241,22 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                             </p>
                                         </div>
                                     )}
+
+                                    {/* 7-Day SMS Filter Toggle for Uploads */}
+                                    <div className="pt-4 mt-4 border-t border-slate-100">
+                                        <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
+                                            <div>
+                                                <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">Exclude recently messaged (7 days)</span>
+                                                <p className="text-[10px] text-slate-400 mt-0.5">Skip numbers that received SMS in the last 7 days</p>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                className="w-5 h-5 rounded text-blue-600 focus:ring-offset-0 focus:ring-0"
+                                                checked={localFilters.excludeRecentDays !== false}
+                                                onChange={(e) => handleFilterChange('excludeRecentDays', e.target.checked ? true : false)}
+                                            />
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
 

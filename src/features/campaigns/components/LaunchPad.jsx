@@ -32,7 +32,10 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
             const result = await initBulkSession(payload);
 
             if (result.data.success) {
-                showSuccess(`Campaign launched! Targeting ${result.data.targetCount} drivers. Session: ${result.data.sessionId?.slice(0, 8)}...`);
+                const filteredMsg = result.data.filteredCount > 0
+                    ? ` (${result.data.filteredCount} filtered out — messaged in last 7 days)`
+                    : '';
+                showSuccess(`Campaign launched! Targeting ${result.data.targetCount} drivers${filteredMsg}. Session: ${result.data.sessionId?.slice(0, 8)}...`);
                 if (onLaunchSuccess) onLaunchSuccess();
             } else {
                 showError(result.data.message || "Launch failed");
