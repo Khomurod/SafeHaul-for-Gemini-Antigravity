@@ -2,6 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
 const { buildLeadQueries } = require("../helpers/queryBuilder");
 const { assertCompanyAdmin } = require("../helpers/auth");
+const { normalizePhone } = require("../../utils/phoneUtils");
 
 const cors = require("cors")({ origin: true });
 
@@ -33,7 +34,7 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
         let total = 0;
 
         // If Exclude filter is active, we must fetch data to filter in-memory (to handle missing fields)
-        if (filters.excludeRecentDays) {
+        if (filters.excludeRecentDays && filters.excludeRecentDays !== 'off') {
             let excludeThreshold = null; // null means 'forever' — exclude ANY previously messaged
             if (filters.excludeRecentDays !== 'forever') {
                 const days = parseInt(filters.excludeRecentDays);
@@ -44,26 +45,84 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
                 }
             }
 
-            // Fetch only needed field to save bandwidth
-            const snapshots = await Promise.all(queries.map(q => q.select('lastBulkMessageAt').get()));
+            // Fetch needed fields (phone for secondary sms_sent_phones check)
+            const snapshots = await Promise.all(queries.map(q => q.select('lastBulkMessageAt', 'phone', 'phoneNumber').get()));
 
             const idSet = new Set();
+            const idPhoneMap = new Map(); // leadId -> normalizedPhone
             snapshots.forEach(snap => {
                 snap.docs.forEach(d => {
                     const data = d.data();
+                    let include = true;
                     if (excludeThreshold === null) {
                         // 'forever' mode: exclude if field exists at all
-                        if (!data.lastBulkMessageAt) {
-                            idSet.add(d.id);
+                        if (data.lastBulkMessageAt) {
+                            include = false;
                         }
                     } else {
                         // Time-based: include if field is missing OR date is OLD (< threshold)
-                        if (!data.lastBulkMessageAt || data.lastBulkMessageAt < excludeThreshold) {
-                            idSet.add(d.id);
+                        if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
+                            include = false;
+                        }
+                    }
+                    if (include) {
+                        idSet.add(d.id);
+                        // Track phone for secondary check
+                        const rawPhone = data.phone || data.phoneNumber || '';
+                        const normPhone = normalizePhone(rawPhone);
+                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 11) {
+                            idPhoneMap.set(d.id, normPhone);
                         }
                     }
                 });
             });
+
+            // --- Secondary Phone Filter: Cross-check against sms_sent_phones ---
+            if (idPhoneMap.size > 0) {
+                try {
+                    const phoneEntries = Array.from(idPhoneMap.entries());
+                    const phonesToCheck = [...new Set(phoneEntries.map(e => e[1]))];
+                    const recentPhones = new Set();
+
+                    let phoneThresholdTs = null;
+                    if (filters.excludeRecentDays !== 'forever') {
+                        const days = parseInt(filters.excludeRecentDays) || 7;
+                        const thresholdDate = new Date();
+                        thresholdDate.setDate(thresholdDate.getDate() - days);
+                        phoneThresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
+                    }
+
+                    for (let i = 0; i < phonesToCheck.length; i += 10) {
+                        const chunk = phonesToCheck.slice(i, i + 10);
+                        const docRefs = chunk.map(p =>
+                            db.collection('companies').doc(companyId)
+                                .collection('sms_sent_phones').doc(p)
+                        );
+                        const phoneSnaps = await db.getAll(...docRefs);
+                        phoneSnaps.forEach(snap => {
+                            if (!snap.exists) return;
+                            const data = snap.data();
+                            if (!data.lastSentAt) return;
+                            if (phoneThresholdTs === null) {
+                                recentPhones.add(snap.id);
+                            } else if (data.lastSentAt >= phoneThresholdTs) {
+                                recentPhones.add(snap.id);
+                            }
+                        });
+                    }
+
+                    if (recentPhones.size > 0) {
+                        for (const [leadId, phone] of phoneEntries) {
+                            if (recentPhones.has(phone) && idSet.has(leadId)) {
+                                idSet.delete(leadId);
+                            }
+                        }
+                    }
+                } catch (phoneErr) {
+                    console.error('[getFilterCount] sms_sent_phones check error (proceeding without):', phoneErr);
+                }
+            }
+
             total = idSet.size;
 
         } else {

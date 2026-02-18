@@ -41,7 +41,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
         // Apply .select() to only fetch fields needed for in-memory filtering.
         // This prevents crashes from corrupt Timestamp fields in documents.
-        const fieldsNeeded = ['lastBulkMessageAt'];
+        const fieldsNeeded = ['lastBulkMessageAt', 'phone', 'phoneNumber'];
         const selectQueries = queries.map(q => q.select(...fieldsNeeded));
 
         // Execute all queries to get IDs
@@ -61,10 +61,13 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             }
 
             const idSet = new Set();
+            // Map: leadId -> normalizedPhone (for secondary sms_sent_phones check)
+            const idPhoneMap = new Map();
 
             // Filter Setup
             let excludeThreshold = null;
-            if (filters.excludeRecentDays) {
+            const isExcludeActive = !!filters.excludeRecentDays && filters.excludeRecentDays !== 'off';
+            if (isExcludeActive) {
                 // excludeRecentDays can be: 'forever', or a number like 7, 30
                 if (filters.excludeRecentDays !== 'forever') {
                     let days = parseInt(filters.excludeRecentDays);
@@ -87,7 +90,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                 snap.docs.forEach(d => {
                     const data = d.data();
                     let include = true;
-                    // In-Memory Filter: Exclude Recent / Forever
+                    // In-Memory Filter: Exclude Recent / Forever (via lastBulkMessageAt)
                     if (excludeThreshold) {
                         // Time-based: exclude if recently messaged
                         if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
@@ -104,9 +107,78 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                     if (filters.excludedLeadIds && filters.excludedLeadIds.includes(d.id)) {
                         include = false;
                     }
-                    if (include) idSet.add(d.id);
+                    if (include) {
+                        idSet.add(d.id);
+                        // Track phone for secondary sms_sent_phones check
+                        const rawPhone = data.phone || data.phoneNumber || '';
+                        const normPhone = normalizePhone(rawPhone);
+                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 11) {
+                            idPhoneMap.set(d.id, normPhone);
+                        }
+                    }
                 });
             });
+
+            // --- Secondary Phone Filter: Cross-check against sms_sent_phones ---
+            // This catches leads that were previously messaged by old campaigns
+            // that didn't set lastBulkMessageAt on the lead document.
+            if (isExcludeActive && idPhoneMap.size > 0) {
+                try {
+                    const phoneEntries = Array.from(idPhoneMap.entries()); // [[leadId, phone], ...]
+                    const phonesToCheck = [...new Set(phoneEntries.map(e => e[1]))]; // unique phones
+                    const recentPhones = new Set();
+
+                    // Calculate threshold for sms_sent_phones check
+                    let phoneThresholdTs = null;
+                    if (filters.excludeRecentDays === 'forever') {
+                        phoneThresholdTs = null; // null means exclude all
+                    } else {
+                        const days = parseInt(filters.excludeRecentDays) || 7;
+                        const thresholdDate = new Date();
+                        thresholdDate.setDate(thresholdDate.getDate() - days);
+                        phoneThresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
+                    }
+
+                    // Query sms_sent_phones in batches of 10 (Firestore getAll limit)
+                    for (let i = 0; i < phonesToCheck.length; i += 10) {
+                        const chunk = phonesToCheck.slice(i, i + 10);
+                        const docRefs = chunk.map(p =>
+                            db.collection('companies').doc(companyId)
+                                .collection('sms_sent_phones').doc(p)
+                        );
+                        const phoneSnaps = await db.getAll(...docRefs);
+                        phoneSnaps.forEach(snap => {
+                            if (!snap.exists) return;
+                            const data = snap.data();
+                            if (!data.lastSentAt) return;
+
+                            if (phoneThresholdTs === null) {
+                                // 'forever': exclude any phone that exists
+                                recentPhones.add(snap.id);
+                            } else if (data.lastSentAt >= phoneThresholdTs) {
+                                // Time-based: exclude if sent within the threshold
+                                recentPhones.add(snap.id);
+                            }
+                        });
+                    }
+
+                    // Remove leads whose phone was found in sms_sent_phones
+                    if (recentPhones.size > 0) {
+                        let phonesFiltered = 0;
+                        for (const [leadId, phone] of phoneEntries) {
+                            if (recentPhones.has(phone) && idSet.has(leadId)) {
+                                idSet.delete(leadId);
+                                phonesFiltered++;
+                            }
+                        }
+                        console.log(`[initBulkSession] Phone ledger filter removed ${phonesFiltered} leads (from sms_sent_phones)`);
+                    }
+                } catch (phoneFilterErr) {
+                    // Non-fatal: if phone filter fails, proceed with lastBulkMessageAt-only filtering
+                    console.error('[initBulkSession] sms_sent_phones cross-check error (proceeding without):', phoneFilterErr);
+                }
+            }
+
             finalTargetIds = Array.from(idSet);
         } catch (qErr) {
             throw new HttpsError('internal', `Query execution failed: ${qErr.message}`);

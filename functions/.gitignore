@@ -3,8 +3,10 @@ node_modules/
 package-lock.json
 
 # Environment & Secrets
-.env
-.env.local
+# NOTE: Do NOT gitignore .env here — Firebase V2 Cloud Functions
+# reads .env during deployment to set environment variables.
+# .env
+# .env.local
 *.local
 
 # Logs
