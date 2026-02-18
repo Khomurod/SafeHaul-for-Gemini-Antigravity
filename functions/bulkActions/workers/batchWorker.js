@@ -154,10 +154,18 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                         }
                     } catch (decErr) {/* ignore */ }
 
-                    emailTransporter = nodemailer.createTransport({
-                        service: 'gmail', // Simplification, should support others based on config
-                        auth: { user: emailSettings.email, pass: mailPass }
-                    });
+                    const transportConfig = {};
+                    if (emailSettings.host) {
+                        // Custom SMTP (Outlook, SendGrid, Office 365, etc.)
+                        transportConfig.host = emailSettings.host;
+                        transportConfig.port = emailSettings.port || 587;
+                        transportConfig.secure = emailSettings.secure || false;
+                    } else {
+                        // Fallback to Gmail for backward compatibility
+                        transportConfig.service = 'gmail';
+                    }
+                    transportConfig.auth = { user: emailSettings.email, pass: mailPass };
+                    emailTransporter = nodemailer.createTransport(transportConfig);
                 }
             } catch (e) { console.error("Failed to load Email Transporter:", e); }
         }

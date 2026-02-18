@@ -5,7 +5,7 @@ import {
     updateProfile,
     sendPasswordResetEmail
 } from "firebase/auth";
-import { doc, setDoc, addDoc, collection, serverTimestamp, query, where, getDocs, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { auth, db } from '@lib/firebase';
 import { normalizePhone } from '@shared/utils/helpers'; // Import normalization
 
@@ -47,29 +47,26 @@ export async function registerDriver({ email, password, firstName, lastName, pho
         // MOVED TO SERVER: functions/userOnboarding.js (onDriverProfileCreated)
         // Client no longer attempts to read/delete other users' docs.
 
-        // Prepare the new profile data, prioritizing new input but keeping old history
+        // Create a clean profile. Shadow-profile merging (history, source, recruiterId)
+        // is handled server-side by functions/userOnboarding.js → onDriverProfileCreated.
         const newProfileData = {
-            ...existingData, // Keep history/notes from shadow profile
             personalInfo: {
-                ...existingData.personalInfo,
                 firstName,
                 lastName,
                 email,
                 phone: phone || '',
-                normalizedPhone: cleanPhone, // <--- ADDED
-                firstName_lower: firstName.toLowerCase(), // For search indexing
+                normalizedPhone: cleanPhone,
+                firstName_lower: firstName.toLowerCase(),
                 lastName_lower: lastName.toLowerCase()
             },
             driverProfile: {
-                ...existingData.driverProfile,
                 status: 'active',
-                isBulkUpload: false, // They are now a real user
-                source: existingData.driverProfile?.source || 'web_signup'
+                isBulkUpload: false,
+                source: 'web_signup'
             },
-            // Ensure timestamps are updated
-            createdAt: existingData.createdAt || timestamp,
+            createdAt: timestamp,
             updatedAt: timestamp,
-            claimedAt: timestamp // Mark when they claimed the account
+            claimedAt: timestamp
         };
 
         await setDoc(doc(db, "drivers", user.uid), newProfileData);

@@ -32,12 +32,17 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
     try {
         let total = 0;
 
-        // If Exclude Recent is active, we must fetch data to filter in-memory (to handle missing fields)
+        // If Exclude filter is active, we must fetch data to filter in-memory (to handle missing fields)
         if (filters.excludeRecentDays) {
-            const days = parseInt(filters.excludeRecentDays);
-            const date = new Date();
-            date.setDate(date.getDate() - days);
-            const excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+            let excludeThreshold = null; // null means 'forever' — exclude ANY previously messaged
+            if (filters.excludeRecentDays !== 'forever') {
+                const days = parseInt(filters.excludeRecentDays);
+                if (!isNaN(days) && days > 0) {
+                    const date = new Date();
+                    date.setDate(date.getDate() - days);
+                    excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+                }
+            }
 
             // Fetch only needed field to save bandwidth
             const snapshots = await Promise.all(queries.map(q => q.select('lastBulkMessageAt').get()));
@@ -46,10 +51,16 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
             snapshots.forEach(snap => {
                 snap.docs.forEach(d => {
                     const data = d.data();
-                    // Include if field is missing OR date is OLD (< threshold)
-                    // Exclude if field exists AND date is RECENT (>= threshold)
-                    if (!data.lastBulkMessageAt || data.lastBulkMessageAt < excludeThreshold) {
-                        idSet.add(d.id);
+                    if (excludeThreshold === null) {
+                        // 'forever' mode: exclude if field exists at all
+                        if (!data.lastBulkMessageAt) {
+                            idSet.add(d.id);
+                        }
+                    } else {
+                        // Time-based: include if field is missing OR date is OLD (< threshold)
+                        if (!data.lastBulkMessageAt || data.lastBulkMessageAt < excludeThreshold) {
+                            idSet.add(d.id);
+                        }
                     }
                 });
             });
@@ -110,11 +121,18 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
         let leads = [];
 
         let excludeThreshold = null;
+        let excludeForever = false;
         if (filters.excludeRecentDays) {
-            const days = parseInt(filters.excludeRecentDays);
-            const date = new Date();
-            date.setDate(date.getDate() - days);
-            excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+            if (filters.excludeRecentDays === 'forever') {
+                excludeForever = true;
+            } else {
+                const days = parseInt(filters.excludeRecentDays);
+                if (!isNaN(days) && days > 0) {
+                    const date = new Date();
+                    date.setDate(date.getDate() - days);
+                    excludeThreshold = admin.firestore.Timestamp.fromDate(date);
+                }
+            }
         }
 
         for (const d of snap.docs) {
@@ -122,8 +140,10 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
 
             const data = d.data();
 
-            // In-Memory Filter: Exclude Recent
-            if (excludeThreshold) {
+            // In-Memory Filter: Exclude Recent / Forever
+            if (excludeForever) {
+                if (data.lastBulkMessageAt) continue; // Skip any previously messaged
+            } else if (excludeThreshold) {
                 if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
                     continue; // Skip this lead
                 }

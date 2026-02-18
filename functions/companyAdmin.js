@@ -147,6 +147,63 @@ exports.runMigration = migrationLogic;
 // migrateDriversToLeads removed - real implementation is in leadDistribution.js
 
 /**
+ * BACKFILL PUBLIC PROFILES
+ * One-time callable function to force-sync ALL companies to public_profiles.
+ * Use this to repair stale data or after deploying syncPublicProfile for the first time.
+ * Safe to run multiple times (idempotent via merge: true).
+ */
+exports.backfillPublicProfiles = onCall({
+    cors: true, region: "us-central1", maxInstances: 1,
+    timeoutSeconds: 300, memory: '512MiB'
+}, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+
+    // Super Admin check
+    const roles = request.auth.token.roles || {};
+    const globalRole = request.auth.token.globalRole || roles.globalRole;
+    if (globalRole !== "super_admin") {
+        throw new HttpsError('permission-denied', 'Only Super Admins can run backfills.');
+    }
+
+    try {
+        const snapshot = await db.collection('companies').get();
+        let batch = db.batch();
+        let count = 0;
+        let totalSynced = 0;
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            const publicData = {
+                companyName: data.companyName || "Untitled Company",
+                appSlug: data.appSlug || null,
+                logoUrl: data.companyLogoUrl || null,
+                brandColor: data.brandColor || "#1e40af",
+                isActive: data.isActive ?? true,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            batch.set(db.collection('public_profiles').doc(doc.id), publicData, { merge: true });
+            count++;
+            totalSynced++;
+
+            if (count >= 400) {
+                await batch.commit();
+                batch = db.batch();
+                count = 0;
+            }
+        }
+        if (count > 0) await batch.commit();
+
+        console.log(`[backfillPublicProfiles] Synced ${totalSynced} companies.`);
+        return { success: true, message: `Backfilled ${totalSynced} public profiles.` };
+    } catch (error) {
+        console.error('[backfillPublicProfiles] Error:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+
+/**
  * SYNC PUBLIC PROFILE
  * Trigger: onWrite /companies/{companyId}
  * Description: Copies ONLY safe public data to a separate collection for public read access.
@@ -167,7 +224,7 @@ exports.syncPublicProfile = onDocumentWritten("companies/{companyId}", async (ev
     const publicData = {
         companyName: newData.companyName || "Untitled Company",
         appSlug: newData.appSlug || null,
-        logoUrl: newData.logoUrl || null,
+        logoUrl: newData.companyLogoUrl || null,
         brandColor: newData.brandColor || "#1e40af",
         isActive: newData.isActive ?? true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()

@@ -65,28 +65,37 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             // Filter Setup
             let excludeThreshold = null;
             if (filters.excludeRecentDays) {
-                // excludeRecentDays can be: true (boolean), or a number like 7
-                // If boolean true, default to 7 days
-                let days = parseInt(filters.excludeRecentDays);
-                if (isNaN(days) || days <= 0) {
-                    days = 7; // Default: exclude leads contacted in last 7 days
-                    console.log("DEBUG: excludeRecentDays was not a number, defaulting to 7 days");
+                // excludeRecentDays can be: 'forever', or a number like 7, 30
+                if (filters.excludeRecentDays !== 'forever') {
+                    let days = parseInt(filters.excludeRecentDays);
+                    if (isNaN(days) || days <= 0) {
+                        days = 7; // Default: exclude leads contacted in last 7 days
+                        console.log("DEBUG: excludeRecentDays was not a number, defaulting to 7 days");
+                    }
+                    const date = new Date();
+                    date.setDate(date.getDate() - days);
+                    // Hardened Timestamp creation
+                    const seconds = Math.floor(date.getTime() / 1000);
+                    excludeThreshold = new admin.firestore.Timestamp(seconds, 0);
+                    console.log(`DEBUG: Exclude Threshold: ${excludeThreshold.toDate().toISOString()} (days=${days})`);
+                } else {
+                    console.log("DEBUG: Exclude mode = FOREVER (all previously messaged)");
                 }
-                const date = new Date();
-                date.setDate(date.getDate() - days);
-                // Hardened Timestamp creation
-                const seconds = Math.floor(date.getTime() / 1000);
-                excludeThreshold = new admin.firestore.Timestamp(seconds, 0);
-                console.log(`DEBUG: Exclude Threshold: ${excludeThreshold.toDate().toISOString()} (days=${days})`);
             }
 
             snapshots.forEach(snap => {
                 snap.docs.forEach(d => {
                     const data = d.data();
                     let include = true;
-                    // In-Memory Filter: Exclude Recent
+                    // In-Memory Filter: Exclude Recent / Forever
                     if (excludeThreshold) {
+                        // Time-based: exclude if recently messaged
                         if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
+                            include = false;
+                        }
+                    } else if (filters.excludeRecentDays === 'forever') {
+                        // Forever: exclude if field exists at all
+                        if (data.lastBulkMessageAt) {
                             include = false;
                         }
                     }
@@ -118,7 +127,8 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
     let importFilteredCount = 0;
     if (leadSourceType === 'import' && request.data.rawData) {
         const rawItems = request.data.rawData;
-        const excludeRecentImport = filters.excludeRecentDays !== false; // default ON for imports
+        const excludeRecentImport = filters.excludeRecentDays && filters.excludeRecentDays !== 'off';
+        const excludeForever = filters.excludeRecentDays === 'forever';
         const batchArray = [];
         let batch = db.batch();
         let count = 0;
@@ -160,7 +170,13 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             try {
                 // Calculate threshold (7 days ago)
                 const thresholdDate = new Date();
-                thresholdDate.setDate(thresholdDate.getDate() - 7);
+                if (!excludeForever) {
+                    const days = parseInt(filters.excludeRecentDays) || 7;
+                    thresholdDate.setDate(thresholdDate.getDate() - days);
+                } else {
+                    // For 'forever', set threshold to epoch (include all records)
+                    thresholdDate.setTime(0);
+                }
                 const thresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
 
                 // Query sms_sent_phones in batches of 10 (Firestore 'in' query limit)

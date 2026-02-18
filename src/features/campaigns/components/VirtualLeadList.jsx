@@ -29,7 +29,9 @@ export default function VirtualLeadList({ companyId, filters, excludedIds = [], 
             // Backend-compatible filter mapping
             const backendFilters = {
                 ...filters,
-                excludeRecentDays: filters.excludeRecentDays ? 7 : null,
+                excludeRecentDays: (filters.excludeRecentDays && filters.excludeRecentDays !== 'off')
+                    ? filters.excludeRecentDays
+                    : null,
                 campaignLimit: filters.campaignLimit ? parseInt(filters.campaignLimit) : null
             };
 

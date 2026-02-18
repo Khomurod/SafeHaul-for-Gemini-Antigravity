@@ -19,6 +19,15 @@ export function useCampaignTargeting(companyId, filters, currentUser) {
             setIsLoading(true);
             setError(null);
 
+            // Import mode: count is the CSV length, no backend query needed
+            if (filters.leadType === 'import') {
+                const importCount = filters.rawData?.length || 0;
+                setMatchCount(importCount);
+                if (importCount === 0) setError(ERROR_MESSAGES.ZERO_RESULTS);
+                setIsLoading(false);
+                return;
+            }
+
             try {
                 const getCountFn = httpsCallable(functions, 'getFilterCount');
 
@@ -26,7 +35,9 @@ export function useCampaignTargeting(companyId, filters, currentUser) {
                 const backendFilters = {
                     ...filters,
                     // Map booleans/strings to backend expectations if necessary
-                    excludeRecentDays: filters.excludeRecentDays ? 7 : null,
+                    excludeRecentDays: (filters.excludeRecentDays && filters.excludeRecentDays !== 'off')
+                        ? filters.excludeRecentDays
+                        : null,
                     campaignLimit: filters.campaignLimit ? parseInt(filters.campaignLimit) : null
                 };
 

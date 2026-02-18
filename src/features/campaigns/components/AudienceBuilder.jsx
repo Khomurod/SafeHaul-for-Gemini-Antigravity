@@ -159,17 +159,20 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                         </div>
                                     </div>
 
-                                    {/* Advanced Toggles */}
+                                    {/* Exclude Previously Messaged */}
                                     <div className="pt-4 border-t border-slate-100">
-                                        <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
-                                            <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">Exclude Recent (7 Days)</span>
-                                            <input
-                                                type="checkbox"
-                                                className="w-5 h-5 rounded text-blue-600 focus:ring-offset-0 focus:ring-0"
-                                                checked={!!localFilters.excludeRecentDays}
-                                                onChange={(e) => handleFilterChange('excludeRecentDays', e.target.checked)}
-                                            />
-                                        </label>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Exclude Previously Messaged</label>
+                                        <select
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                            value={localFilters.excludeRecentDays || 'off'}
+                                            onChange={(e) => handleFilterChange('excludeRecentDays', e.target.value)}
+                                        >
+                                            <option value="off">No Exclusion</option>
+                                            <option value="7">Last 7 Days</option>
+                                            <option value="30">Last 30 Days</option>
+                                            <option value="forever">All Time (Never Re-send)</option>
+                                        </select>
+                                        <p className="text-[10px] text-slate-400 mt-1">Skip numbers that already received a message.</p>
                                     </div>
 
                                     <div>
@@ -242,20 +245,20 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                         </div>
                                     )}
 
-                                    {/* 7-Day SMS Filter Toggle for Uploads */}
+                                    {/* Exclude Previously Messaged for Uploads */}
                                     <div className="pt-4 mt-4 border-t border-slate-100">
-                                        <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
-                                            <div>
-                                                <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">Exclude recently messaged (7 days)</span>
-                                                <p className="text-[10px] text-slate-400 mt-0.5">Skip numbers that received SMS in the last 7 days</p>
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                className="w-5 h-5 rounded text-blue-600 focus:ring-offset-0 focus:ring-0"
-                                                checked={localFilters.excludeRecentDays !== false}
-                                                onChange={(e) => handleFilterChange('excludeRecentDays', e.target.checked ? true : false)}
-                                            />
-                                        </label>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Exclude Previously Messaged</label>
+                                        <select
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                            value={localFilters.excludeRecentDays || '7'}
+                                            onChange={(e) => handleFilterChange('excludeRecentDays', e.target.value)}
+                                        >
+                                            <option value="off">No Exclusion</option>
+                                            <option value="7">Last 7 Days</option>
+                                            <option value="30">Last 30 Days</option>
+                                            <option value="forever">All Time (Never Re-send)</option>
+                                        </select>
+                                        <p className="text-[10px] text-slate-400 mt-1">Skip numbers that already received a message.</p>
                                     </div>
                                 </div>
                             </div>

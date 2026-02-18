@@ -17,6 +17,7 @@ exports.getFilteredLeadsPage = bulkActions.getFilteredLeadsPage;
 exports.resumeBulkSession = bulkActions.resumeBulkSession;
 exports.pauseBulkSession = bulkActions.pauseBulkSession;
 exports.cancelBulkSession = bulkActions.cancelBulkSession;
+exports.backfillSmsSentPhones = bulkActions.backfillSmsSentPhones;
 
 
 
@@ -90,6 +91,7 @@ exports.testEmailConnection = require('./testEmailConnection').testEmailConnecti
 
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
+exports.backfillPublicProfiles = companyAdmin.backfillPublicProfiles;
 
 
 

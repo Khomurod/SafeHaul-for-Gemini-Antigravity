@@ -40,6 +40,7 @@ export function useSystemHealth() {
 
     // Repair State
     const [repairStatus, setRepairStatus] = useState('idle'); // idle, running, success, error
+    const [backfillStatus, setBackfillStatus] = useState('idle'); // idle, running, success, error
 
     const [testData, setTestData] = useState({});
     const testDataRef = useRef({});
@@ -103,6 +104,27 @@ export function useSystemHealth() {
             console.error("Repair failed:", error);
             setRepairStatus('error');
             addLog(`❌ Repair Failed: ${error.message}`, "error");
+        }
+    };
+
+    // --- BACKFILL PUBLIC PROFILES ---
+    const runBackfillProfiles = async () => {
+        setBackfillStatus('running');
+        addLog("🔄 Starting Public Profiles Backfill...", "info");
+        try {
+            const backfillFn = httpsCallable(functions, 'backfillPublicProfiles');
+            const result = await backfillFn();
+
+            if (result.data.success) {
+                setBackfillStatus('success');
+                addLog(`✅ Backfill Complete: ${result.data.message}`, "success");
+            } else {
+                throw new Error(result.data.error || "Unknown failure");
+            }
+        } catch (error) {
+            console.error("Backfill failed:", error);
+            setBackfillStatus('error');
+            addLog(`❌ Backfill Failed: ${error.message}`, "error");
         }
     };
 
@@ -571,6 +593,8 @@ export function useSystemHealth() {
         pauseDiagnostics,
         resetDiagnostics,
         runSystemRepair, // <--- NEW EXPORT
-        repairStatus     // <--- NEW EXPORT
+        repairStatus,     // <--- NEW EXPORT
+        runBackfillProfiles,
+        backfillStatus
     };
 }

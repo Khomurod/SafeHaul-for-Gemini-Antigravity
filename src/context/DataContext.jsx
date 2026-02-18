@@ -69,6 +69,9 @@ export function DataProvider({ children }) {
           const roles = claims.roles || {};
           const companyRoleKeys = Object.keys(roles).filter(k => k !== 'globalRole');
 
+          // INTENTIONAL: Owner's email is hardcoded as a permanent super admin fallback.
+          // This is by design — only one person (the platform owner) will ever be super admin.
+          // Primary auth is via Firebase Custom Claims (globalRole); this is a safety net.
           const isSuperAdmin = claims.globalRole === 'super_admin' || roles.globalRole === 'super_admin' || user.email === 'holmurod96@gmail.com';
           const hasCompanyRoles = companyRoleKeys.length > 0;
 
