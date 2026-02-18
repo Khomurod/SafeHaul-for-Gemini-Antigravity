@@ -46,23 +46,30 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
             }
 
             // Fetch needed fields (phone for secondary sms_sent_phones check)
-            const snapshots = await Promise.all(queries.map(q => q.select('lastBulkMessageAt', 'phone', 'phoneNumber').get()));
+            const snapshots = await Promise.all(queries.map(q => q.select('lastBulkMessageAt', 'lastContactedAt', 'phone', 'phoneNumber').get()));
 
+            let totalDocs = 0;
+            let excludedByTimestamp = 0;
             const idSet = new Set();
             const idPhoneMap = new Map(); // leadId -> normalizedPhone
             snapshots.forEach(snap => {
                 snap.docs.forEach(d => {
+                    totalDocs++;
                     const data = d.data();
                     let include = true;
+                    // Check BOTH lastBulkMessageAt (new system) and lastContactedAt (old system)
+                    const messageTs = data.lastBulkMessageAt || data.lastContactedAt || null;
                     if (excludeThreshold === null) {
-                        // 'forever' mode: exclude if field exists at all
-                        if (data.lastBulkMessageAt) {
+                        // 'forever' mode: exclude if ANY message timestamp exists
+                        if (messageTs) {
                             include = false;
+                            excludedByTimestamp++;
                         }
                     } else {
-                        // Time-based: include if field is missing OR date is OLD (< threshold)
-                        if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
+                        // Time-based: include if no timestamp OR date is OLD (< threshold)
+                        if (messageTs && messageTs >= excludeThreshold) {
                             include = false;
+                            excludedByTimestamp++;
                         }
                     }
                     if (include) {
@@ -76,6 +83,7 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
                     }
                 });
             });
+            console.log(`[getFilterCount v3] TOTAL docs: ${totalDocs}, Excluded by timestamp: ${excludedByTimestamp}, Remaining: ${idSet.size}, Phone map: ${idPhoneMap.size}`);
 
             // --- Secondary Phone Filter: Cross-check against sms_sent_phones ---
             if (idPhoneMap.size > 0) {
@@ -194,21 +202,24 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
             }
         }
 
+        // First pass: collect candidates that pass timestamp filter
+        const candidates = [];
         for (const d of snap.docs) {
-            if (leads.length >= limit) break; // Filled the page
-
             const data = d.data();
+
+            // Check BOTH lastBulkMessageAt (new system) and lastContactedAt (old system)
+            const messageTs = data.lastBulkMessageAt || data.lastContactedAt || null;
 
             // In-Memory Filter: Exclude Recent / Forever
             if (excludeForever) {
-                if (data.lastBulkMessageAt) continue; // Skip any previously messaged
+                if (messageTs) continue; // Skip any previously messaged
             } else if (excludeThreshold) {
-                if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
+                if (messageTs && messageTs >= excludeThreshold) {
                     continue; // Skip this lead
                 }
             }
 
-            leads.push({
+            candidates.push({
                 id: d.id,
                 firstName: data.firstName,
                 lastName: data.lastName,
@@ -220,7 +231,71 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
             });
         }
 
-        return { leads };
+        // Second pass: sms_sent_phones cross-check (only if exclude filter is active)
+        if ((excludeForever || excludeThreshold) && candidates.length > 0) {
+            try {
+                // Build phone map for candidates
+                const candidatePhoneMap = new Map(); // index -> normalizedPhone
+                candidates.forEach((lead, idx) => {
+                    const rawPhone = lead.phone || '';
+                    const normPhone = normalizePhone(rawPhone);
+                    if (normPhone && normPhone.length >= 10 && normPhone.length <= 11) {
+                        candidatePhoneMap.set(idx, normPhone);
+                    }
+                });
+
+                if (candidatePhoneMap.size > 0) {
+                    const phonesToCheck = [...new Set(candidatePhoneMap.values())];
+                    const sentPhones = new Set();
+
+                    let phoneThresholdTs = null;
+                    if (!excludeForever && filters.excludeRecentDays !== 'forever') {
+                        const days = parseInt(filters.excludeRecentDays) || 7;
+                        const thresholdDate = new Date();
+                        thresholdDate.setDate(thresholdDate.getDate() - days);
+                        phoneThresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
+                    }
+
+                    // Batch check phones in chunks of 10
+                    for (let i = 0; i < phonesToCheck.length; i += 10) {
+                        const chunk = phonesToCheck.slice(i, i + 10);
+                        const docRefs = chunk.map(p =>
+                            db.collection('companies').doc(companyId)
+                                .collection('sms_sent_phones').doc(p)
+                        );
+                        const phoneSnaps = await db.getAll(...docRefs);
+                        phoneSnaps.forEach(s => {
+                            if (!s.exists) return;
+                            const sData = s.data();
+                            if (!sData.lastSentAt) return;
+                            if (phoneThresholdTs === null) {
+                                sentPhones.add(s.id);
+                            } else if (sData.lastSentAt >= phoneThresholdTs) {
+                                sentPhones.add(s.id);
+                            }
+                        });
+                    }
+
+                    // Remove candidates whose phone was found in sms_sent_phones
+                    if (sentPhones.size > 0) {
+                        const excludeIndices = new Set();
+                        for (const [idx, phone] of candidatePhoneMap.entries()) {
+                            if (sentPhones.has(phone)) {
+                                excludeIndices.add(idx);
+                            }
+                        }
+                        // Filter out excluded candidates
+                        const filtered = candidates.filter((_, idx) => !excludeIndices.has(idx));
+                        console.log(`[getFilteredLeadsPage v3] Candidates: ${candidates.length}, Phone excluded: ${excludeIndices.size}, Final: ${filtered.length}`);
+                        return { leads: filtered.slice(0, limit) };
+                    }
+                }
+            } catch (phoneErr) {
+                console.error('[getFilteredLeadsPage] sms_sent_phones check error (proceeding without):', phoneErr);
+            }
+        }
+
+        return { leads: candidates.slice(0, limit) };
 
     } catch (err) {
         console.error("Preview Error:", err);

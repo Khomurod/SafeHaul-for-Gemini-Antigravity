@@ -41,7 +41,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
         // Apply .select() to only fetch fields needed for in-memory filtering.
         // This prevents crashes from corrupt Timestamp fields in documents.
-        const fieldsNeeded = ['lastBulkMessageAt', 'phone', 'phoneNumber'];
+        const fieldsNeeded = ['lastBulkMessageAt', 'lastContactedAt', 'phone', 'phoneNumber'];
         const selectQueries = queries.map(q => q.select(...fieldsNeeded));
 
         // Execute all queries to get IDs
@@ -86,20 +86,29 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                 }
             }
 
+            let excludedByTimestamp = 0;
             snapshots.forEach(snap => {
                 snap.docs.forEach(d => {
                     const data = d.data();
                     let include = true;
-                    // In-Memory Filter: Exclude Recent / Forever (via lastBulkMessageAt)
+
+                    // Use the most recent timestamp between lastBulkMessageAt and lastContactedAt
+                    // lastBulkMessageAt = set by NEW bulk system
+                    // lastContactedAt = set by OLD executeReactivationBatch AND individual SMS sends
+                    const messageTs = data.lastBulkMessageAt || data.lastContactedAt || null;
+
+                    // In-Memory Filter: Exclude Recent / Forever
                     if (excludeThreshold) {
                         // Time-based: exclude if recently messaged
-                        if (data.lastBulkMessageAt && data.lastBulkMessageAt >= excludeThreshold) {
+                        if (messageTs && messageTs >= excludeThreshold) {
                             include = false;
+                            excludedByTimestamp++;
                         }
                     } else if (filters.excludeRecentDays === 'forever') {
-                        // Forever: exclude if field exists at all
-                        if (data.lastBulkMessageAt) {
+                        // Forever: exclude if ANY message timestamp exists
+                        if (messageTs) {
                             include = false;
+                            excludedByTimestamp++;
                         }
                     }
 
@@ -118,6 +127,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                     }
                 });
             });
+            console.log(`[initBulkSession] Timestamp filter excluded ${excludedByTimestamp} leads (lastBulkMessageAt OR lastContactedAt)`);
 
             // --- Secondary Phone Filter: Cross-check against sms_sent_phones ---
             // This catches leads that were previously messaged by old campaigns
