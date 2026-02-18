@@ -9,10 +9,12 @@ export function SystemHealthView() {
         runDiagnostics,
         pauseDiagnostics,
         resetDiagnostics,
-        runSystemRepair, // <--- NEW: Connected to hook
-        repairStatus,    // <--- NEW: Connected to hook
+        runSystemRepair,
+        repairStatus,
         runBackfillProfiles,
         backfillStatus,
+        runSmsBackfill,
+        smsBackfillStatus,
         status,
         progress,
         logs,
@@ -73,6 +75,19 @@ export function SystemHealthView() {
                     >
                         {backfillStatus === 'running' ? <RefreshCw className="animate-spin" size={18} /> : <DatabaseZap size={18} />}
                         {backfillStatus === 'running' ? 'Syncing...' : backfillStatus === 'success' ? 'Profiles Synced ✓' : 'Sync Public Profiles'}
+                    </button>
+
+                    {/* ⚠️ TEMPORARY — SMS HISTORY BACKFILL BUTTON (delete after use) */}
+                    <button
+                        onClick={runSmsBackfill}
+                        disabled={smsBackfillStatus === 'running'}
+                        className={`px-4 py-2 text-white font-bold rounded-lg shadow-md transition-all flex items-center gap-2
+                    ${smsBackfillStatus === 'running' ? 'bg-gray-400 cursor-not-allowed' :
+                                smsBackfillStatus === 'success' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-500 hover:bg-orange-600'}`}
+                        title="[TEMPORARY] Backfill SMS history for all companies — run once, then delete this button"
+                    >
+                        {smsBackfillStatus === 'running' ? <RefreshCw className="animate-spin" size={18} /> : <DatabaseZap size={18} />}
+                        {smsBackfillStatus === 'running' ? 'Backfilling SMS...' : smsBackfillStatus === 'success' ? 'SMS Backfilled ✓' : 'Backfill SMS History'}
                     </button>
                 </div>
             </header>
@@ -173,8 +188,8 @@ export function SystemHealthView() {
                                         {log.time.split('T')[1].split('.')[0]}
                                     </span>
                                     <span className={`break-all ${log.type === 'error' ? 'text-red-400 font-bold' :
-                                            log.type === 'success' ? 'text-green-400' :
-                                                log.type === 'warning' ? 'text-orange-300' : 'text-gray-300'
+                                        log.type === 'success' ? 'text-green-400' :
+                                            log.type === 'warning' ? 'text-orange-300' : 'text-gray-300'
                                         }`}>
                                         {log.message}
                                     </span>

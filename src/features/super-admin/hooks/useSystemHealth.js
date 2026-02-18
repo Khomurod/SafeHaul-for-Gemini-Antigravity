@@ -41,6 +41,7 @@ export function useSystemHealth() {
     // Repair State
     const [repairStatus, setRepairStatus] = useState('idle'); // idle, running, success, error
     const [backfillStatus, setBackfillStatus] = useState('idle'); // idle, running, success, error
+    const [smsBackfillStatus, setSmsBackfillStatus] = useState('idle'); // idle, running, success, error
 
     const [testData, setTestData] = useState({});
     const testDataRef = useRef({});
@@ -125,6 +126,46 @@ export function useSystemHealth() {
             console.error("Backfill failed:", error);
             setBackfillStatus('error');
             addLog(`❌ Backfill Failed: ${error.message}`, "error");
+        }
+    };
+
+    // --- BACKFILL SMS SENT PHONES (ALL COMPANIES) ---
+    const runSmsBackfill = async () => {
+        setSmsBackfillStatus('running');
+        addLog("📱 Starting SMS History Backfill for all companies...", "info");
+        try {
+            // Fetch all company IDs from Firestore
+            const companiesSnap = await getDocs(collection(db, 'companies'));
+            const companyIds = companiesSnap.docs.map(d => d.id);
+            addLog(`📋 Found ${companyIds.length} companies to backfill.`, "info");
+
+            const backfillFn = httpsCallable(functions, 'backfillSmsSentPhones');
+            let totalPhones = 0;
+            let totalSessions = 0;
+
+            for (let i = 0; i < companyIds.length; i++) {
+                const companyId = companyIds[i];
+                addLog(`⏳ [${i + 1}/${companyIds.length}] Backfilling company: ${companyId}...`, "info");
+                try {
+                    const result = await backfillFn({ companyId });
+                    if (result.data.success) {
+                        totalPhones += result.data.phonesBackfilled || 0;
+                        totalSessions += result.data.sessionsProcessed || 0;
+                        addLog(`  ✅ Done: ${result.data.phonesBackfilled || 0} phones from ${result.data.sessionsProcessed || 0} sessions.`, "success");
+                    } else {
+                        addLog(`  ⚠️ Skipped: ${result.data.error || 'Unknown error'}`, "warning");
+                    }
+                } catch (err) {
+                    addLog(`  ❌ Failed for ${companyId}: ${err.message}`, "error");
+                }
+            }
+
+            setSmsBackfillStatus('success');
+            addLog(`✅ SMS Backfill Complete! ${totalPhones} phones across ${totalSessions} sessions processed.`, "success");
+        } catch (error) {
+            console.error("SMS Backfill failed:", error);
+            setSmsBackfillStatus('error');
+            addLog(`❌ SMS Backfill Failed: ${error.message}`, "error");
         }
     };
 
@@ -592,9 +633,11 @@ export function useSystemHealth() {
         runDiagnostics,
         pauseDiagnostics,
         resetDiagnostics,
-        runSystemRepair, // <--- NEW EXPORT
-        repairStatus,     // <--- NEW EXPORT
+        runSystemRepair,
+        repairStatus,
         runBackfillProfiles,
-        backfillStatus
+        backfillStatus,
+        runSmsBackfill,
+        smsBackfillStatus
     };
 }

@@ -33,7 +33,7 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
 
             if (result.data.success) {
                 const filteredMsg = result.data.filteredCount > 0
-                    ? ` (${result.data.filteredCount} filtered out — messaged in last 7 days)`
+                    ? ` (${result.data.filteredCount} excluded — already messaged)`
                     : '';
                 showSuccess(`Campaign launched! Targeting ${result.data.targetCount} drivers${filteredMsg}. Session: ${result.data.sessionId?.slice(0, 8)}...`);
                 if (onLaunchSuccess) onLaunchSuccess();

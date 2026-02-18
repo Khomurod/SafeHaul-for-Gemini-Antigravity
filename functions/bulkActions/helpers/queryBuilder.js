@@ -3,6 +3,43 @@ const { admin, db } = require("../../firebaseAdmin");
 const { APPLICATION_STATUSES, LAST_CALL_RESULTS, getDbValue } = require("../../shared/constants");
 
 /**
+ * HELPER: Safely convert any date value to a Firestore Timestamp.
+ * Handles: ISO strings, epoch numbers, Firestore Timestamps, and Date objects.
+ * Returns null if the value cannot be converted.
+ */
+const safeToTimestamp = (val) => {
+    if (!val) return null;
+    try {
+        // Already a Firestore Timestamp
+        if (typeof val.toDate === 'function') {
+            const d = val.toDate();
+            if (isNaN(d.getTime())) return null;
+            return val;
+        }
+        // Already a Date object
+        if (val instanceof Date) {
+            if (isNaN(val.getTime())) return null;
+            const seconds = Math.floor(val.getTime() / 1000);
+            return new admin.firestore.Timestamp(seconds, 0);
+        }
+        // Epoch milliseconds (number)
+        if (typeof val === 'number') {
+            if (isNaN(val)) return null;
+            const seconds = Math.floor(val / 1000);
+            return new admin.firestore.Timestamp(seconds, 0);
+        }
+        // ISO string or any other string
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return null;
+        const seconds = Math.floor(d.getTime() / 1000);
+        return new admin.firestore.Timestamp(seconds, 0);
+    } catch (e) {
+        console.warn(`safeToTimestamp: Failed to convert value "${val}":`, e.message);
+        return null;
+    }
+};
+
+/**
  * HELPER: Build Shared Firestore Queries (Split Strategy)
  * Returns an ARRAY of queries to handle OR conditions without specialized indexes.
  */
@@ -51,27 +88,22 @@ const buildLeadQueries = (companyId, filters, userId) => {
     }
 
     // 3. Date Filters
-    // 3. Date Filters
     if (filters.createdAfter) {
-        const d = new Date(filters.createdAfter);
-        if (!isNaN(d.getTime())) {
-            const seconds = Math.floor(d.getTime() / 1000);
-            const ts = new admin.firestore.Timestamp(seconds, 0);
-            console.log(`DEBUG QueryBuilder: Applying createdAfter >= ${ts.toDate().toISOString()} (Seconds: ${seconds})`);
+        const ts = safeToTimestamp(filters.createdAfter);
+        if (ts) {
+            console.log(`DEBUG QueryBuilder: Applying createdAfter >= ${ts.toDate().toISOString()}`);
             applyToAll(q => q.where('createdAt', '>=', ts));
         } else {
-            console.warn(`DEBUG QueryBuilder: Invalid createdAfter date: ${filters.createdAfter}`);
+            console.warn(`DEBUG QueryBuilder: Invalid createdAfter value (skipped):`, filters.createdAfter);
         }
     }
     if (filters.createdBefore) {
-        const d = new Date(filters.createdBefore);
-        if (!isNaN(d.getTime())) {
-            const seconds = Math.floor(d.getTime() / 1000);
-            const ts = new admin.firestore.Timestamp(seconds, 0);
-            console.log(`DEBUG QueryBuilder: Applying createdBefore <= ${ts.toDate().toISOString()} (Seconds: ${seconds})`);
+        const ts = safeToTimestamp(filters.createdBefore);
+        if (ts) {
+            console.log(`DEBUG QueryBuilder: Applying createdBefore <= ${ts.toDate().toISOString()}`);
             applyToAll(q => q.where('createdAt', '<=', ts));
         } else {
-            console.warn(`DEBUG QueryBuilder: Invalid createdBefore date: ${filters.createdBefore}`);
+            console.warn(`DEBUG QueryBuilder: Invalid createdBefore value (skipped):`, filters.createdBefore);
         }
     }
 

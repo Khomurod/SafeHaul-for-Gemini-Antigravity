@@ -10,11 +10,14 @@ const { normalizePhone } = require("../../utils/phoneUtils");
  *
  * Run once from the Firebase Console or via a client call after deploying.
  * Safe to re-run — uses merge: true so it never overwrites newer data.
+ *
+ * FIX (v2): Removed the config.method === 'sms' filter — historical sessions
+ * may not have this field set. Instead, we detect phone numbers from the
+ * recipientIdentity field by checking if it normalizes to a valid phone number.
  */
 exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory: '512MiB' }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
 
-    // Optional: restrict to super admin if you have that role check
     const { companyId } = request.data;
     if (!companyId) {
         throw new HttpsError('invalid-argument', 'companyId is required.');
@@ -26,7 +29,7 @@ exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory
     let sessionsProcessed = 0;
 
     try {
-        // 1. Get all completed (or any status) bulk sessions for this company
+        // 1. Get all bulk sessions for this company (no status filter — process all)
         const sessionsSnap = await db
             .collection('companies').doc(companyId)
             .collection('bulk_sessions')
@@ -36,16 +39,18 @@ exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory
 
         // 2. Process each session sequentially (to stay within CPU limits)
         for (const sessionDoc of sessionsSnap.docs) {
-            const sessionData = sessionDoc.data();
             const sessionId = sessionDoc.id;
+            const sessionData = sessionDoc.data();
 
-            // Only process SMS sessions
-            if (sessionData.config?.method !== 'sms') {
-                console.log(`[Backfill] Skipping session ${sessionId} — method is ${sessionData.config?.method}`);
+            // Skip email-only sessions if the method is explicitly set to 'email'
+            // But DO process sessions where method is missing (historical) or 'sms'
+            const method = sessionData.config?.method || sessionData.messageType || null;
+            if (method && method === 'email') {
+                console.log(`[Backfill] Skipping session ${sessionId} — explicitly email`);
                 continue;
             }
 
-            // 3. Read delivered logs for this session
+            // 3. Read ALL delivered logs for this session
             const logsSnap = await db
                 .collection('companies').doc(companyId)
                 .collection('bulk_sessions').doc(sessionId)
@@ -54,42 +59,45 @@ exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory
                 .get();
 
             if (logsSnap.empty) {
+                console.log(`[Backfill] Session ${sessionId}: no delivered logs found`);
                 continue;
             }
 
-            // 4. Batch-write to sms_sent_phones
+            // 4. Batch-write to sms_sent_phones — only for entries that look like phone numbers
             const batchArray = [];
             let batch = db.batch();
             let count = 0;
+            let sessionPhones = 0;
 
             for (const logDoc of logsSnap.docs) {
                 const logData = logDoc.data();
                 const rawPhone = logData.recipientIdentity;
 
-                if (!rawPhone || rawPhone === 'N/A' || rawPhone === 'No Phone') {
+                if (!rawPhone || rawPhone === 'N/A' || rawPhone === 'No Phone' || rawPhone === 'No Email') {
                     continue;
                 }
 
+                // Only write if it normalizes to a valid phone number (10-11 digits)
                 const normPhone = normalizePhone(rawPhone);
-                if (!normPhone) continue;
+                if (!normPhone || normPhone.length < 10 || normPhone.length > 11) {
+                    // Likely an email address — skip
+                    continue;
+                }
 
                 const phoneRef = db
                     .collection('companies').doc(companyId)
                     .collection('sms_sent_phones').doc(normPhone);
 
-                // Use merge: true — if the doc already exists with a newer timestamp,
-                // we only overwrite if this log's timestamp is more recent.
-                // Actually, merge:true won't compare timestamps, it just merges fields.
-                // So we set lastSentAt and let the most recent write win.
-                // Since we process sessions in order, the last session's timestamp will persist.
+                // Use merge: true — safe to re-run, won't overwrite newer real sends
                 batch.set(phoneRef, {
                     lastSentAt: logData.timestamp || admin.firestore.FieldValue.serverTimestamp(),
                     sessionId: sessionId,
-                    backfilled: true // Flag so we know this came from backfill
+                    backfilled: true
                 }, { merge: true });
 
                 count++;
                 totalBackfilled++;
+                sessionPhones++;
 
                 if (count >= 490) { // Firestore batch limit safety margin
                     batchArray.push(batch);
@@ -105,8 +113,10 @@ exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory
                 await b.commit();
             }
 
-            sessionsProcessed++;
-            console.log(`[Backfill] Session ${sessionId}: backfilled ${logsSnap.size} phones`);
+            if (sessionPhones > 0) {
+                sessionsProcessed++;
+                console.log(`[Backfill] Session ${sessionId}: backfilled ${sessionPhones} phones`);
+            }
         }
 
         const summary = `Backfill complete for company ${companyId}. Sessions processed: ${sessionsProcessed}, Phones backfilled: ${totalBackfilled}`;
@@ -116,7 +126,7 @@ exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory
             success: true,
             message: summary,
             sessionsProcessed,
-            totalBackfilled
+            phonesBackfilled: totalBackfilled
         };
 
     } catch (err) {

@@ -168,3 +168,67 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
         throw new HttpsError('internal', err.message);
     }
 });
+
+/**
+ * Check which imported phone numbers have already been messaged.
+ * Used by the frontend preview to grey out / exclude already-messaged contacts
+ * before the user launches the campaign.
+ *
+ * @param {string}   companyId        - The company to check against
+ * @param {string[]} phones           - Array of NORMALIZED phone strings (digits only)
+ * @param {string}   excludeRecentDays - 'forever' | '7' | '14' | '30' | 'off'
+ * @returns {{ excludedPhones: string[] }}
+ */
+exports.checkImportPhones = onCall({ cors: true, memory: '256MiB' }, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be logged in.');
+
+    const { companyId, phones, excludeRecentDays } = request.data;
+    if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+    if (!Array.isArray(phones) || phones.length === 0) return { excludedPhones: [] };
+    if (!excludeRecentDays || excludeRecentDays === 'off') return { excludedPhones: [] };
+
+    // Build threshold timestamp (same logic as sessionController.js)
+    let thresholdTs = null; // null = 'forever' — exclude ANY previously messaged phone
+    if (excludeRecentDays !== 'forever') {
+        const days = parseInt(excludeRecentDays);
+        if (!isNaN(days) && days > 0) {
+            const date = new Date();
+            date.setDate(date.getDate() - days);
+            thresholdTs = admin.firestore.Timestamp.fromDate(date);
+        }
+    }
+
+    const excludedPhones = [];
+
+    // Query sms_sent_phones in batches of 10 (Firestore getAll limit per call is fine, but keep chunks manageable)
+    for (let i = 0; i < phones.length; i += 10) {
+        const chunk = phones.slice(i, i + 10);
+        const docRefs = chunk.map(p =>
+            db.collection('companies').doc(companyId).collection('sms_sent_phones').doc(p)
+        );
+
+        try {
+            const snapshots = await db.getAll(...docRefs);
+            snapshots.forEach(snap => {
+                if (!snap.exists) return;
+                const data = snap.data();
+                if (!data.lastSentAt) return;
+
+                if (thresholdTs === null) {
+                    // 'forever' mode: exclude any phone that has ever been messaged
+                    excludedPhones.push(snap.id);
+                } else {
+                    // Time-based: exclude if messaged on or after the threshold
+                    if (data.lastSentAt >= thresholdTs) {
+                        excludedPhones.push(snap.id);
+                    }
+                }
+            });
+        } catch (chunkErr) {
+            console.error('[checkImportPhones] Chunk lookup error:', chunkErr);
+            // Non-fatal: skip this chunk, don't block the user
+        }
+    }
+
+    return { excludedPhones };
+});

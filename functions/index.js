@@ -18,6 +18,7 @@ exports.resumeBulkSession = bulkActions.resumeBulkSession;
 exports.pauseBulkSession = bulkActions.pauseBulkSession;
 exports.cancelBulkSession = bulkActions.cancelBulkSession;
 exports.backfillSmsSentPhones = bulkActions.backfillSmsSentPhones;
+exports.checkImportPhones = bulkActions.checkImportPhones;
 
 
 

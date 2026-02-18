@@ -71,20 +71,6 @@
       ]
     },
     {
-      "collectionGroup": "leads",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "assignedTo",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "applications",
       "queryScope": "COLLECTION",
       "fields": [
@@ -205,6 +191,20 @@
         {
           "fieldPath": "assignedTo",
           "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "applications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "assignedTo",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
         }
       ]
     }

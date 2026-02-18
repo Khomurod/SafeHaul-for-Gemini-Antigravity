@@ -23,7 +23,7 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
     });
 
     // 1. CRM COUNT HOOK (Stateless now)
-    const { matchCount, isLoading: isCountLoading } = useCampaignTargeting(companyId, localFilters, currentUser);
+    const { matchCount, isLoading: isCountLoading, excludedPhones } = useCampaignTargeting(companyId, localFilters, currentUser);
 
     // 2. IMPORT HOOK
     const {
@@ -36,12 +36,12 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
         reset: resetImport
     } = useBulkImport();
 
-    // Effect: Sync imported data to parent
+    // Effect: Sync imported data to parent (use matchCount which is already filtered)
     useEffect(() => {
         if (activeTab === 'upload') {
-            onChange({ ...localFilters, leadType: 'import', rawData: csvData }, csvData.length);
+            onChange({ ...localFilters, leadType: 'import', rawData: csvData }, matchCount);
         }
-    }, [csvData, activeTab, localFilters.excludeRecentDays]);
+    }, [csvData, activeTab, localFilters.excludeRecentDays, matchCount]);
 
     // Effect: Sync CRM count to parent
     useEffect(() => {
@@ -67,11 +67,13 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
 
     // Calculated View State
     const isUploadMode = activeTab === 'upload';
-    const displayCount = isUploadMode ? csvData.length : matchCount;
-    const excludedCount = localFilters.excludedLeadIds?.length || 0;
+    // For upload mode, matchCount is already the filtered count (from checkImportPhones)
+    const displayCount = matchCount;
+    const manualExcludedCount = localFilters.excludedLeadIds?.length || 0;
+    const phoneExcludedCount = isUploadMode ? excludedPhones.size : 0;
 
     // Ensure final count doesn't go below zero
-    const finalCount = Math.max(0, displayCount - excludedCount);
+    const finalCount = Math.max(0, displayCount - manualExcludedCount);
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -285,11 +287,18 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                 {isCountLoading && <RefreshCw className="animate-spin text-blue-500" />}
                             </div>
 
-                            {excludedCount > 0 && (
-                                <div className="mt-2 text-xs font-medium text-red-400 bg-red-500/10 inline-block px-2 py-1 rounded">
-                                    {excludedCount} manually excluded
-                                </div>
-                            )}
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {manualExcludedCount > 0 && (
+                                    <div className="text-xs font-medium text-red-400 bg-red-500/10 inline-block px-2 py-1 rounded">
+                                        {manualExcludedCount} manually excluded
+                                    </div>
+                                )}
+                                {phoneExcludedCount > 0 && (
+                                    <div className="text-xs font-medium text-amber-400 bg-amber-500/10 inline-block px-2 py-1 rounded">
+                                        {phoneExcludedCount} already messaged
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* VIRTUAL LIST AREA */}
@@ -301,6 +310,7 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                 excludedIds={localFilters.excludedLeadIds}
                                 onToggleExclusion={handleToggleExclusion}
                                 localData={isUploadMode ? csvData : null}
+                                excludedPhones={isUploadMode ? excludedPhones : null}
                             />
                         </div>
 

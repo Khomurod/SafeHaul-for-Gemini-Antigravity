@@ -4,7 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase/config';
 import { Loader2, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 
-export default function VirtualLeadList({ companyId, filters, excludedIds = [], onToggleExclusion, localData = null }) {
+export default function VirtualLeadList({ companyId, filters, excludedIds = [], onToggleExclusion, localData = null, excludedPhones = null }) {
     const [leads, setLeads] = useState([]);
     const [loading, setLoading] = useState(false);
     const [lastDocId, setLastDocId] = useState(null);
@@ -81,28 +81,36 @@ export default function VirtualLeadList({ companyId, filters, excludedIds = [], 
     const rowContent = (index, user) => {
         const safeId = user.id || `import_${index}`;
         const isExcluded = excludedIds.includes(safeId);
+        // Check if this row is excluded by the phone filter (import mode only)
+        const isPhoneExcluded = excludedPhones instanceof Set && user.normalizedPhone
+            ? excludedPhones.has(user.normalizedPhone)
+            : false;
         const name = user.firstName ? `${user.firstName} ${user.lastName || ''}` : (user.name || 'Unknown');
         const contact = user.phone || user.normalizedPhone || user.email || 'No Contact Info';
 
         return (
             <div className="pb-2 pr-2">
                 <div
-                    onClick={() => onToggleExclusion && onToggleExclusion(safeId)}
+                    onClick={() => !isPhoneExcluded && onToggleExclusion && onToggleExclusion(safeId)}
                     className={`
-                        p-3 rounded-xl flex items-center gap-4 border transition-all cursor-pointer group
-                        ${isExcluded
-                            ? 'bg-slate-900/50 border-slate-800 opacity-60'
-                            : 'bg-slate-800 border-transparent hover:border-slate-700'}
+                        p-3 rounded-xl flex items-center gap-4 border transition-all
+                        ${isPhoneExcluded
+                            ? 'bg-amber-900/10 border-amber-800/30 opacity-50 cursor-not-allowed'
+                            : isExcluded
+                                ? 'bg-slate-900/50 border-slate-800 opacity-60 cursor-pointer'
+                                : 'bg-slate-800 border-transparent hover:border-slate-700 cursor-pointer group'}
                     `}
                 >
                     {/* Selection Indicator */}
                     <div className={`
                         w-5 h-5 rounded-full flex items-center justify-center border transition-all
-                        ${isExcluded
-                            ? 'border-slate-600 bg-transparent text-slate-600'
-                            : 'border-blue-500 bg-blue-500 text-white'}
+                        ${isPhoneExcluded
+                            ? 'border-amber-600 bg-transparent text-amber-600'
+                            : isExcluded
+                                ? 'border-slate-600 bg-transparent text-slate-600'
+                                : 'border-blue-500 bg-blue-500 text-white'}
                     `}>
-                        {isExcluded ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+                        {isPhoneExcluded ? <XCircle size={14} /> : isExcluded ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
                     </div>
 
                     {/* Avatar */}
@@ -112,21 +120,27 @@ export default function VirtualLeadList({ companyId, filters, excludedIds = [], 
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                        <div className={`text-sm font-semibold truncate ${isExcluded ? 'text-slate-500 line-through' : 'text-white'}`}>
+                        <div className={`text-sm font-semibold truncate ${isPhoneExcluded || isExcluded ? 'text-slate-500 line-through' : 'text-white'}`}>
                             {name}
                         </div>
                         <div className="text-xs text-slate-400 truncate">{contact}</div>
                     </div>
 
                     {/* Status Badge */}
-                    <span className={`
-                        px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider
-                        ${user.status === 'new' ? 'bg-blue-500/10 text-blue-400' :
-                            user.status === 'hired' ? 'bg-emerald-500/10 text-emerald-400' :
-                                'bg-slate-700/50 text-slate-500'}
-                    `}>
-                        {user.status || 'Lead'}
-                    </span>
+                    {isPhoneExcluded ? (
+                        <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500">
+                            Already Messaged
+                        </span>
+                    ) : (
+                        <span className={`
+                            px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider
+                            ${user.status === 'new' ? 'bg-blue-500/10 text-blue-400' :
+                                user.status === 'hired' ? 'bg-emerald-500/10 text-emerald-400' :
+                                    'bg-slate-700/50 text-slate-500'}
+                        `}>
+                            {user.status || 'Lead'}
+                        </span>
+                    )}
                 </div>
             </div>
         );
