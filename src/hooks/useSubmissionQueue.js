@@ -10,7 +10,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@lib/firebase';
 import * as Sentry from '@sentry/react';
 
 import {
@@ -78,9 +79,38 @@ export function useSubmissionQueue() {
 
     // Submit function for queue processing
     const submitToFirestore = useCallback(async (data, companyId, entry) => {
+        const isGuest = entry?.meta?.type === 'guest' || data?.lifecycle?.isGuest;
+
+        // Guest submissions → Cloud Function (Admin SDK, bypasses rules)
+        if (isGuest) {
+            const submitFn = httpsCallable(functions, 'submitGuestApplication');
+            await submitFn({
+                companyId: companyId,
+                email: data.email || '',
+                phone: data.phone || '',
+                signature: data.signature || '',
+                formData: {
+                    ...data,
+                    lifecycle: {
+                        ...data.lifecycle,
+                        processedFromQueue: true,
+                        queueProcessedAt: new Date().toISOString(),
+                    },
+                },
+            });
+
+            Sentry.addBreadcrumb({
+                category: 'queue',
+                message: 'Queued guest submission processed via Cloud Function',
+                data: { companyId },
+                level: 'info',
+            });
+            return;
+        }
+
+        // Authenticated submissions → direct Firestore write (rules pass with auth)
         const applicationId = data.applicationId || entry.id;
 
-        // Determine target collection
         let docRef;
         if (companyId && companyId !== 'general-leads') {
             docRef = doc(db, "companies", companyId, "applications", applicationId);
@@ -88,10 +118,8 @@ export function useSubmissionQueue() {
             docRef = doc(db, "leads", applicationId);
         }
 
-        // Add server timestamp for the actual submission time
         const submissionData = {
             ...data,
-            // Override with server timestamp for accurate timing
             submittedAt: serverTimestamp(),
             lifecycle: {
                 ...data.lifecycle,
@@ -104,7 +132,7 @@ export function useSubmissionQueue() {
 
         Sentry.addBreadcrumb({
             category: 'queue',
-            message: 'Queued submission processed successfully',
+            message: 'Queued authenticated submission processed successfully',
             data: { applicationId, companyId },
             level: 'info',
         });

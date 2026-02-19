@@ -64,6 +64,9 @@ exports.syncDriverOnLog = driverSync.syncDriverOnLog;
 exports.syncDriverOnActivity = driverSync.syncDriverOnActivity;
 exports.onCompanyLeadSubmitted = driverSync.onCompanyLeadSubmitted;
 
+// 4b. Guest Application Submission (Admin SDK — bypasses rules)
+exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
+
 exports.sendAutomatedEmail = companyAdmin.sendAutomatedEmail;
 
 

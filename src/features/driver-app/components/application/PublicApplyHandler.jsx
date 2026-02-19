@@ -2,8 +2,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '@lib/firebase';
+import { db, storage, functions } from '@lib/firebase';
 import { Loader2, AlertCircle, Building2, WifiOff, RefreshCw } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
 import { useToast } from '@shared/components/feedback/ToastProvider';
@@ -274,12 +275,21 @@ export function PublicApplyHandler() {
         }
       }
 
-      // 4. Attempt submission with retries
+      // 4. Submit via Cloud Function (Admin SDK — bypasses all rules)
       let lastError;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          const appRef = doc(db, "companies", company.id, "applications", applicationId);
-          await setDoc(appRef, applicationData, { merge: true });
+          const submitFn = httpsCallable(functions, 'submitGuestApplication');
+          const result = await submitFn({
+            companyId: company.id,
+            email: email,
+            phone: phone,
+            signature: formData.signature,
+            formData: applicationData,
+          });
+
+          // Use server-generated values if available
+          const serverData = result.data || {};
 
           // Success - dequeue if queued
           if (queueId) {
@@ -296,13 +306,13 @@ export function PublicApplyHandler() {
 
           Sentry.addBreadcrumb({
             category: 'submission',
-            message: 'Guest application submitted successfully',
-            data: { applicationId, confirmationNumber },
+            message: 'Guest application submitted successfully via Cloud Function',
+            data: { applicationId: serverData.applicationId || applicationId, confirmationNumber: serverData.confirmationNumber || confirmationNumber },
             level: 'info',
           });
 
           // Store confirmation for display
-          sessionStorage.setItem('lastConfirmationNumber', confirmationNumber);
+          sessionStorage.setItem('lastConfirmationNumber', serverData.confirmationNumber || confirmationNumber);
           return; // Exit on success
 
         } catch (error) {

@@ -97,9 +97,10 @@ service cloud.firestore {
     // Guest Applications must have companyId and personalInfo logic
     function isValidGuestApplication(companyId) {
       let data = request.resource.data;
-      // ENFORCED: Require App Check token for guest (unauthenticated) applications
-      // This proves the request comes from the genuine web app, not a script/bot
-      return (request.appcheck.token.recaptchaV3.score > 0.0) &&
+      // SAFETY NET: Verify App Check is present (proves the request comes from a registered app).
+      // NOTE: Primary guest submissions now go through the submitGuestApplication Cloud Function,
+      // which uses Admin SDK and bypasses rules entirely. This rule is a fallback only.
+      return request.appcheck != null &&
              data.companyId == companyId &&
              data.applicantId is string && data.applicantId.size() > 0;
     }
@@ -247,6 +248,7 @@ service cloud.firestore {
         // Driver can only update if it matches their ID (mostly separate write, but allowing for now)
         allow update: if isCompanyTeam(companyId) || 
                       (isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid)) ||
+                      (request.appcheck != null && isDeterministicApplicationId(companyId, applicationId)) ||
                       isSuperAdmin();
 
         allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
