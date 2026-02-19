@@ -40,6 +40,8 @@ export function DocumentsTab({ fileUrls = {}, appData }) {
     addDoc('medical-card-upload', 'Medical Card');
     addDoc('ssc-upload', 'SSN Card');
     addDoc('twic-card-upload', 'TWIC Card');
+    addDoc('mvr-consent-upload', 'MVR Consent');
+    addDoc('drug-test-consent-upload', 'Drug Test Consent');
 
     // 3. Add Dynamic Uploads (if any exist in appData that aren't above)
     // For now, we'll stick to the core ones to match the prompt's simplicity, 

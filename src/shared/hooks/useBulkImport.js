@@ -65,7 +65,7 @@ export function useBulkImport() {
         setProcessingSheet(true);
         try {
             const response = await fetch(exportUrl);
-            if (!response.ok) throw new Error("Failed to fetch sheet. Check permissions (Anyone with link).");
+            if (!response.ok) throw new Error("Failed to fetch sheet. Make sure the sheet has 'Anyone with the link' access enabled in Google Sheets sharing settings.");
             const arrayBuffer = await response.arrayBuffer();
             await parseBuffer(arrayBuffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'GoogleSheet.xlsx');
         } catch (error) {

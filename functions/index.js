@@ -96,6 +96,7 @@ exports.testEmailConnection = require('./testEmailConnection').testEmailConnecti
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
 exports.backfillPublicProfiles = companyAdmin.backfillPublicProfiles;
+exports.backfillEmployerFields = require('./backfillEmployerFields').backfillEmployerFields;
 
 
 

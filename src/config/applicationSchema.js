@@ -234,8 +234,9 @@ export const VIOLATIONS_SECTION = {
     ],
     itemFields: [
         { key: 'date', label: 'Date', type: 'date', required: true },
+        { key: 'charge', label: 'Charge', type: 'text', required: true },
         { key: 'location', label: 'Location', type: 'text', required: true },
-        { key: 'description', label: 'Description', type: 'text', required: true },
+        { key: 'penalty', label: 'Penalty', type: 'text' },
     ]
 };
 
@@ -249,10 +250,11 @@ export const ACCIDENTS_SECTION = {
     ],
     itemFields: [
         { key: 'date', label: 'Date', type: 'date', required: true },
-        { key: 'location', label: 'Location', type: 'text', required: true },
-        { key: 'description', label: 'Description', type: 'textarea', required: true },
-        { key: 'injuries', label: 'Injuries?', type: 'radio', options: YES_NO_OPTIONS },
-        { key: 'fatalities', label: 'Fatalities?', type: 'radio', options: YES_NO_OPTIONS },
+        { key: 'city', label: 'City', type: 'text' },
+        { key: 'state', label: 'State', type: 'select' },
+        { key: 'details', label: 'Accident Details', type: 'textarea', required: true },
+        { key: 'commercial', label: 'Commercial Vehicle?', type: 'radio', options: YES_NO_OPTIONS },
+        { key: 'preventable', label: 'Preventable?', type: 'radio', options: YES_NO_OPTIONS },
     ]
 };
 
@@ -300,7 +302,7 @@ export const CONSENT_SECTION = {
     fields: [
         { key: 'final-certification', label: 'I certify that all information is true and complete', type: 'checkbox', required: true },
         { key: 'signature', label: 'Signature', type: 'signature', required: true },
-        { key: 'signature-date', label: 'Date', type: 'date', required: true },
+        { key: 'signatureDate', label: 'Date', type: 'date', required: true },
     ]
 };
 

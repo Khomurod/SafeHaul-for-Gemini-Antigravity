@@ -216,8 +216,10 @@ const Step8_Review = ({ formData, onNavigate }) => {
                             renderItem={(e) => (
                                 <div>
                                     <div className="flex justify-between font-bold text-gray-900">
-                                        <span>{e.name}</span>
-                                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">{e.dates}</span>
+                                        <span>{e.companyName || e.name || 'Unknown'}</span>
+                                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
+                                            {e.startDate || '??'} – {e.endDate || 'Present'}
+                                        </span>
                                     </div>
                                     <p className="text-gray-600">{e.position}</p>
                                 </div>

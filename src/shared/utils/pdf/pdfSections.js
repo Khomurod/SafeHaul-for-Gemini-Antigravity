@@ -74,7 +74,7 @@ export function addEmploymentSection(doc, y, employers) {
         }
 
         doc.setFont(PDF_CONFIG.FONT.BOLD, "bold");
-        y = addTableRow(doc, y, `Employer ${i + 1}:`, getFieldValue(emp.name));
+        y = addTableRow(doc, y, `Employer ${i + 1}:`, getFieldValue(emp.companyName || emp.name));
         doc.setFont(PDF_CONFIG.FONT.NORMAL, "normal");
 
         const formatMonthYear = (dateStr) => {
@@ -86,9 +86,11 @@ export function addEmploymentSection(doc, y, employers) {
 
         y = addTableRow(doc, y, "Dates Employed:", `${formatMonthYear(emp.startDate)} - ${formatMonthYear(emp.endDate)}`);
         y = addTableRow(doc, y, "Position Held:", getFieldValue(emp.position));
-        y = addTableRow(doc, y, "Address:", `${getFieldValue(emp.city)}, ${getFieldValue(emp.state)}`);
-        y = addTableRow(doc, y, "Reason for Leaving:", getFieldValue(emp.reason));
+        y = addTableRow(doc, y, "Address:", `${getFieldValue(emp.address || emp.street || '')} ${getFieldValue(emp.city)}, ${getFieldValue(emp.state)}`);
+        y = addTableRow(doc, y, "Reason for Leaving:", getFieldValue(emp.reasonForLeaving || emp.reason));
         if (emp.phone) y = addTableRow(doc, y, "Contact Phone:", getFieldValue(emp.phone));
+        if (emp.supervisorName) y = addTableRow(doc, y, "Supervisor:", getFieldValue(emp.supervisorName));
+        if (emp.mayContact) y = addTableRow(doc, y, "May Contact:", emp.mayContact === 'yes' ? 'Yes' : 'No');
 
         // DOT specific question often asked
         y = addTableRow(doc, y, "Subject to FMCSRs?", "Yes");

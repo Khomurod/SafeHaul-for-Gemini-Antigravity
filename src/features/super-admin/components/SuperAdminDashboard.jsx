@@ -45,6 +45,7 @@ export function SuperAdminDashboard() {
   const [distributing, setDistributing] = useState(false);
   const [fixingData, setFixingData] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [backfillingEmployers, setBackfillingEmployers] = useState(false);
 
   const isSearching = searchQuery.length > 0;
 
@@ -145,6 +146,27 @@ export function SuperAdminDashboard() {
     }
   };
 
+  const handleBackfillEmployers = async () => {
+    if (!window.confirm("Run employer field backfill? This will rename old field names (name→companyName, street→address, reason→reasonForLeaving) in ALL existing applications. Safe to run multiple times.")) return;
+
+    setBackfillingEmployers(true);
+    showInfo("Running employer field backfill... this may take a few minutes.");
+
+    try {
+      const backfillFn = httpsCallable(functions, 'backfillEmployerFields', { timeout: 540000 });
+      const result = await backfillFn();
+      const stats = result.data.stats || {};
+      showSuccess(result.data.message);
+      alert(`Employer Backfill Report:\n\nTotal Applications: ${stats.totalDocs || 0}\nUpdated: ${stats.updatedDocs || 0}\nAlready Correct: ${stats.skippedDocs || 0}\nErrors: ${stats.errorDocs || 0}`);
+      refreshData();
+    } catch (e) {
+      console.error("Employer Backfill Failed:", e);
+      showError("Employer backfill failed: " + e.message);
+    } finally {
+      setBackfillingEmployers(false);
+    }
+  };
+
   return (
     <>
       <div id="super-admin-container" className="min-h-screen bg-gray-50">
@@ -158,6 +180,8 @@ export function SuperAdminDashboard() {
           fixingData={fixingData}
           onCleanup={handleCleanup}
           cleaning={cleaning}
+          onBackfillEmployers={handleBackfillEmployers}
+          backfillingEmployers={backfillingEmployers}
           onLogout={handleLogout}
         />
 

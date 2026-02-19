@@ -46,7 +46,10 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
     useEffect(() => {
         const timer = setTimeout(() => {
             if (campaignId) {
-                saveDraft(campaignId, campaignData);
+                // Strip rawData before saving — it's a large array that only lives in React state
+                const { filters, ...rest } = campaignData;
+                const { rawData, ...cleanFilters } = filters || {};
+                saveDraft(campaignId, { ...rest, filters: cleanFilters });
             }
         }, 2000); // 2 second auto-save delay
         return () => clearTimeout(timer);

@@ -1,7 +1,7 @@
 // src/features/driver-app/components/application/PublicApplyHandler.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, functions } from '@lib/firebase';
@@ -204,26 +204,12 @@ export function PublicApplyHandler() {
       // 2. Generate confirmation number
       const confirmationNumber = generateConfirmationNumber();
 
-      const timestamp = serverTimestamp();
+
       const recruiterCode = sessionStorage.getItem('pending_application_recruiter');
 
-      // Sanitize data helper
-      function sanitizeData(data) {
-        if (data === undefined) return null;
-        if (data === null) return null;
-        if (data instanceof Date) return data.toISOString();
-        if (Array.isArray(data)) return data.map(sanitizeData);
-        if (typeof data === 'object') {
-          const sanitized = {};
-          for (const key in data) {
-            sanitized[key] = sanitizeData(data[key]);
-          }
-          return sanitized;
-        }
-        return data;
-      }
-
-      const applicationData = sanitizeData({
+      // Note: No client-side sanitizeData() needed here — httpsCallable handles JSON serialization,
+      // and the Cloud Function (submitGuestApplication) does its own sanitization server-side.
+      const applicationData = {
         applicantId: applicationId,
         applicationId: applicationId,
         confirmationNumber: confirmationNumber,
@@ -244,8 +230,9 @@ export function PublicApplyHandler() {
         sourceType: 'Public Application',
         sourceSlug: slug,
         status: 'New Application',
-        submittedAt: timestamp,
-        createdAt: timestamp,
+        // BUGFIX: Removed submittedAt/createdAt serverTimestamp() from here.
+        // sanitizeData() destroys FieldValue sentinels by recursing into them.
+        // The Cloud Function (submitGuestApplication) adds server timestamps after sanitization.
         employers: Array.isArray(formData.employers) ? formData.employers : [],
         violations: Array.isArray(formData.violations) ? formData.violations : [],
         accidents: Array.isArray(formData.accidents) ? formData.accidents : [],
@@ -258,7 +245,7 @@ export function PublicApplyHandler() {
           clientVersion: '2.0-bulletproof',
           isGuest: true,
         },
-      });
+      };
 
       // 3. Queue first for guaranteed delivery
       let queueId = null;

@@ -11,13 +11,14 @@ import {
     Briefcase,
     Eye,
     EyeOff,
-    FileText
+    FileText,
+    PenTool
 } from 'lucide-react';
 import { formatDate } from '@shared/utils/helpers';
 import { APPLICATION_SCHEMA } from '@/config/applicationSchema';
 import { SchemaSection } from '@shared/components/schema/SchemaRenderer';
 
-export function ApplicationTab({ appData }) {
+export function ApplicationTab({ appData, fileUrls = {} }) {
     const [viewMode, setViewMode] = useState('summary'); // 'summary' | 'full'
 
     if (!appData) return null;
@@ -60,7 +61,7 @@ export function ApplicationTab({ appData }) {
 
                     {/* 2. License Card (Col Span 6) */}
                     <div className="md:col-span-6">
-                        <LicenseCard appData={appData} />
+                        <LicenseCard appData={appData} fileUrls={fileUrls} />
                     </div>
 
                     {/* 3. Stats / Summary (Col Span 12) */}
@@ -71,6 +72,11 @@ export function ApplicationTab({ appData }) {
                     {/* 4. Experience Timeline (Col Span 12) */}
                     <div className="md:col-span-12">
                         <ExperienceTimeline appData={appData} />
+                    </div>
+
+                    {/* 5. Consent & Signature (Col Span 12) */}
+                    <div className="md:col-span-12">
+                        <ConsentCard appData={appData} />
                     </div>
                 </div>
             ) : (
@@ -116,7 +122,7 @@ function IdentityCard({ appData }) {
             <div className="space-y-4">
                 <InfoRow
                     label="Full Name"
-                    value={`${appData.firstName || ''} ${appData.lastName || ''}`}
+                    value={`${appData.firstName || ''} ${appData.middleName ? appData.middleName + ' ' : ''}${appData.lastName || ''}`}
                 />
                 <InfoRow
                     label="Date of Birth"
@@ -125,7 +131,7 @@ function IdentityCard({ appData }) {
                 />
                 <InfoRow
                     label="Address"
-                    value={[appData.address, appData.city, appData.state, appData.zip].filter(Boolean).join(', ') || '--'}
+                    value={[appData.street || appData.address, appData.city, appData.state, appData.zip].filter(Boolean).join(', ') || '--'}
                     icon={MapPin}
                 />
                 <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
@@ -147,8 +153,9 @@ function IdentityCard({ appData }) {
     );
 }
 
-function LicenseCard({ appData }) {
-    const expDate = appData.cdlExpirationDate ? new Date(appData.cdlExpirationDate) : null;
+function LicenseCard({ appData, fileUrls = {} }) {
+    const rawExp = appData.cdlExpiration || appData.cdlExpirationDate;
+    const expDate = rawExp ? new Date(rawExp) : null;
     const today = new Date();
     const daysUntilExp = expDate ? Math.ceil((expDate - today) / (1000 * 60 * 60 * 24)) : null;
 
@@ -191,11 +198,47 @@ function LicenseCard({ appData }) {
                     <span className="text-xs font-semibold text-gray-400 uppercase">Expiration</span>
                     <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-900">
-                            {appData.cdlExpirationDate ? formatDate(appData.cdlExpirationDate) : '--'}
+                            {rawExp ? formatDate(rawExp) : '--'}
                         </span>
                         {badge}
                     </div>
                 </div>
+
+                {/* CDL Photo Thumbnails */}
+                {(() => {
+                    const cdlFrontUrl = fileUrls['cdl-front'] || appData?.['cdl-front']?.url;
+                    const cdlBackUrl = fileUrls['cdl-back'] || appData?.['cdl-back']?.url;
+                    if (!cdlFrontUrl && !cdlBackUrl) return null;
+                    return (
+                        <div className="pt-3 border-t border-gray-100">
+                            <span className="text-xs font-semibold text-gray-400 uppercase block mb-2">CDL Photos</span>
+                            <div className="flex gap-3">
+                                {cdlFrontUrl && (
+                                    <a href={cdlFrontUrl} target="_blank" rel="noopener noreferrer" className="group relative">
+                                        <img
+                                            src={cdlFrontUrl}
+                                            alt="CDL Front"
+                                            className="w-24 h-16 object-cover rounded-lg border border-gray-200 group-hover:border-blue-400 group-hover:shadow-md transition-all"
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                        />
+                                        <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] font-bold text-center py-0.5 rounded-b-lg">Front</span>
+                                    </a>
+                                )}
+                                {cdlBackUrl && (
+                                    <a href={cdlBackUrl} target="_blank" rel="noopener noreferrer" className="group relative">
+                                        <img
+                                            src={cdlBackUrl}
+                                            alt="CDL Back"
+                                            className="w-24 h-16 object-cover rounded-lg border border-gray-200 group-hover:border-blue-400 group-hover:shadow-md transition-all"
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                        />
+                                        <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] font-bold text-center py-0.5 rounded-b-lg">Back</span>
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
         </div>
     );
@@ -235,7 +278,7 @@ function SafetyCard({ appData }) {
                         <h4 className="text-xs font-bold text-gray-400 uppercase border-b border-gray-100 pb-1">Violations ({violations.length})</h4>
                         {violations.map((v, i) => (
                             <div key={i} className="flex flex-col text-sm">
-                                <span className="font-semibold text-gray-800">{v.type || v.description || 'Violation'}</span>
+                                <span className="font-semibold text-gray-800">{v.charge || v.type || v.description || 'Violation'}</span>
                                 <span className="text-gray-500 text-xs">{v.date ? formatDate(v.date) : 'No Date'}</span>
                             </div>
                         ))}
@@ -246,7 +289,7 @@ function SafetyCard({ appData }) {
                         <h4 className="text-xs font-bold text-gray-400 uppercase border-b border-gray-100 pb-1">Accidents ({accidents.length})</h4>
                         {accidents.map((a, i) => (
                             <div key={i} className="flex flex-col text-sm">
-                                <span className="font-semibold text-gray-800">{a.type || a.description || 'Accident'}</span>
+                                <span className="font-semibold text-gray-800">{a.details || a.type || a.description || 'Accident'}</span>
                                 <span className="text-gray-500 text-xs">{a.date ? formatDate(a.date) : 'No Date'}</span>
                             </div>
                         ))}
@@ -269,28 +312,67 @@ function ExperienceTimeline({ appData }) {
                     <Truck size={20} />
                 </div>
                 <h3 className="font-bold text-gray-800">Employment History</h3>
+                <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{history.length}</span>
             </div>
 
             <div className="relative pl-4 border-l-2 border-gray-200 space-y-8">
-                {history.map((job, idx) => (
-                    <div key={idx} className="relative">
-                        {/* Dot */}
-                        <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-white" />
+                {history.map((job, idx) => {
+                    // Support both old (name/street/reason) and new (companyName/address/reasonForLeaving) field names
+                    const employerName = job.companyName || job.name || 'Unknown Employer';
+                    const employerAddress = job.address || job.street || '';
+                    const reason = job.reasonForLeaving || job.reason || '';
 
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
-                            <div>
-                                <h4 className="font-bold text-gray-900">{job.companyName || 'Unknown Employer'}</h4>
-                                <p className="text-sm text-gray-600">{job.position || 'Driver'}</p>
+                    return (
+                        <div key={idx} className="relative">
+                            {/* Dot */}
+                            <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-white" />
+
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
+                                <div>
+                                    <h4 className="font-bold text-gray-900">{employerName}</h4>
+                                    <p className="text-sm text-gray-600">{job.position || 'Driver'}</p>
+                                </div>
+                                <div className="text-sm font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                                    {job.startDate ? formatDate(job.startDate) : '??'} - {job.endDate ? formatDate(job.endDate) : 'Present'}
+                                </div>
                             </div>
-                            <div className="text-sm font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded">
-                                {job.startDate ? formatDate(job.startDate) : '??'} - {job.endDate ? formatDate(job.endDate) : 'Present'}
+
+                            {/* Details Grid */}
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                                {(employerAddress || job.city || job.state) && (
+                                    <div className="flex items-center gap-1 text-gray-500">
+                                        <MapPin size={12} className="text-gray-400 shrink-0" />
+                                        <span>{[employerAddress, job.city, job.state].filter(Boolean).join(', ')}</span>
+                                    </div>
+                                )}
+                                {job.phone && (
+                                    <div className="flex items-center gap-1 text-gray-500">
+                                        <span className="text-gray-400 text-xs">📞</span>
+                                        <span>{job.phone}</span>
+                                    </div>
+                                )}
+                                {job.supervisorName && (
+                                    <div className="flex items-center gap-1 text-gray-500">
+                                        <User size={12} className="text-gray-400 shrink-0" />
+                                        <span>Supervisor: {job.supervisorName}</span>
+                                    </div>
+                                )}
+                                {job.mayContact && (
+                                    <div className="flex items-center gap-1">
+                                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${job.mayContact === 'yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                            }`}>
+                                            {job.mayContact === 'yes' ? 'OK to Contact' : 'Do Not Contact'}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
+
+                            {reason && (
+                                <p className="mt-2 text-sm text-gray-500 italic">"Reason: {reason}"</p>
+                            )}
                         </div>
-                        {job.reasonForLeaving && (
-                            <p className="mt-2 text-sm text-gray-500 italic">"Reason: {job.reasonForLeaving}"</p>
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
@@ -305,6 +387,71 @@ function InfoRow({ label, value, icon: Icon }) {
             <span className="text-sm font-medium text-gray-900 text-right truncate max-w-[60%]">
                 {value}
             </span>
+        </div>
+    );
+}
+
+function ConsentCard({ appData }) {
+    const signature = appData.signature;
+    const signatureDate = appData.signatureDate || appData['signature-date'];
+    const agreements = [
+        { key: 'agree-electronic', label: 'Electronic Transaction Consent' },
+        { key: 'agree-background-check', label: 'Background Check Authorization' },
+        { key: 'agree-psp', label: 'FMCSA PSP Authorization' },
+        { key: 'final-certification', label: 'Final Certification' },
+    ];
+
+    const hasAnyConsent = signature || agreements.some(a => appData[a.key]);
+    if (!hasAnyConsent) return null;
+
+    return (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                    <PenTool size={20} />
+                </div>
+                <h3 className="font-bold text-gray-800">Consent & Signature</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Agreements */}
+                <div className="space-y-2">
+                    <span className="text-xs font-bold text-gray-400 uppercase block">Agreements</span>
+                    {agreements.map(a => {
+                        const isAccepted = appData[a.key] === 'agreed' || appData[a.key] === 'yes' || appData[a.key] === true;
+                        return (
+                            <div key={a.key} className="flex items-center gap-2 text-sm">
+                                {isAccepted ? (
+                                    <CheckCircle size={14} className="text-green-500 shrink-0" />
+                                ) : (
+                                    <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-300 shrink-0" />
+                                )}
+                                <span className={isAccepted ? 'text-gray-800' : 'text-gray-400'}>{a.label}</span>
+                            </div>
+                        );
+                    })}
+                    {signatureDate && (
+                        <div className="pt-2 mt-2 border-t border-gray-100">
+                            <span className="text-xs text-gray-400">Signed on: </span>
+                            <span className="text-xs font-medium text-gray-700">{formatDate(signatureDate)}</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Signature Image */}
+                {signature && signature.startsWith('data:') && (
+                    <div>
+                        <span className="text-xs font-bold text-gray-400 uppercase block mb-2">Electronic Signature</span>
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 inline-block">
+                            <img
+                                src={signature}
+                                alt="Driver Signature"
+                                className="max-h-20 w-auto"
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

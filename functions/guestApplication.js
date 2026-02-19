@@ -128,6 +128,8 @@ exports.submitGuestApplication = functions
             // Override / ensure critical fields
             applicantId: applicationId,
             applicationId: applicationId,
+            driverId: applicationId,     // AF6 fix — placeholder ID for guest (no Firebase UID)
+            userId: applicationId,       // AF6 fix — placeholder ID for guest
             confirmationNumber: confirmationNumber,
             email: (email || '').toLowerCase().trim(),
             phone: phone || '',

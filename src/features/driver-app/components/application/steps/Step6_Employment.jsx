@@ -23,7 +23,7 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
 
     const empHistoryConfig = getConfig('employmentHistory', true);
 
-    const initialEmployer = { name: '', street: '', city: '', state: '', phone: '', position: '', startDate: '', endDate: '', reason: '' };
+    const initialEmployer = { companyName: '', address: '', city: '', state: '', phone: '', position: '', startDate: '', endDate: '', reasonForLeaving: '', supervisorName: '', mayContact: '' };
     const initialSchool = { name: '', startDate: '', endDate: '', location: '' };
     const initialUnemployment = { startDate: '', endDate: '', details: '' };
     const initialMilitary = { branch: '', start: '', end: '', rank: '', heavyEq: 'no', honorable: 'yes', explanation: '' };
@@ -41,8 +41,8 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
 
     const renderEmployerRow = (index, item, handleChange) => (
         <div key={index} className="space-y-3">
-            <InputField label="Company Name" id={'emp-name-' + index} name="name" value={item.name} onChange={handleChange} required={empHistoryConfig.required} />
-            <InputField label="Street Address" id={'emp-street-' + index} name="street" value={item.street} onChange={handleChange} required={empHistoryConfig.required} />
+            <InputField label="Company Name" id={'emp-name-' + index} name="companyName" value={item.companyName} onChange={handleChange} required={empHistoryConfig.required} />
+            <InputField label="Street Address" id={'emp-street-' + index} name="address" value={item.address} onChange={handleChange} required={empHistoryConfig.required} />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <InputField label="City" id={'emp-city-' + index} name="city" value={item.city} onChange={handleChange} required={empHistoryConfig.required} />
                 <div>
@@ -59,7 +59,15 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                 <InputField label="Start Date" id={'emp-start-' + index} name="startDate" type="date" value={item.startDate} onChange={handleChange} required={empHistoryConfig.required} />
                 <InputField label="End Date" id={'emp-end-' + index} name="endDate" type="date" value={item.endDate} onChange={handleChange} required={empHistoryConfig.required} />
             </div>
-            <InputField label="Reason for Leaving" id={'emp-reason-' + index} name="reason" value={item.reason} onChange={handleChange} />
+            <InputField label="Reason for Leaving" id={'emp-reason-' + index} name="reasonForLeaving" value={item.reasonForLeaving} onChange={handleChange} />
+            <InputField label="Supervisor Name" id={'emp-supervisor-' + index} name="supervisorName" value={item.supervisorName} onChange={handleChange} />
+            <RadioGroup
+                label="May we contact this employer?"
+                name="mayContact"
+                options={yesNoOptions}
+                value={item.mayContact}
+                onChange={(name, value) => handleChange(name, value)}
+            />
         </div>
     );
 

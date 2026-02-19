@@ -218,11 +218,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     try {
       const fileData = await uploadApplicationFile(targetCompanyId, currentUser.uid, fieldName, file);
 
-      handleUpdateFormData(fieldName, fileData);
+      // BUGFIX: Removed handleUpdateFormData(fieldName, fileData) call here.
+      // UploadField.onChange already calls updateFormData — double-writing created
+      // a race condition where stale closure state could overwrite the fresh value.
       await saveDraft({ [fieldName]: fileData });
       showSuccess("File uploaded successfully.");
 
-      // Return fileData for UploadField component to update its state
+      // Return fileData for UploadField component to update its state via onChange
       return fileData;
 
     } catch (error) {

@@ -133,7 +133,8 @@ export function CompanyBulkUpload({ companyId, onClose, onUploadComplete }) {
 
     const handleDownloadTemplate = () => {
         const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'City', 'State', 'Experience', 'Job Type'];
-        const csvContent = "data:text/csv;charset=utf-8," + headers.join(",");
+        const sampleRow = ['John', 'Doe', 'john@example.com', '(555) 123-4567', 'Dallas', 'TX', '5', 'OTR'];
+        const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + sampleRow.join(",");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);

@@ -254,6 +254,22 @@ function formatDisplayValue(value, definition) {
         return definition.mask;
     }
 
+    // Handle file objects (AF4 fix)
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        if (value.url) {
+            return (
+                <a href={value.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">
+                    📎 {value.name || 'View File'}
+                </a>
+            );
+        }
+        // Firestore timestamp objects
+        if (value.seconds) {
+            return new Date(value.seconds * 1000).toLocaleDateString();
+        }
+        return <span className="text-gray-400 italic">-</span>;
+    }
+
     // Handle arrays
     if (Array.isArray(value)) {
         return value.length > 0 ? value.join(', ') : '-';
@@ -265,6 +281,15 @@ function formatDisplayValue(value, definition) {
 
     return String(value);
 }
+
+// Mapping of section IDs to the data keys that hold the array items
+const ARRAY_DATA_KEYS = {
+    'employmentHistory': 'employers',
+    'previousAddresses': 'previousAddresses',
+    'additionalLicenses': 'additionalLicenses',
+    'violations': 'violations',
+    'accidents': 'accidents',
+};
 
 /**
  * Render a complete section based on schema
@@ -286,21 +311,68 @@ export function SchemaSection({
         return null;
     }
 
+    // Render regular fields (if any)
+    const regularFields = (section.fields || []).map(field => (
+        <SchemaField
+            key={field.key}
+            fieldKey={field.key}
+            data={data}
+            onChange={onChange}
+            mode="display"
+            isEditing={isEditing}
+            config={config}
+        />
+    ));
+
+    // AF3 fix: Render array items if this section has type: 'array' and itemFields
+    let arrayContent = null;
+    if (section.type === 'array' && section.itemFields) {
+        const dataKey = ARRAY_DATA_KEYS[section.id] || section.id;
+        const items = data[dataKey];
+        const itemArray = Array.isArray(items) ? items : [];
+
+        if (itemArray.length > 0) {
+            arrayContent = (
+                <div className="space-y-4 mt-4">
+                    {itemArray.map((item, idx) => (
+                        <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                            <p className="text-xs font-bold text-gray-400 uppercase mb-3">Entry {idx + 1}</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {section.itemFields.map(field => {
+                                    // Support legacy field name fallbacks for employers
+                                    let val = item[field.key];
+                                    if (val === undefined && section.id === 'employmentHistory') {
+                                        const legacyMap = { companyName: 'name', address: 'street', reasonForLeaving: 'reason' };
+                                        if (legacyMap[field.key]) val = item[legacyMap[field.key]];
+                                    }
+                                    const displayVal = formatDisplayValue(val, field);
+                                    return (
+                                        <div key={field.key} className="col-span-1">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{field.label}</label>
+                                            <p className="text-sm font-medium text-gray-900">{displayVal}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        } else {
+            arrayContent = (
+                <p className="text-sm text-gray-400 italic mt-2">No entries provided.</p>
+            );
+        }
+    }
+
     return (
         <div className={className}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {(section.fields || []).map(field => (
-                    <SchemaField
-                        key={field.key}
-                        fieldKey={field.key}
-                        data={data}
-                        onChange={onChange}
-                        mode="display"
-                        isEditing={isEditing}
-                        config={config}
-                    />
-                ))}
-            </div>
+            {regularFields.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {regularFields}
+                </div>
+            )}
+            {arrayContent}
         </div>
     );
 }

@@ -717,3 +717,320 @@ Based on severity, user impact, and implementation effort, here is the recommend
 ---
 
 *This document is a living reference. As findings are addressed, mark them as resolved with the date and the conversation/deployment ID where the fix was applied.*
+
+---
+
+## 🔴🟠 Application Flow Audit — Data Pipeline Breaks
+
+> **Audit Date:** February 19, 2026
+> **Scope:** Full trace of driver application data — from form input (driver-side), through Firestore storage, to company-side display.
+> **Trigger:** Specific reports of "Previous Employment not showing" and "CDL not showing" for driver "Valentin Joseph" (Wenze Trucking).
+> **Root Cause Summary:** Multiple field name mismatches and renderer gaps cause data that IS correctly saved in Firestore to be silently invisible on the company dashboard.
+
+---
+
+### AF1: 🔴 Employer Data Field Names Don't Match Between Form and Display
+
+**What's the problem?**
+
+The driver fills out previous employers in `Step6_Employment.jsx`. This form stores each employer with these field names:
+
+| Field in Form (Step6) | Key Saved to Firestore |
+|---|---|
+| Company Name | `name` |
+| Street Address | `street` |
+| Reason for Leaving | `reason` |
+
+But the company-side `ExperienceTimeline` component (in `ApplicationTab.jsx` line 260-297) reads these field names:
+
+| What the Company View Reads | Key Expected |
+|---|---|
+| Company Name | `companyName` |
+| Address | `address` (not `street`) |
+| Reason for Leaving | `reasonForLeaving` |
+
+The `APPLICATION_SCHEMA` in `applicationSchema.js` (lines 259-277) also defines the fields as `companyName`, `address`, and `reasonForLeaving` — matching the **display** side, not the **input** side.
+
+**What happens because of this?**
+
+- **Employer company names show as "Unknown Employer"** on the company side, even though the driver filled them in. The data IS in Firestore — it's just stored under `name` while the view looks for `companyName`.
+- **Reason for leaving never displays.** The view checks `job.reasonForLeaving` but the data is stored under `job.reason`.
+- **This is the direct cause of the reported issue** for driver "Valentin Joseph" — his previous employers appear to be missing, but the data is actually saved correctly in Firestore under different field names.
+
+**Where exactly does this happen?**
+
+- `src/features/driver-app/components/application/steps/Step6_Employment.jsx` — Line 26: `initialEmployer` uses `name`, `street`, `reason`
+- `src/features/company-admin/components/modals/driver-dossier/tabs/ApplicationTab.jsx` — Lines 282-291: reads `companyName`, `reasonForLeaving`
+- `src/config/applicationSchema.js` — Lines 265-275: schema defines `companyName`, `address`, `reasonForLeaving`
+
+**Recommendation:**
+
+Update `Step6_Employment.jsx` `initialEmployer` and `renderEmployerRow` to use field names matching the schema: `companyName` instead of `name`, `address` instead of `street`, `reasonForLeaving` instead of `reason`. Then run a data backfill script to rename the fields in all existing applications in Firestore.
+
+---
+
+### AF2: 🔴 CDL Expiration Date Field Name Mismatch — Badge Always Shows N/A
+
+**What's the problem?**
+
+The driver application wizard saves the CDL expiration date to a field called `cdlExpiration` (defined in `applicationSchema.js` line 168 and used in `Step3_License.jsx` line 101).
+
+But the company-side `LicenseCard` component (in `ApplicationTab.jsx` lines 150-202) reads from `appData.cdlExpirationDate` — a field that **does not exist** in the data:
+
+```javascript
+// ApplicationTab.jsx line 151 — WRONG field name
+const expDate = appData.cdlExpirationDate ? new Date(appData.cdlExpirationDate) : null;
+
+// ApplicationTab.jsx line 194 — WRONG field name
+{appData.cdlExpirationDate ? formatDate(appData.cdlExpirationDate) : '--'}
+```
+
+**What happens because of this?**
+
+- The CDL expiration date **always shows "--"** on the company dashboard.
+- The expiration badge (VALID / EXPIRING SOON / EXPIRED) **never appears** — it's always null because `daysUntilExp` is always null.
+- The data IS correctly saved in Firestore under `cdlExpiration`, it's just being read from the wrong key.
+
+**Where exactly does this happen?**
+
+- `src/config/applicationSchema.js` — Line 168: defines field as `cdlExpiration`
+- `src/features/driver-app/components/application/steps/Step3_License.jsx` — Line 101: saves as `cdlExpiration`
+- `src/features/company-admin/components/modals/driver-dossier/tabs/ApplicationTab.jsx` — Lines 151, 194: reads `cdlExpirationDate`
+
+**Recommendation:**
+
+Change `ApplicationTab.jsx` lines 151 and 194 to read `cdlExpiration` instead of `cdlExpirationDate`.
+
+---
+
+### AF3: 🔴 SchemaRenderer Cannot Render Array Sections — Employment, Violations, Accidents, and Addresses Are Invisible in "Full Application" View
+
+**What's the problem?**
+
+The `ApplicationTab` has two views: a "Summary View" (cards) and a "Full Application" view. The Full Application view iterates over `APPLICATION_SCHEMA.sections` and renders each section using `SchemaSection` from `SchemaRenderer.jsx`.
+
+`SchemaSection` (lines 273-306) renders fields like this:
+
+```javascript
+{(section.fields || []).map(field => (
+    <SchemaField key={field.key} fieldKey={field.key} data={data} ... />
+))}
+```
+
+It ONLY iterates over `section.fields`. But several critical sections use `section.itemFields` instead (because they are arrays of items):
+
+| Section | Has `fields`? | Has `itemFields`? | Result |
+|---|---|---|---|
+| `EMPLOYMENT_SECTION` | ❌ No | ✅ Yes (11 fields) | **INVISIBLE** — renders empty |
+| `PREVIOUS_ADDRESSES_SECTION` | ❌ No | ✅ Yes (6 fields) | **INVISIBLE** — renders empty |
+| `ADDITIONAL_LICENSES_SECTION` | ❌ No | ✅ Yes (4 fields) | **INVISIBLE** — renders empty |
+| `VIOLATIONS_SECTION` | ✅ 1 field | ✅ Yes (3 fields) | Only shows "has-violations?" toggle, **NOT the actual violation entries** |
+| `ACCIDENTS_SECTION` | ✅ 1 field | ✅ Yes (5 fields) | Only shows "has-accidents?" toggle, **NOT the actual accident entries** |
+
+**What happens because of this?**
+
+- When a company user switches to the "Full Application" view to see *everything* the driver submitted, they see **zero employment history entries**, **zero violation details**, **zero accident details**, and **zero previous addresses**. The section headers render, but the content is blank.
+- This compounds the AF1 issue — not only does the Summary View show "Unknown Employer" due to the field name mismatch, but the Full Application View shows nothing at all.
+
+**Where exactly does this happen?**
+
+- `src/shared/components/schema/SchemaRenderer.jsx` — Lines 289-304: `SchemaSection` only reads `section.fields`, ignores `section.itemFields` and `section.type === 'array'`
+- `src/config/applicationSchema.js` — Lines 87-100, 174-187, 227-257, 259-277: sections that use `itemFields`
+
+**Recommendation:**
+
+Enhance `SchemaSection` to detect when a section has `type: 'array'` and `itemFields`. For such sections, it should read the corresponding array from `data` (e.g., `data.employers`, `data.violations`) and render each item's fields in a table or card layout using the `itemFields` definition.
+
+---
+
+### AF4: 🟠 SchemaRenderer Has No File-Type Rendering — CDL Uploads, Medical Card, TWIC Are Blank in "Full Application" View
+
+**What's the problem?**
+
+The schema defines file upload fields (e.g., `cdl-front`, `cdl-back`, `medical-card-upload`) with `type: 'file'`. But the `SchemaField` component's `renderDisplayMode` function (lines 173-225) has **no special handling for file types**. It falls through to the default `formatDisplayValue()` which tries to render the value as a string.
+
+File values are stored as objects like:
+```json
+{
+  "name": "cdl_front.jpg",
+  "url": "https://firebasestorage.googleapis.com/...",
+  "storagePath": "companies/.../cdl-front/...",
+  "uploadedAt": "2026-02-18T..."
+}
+```
+
+When `formatDisplayValue` encounters this object, it calls `String(value)`, which renders as `[object Object]`.
+
+**What happens because of this?**
+
+- In the "Full Application" view, CDL Documents, Medical Card, and TWIC sections show `[object Object]` or an empty state instead of a clickable file preview or download link.
+- The user reported "CDL not showing on company side" — this is one of the contributing causes (alongside the separate Documents Tab rendering issue).
+
+**Where exactly does this happen?**
+
+- `src/shared/components/schema/SchemaRenderer.jsx` — Lines 243-267: `formatDisplayValue` has no `file` type handling
+- `src/config/applicationSchema.js` — Lines 189-198 (CDL uploads), Line 206 (medical card), Line 218 (TWIC)
+
+**Recommendation:**
+
+Add a `case FIELD_TYPES.FILE:` handler in `renderDisplayMode` that checks if the value has a `url` or `storagePath` property and renders a clickable link/thumbnail. Also add it in `formatDisplayValue` to render file names instead of `[object Object]`.
+
+---
+
+### AF5: 🟠 ExperienceTimeline Only Shows 4 of 11 Employer Fields
+
+**What's the problem?**
+
+Even when the field name mismatch from AF1 is fixed and employer data IS displayed, the `ExperienceTimeline` component (lines 260-297) only shows:
+
+1. `companyName` (as "Unknown Employer" due to AF1)
+2. `position` (defaults to "Driver")
+3. `startDate` / `endDate`
+4. `reasonForLeaving`
+
+But each employer entry in the schema has **11 fields**:
+
+| Schema Field | Shown in Timeline? |
+|---|---|
+| companyName | ✅ (broken per AF1) |
+| address | ❌ |
+| city | ❌ |
+| state | ❌ |
+| phone | ❌ |
+| startDate | ✅ |
+| endDate | ✅ |
+| position | ✅ |
+| reasonForLeaving | ✅ (broken per AF1) |
+| supervisorName | ❌ |
+| mayContact | ❌ |
+
+**What happens because of this?**
+
+DOT regulations (49 CFR 391.21) require companies to have a complete record of previous employment, including **employer contact information** (address, phone, supervisor). The company cannot perform Previous Employer Verification (PEV) from the application view because the contact details are not displayed — they must manually look at Firestore to find them.
+
+**Where exactly does this happen?**
+
+- `src/features/company-admin/components/modals/driver-dossier/tabs/ApplicationTab.jsx` — Lines 260-297: `ExperienceTimeline` component
+
+**Recommendation:**
+
+Expand the `ExperienceTimeline` to display all employer fields, including address (city, state), phone, supervisor name, and "may we contact" flag. Consider adding a dedicated "PEV" action button per employer that pre-fills employer contact details for outreach.
+
+---
+
+### AF6: 🟠 Guest Application vs Authenticated Application Use Different Data Paths — Potential Inconsistency
+
+**What's the problem?**
+
+There are TWO completely separate submission paths:
+
+1. **Authenticated Driver** → `DriverApplicationWizard.jsx` → `driverService.submitDriverApplication()` → writes directly to Firestore using client SDK
+2. **Guest (public applicant)** → `guestApplication.js` Cloud Function → writes using Admin SDK
+
+Both paths spread `formData` into the document, but they apply different post-processing:
+
+| Feature | Authenticated Path | Guest Path |
+|---|---|---|
+| Arrays ensured | ❌ No explicit array normalization | ✅ Explicitly wraps `employers`, `violations`, `accidents`, `schools`, `military` |
+| `driverId` field | ✅ Set to `currentUser.uid` | ❌ Not set |
+| `userId` field | ✅ Set to `currentUser.uid` | ❌ Not set |
+| `companyName` | ❌ Not set | ✅ Looked up from `public_profiles` |
+| `sanitizeData` | ✅ Replaces `undefined` with `null` | ✅ Replaces `undefined` with `null` |
+
+**What happens because of this?**
+
+- **Guest applications may have their array fields stringify or be undefined** if the raw form data doesn't already contain them as arrays (the backend does check, but the client might not send them at all).
+- **Guest applications have no `driverId` or `userId`** — this means Firestore queries that filter by `driverId` (used by `fetchMyApplications`) will never find guest applications. A guest who later creates an account cannot see their previous application on their dashboard.
+- **Authenticated applications have no `companyName`** — the company name that appears on the driver's dashboard comes from `data.companyName`, but the authenticated path never sets it. This means authenticated drivers might see their application listed with company name as `undefined` or empty.
+
+**Where exactly does this happen?**
+
+- `src/features/driver-app/services/driverService.js` — Lines 315-340: authenticated submission payload
+- `functions/guestApplication.js` — Lines 125-155: guest submission payload
+
+**Recommendation:**
+
+Unify the two submission payloads to ensure both paths produce identical document structures. Add `companyName` lookup to the authenticated path (or set it from the already-known `job.companyName`). Add `driverId` and `userId` mapping for guest applications (using the deterministic `applicationId` as a reference). Ensure both paths normalize all array fields identically.
+
+---
+
+### AF7: 🟡 IdentityCard Uses Inconsistent Address Keys
+
+**What's the problem?**
+
+The `IdentityCard` component (in `ApplicationTab.jsx` line 128) constructs the address display from:
+
+```javascript
+[appData.address, appData.city, appData.state, appData.zip].filter(Boolean).join(', ')
+```
+
+But the driver form saves the street address as `appData.street` (defined in `applicationSchema.js` line 79:
+`{ key: 'street', label: 'Address 1', type: 'text' }`).
+
+**What happens because of this?**
+
+- The driver's street address **never appears** in the Identity Card on the company side. Only city, state, and zip show up (e.g., ", Dallas, TX, 75001" instead of "123 Main St, Dallas, TX, 75001").
+
+**Where exactly does this happen?**
+
+- `src/config/applicationSchema.js` — Line 79: field key is `street`
+- `src/features/company-admin/components/modals/driver-dossier/tabs/ApplicationTab.jsx` — Line 128: reads `appData.address`
+
+**Recommendation:**
+
+Change `ApplicationTab.jsx` line 128 to read `appData.street` instead of `appData.address`. Alternatively, if `address` is used elsewhere as a legacy field, check for both: `appData.street || appData.address`.
+
+---
+
+### AF8: 🟡 PDF Generator Uses Different Employer Field Names Than Both Form and Schema
+
+**What's the problem?**
+
+The `pdfGenerator.js` (line 141) calls:
+
+```javascript
+y = addEmploymentSection(doc, y, applicant?.employers || []);
+```
+
+The `addEmploymentSection` in `pdfSections.js` (line 57) renders employer data from the `employers` array. However, this function expects specific field names from each employer object. Because the form saves employers with `name`, `street`, `reason` (the Step6 keys), and the schema says `companyName`, `address`, `reasonForLeaving`, the PDF also needs to know which field names to read.
+
+**What happens because of this?**
+
+If the PDF generator reads `employer.companyName` (matching the schema), it will get `undefined` because the form actually saved it as `employer.name`. The PDF may show empty employer names even though the data exists.
+
+**Where exactly does this happen?**
+
+- `src/shared/utils/pdfGenerator.js` — Line 141
+- `src/shared/utils/pdf/pdfSections.js` — Line 57: `addEmploymentSection`
+
+**Recommendation:**
+
+Verify which field names `pdfSections.js:addEmploymentSection` reads, and ensure they match whichever field names are settled on after fixing AF1. The PDF, the form, the schema, and the company view should all use the same field names — this is the "Mirror Law" principle the schema was designed to enforce.
+
+---
+
+### Summary of Application Flow Findings
+
+| ID | Severity | Issue | Root Cause | User-Visible Impact |
+|---|---|---|---|---|
+| **AF1** | 🔴 Critical | Previous employers show as "Unknown Employer" | Form saves `name`, view reads `companyName` | **Directly reported issue** |
+| **AF2** | 🔴 Critical | CDL expiration always shows "--" | View reads `cdlExpirationDate`, data saved as `cdlExpiration` | Badge never renders |
+| **AF3** | 🔴 Critical | Full Application view missing Employment, Violations, Accidents, Addresses | SchemaRenderer ignores `itemFields` | Sections render blank |
+| **AF4** | 🟠 High | CDL/Medical/TWIC show `[object Object]` in Full Application | No file-type handling in SchemaRenderer | **Directly reported issue** |
+| **AF5** | 🟠 High | Only 4/11 employer fields shown | ExperienceTimeline template incomplete | Can't do PEV from dashboard |
+| **AF6** | 🟠 High | Guest vs Authenticated payloads differ | Two separate submission paths | Guest apps lack `driverId`, auth apps lack `companyName` |
+| **AF7** | 🟡 Medium | Street address missing in Identity Card | View reads `address`, form saves `street` | Address shows without street |
+| **AF8** | 🟡 Medium | PDF may have empty employer names | PDF generator field names may not match form | PDF quality degraded |
+
+### Recommended Fix Order for Application Flow
+
+| Priority | Finding | Effort | Rationale |
+|---|---|---|---|
+| 1 | **AF1** — Fix employer field name mismatch | Low | Directly solves the reported "employment not showing" issue |
+| 2 | **AF2** — Fix CDL expiration field name | Trivial | 1-line fix, solves the expiration badge |
+| 3 | **AF7** — Fix address field name | Trivial | 1-line fix |
+| 4 | **AF3** — Add array rendering to SchemaRenderer | Medium | Unlocks the Full Application view for all array data |
+| 5 | **AF4** — Add file rendering to SchemaRenderer | Low | Unlocks CDL/medical previews in Full Application view |
+| 6 | **AF5** — Expand ExperienceTimeline | Low | Shows full employer details for PEV |
+| 7 | **AF6** — Unify submission payloads | Medium | Prevents data inconsistency between guest and auth paths |
+| 8 | **AF8** — Verify PDF field alignment | Low | Ensures PDF matches the canonical field names |

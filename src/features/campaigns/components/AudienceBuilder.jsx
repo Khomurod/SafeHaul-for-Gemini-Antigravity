@@ -36,19 +36,25 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
         reset: resetImport
     } = useBulkImport();
 
-    // Effect: Sync imported data to parent (use matchCount which is already filtered)
+    // Effect: Keep localFilters in sync with active tab and imported data
     useEffect(() => {
         if (activeTab === 'upload') {
-            onChange({ ...localFilters, leadType: 'import', rawData: csvData }, matchCount);
+            setLocalFilters(prev => ({ ...prev, leadType: 'import', rawData: csvData }));
+        } else {
+            // Switching back to CRM: clear import-specific keys
+            setLocalFilters(prev => {
+                const { rawData, ...rest } = prev;
+                return { ...rest, leadType: prev.leadType === 'import' ? 'applications' : prev.leadType };
+            });
         }
-    }, [csvData, activeTab, localFilters.excludeRecentDays, matchCount]);
+    }, [activeTab, csvData]);
 
-    // Effect: Sync CRM count to parent
+    // Effect: Sync filters + count to parent
     useEffect(() => {
-        if (activeTab === 'crm') {
-            onChange(localFilters, matchCount);
-        }
-    }, [matchCount, activeTab, localFilters]);
+        onChange(localFilters, matchCount);
+    }, [localFilters, matchCount]);
+
+
 
     // Handler for Filter Inputs
     const handleFilterChange = (key, value) => {

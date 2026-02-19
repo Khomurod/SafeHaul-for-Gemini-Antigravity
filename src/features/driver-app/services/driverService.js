@@ -311,7 +311,6 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
     const confirmationNumber = generateConfirmationNumber();
 
     // 3. Prepare the final payload
-    const timestamp = serverTimestamp();
     const finalData = sanitizeData({
         ...formData,
         signature: formData.signature,
@@ -322,13 +321,19 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
         email: email,
         phone: phone,
         status: 'New Application',
-        submittedAt: timestamp,
-        createdAt: timestamp,
         sourceType: activeCompanyId ? 'Company App' : 'Global Pool',
         companyId: companyId,
+        companyName: job?.companyName || formData.companyName || null,
         // Job specific data
         jobId: job?.id || null,
         jobTitle: job?.title || null,
+        // Normalize array fields (AF6 fix — ensure consistent data structures)
+        employers: Array.isArray(formData.employers) ? formData.employers : [],
+        violations: Array.isArray(formData.violations) ? formData.violations : [],
+        accidents: Array.isArray(formData.accidents) ? formData.accidents : [],
+        schools: Array.isArray(formData.schools) ? formData.schools : [],
+        military: Array.isArray(formData.military) ? formData.military : [],
+        previousAddresses: Array.isArray(formData.previousAddresses) ? formData.previousAddresses : [],
         // New: Bulletproof tracking fields
         applicationId: applicationId,
         confirmationNumber: confirmationNumber,
@@ -338,6 +343,10 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
             clientVersion: '2.0-bulletproof',
         },
     });
+
+    // BUGFIX: Add serverTimestamp() AFTER sanitizeData() — sanitizeData destroys FieldValue sentinels
+    finalData.submittedAt = serverTimestamp();
+    finalData.createdAt = serverTimestamp();
 
     // 4. Queue first (if supported) for guaranteed delivery
     let queueId = null;

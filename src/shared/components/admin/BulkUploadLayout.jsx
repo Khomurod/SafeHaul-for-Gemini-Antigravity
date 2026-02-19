@@ -38,8 +38,8 @@ export function BulkUploadLayout({
                 <div key={s.id} className="flex items-center">
                     <div className={`flex items-center gap-2 ${idx <= currentStepIndex ? 'text-blue-600' : 'text-gray-400'}`}>
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${idx < currentStepIndex ? 'bg-blue-600 text-white border-blue-600' :
-                                idx === currentStepIndex ? 'bg-white text-blue-600 border-blue-600' :
-                                    'bg-white text-gray-400 border-gray-200'
+                            idx === currentStepIndex ? 'bg-white text-blue-600 border-blue-600' :
+                                'bg-white text-gray-400 border-gray-200'
                             }`}>
                             {idx < currentStepIndex ? <CheckCircle size={14} /> : idx + 1}
                         </div>
@@ -69,8 +69,8 @@ export function BulkUploadLayout({
                 <button
                     onClick={() => setImportMethod('file')}
                     className={`p-4 border-2 rounded-xl transition-all ${importMethod === 'file'
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 hover:border-gray-300'
                         }`}
                 >
                     <Upload className="mx-auto mb-2" size={24} />
@@ -79,8 +79,8 @@ export function BulkUploadLayout({
                 <button
                     onClick={() => setImportMethod('gsheet')}
                     className={`p-4 border-2 rounded-xl transition-all ${importMethod === 'gsheet'
-                            ? 'border-green-500 bg-green-50 text-green-700'
-                            : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-200 hover:border-gray-300'
                         }`}
                 >
                     <FileSpreadsheet className="mx-auto mb-2" size={24} />
@@ -110,7 +110,7 @@ export function BulkUploadLayout({
                     />
                     <label htmlFor="file-upload" className="cursor-pointer">
                         <Upload className="mx-auto mb-4 text-gray-400" size={40} />
-                        <p className="text-gray-600 font-medium">Click to upload or drag and drop</p>
+                        <p className="text-gray-600 font-medium">Click to upload a file</p>
                         <p className="text-sm text-gray-400 mt-1">CSV, XLS, or XLSX files</p>
                     </label>
                 </div>
@@ -156,7 +156,7 @@ export function BulkUploadLayout({
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
                             <tr>
-                                {csvData?.[0] && Object.keys(csvData[0]).slice(0, 5).map((key) => (
+                                {csvData?.[0] && Object.keys(csvData[0]).slice(0, 8).map((key) => (
                                     <th key={key} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                                         {key}
                                     </th>
@@ -166,7 +166,7 @@ export function BulkUploadLayout({
                         <tbody className="divide-y divide-gray-100">
                             {csvData?.slice(0, 10).map((row, i) => (
                                 <tr key={i} className="hover:bg-gray-50">
-                                    {Object.values(row).slice(0, 5).map((val, j) => (
+                                    {Object.values(row).slice(0, 8).map((val, j) => (
                                         <td key={j} className="px-3 py-2 text-gray-700 truncate max-w-[150px]">
                                             {String(val || '')}
                                         </td>

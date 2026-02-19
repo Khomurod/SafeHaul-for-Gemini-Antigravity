@@ -67,6 +67,12 @@ self.onmessage = async (e) => {
             return;
         }
 
+        const MAX_ROWS = 5000;
+        if (jsonData.length > MAX_ROWS) {
+            self.postMessage({ success: false, error: `File has ${jsonData.length.toLocaleString()} rows, which exceeds the ${MAX_ROWS.toLocaleString()}-row limit. Please split the file into smaller batches.` });
+            return;
+        }
+
         const parsedRows = jsonData.map((row, index) => {
             const firstKey = findKey(row, ['firstname', 'first name', 'fname', 'first', 'given']);
             const lastKey = findKey(row, ['lastname', 'last name', 'lname', 'last', 'surname']);
@@ -111,7 +117,7 @@ self.onmessage = async (e) => {
             if (!lName) lName = 'Driver';
 
             const rawPhone = phoneKey ? safeVal(row[phoneKey]) : '';
-            const formattedPhone = formatPhoneNumber(rawPhone);
+            const formattedPhone = rawPhone ? formatPhoneNumber(rawPhone) : '';
             const normPhone = normalizePhone(rawPhone);
 
             let typeVal = typeKey ? safeVal(row[typeKey]) : '';

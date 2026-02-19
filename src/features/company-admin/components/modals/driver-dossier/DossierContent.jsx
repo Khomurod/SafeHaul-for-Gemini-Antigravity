@@ -34,6 +34,7 @@ export function DossierContent({
             case 'application':
                 return <ApplicationTab
                     appData={appData}
+                    fileUrls={fileUrls}
                     isEditing={isEditing}
                     setIsEditing={setIsEditing}
                     canEdit={canEdit}
