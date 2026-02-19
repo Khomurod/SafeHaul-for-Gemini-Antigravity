@@ -11,8 +11,8 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
     const { currentUser } = useData();
     const { team } = useCompanyTeam(companyId);
 
-    // Local UI State
-    const [activeTab, setActiveTab] = useState('crm'); // 'crm' | 'upload'
+    // Local UI State — restore tab from filters if user already set up an import
+    const [activeTab, setActiveTab] = useState(filters?.leadType === 'import' ? 'upload' : 'crm');
 
     // We maintain a local copy of filters to drive the UI immediately
     // but we only push changes up via onChange
@@ -315,7 +315,7 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                 filters={localFilters}
                                 excludedIds={localFilters.excludedLeadIds}
                                 onToggleExclusion={handleToggleExclusion}
-                                localData={isUploadMode ? csvData : null}
+                                localData={isUploadMode ? (csvData.length > 0 ? csvData : localFilters.rawData || []) : null}
                                 excludedPhones={isUploadMode ? excludedPhones : null}
                             />
                         </div>
