@@ -34,10 +34,13 @@ function formatCSTDate(date) {
 }
 
 // --- SERVER-MANAGED FIELDS (used for loop prevention) ---
+// H2 FIX: Added 'comments' and 'lastCheckedDisplay' — the trigger writes to these fields,
+// so they must be in the skip-set to prevent unnecessary re-invocations.
 const SERVER_MANAGED_FIELDS = new Set([
     'lastCheckedDisplay',
     'lastModifiedAt',
     'statusChangedAt',
+    'comments', // H2 FIX: Audit trail comments are server-written
 ]);
 
 // --- MAIN TRIGGER ---

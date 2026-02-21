@@ -1,6 +1,11 @@
+// functions/notifySigner.js
+// C1 FIX: Now uses the unified sendDynamicEmail() from emailService.js
+// instead of its own hardcoded Gmail transporter.
+// This means any SMTP provider configured in Company Settings will now work for signing emails.
+
 const functions = require('firebase-functions/v1');
-const { db } = require('./firebaseAdmin'); // Use the shared admin instance
-const nodemailer = require('nodemailer');
+const { db } = require('./firebaseAdmin');
+const { sendDynamicEmail } = require('./emailService');
 
 exports.notifySigner = functions.firestore
     .document('companies/{companyId}/signing_requests/{requestId}')
@@ -8,109 +13,64 @@ exports.notifySigner = functions.firestore
         const data = snap.data();
         const { companyId, requestId } = context.params;
 
-        // 1. Basic Check: Do we need to send an email?
-        if (!data.sendEmail || !data.recipientEmail) {
-            console.log(`[Notify] Skipped ${requestId}: sendEmail false or missing recipient.`);
+        // 1. Validate required fields before proceeding
+        if (!data.recipientEmail || !data.accessToken) {
+            console.warn(`[Notify] Skipped: Missing recipientEmail or accessToken for request ${requestId}`);
             return null;
         }
 
-        try {
-            console.log(`[Notify] Preparing email for ${requestId}`);
+        // 2. Build signing link
+        const signingLink = `https://truckerapp-system.web.app/sign/${companyId}/${requestId}?token=${data.accessToken}`;
 
-            // 2. Fetch Company Settings for Custom Email Credentials
-            const companySnap = await db.collection('companies').doc(companyId).get();
-            if (!companySnap.exists) {
-                console.error(`[Notify] Company ${companyId} not found.`);
-                return null;
-            }
-
-            const companyData = companySnap.data();
-            // MIGRATION: Fetch from subcollection
-            let settings = companyData.emailSettings;
-
-            if (!settings) {
-                const settingsSnap = await db.collection('companies').doc(companyId)
-                    .collection('system_settings').doc('email_config').get();
-                settings = settingsSnap.data() || {};
-            }
-
-            // 3. Validate Credentials (Required to send mail)
-            // If a company hasn't set up their email, we log it and exit.
-            if (!settings.email || !settings.appPassword) {
-                console.warn(`[Notify] Skipped: No email credentials configured for company: ${companyData.companyName || companyId}`);
-                // Optional: You could fallback to a system-wide "no-reply" email here if you wanted.
-                return null;
-            }
-
-            // 4. Configure Gmail Transporter Dynamically
-            // We create this ON THE FLY because every company has different credentials.
-            const transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: settings.email,
-                    pass: settings.appPassword
-                }
-            });
-
-            // 5. Build the Link
-            // We try to guess the hosting URL based on the project ID
-            const projectId = process.env.GCLOUD_PROJECT || 'truckerapp-system';
-            const baseUrl = `https://${projectId}.web.app`;
-
-            // Construct the secure link
-            const link = `${baseUrl}/sign/${companyId}/${requestId}?token=${data.accessToken}`;
-
-            // 6. Send with PROFESSIONAL DISPLAY NAME
-            const senderName = companyData.companyName || "SafeHaul Documents";
-            const fromAddress = `"${senderName}" <${settings.email}>`;
-
-            const mailOptions = {
-                from: fromAddress,
-                to: data.recipientEmail,
-                subject: `Action Required: Please sign ${data.title}`,
-                html: `
-                <div style="font-family: Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-                    <div style="text-align: center; margin-bottom: 20px;">
-                        <h2 style="color: #0F172A; margin: 0;">${senderName}</h2>
-                        <p style="color: #64748B; font-size: 14px;">Secure Document Delivery</p>
+        // 3. Build professional HTML email body (kept from original)
+        const subject = `Action Required: Please Sign "${data.title || 'Document'}"`;
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 24px; border-radius: 8px;">
+                <div style="background: white; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <div style="background: #2563eb; color: white; padding: 16px 24px; border-radius: 8px; margin-bottom: 24px;">
+                        <h1 style="margin: 0; font-size: 20px;">📄 Document Signing Request</h1>
                     </div>
-
-                    <div style="background-color: #F8FAFC; padding: 20px; border-radius: 8px; text-align: center;">
-                        <p style="font-size: 16px; color: #334155; margin-bottom: 24px;">
-                            <strong>${data.recipientName}</strong>,<br/>
-                            You have received a document that requires your signature.
-                        </p>
-
-                        <a href="${link}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">
-                            Review & Sign Document
+                    <p style="color: #374151; font-size: 16px;">Hello <strong>${data.recipientName || 'there'}</strong>,</p>
+                    <p style="color: #4b5563;">You have a document that requires your signature. Please click the button below to review and sign it securely.</p>
+                    <div style="text-align: center; margin: 32px 0;">
+                        <a href="${signingLink}"
+                           style="display: inline-block; background: #16a34a; color: white; text-decoration: none;
+                                  padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: bold;">
+                            ✍️ Review & Sign Document
                         </a>
                     </div>
-
-                    <p style="font-size: 12px; color: #94A3B8; text-align: center; margin-top: 30px;">
-                        Securely powered by SafeHaul. If you did not expect this, please ignore this email.
-                        <br/>
-                        <a href="${link}" style="color: #cbd5e1; text-decoration: none;">${link}</a>
+                    <div style="background: #f1f5f9; padding: 16px; border-radius: 6px; margin: 24px 0;">
+                        <p style="margin: 0; color: #475569; font-size: 14px;">
+                            <strong>Document:</strong> ${data.title || 'Untitled'}<br>
+                            <strong>Requested by:</strong> ${data.senderName || 'Your Employer'}
+                        </p>
+                    </div>
+                    <p style="color: #9ca3af; font-size: 12px; margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+                        This link is secure and unique to you. If you did not expect this document, please ignore this email. Powered by SafeHaul.
                     </p>
                 </div>
-            `
-            };
+            </div>
+        `;
 
-            // 7. Send
-            await transporter.sendMail(mailOptions);
-            console.log(`[Notify] Email sent to ${data.recipientEmail} via ${settings.email}`);
+        // 4. Send via unified email service (uses company's own SMTP settings)
+        try {
+            await sendDynamicEmail(companyId, data.recipientEmail, subject, html);
+            console.log(`[Notify] Signing email sent to ${data.recipientEmail} for request ${requestId}`);
 
-            // 8. Update Status in Firestore
+            // 5. Update Firestore with sent timestamp
             await snap.ref.update({
                 emailSentAt: new Date().toISOString(),
-                emailStatus: 'sent',
-                emailSentVia: settings.email
+                emailStatus: 'sent'
             });
 
         } catch (err) {
-            console.error("[Notify] Failed:", err);
+            console.error(`[Notify] Failed to send signing email for ${requestId}:`, err.message);
             await snap.ref.update({
+                emailSentAt: new Date().toISOString(),
                 emailStatus: 'failed',
                 emailError: err.message
             });
         }
+
+        return null;
     });

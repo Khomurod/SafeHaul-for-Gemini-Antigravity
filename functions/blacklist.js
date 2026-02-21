@@ -1,5 +1,6 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { admin, db } = require("./firebaseAdmin");
+const { normalizePhone } = require("./shared/normalizePhone"); // M6 FIX
 
 /**
  * Compliance Firewall: Manages the global blacklist and opt-outs.
@@ -15,7 +16,8 @@ exports.handleOptOut = onDocumentCreated("companies/{companyId}/inbound_messages
     const text = (data.text || "").toUpperCase().trim();
 
     if (text === "STOP" || text === "UNSUBSCRIBE" || text === "QUIT") {
-        const phone = data.from;
+        // M6 FIX: Normalize phone to E.164 before storing
+        const phone = normalizePhone(data.from);
         if (!phone) return;
 
         console.log(`Opt-out received from ${phone}. Adding to blacklist.`);
@@ -39,15 +41,17 @@ exports.handleOptOut = onDocumentCreated("companies/{companyId}/inbound_messages
  * Helper to check if a phone number is blacklisted.
  */
 async function isBlacklisted(companyId, phone) {
-    if (!phone) return true;
+    // M6 FIX: Normalize phone before lookup so format never causes a miss
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) return true; // Treat invalid/missing phone as blocked
 
     // Check company blacklist
     const companyBlacklist = await db.collection('companies').doc(companyId)
-        .collection('blacklist').doc(phone).get();
+        .collection('blacklist').doc(normalizedPhone).get();
     if (companyBlacklist.exists) return true;
 
     // Check global blacklist
-    const globalBlacklist = await db.collection('blacklist').doc(phone).get();
+    const globalBlacklist = await db.collection('blacklist').doc(normalizedPhone).get();
     if (globalBlacklist.exists) return true;
 
     return false;

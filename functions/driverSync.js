@@ -75,8 +75,6 @@ async function processDriverData(data, docId) {
 
   const { encrypt } = require("./integrations/encryption");
 
-  // ... inside processDriverData ...
-
   // 2. Create Staging/Pending Update (Instead of Overwriting Master Profile)
   const driverDocRef = db.collection("drivers").doc(driverUid);
 

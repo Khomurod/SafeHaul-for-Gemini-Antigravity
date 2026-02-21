@@ -3,24 +3,8 @@
 // REFACTORED: Uses shared processStatsUpdate helper to avoid code duplication
 
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-
-// --- HELPER: Lazy Database Connection ---
-let dbInstance = null;
-
-function getDb() {
-    if (!dbInstance) {
-        const admin = require("firebase-admin");
-        const { getFirestore } = require("firebase-admin/firestore");
-
-        if (!admin.apps.length) {
-            admin.initializeApp();
-        }
-
-        dbInstance = getFirestore();
-        dbInstance.settings({ ignoreUndefinedProperties: true });
-    }
-    return dbInstance;
-}
+// H5 FIX: Use shared db instance from firebaseAdmin instead of lazy-initializing a duplicate
+const { db } = require("./firebaseAdmin");
 
 // --- SHARED HELPER: Process Stats Update ---
 // This function contains all the common logic for all 3 triggers
@@ -156,7 +140,7 @@ exports.onActivityLogCreated = onDocumentCreated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
+
         const data = event.data?.data();
 
         if (!data) {
@@ -182,7 +166,7 @@ exports.onLegacyActivityCreated = onDocumentCreated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
+
         const data = event.data?.data();
 
         if (!data) return;
@@ -205,7 +189,7 @@ exports.onLeadsActivityLogCreated = onDocumentCreated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
+
         const data = event.data?.data();
 
         if (!data) {

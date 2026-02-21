@@ -69,10 +69,11 @@ export function DataProvider({ children }) {
           const roles = claims.roles || {};
           const companyRoleKeys = Object.keys(roles).filter(k => k !== 'globalRole');
 
-          // INTENTIONAL: Owner's email is hardcoded as a permanent super admin fallback.
-          // This is by design — only one person (the platform owner) will ever be super admin.
-          // Primary auth is via Firebase Custom Claims (globalRole); this is a safety net.
-          const isSuperAdmin = claims.globalRole === 'super_admin' || roles.globalRole === 'super_admin' || user.email === 'holmurod96@gmail.com';
+          // M3 FIX: Super admin fallback email is now read from VITE_SUPER_ADMIN_EMAIL env variable
+          // instead of being hardcoded in source. Primary auth is always via Firebase Custom Claims.
+          const superAdminEmail = import.meta.env.VITE_SUPER_ADMIN_EMAIL;
+          const isSuperAdmin = claims.globalRole === 'super_admin' || roles.globalRole === 'super_admin' || (superAdminEmail && user.email === superAdminEmail);
+
           const hasCompanyRoles = companyRoleKeys.length > 0;
 
           // 2. Check Driver Profile

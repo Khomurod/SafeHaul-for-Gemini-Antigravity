@@ -5,9 +5,12 @@ const { admin, db } = require("../firebaseAdmin");
  * @param {string} key - Unique identifier (IP, UserID, or specific ActionID)
  * @param {number} limit - Max requests allowed in the window
  * @param {number} windowSeconds - Time window in seconds
+ * @param {'open'|'closed'} failBehavior - H6 FIX: What to do when a system error occurs.
+ *   'open' (default) = allow the request through (safe for UX-critical paths)
+ *   'closed' = deny the request (safe for security-critical paths)
  * @returns {Promise<boolean>} - True if allowed, False if limit exceeded
  */
-const checkRateLimit = async (key, limit, windowSeconds) => {
+const checkRateLimit = async (key, limit, windowSeconds, failBehavior = 'open') => {
     const now = admin.firestore.Timestamp.now();
     const docRef = db.collection('rate_limits').doc(key);
 
@@ -53,7 +56,8 @@ const checkRateLimit = async (key, limit, windowSeconds) => {
     } catch (e) {
         if (e.message === "RATE_LIMIT_EXCEEDED") return false;
         console.error("Rate Limiter Error:", e);
-        return true; // Fail open to avoid blocking legitimate users on system error
+        // H6 FIX: Configurable fail behavior
+        return failBehavior === 'open';
     }
 };
 

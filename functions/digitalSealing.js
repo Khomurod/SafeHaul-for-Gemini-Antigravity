@@ -4,6 +4,7 @@ const { admin, db, storage } = require('./firebaseAdmin');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const crypto = require('crypto'); // M2 FIX
 
 // Fail-fast: If pdf-lib is missing, crash immediately at cold start
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
@@ -116,6 +117,13 @@ exports.sealDocument = functions.runWith({
                             sigPath = sigPath.replace(`gs://${bucket.name}/`, '');
                         }
 
+                        // M1 FIX: Validate signature path belongs to this company
+                        const sigAllowedPrefix = `secure_documents/${companyId}/signatures/`;
+                        if (!sigPath.startsWith(sigAllowedPrefix)) {
+                            console.error(`[Security] Signature path rejected: ${sigPath}`);
+                            continue; // Skip this field — don't throw, continue sealing
+                        }
+
                         await bucket.file(sigPath).download({ destination: sigTempPath });
                         tempSigPaths.push(sigTempPath);
 
@@ -156,7 +164,6 @@ exports.sealDocument = functions.runWith({
         SECURITY VERIFICATION:
         This document was securely signed and sealed via SafeHaul.
         The layout and metadata are preserved in the platform's audit logs.
-        Checksum Hash: ${requestId.substring(0, 8)}-${Date.now()}
       `;
 
             auditPage.drawText(auditLog, {
@@ -178,10 +185,14 @@ exports.sealDocument = functions.runWith({
                 metadata: { contentType: 'application/pdf' }
             });
 
+            // M2 FIX: Real SHA-256 checksum of the sealed PDF bytes
+            const sha256 = crypto.createHash('sha256').update(Buffer.from(finalPdfBytes)).digest('hex');
+
             // 7. Update Firestore
             await change.after.ref.update({
                 status: 'signed',
                 signedPdfUrl: finalStoragePath,
+                sha256Checksum: sha256,
                 completedAt: admin.firestore.FieldValue.serverTimestamp()
             });
 

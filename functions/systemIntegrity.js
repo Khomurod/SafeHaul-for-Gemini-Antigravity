@@ -97,10 +97,9 @@ exports.syncSystemStructure = onCall(RUNTIME_OPTS, async (request) => {
         results.fixes += userStats.fixed;
 
         // D. REPAIR SUBCOLLECTIONS (Applications)
-        // Note: For deep repairs, we iterate companies again. 
-        // In a huge app, this would be a separate "Deep Clean" task.
-        const companiesSnap = await db.collection("companies").get();
-        for (const comp of companiesSnap.docs) {
+        // M8 FIX: Stream companies instead of loading all into memory
+        const companiesStream = db.collection("companies").stream();
+        for await (const comp of companiesStream) {
             const appStats = await repairCollection("applications", "application", true, comp.id);
             results.fixes += appStats.fixed;
         }

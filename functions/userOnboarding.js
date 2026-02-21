@@ -1,5 +1,6 @@
 const functions = require('firebase-functions/v1');
-const { db } = require('./firebaseAdmin');
+const { db, admin } = require('./firebaseAdmin');
+
 
 /**
  * Trigger: When a new Driver Profile is created (e.g. on registration)
@@ -68,14 +69,24 @@ exports.onDriverProfileCreated = functions.firestore
                     batch.update(snap.ref, updates);
                 }
 
-                // 2. Queue Deletion of Shadow Profile
+                // H4 FIX: Archive shadow profile data before deletion so no data is permanently lost.
+                // Stored in: drivers/{driverId}/merged_profiles/{shadowId}
+                const archiveRef = snap.ref.collection('merged_profiles').doc(doc.id);
+                batch.set(archiveRef, {
+                    ...shadowData,
+                    _archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    _archivedFrom: `drivers/${doc.id}`,
+                    _mergedIntoDriverId: driverId
+                });
+
+                // 2. Queue Deletion of Shadow Profile (safe now that we archived it)
                 batch.delete(doc.ref);
                 mergeCount++;
             }
 
             if (mergeCount > 0) {
                 await batch.commit();
-                console.log(`[Onboarding] Successfully merged ${mergeCount} shadow profile(s) into ${driverId}.`);
+                console.log(`[Onboarding] Successfully archived and merged ${mergeCount} shadow profile(s) into ${driverId}.`);
             } else {
                 console.log(`[Onboarding] No valid shadow profiles to merge.`);
             }

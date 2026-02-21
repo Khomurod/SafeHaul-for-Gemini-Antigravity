@@ -68,4 +68,18 @@ describe('Rate Limiter', () => {
         const result = await checkRateLimit('test_key', 5, 60);
         expect(result).toBe(false);
     });
+
+    it('should deny on system error when failBehavior is closed (H6)', async () => {
+        db.runTransaction.mockRejectedValue(new Error('Firestore unavailable'));
+
+        const result = await checkRateLimit('test_key', 5, 60, 'closed');
+        expect(result).toBe(false);
+    });
+
+    it('should allow on system error when failBehavior is open/default (H6)', async () => {
+        db.runTransaction.mockRejectedValue(new Error('Firestore unavailable'));
+
+        const result = await checkRateLimit('test_key', 5, 60, 'open');
+        expect(result).toBe(true);
+    });
 });

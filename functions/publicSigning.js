@@ -25,7 +25,12 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
         }
 
         if (data.status === 'signed') {
-            return { status: 'signed', recipientName: data.recipientName };
+            return { status: 'signed' };
+        }
+
+        // M5 FIX: Reject if the signing link has expired
+        if (data.expiresAt && data.expiresAt.toMillis() < Date.now()) {
+            throw new HttpsError('deadline-exceeded', 'This signing link has expired. Please request a new one.');
         }
 
         if (!data.storagePath) {
@@ -51,7 +56,7 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
             return {
                 title: data.title,
                 recipientName: data.recipientName,
-                recipientEmail: data.recipientEmail,
+                // H1 FIX: recipientEmail intentionally omitted — never expose PII on public endpoint
                 fields: data.fields || [],
                 pdfUrl: url,
                 status: data.status
@@ -69,7 +74,6 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
 });
 
 const { checkRateLimit } = require("./shared/rateLimiter");
-// ... imports
 
 // 2. SUBMIT SIGNED DOCUMENT (Write)
 exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
@@ -113,8 +117,9 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
         await docRef.update({
             status: 'pending_seal',
             fieldValues: finalValues,
-            // Now 'admin' is defined, so this will work!
             signedAt: admin.firestore.FieldValue.serverTimestamp(),
+            // M5 FIX: Invalidate the token so the link cannot be reused after signing
+            accessToken: null,
             auditTrail: {
                 ...auditData,
                 timestamp: new Date().toISOString(),

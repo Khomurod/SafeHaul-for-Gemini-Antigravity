@@ -210,7 +210,7 @@ export default function SigningRoom() {
             <header className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-30">
                 <div>
                     <h1 className="font-bold text-gray-800">{request?.title || 'Document'}</h1>
-                    <p className="text-xs text-gray-500">Recipient: {request?.recipientEmail}</p>
+                    <p className="text-xs text-gray-500">Signing as: {request?.recipientName}</p>
                 </div>
 
                 <button onClick={handleFinishSigning} disabled={submitting} className="px-6 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 transition flex items-center gap-2 disabled:opacity-50">

@@ -1,6 +1,7 @@
 const functions = require("firebase-functions/v1");
 const { getStorage } = require("firebase-admin/storage");
 const { admin, db } = require("./firebaseAdmin"); // Reuse shared instance
+const { checkRateLimit } = require("./shared/rateLimiter"); // C3 FIX
 
 // --- HELPER: Validate File Type ---
 const ALLOWED_MIME_TYPES = [
@@ -24,9 +25,15 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
     }
 
     if (!context.auth) {
-        // Guest Rate Limiting (IP-based approx)
-        // We use the unique context.rawRequest.ip or strict App Check enforce only
-        // Implementation: We'll trust App Check for now as the primary barrier.
+        // C3 FIX: Enforce actual rate limiting for guest uploads (10 per minute per IP)
+        const ip = context.rawRequest?.ip || 'unknown_guest';
+        const isAllowed = await checkRateLimit(`upload_guest_${ip}`, 10, 60, 'closed');
+        if (!isAllowed) {
+            throw new functions.https.HttpsError(
+                'resource-exhausted',
+                'Too many upload requests. Please wait a moment and try again.'
+            );
+        }
     }
 
     // 2. Validation

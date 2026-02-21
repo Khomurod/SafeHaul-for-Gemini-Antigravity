@@ -64,11 +64,35 @@ async function updateSegments(companyId, recordId, data) {
     for (const ruleKey in RULES) {
         const rule = RULES[ruleKey];
         const isMember = rule.check(data);
-        const segmentMemberRef = db.collection('companies').doc(companyId)
-            .collection('segments').doc(rule.slug)
-            .collection('members').doc(recordId);
+        const segmentRef = db.collection('companies').doc(companyId)
+            .collection('segments').doc(rule.slug);
+        const segmentMemberRef = segmentRef.collection('members').doc(recordId);
 
-        if (isMember) {
+        // H3 FIX: Check current membership to determine +1/-1 delta
+        const memberDoc = await segmentMemberRef.get();
+        const wasMember = memberDoc.exists;
+
+        if (isMember && !wasMember) {
+            // Adding new member → +1
+            batch.set(segmentMemberRef, {
+                joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+                data: {
+                    firstName: data.firstName || '',
+                    lastName: data.lastName || '',
+                    phone: data.phone || data.phoneNumber || ''
+                }
+            });
+            batch.set(segmentRef, {
+                memberCount: admin.firestore.FieldValue.increment(1)
+            }, { merge: true });
+        } else if (!isMember && wasMember) {
+            // Removing existing member → -1
+            batch.delete(segmentMemberRef);
+            batch.set(segmentRef, {
+                memberCount: admin.firestore.FieldValue.increment(-1)
+            }, { merge: true });
+        } else if (isMember && wasMember) {
+            // Member still qualifies → update data but no count change
             batch.set(segmentMemberRef, {
                 joinedAt: admin.firestore.FieldValue.serverTimestamp(),
                 data: {
@@ -77,23 +101,10 @@ async function updateSegments(companyId, recordId, data) {
                     phone: data.phone || data.phoneNumber || ''
                 }
             }, { merge: true });
-        } else {
-            batch.delete(segmentMemberRef);
         }
+        // !isMember && !wasMember → no-op
     }
 
-    // Also update a global count for the dashboard
-    // Note: In production, use a distributed counter if high frequency
     await batch.commit();
-    await updateSegmentCounts(companyId);
 }
 
-async function updateSegmentCounts(companyId) {
-    const segmentsRef = db.collection('companies').doc(companyId).collection('segments');
-    const segmentsSnap = await segmentsRef.get();
-
-    for (const segmentDoc of segmentsSnap.docs) {
-        const countSnap = await segmentDoc.ref.collection('members').count().get();
-        await segmentDoc.ref.set({ memberCount: countSnap.data().count }, { merge: true });
-    }
-}

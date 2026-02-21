@@ -3,24 +3,8 @@
 // Notifications are stored in: companies/{companyId}/notifications
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
-
-// --- Lazy Database Connection ---
-let dbInstance = null;
-
-function getDb() {
-    if (!dbInstance) {
-        const admin = require("firebase-admin");
-        const { getFirestore } = require("firebase-admin/firestore");
-
-        if (!admin.apps.length) {
-            admin.initializeApp();
-        }
-
-        dbInstance = getFirestore();
-        dbInstance.settings({ ignoreUndefinedProperties: true });
-    }
-    return dbInstance;
-}
+// H5 FIX: Use shared db instance from firebaseAdmin instead of lazy-initializing a duplicate
+const { db } = require("./firebaseAdmin");
 
 // --- Helper: Create Notification ---
 async function createNotification(db, companyId, notification) {
@@ -43,7 +27,6 @@ exports.onApplicationStatusChanged = onDocumentUpdated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
         const before = event.data?.before?.data();
         const after = event.data?.after?.data();
 
@@ -73,7 +56,7 @@ exports.onLeadAssigned = onDocumentUpdated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
+
         const before = event.data?.before?.data();
         const after = event.data?.after?.data();
 
@@ -104,7 +87,7 @@ exports.onNewApplicationNotification = onDocumentCreated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
+
         const data = event.data?.data();
 
         if (!data) return;
@@ -129,7 +112,7 @@ exports.onCallbackScheduled = onDocumentCreated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
+
         const data = event.data?.data();
 
         if (!data) return;
@@ -165,7 +148,7 @@ exports.onLeadCallbackScheduled = onDocumentCreated(
         region: 'us-central1'
     },
     async (event) => {
-        const db = getDb();
+
         const data = event.data?.data();
 
         if (!data) return;

@@ -7,6 +7,33 @@ const nodemailer = require('nodemailer');
  */
 
 /**
+ * Shared helper: Fetch email settings for a company.
+ * Checks legacy 'emailSettings' field first, then the 'system_settings/email_config' subcollection.
+ * @param {string} companyId
+ * @returns {Promise<{settings: object, companyName: string}>}
+ */
+async function getEmailSettings(companyId) {
+    const db = admin.firestore();
+    const companyDoc = await db.collection('companies').doc(companyId).get();
+
+    if (!companyDoc.exists) {
+        throw new Error(`Company not found: ${companyId}`);
+    }
+
+    const companyData = companyDoc.data();
+    // Check legacy field first, fall back to subcollection (C1/C2 FIX)
+    let emailSettings = companyData.emailSettings;
+
+    if (!emailSettings) {
+        const settingsDoc = await db.collection('companies').doc(companyId)
+            .collection('system_settings').doc('email_config').get();
+        emailSettings = settingsDoc.data() || null;
+    }
+
+    return { settings: emailSettings, companyName: companyData.companyName || 'SafeHaul' };
+}
+
+/**
  * Send email using company's own SMTP credentials
  * @param {string} companyId - Firestore company document ID
  * @param {string|string[]} to - Recipient email address(es)
@@ -17,23 +44,7 @@ const nodemailer = require('nodemailer');
  */
 async function sendDynamicEmail(companyId, to, subject, html, options = {}) {
     try {
-        // Fetch company document to get SMTP settings
-        const db = admin.firestore();
-        const companyDoc = await db.collection('companies').doc(companyId).get();
-
-        if (!companyDoc.exists) {
-            throw new Error(`Company not found: ${companyId}`);
-        }
-
-        const companyData = companyDoc.data();
-        // MIGRATION: Fetch from subcollection if not in legacy field
-        let emailSettings = companyData.emailSettings;
-
-        if (!emailSettings) {
-            const settingsDoc = await db.collection('companies').doc(companyId)
-                .collection('system_settings').doc('email_config').get();
-            emailSettings = settingsDoc.data();
-        }
+        const { settings: emailSettings, companyName } = await getEmailSettings(companyId);
 
         // Validate SMTP settings exist
         if (!emailSettings || !emailSettings.smtpHost || !emailSettings.smtpUser || !emailSettings.smtpPass) {
@@ -61,7 +72,7 @@ async function sendDynamicEmail(companyId, to, subject, html, options = {}) {
 
         // Prepare email options
         const mailOptions = {
-            from: `"${companyData.companyName || 'SafeHaul'}" <${emailSettings.smtpUser}>`,
+            from: `"${companyName}" <${emailSettings.smtpUser}>`,
             to: Array.isArray(to) ? to.join(', ') : to,
             subject: subject,
             html: html,
@@ -97,17 +108,7 @@ async function sendDynamicEmail(companyId, to, subject, html, options = {}) {
  */
 async function testEmailConnection(companyId) {
     try {
-        const db = admin.firestore();
-        const companyDoc = await db.collection('companies').doc(companyId).get();
-
-        if (!companyDoc.exists) {
-            return {
-                success: false,
-                error: `Company not found: ${companyId}`,
-            };
-        }
-
-        const emailSettings = companyDoc.data().emailSettings;
+        const { settings: emailSettings } = await getEmailSettings(companyId);
 
         if (!emailSettings || !emailSettings.smtpHost || !emailSettings.smtpUser || !emailSettings.smtpPass) {
             return {
@@ -203,6 +204,7 @@ async function testEmailCredentials(smtpConfig) {
 }
 
 module.exports = {
+    getEmailSettings,
     sendDynamicEmail,
     testEmailConnection,
     testEmailCredentials,

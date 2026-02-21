@@ -2,9 +2,7 @@ const Joi = require('joi');
 
 // Common schemas
 const emailSchema = Joi.string().email().trim().lowercase().required();
-const optionalEmailSchema = Joi.string().email().trim().lowercase();
 const idSchema = Joi.string().min(1).max(100).required();
-const optionalIdSchema = Joi.string().min(1).max(100);
 
 // Data structure schemas
 const companyUpdateSchema = Joi.object({
