@@ -1,8 +1,8 @@
 # SafeHaul Platform — Remaining Audit Findings
 
 > **Original Audit Date:** February 19, 2026  
-> **Last Updated:** February 21, 2026  
-> **Note:** All previously fixed items (C3, H2, H3, H5, H6, M7, M8) have been removed. This document contains only the **24 remaining open findings**.
+> **Last Updated:** February 26, 2026  
+> **Note:** All previously fixed items (C1, C2, C3, H1, H2, H3, H4, H5, H6, M3, M5, M7, M8) have been removed. This document contains only the **18 remaining open findings**.
 
 ---
 
@@ -17,120 +17,23 @@
 
 ---
 
-## 🔴 Critical Findings (2 Remaining)
+## 🔴 Critical Findings (0 Remaining — All Fixed ✅)
 
 ---
 
-### C1: Two Email Systems Use Incompatible Credential Formats
-
-**What's the problem?**
-
-SafeHaul has two separate email-sending systems:
-
-1. **`emailService.js`** — The general-purpose email sender used for automated emails, bulk messages, etc. This system looks for email credentials stored as `smtpHost`, `smtpPort`, `smtpUser`, and `smtpPass`. It supports any SMTP provider (Gmail, Outlook, custom mail servers, etc.).
-
-2. **`notifySigner.js`** — The email sender specifically for document signing notifications. This system looks for credentials stored as `email` and `appPassword`, and it's hardcoded to use Gmail only (via `service: 'gmail'`).
-
-Both systems read from the same location in the database (`emailSettings` on the company document, or the `system_settings/email_config` subcollection). But they expect **completely different field names**.
-
-**What happens because of this?**
-
-- If a company sets up their email using the Settings page (which likely saves `smtpHost`, `smtpUser`, `smtpPass`), their **signing notification emails will never send** because `notifySigner.js` is looking for `email` and `appPassword` — fields that don't exist.
-- Conversely, if a company somehow configured `email` and `appPassword`, their general automated emails from `emailService.js` would fail.
-- In both cases, the failures are **silent** — no error is shown to the user, emails just don't arrive.
-
-**Where exactly does this happen?**
-
-- `functions/emailService.js` — Lines 39, 48–55 (looks for `smtpHost`, `smtpUser`, `smtpPass`)
-- `functions/notifySigner.js` — Lines 39, 47–53 (looks for `email`, `appPassword`, uses `service: 'gmail'`)
-
-**Recommendation:**
-
-1. **Create one canonical email sending function** that all parts of the app use. This should be the existing `sendDynamicEmail()` function in `emailService.js`, since it already supports generic SMTP.
-2. **Refactor `notifySigner.js`** to call `sendDynamicEmail()` instead of creating its own transporter.
-3. **Standardize the credential schema** in the database. All companies should store their email settings using the same field names (`smtpHost`, `smtpPort`, `smtpUser`, `smtpPass`).
-4. **Add a migration step** for any companies that might have the old `email`/`appPassword` format.
-
-**Impact of not fixing:** Companies' document signing emails are silently failing, meaning drivers/signers never receive their signing links.
+All critical findings have been resolved. See git history for details on C1 and C2 fixes.
 
 ---
 
-### C2: "Test Email Connection" Feature Doesn't Check the New Settings Location
-
-**What's the problem?**
-
-When the email credential storage was recently migrated, a new location was introduced: instead of storing email settings directly on the company document (`companyData.emailSettings`), they can now also be stored in a subcollection at `companies/{companyId}/system_settings/email_config`.
-
-The main `sendDynamicEmail()` function was correctly updated — it checks the main document first, and if no settings are found there, it falls back to the subcollection. However, the `testEmailConnection()` function was **not updated** with this same fallback. It only checks `companyData.emailSettings`.
-
-**Where exactly does this happen?**
-
-- `functions/emailService.js` — Line 110 in `testEmailConnection()` (missing subcollection fallback)
-- Compare with Lines 30–36 in `sendDynamicEmail()` (has the correct fallback)
-
-**Recommendation:**
-
-1. **Extract the credential-fetching logic** into a single helper function (e.g., `getEmailSettings(companyId)`) that encapsulates the fallback logic.
-2. **All three email functions** (`sendDynamicEmail`, `testEmailConnection`, `testEmailCredentials`) should use this same helper.
-
-**Impact of not fixing:** Companies using the new settings location see a confusing "test failed" message even though their email actually works.
+## 🟠 High Findings (0 Remaining — All Fixed ✅)
 
 ---
 
-## 🟠 High Findings (2 Remaining)
+All high findings have been resolved. H1 (email exposure) and H4 (shadow profile archiving) are fixed. See git history for details.
 
 ---
 
-### H1: Public Signing Endpoint Exposes Signer's Email Address
-
-**What's the problem?**
-
-When someone receives a document to sign, they click a link that takes them to a public signing page. The frontend calls a Cloud Function (`getPublicEnvelope`) to fetch the document details. This function returns the document title, fields to fill, and a link to view the PDF — but it also returns the **signer's email address** (`recipientEmail`).
-
-This is a public endpoint — anyone with the signing link can call it. If a signing link is forwarded, shared, or intercepted, the attacker can see the signer's email address without any authentication.
-
-**Where exactly does this happen?**
-
-- `functions/publicSigning.js` — Line 54 (returns `recipientEmail` in the response)
-
-**Recommendation:**
-
-1. **Remove `recipientEmail` from the API response.** The signer already knows their own email.
-2. **If the frontend needs to display the email**, mask it (e.g., `j***@example.com`).
-3. **Audit all public endpoints** to ensure no other PII is leaked.
-
-**Impact of not fixing:** Potential GDPR/CCPA compliance violation. If a signing link is shared, any third party can discover the signer's email address.
-
----
-
-### H4: Shadow Profile Merge Permanently Deletes Data Without Backup
-
-**What's the problem?**
-
-When a new driver registers with a phone number that already exists in the system (because they were previously added as a lead or "shadow profile"), the `userOnboarding.js` function tries to merge the old data into the new profile and then **permanently deletes the old document**.
-
-There are two problems:
-
-1. **No backup is created** before deletion. If the merge logic misses any data (and it currently only merges `source` and `recruiterId` — many other fields could be lost), that data is gone forever.
-
-2. **Subcollections are not transferred.** In Firestore, deleting a document does NOT delete its subcollections. So if the shadow profile had `internal_notes`, `activity_logs`, or other subcollections, those become orphaned.
-
-**Where exactly does this happen?**
-
-- `functions/userOnboarding.js` — Lines 54–73 (merge logic and deletion)
-
-**Recommendation:**
-
-1. **Never delete without archiving** — Copy the entire document to an `archived_profiles` collection first.
-2. **Transfer subcollections explicitly** — Use `listCollections()` and batch-copy every document.
-3. **Expand the merge logic** — Currently only `source` and `recruiterId` are merged.
-4. **Log the merge operation** — Create a detailed activity trail entry.
-
-**Impact of not fixing:** Potential data loss when drivers register. Recruiters may lose notes, call history, and lead attribution data.
-
----
-
-## 🟡 Medium Findings (6 Remaining)
+## 🟡 Medium Findings (4 Remaining)
 
 ---
 
@@ -179,31 +82,6 @@ Checksum Hash: ${requestId.substring(0, 8)}-${Date.now()}
 
 ---
 
-### M3: Super Admin Email Hardcoded in Frontend
-
-**What's the problem?**
-
-In `DataContext.jsx`, there's a line that grants super admin access to anyone logged in with `holmurod96@gmail.com`, regardless of custom claims:
-
-```javascript
-const isSuperAdmin = claims.globalRole === 'super_admin' || roles.globalRole === 'super_admin' || user.email === 'holmurod96@gmail.com';
-```
-
-The **backend** does NOT have this — it only uses proper custom claims. This is well-commented as intentional (safety net).
-
-**Where exactly does this happen?**
-
-- `src/context/DataContext.jsx` — Line 75
-
-**Recommendation:**
-
-1. **Move this fallback email to an environment variable** so it's not visible in the compiled JavaScript bundle.
-2. **Consider a "break glass" recovery mechanism** via Firebase Remote Config instead.
-
-**Impact of not fixing:** Low immediate risk since backend security is proper. However, if the Gmail account is compromised, an attacker could view (but not modify) sensitive admin information.
-
----
-
 ### M4: Guest-Uploaded Files Are Inaccessible Through Normal Firebase SDK
 
 **What's the problem?**
@@ -229,23 +107,7 @@ match /companies/{companyId}/applications/guest_uploads/{allPaths=**} {
 
 ---
 
-### M5: Document Signing Access Tokens Never Expire
 
-**What's the problem?**
-
-After a document is signed, the `accessToken` remains active forever. While you can't re-sign, the link still reveals that a document exists, was signed, and who signed it (`recipientName`).
-
-**Where exactly does this happen?**
-
-- `functions/publicSigning.js` — Lines 22–29
-
-**Recommendation:**
-
-1. **Invalidate the access token after signing** — Delete or null the `accessToken` field.
-2. **Add expiration timestamps** — Set `expiresAt` (e.g., 7 days).
-3. **Return minimal information** — Only `{ status: 'signed' }`, not `recipientName`.
-
-**Impact of not fixing:** Signing links permanently reveal document status and signer identity.
 
 ---
 
@@ -423,20 +285,15 @@ View reads `appData.address`, form saves as `appData.street`. Street address nev
 
 | Priority | Finding | Effort | Reason |
 |----------|---------|--------|--------|
-| 1 | **C1** — Unify email credential schema | Medium | Signing emails are broken for most companies |
-| 2 | **C2** — Fix `testEmailConnection` fallback | Low | Quick fix, restores trust |
-| 3 | **AF1** — Fix employer field name mismatch | Low | Directly solves reported "employment not showing" |
-| 4 | **AF2** — Fix CDL expiration field name | Trivial | 1-line fix |
-| 5 | **AF7** — Fix address field name | Trivial | 1-line fix |
-| 6 | **H1** — Stop leaking email in signing endpoint | Low | Simple field removal |
-| 7 | **M6** — Normalize phone numbers in blacklist | Medium | TCPA compliance risk |
-| 8 | **M1** — Validate signature paths | Low | Quick security hardening |
-| 9 | **H4** — Add backup before shadow profile deletion | Medium | Prevents data loss |
-| 10 | **AF3** — Add array rendering to SchemaRenderer | Medium | Unlocks Full Application view |
-| 11 | **AF4** — Add file rendering to SchemaRenderer | Low | Unlocks CDL/medical previews |
-| 12 | **AF5** — Expand ExperienceTimeline | Low | Shows full employer details for PEV |
-| 13 | **M2** — Implement real checksum hash | Low | Legal defensibility |
-| 14 | **M5** — Expire signing tokens | Low | Privacy hardening |
-| 15 | **AF6** — Unify submission payloads | Medium | Data consistency |
-| 16 | **L5** — Add TTL for rate limit cleanup | Low | One-time Console config |
-| 17 | **All remaining** | Low | Best-effort cleanup |
+| 1 | **AF1** — Fix employer field name mismatch | Low | Directly solves reported "employment not showing" |
+| 2 | **AF2** — Fix CDL expiration field name | Trivial | 1-line fix |
+| 3 | **AF7** — Fix address field name | Trivial | 1-line fix |
+| 4 | **M6** — Normalize phone numbers in blacklist | Medium | TCPA compliance risk |
+| 5 | **M1** — Validate signature paths | Low | Quick security hardening |
+| 6 | **AF3** — Add array rendering to SchemaRenderer | Medium | Unlocks Full Application view |
+| 7 | **AF4** — Add file rendering to SchemaRenderer | Low | Unlocks CDL/medical previews |
+| 8 | **AF5** — Expand ExperienceTimeline | Low | Shows full employer details for PEV |
+| 9 | **M2** — Implement real checksum hash | Low | Legal defensibility |
+| 10 | **AF6** — Unify submission payloads | Medium | Data consistency |
+| 11 | **L5** — Add TTL for rate limit cleanup | Low | One-time Console config |
+| 12 | **All remaining** | Low | Best-effort cleanup |
