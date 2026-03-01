@@ -54,6 +54,10 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
     const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const finalPath = `companies/${companyId}/${targetFolder}/guest_uploads/${uniqueId}_${cleanFileName}`;
 
+    // Generate a random UUID for the Firebase Storage Download Token
+    const { v4: uuidv4 } = require('uuid');
+    const downloadToken = uuidv4();
+
     try {
         const bucket = getStorage().bucket();
         const file = bucket.file(finalPath);
@@ -64,12 +68,18 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
             action: 'write',
             expires: Date.now() + 15 * 60 * 1000, // 15 minutes
             contentType: fileType,
+            extensionHeaders: {
+                'x-goog-meta-firebasestoragedownloadtokens': downloadToken
+            }
         });
+
+        // Generate the properly formatted Firebase Storage download URL
+        const firebaseUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(finalPath)}?alt=media&token=${downloadToken}`;
 
         return {
             url: url,
             storagePath: finalPath,
-            publicUrl: `https://storage.googleapis.com/${bucket.name}/${finalPath}`
+            publicUrl: firebaseUrl // Replaces the raw GCS link
         };
     } catch (e) {
         console.error("Error generating signed URL:", e);

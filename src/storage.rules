@@ -50,7 +50,13 @@ service firebase.storage {
       allow read, write: if isOwner(driverId) || isSuperAdmin();
     }
 
-    // 3. Application Attachments
+    // 3. Application Attachments (Guest Uploads)
+    match /companies/{companyId}/{folder}/guest_uploads/{allPaths=**} {
+      allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+      allow create: if isValidFile();
+      // No delete or update permissions for guests
+    }
+
     match /companies/{companyId}/applications/{applicantId}/{allPaths=**} {
       allow read: if isOwner(applicantId) || isCompanyTeam(companyId) || isSuperAdmin();
       allow create, update: if isSuperAdmin() || 
@@ -72,12 +78,20 @@ service firebase.storage {
        allow delete: if isCompanyTeam(companyId);
     }
 
-    // 5. Global Leads Files
+    // 5. PEV (Previous Employment Verification) Result Uploads
+    // Path: companies/{companyId}/{collection}/{applicationId}/pev_results/{file}
+    match /companies/{companyId}/{collection}/{applicationId}/pev_results/{fileName} {
+      allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+      allow create, update: if isCompanyTeam(companyId) && isValidFile();
+      allow delete: if isCompanyTeam(companyId) || isSuperAdmin();
+    }
+
+    // 6. Global Leads Files
     match /global_leads/{applicantId}/{allPaths=**} {
       allow read, write: if isOwner(applicantId) || isSuperAdmin();
     }
     
-    // 6. System Health Tests
+    // 7. System Health Tests
     match /system_health_tests/{fileName} {
       allow read, write: if isSuperAdmin();
     }

@@ -14,6 +14,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
         smtpPass: '',
         email: '',
         signature: '',
+        isVerified: false
     });
     const [loading, setLoading] = useState(false);
     const [testing, setTesting] = useState(false);
@@ -43,8 +44,19 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
             });
 
             if (result.data.success) {
-                setTestResult({ success: true, message: result.data.message });
-                showSuccess('✅ Connection successful! You can now save these settings.');
+                const verifiedSettings = { ...emailSettings, isVerified: true };
+                setEmailSettings(verifiedSettings);
+
+                // Auto-save on success!
+                try {
+                    const companyRef = doc(db, "companies", currentCompanyProfile.id);
+                    await updateDoc(companyRef, { emailSettings: verifiedSettings });
+                    setTestResult({ success: true, message: 'Settings verified and automatically saved!' });
+                    showSuccess('✅ Connection successful and settings saved!');
+                } catch (saveError) {
+                    setTestResult({ success: false, message: 'Verified but failed to save to database.' });
+                    showError('Verified but failed to save.');
+                }
             } else {
                 setTestResult({ success: false, message: result.data.error });
                 showError(`Connection failed: ${result.data.error}`);
@@ -89,6 +101,30 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                 <p className="text-sm text-gray-500 mt-1">Configure your company's email server to send automated messages directly from your domain.</p>
             </div>
 
+            {/* Connection Status Banner */}
+            {emailSettings.isVerified && emailSettings.smtpUser ? (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+                    <div className="bg-green-100 p-2 rounded-full">
+                        <CheckCircle className="text-green-600" size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-green-800">Successfully Linked</h3>
+                        <p className="text-sm text-green-700">Currently linked and sending emails as: <strong>{emailSettings.smtpUser}</strong></p>
+                        <p className="text-sm text-green-700 mt-1">This email account is automatically being used to safely send **E-Docs** and **Previous Employment Verification (PEV)** forms.</p>
+                    </div>
+                </div>
+            ) : (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center gap-3">
+                    <div className="bg-yellow-100 p-2 rounded-full">
+                        <AlertTriangle className="text-yellow-700" size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-yellow-800">Not Connected / Unverified</h3>
+                        <p className="text-sm text-yellow-700">Please enter your credentials and run a Test Connection to verify your email setup.</p>
+                    </div>
+                </div>
+            )}
+
             {/* SMTP Configuration Card */}
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
                 <h3 className="font-bold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
@@ -105,7 +141,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                             type="text"
                             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={emailSettings.smtpHost || ''}
-                            onChange={e => setEmailSettings({ ...emailSettings, smtpHost: e.target.value })}
+                            onChange={e => setEmailSettings({ ...emailSettings, smtpHost: e.target.value, isVerified: false })}
                             placeholder="smtp.gmail.com"
                         />
                         <p className="text-xs text-gray-500 mt-1">Example: smtp.gmail.com, smtp.office365.com</p>
@@ -119,7 +155,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                             type="number"
                             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={emailSettings.smtpPort || 587}
-                            onChange={e => setEmailSettings({ ...emailSettings, smtpPort: parseInt(e.target.value) })}
+                            onChange={e => setEmailSettings({ ...emailSettings, smtpPort: parseInt(e.target.value), isVerified: false })}
                             placeholder="587"
                             min="1"
                             max="65535"
@@ -136,7 +172,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                             type="email"
                             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={emailSettings.smtpUser || ''}
-                            onChange={e => setEmailSettings({ ...emailSettings, smtpUser: e.target.value })}
+                            onChange={e => setEmailSettings({ ...emailSettings, smtpUser: e.target.value, isVerified: false })}
                             placeholder="your-email@company.com"
                         />
                     </div>
@@ -150,7 +186,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                             type="password"
                             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={emailSettings.smtpPass || ''}
-                            onChange={e => setEmailSettings({ ...emailSettings, smtpPass: e.target.value })}
+                            onChange={e => setEmailSettings({ ...emailSettings, smtpPass: e.target.value, isVerified: false })}
                             placeholder="••••••••••••"
                         />
                         <p className="text-xs text-gray-500 mt-1">
@@ -190,7 +226,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                                 )}
                                 <div>
                                     <p className={`font-bold ${testResult.success ? 'text-green-800' : 'text-red-800'}`}>
-                                        {testResult.success ? 'Connection Successful!' : 'Connection Failed'}
+                                        {testResult.success ? 'Connection Connected & Saved!' : 'Connection Failed'}
                                     </p>
                                     <p className={`text-sm ${testResult.success ? 'text-green-700' : 'text-red-700'} mt-1`}>
                                         {testResult.message}

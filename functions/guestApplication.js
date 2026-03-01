@@ -98,20 +98,17 @@ exports.submitGuestApplication = functions
         let companyName = 'Unknown Company';
         try {
             const publicSnap = await db.collection('public_profiles').doc(companyId).get();
-            if (publicSnap.exists) {
-                companyName = publicSnap.data().companyName || companyName;
+            if (publicSnap.exists && publicSnap.data().companyName) {
+                companyName = publicSnap.data().companyName;
             } else {
                 const companySnap = await db.collection('companies').doc(companyId).get();
-                if (!companySnap.exists) {
-                    throw new functions.https.HttpsError(
-                        'not-found',
-                        'Company not found.'
-                    );
+                if (companySnap.exists && companySnap.data().companyName) {
+                    companyName = companySnap.data().companyName;
+                } else if (!companySnap.exists) {
+                    console.warn(`[submitGuestApplication] Company ID ${companyId} not found, proceeding with placeholder name.`);
                 }
-                companyName = companySnap.data().companyName || companyName;
             }
         } catch (err) {
-            if (err instanceof functions.https.HttpsError) throw err;
             console.error('[submitGuestApplication] Company lookup error:', err);
             // Continue anyway — don't block the submission
         }

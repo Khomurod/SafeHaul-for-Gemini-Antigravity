@@ -1,6 +1,9 @@
-import React from 'react';
-import { X, CheckCircle, Save, Mail, Printer, ShieldCheck, Download } from 'lucide-react';
+import React, { useRef, useState, useMemo } from 'react';
+import { X, CheckCircle, Save, Mail, Printer, ShieldCheck, Download, Loader2 } from 'lucide-react';
 import { getFieldValue } from '@shared/utils/helpers';
+import { useData } from '@/context/DataContext';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
     if (!employer || !applicant) return null;
@@ -12,6 +15,55 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
     const signatureText = applicant.signature && applicant.signature.startsWith('TEXT_SIGNATURE')
         ? applicant.signature.replace('TEXT_SIGNATURE:', '')
         : null;
+
+    const documentRef = useRef(null);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const { currentCompanyProfile } = useData();
+    const companyName = currentCompanyProfile?.name || currentCompanyProfile?.companyName || '[PROSPECTIVE COMPANY]';
+
+    // Stable audit ID — derived from applicationId so it never changes between renders
+    const auditId = useMemo(() => {
+        const base = (applicant?.id || applicant?.uid || Date.now().toString());
+        return base.slice(-6).toUpperCase() + '-' + Math.abs(base.split('').reduce((a, c) => a + c.charCodeAt(0), 0)).toString(36).toUpperCase().slice(0, 6);
+    }, [applicant?.id, applicant?.uid]);
+
+    const handlePrint = () => {
+        const printContent = documentRef.current;
+        const windowPrint = window.open('', '', 'left=0,top=0,width=800,height=900,toolbar=0,scrollbars=0,status=0');
+        windowPrint.document.write('<html><head><title>Print VOE</title>');
+        // Load tailwind via CDN for printing styles
+        windowPrint.document.write('<script src="https://cdn.tailwindcss.com"></script>');
+        windowPrint.document.write('</head><body>');
+        windowPrint.document.write('<div style="padding: 20px;">' + printContent.innerHTML + '</div>');
+        windowPrint.document.write('</body></html>');
+        windowPrint.document.close();
+        windowPrint.focus();
+        setTimeout(() => {
+            windowPrint.print();
+            windowPrint.close();
+        }, 1000);
+    };
+
+    const handleDownloadPDF = async () => {
+        if (!documentRef.current) return;
+        setIsDownloading(true);
+        try {
+            const canvas = await html2canvas(documentRef.current, { scale: 2, useCORS: true });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
+            pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+            pdf.save(`VOE_${employer.companyName || 'Employer'}_${applicant.firstName}_${applicant.lastName}.pdf`.replace(/\s+/g, '_'));
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Failed to generate PDF. Please try again.');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4 backdrop-blur-md">
@@ -40,7 +92,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                     <div className="flex gap-4">
                         <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
                             <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                            RECIPIENT: {getFieldValue(employer.name)}
+                            RECIPIENT: {getFieldValue(employer.companyName || employer.name)}
                         </div>
                         <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
                             <div className="w-2 h-2 rounded-full bg-blue-500"></div>
@@ -48,18 +100,19 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200">
+                        <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200">
                             <Printer size={14} /> Print
                         </button>
-                        <button className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200">
-                            <Download size={14} /> Download PDF
+                        <button onClick={handleDownloadPDF} disabled={isDownloading} className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 disabled:opacity-50">
+                            {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                            {isDownloading ? 'Generating...' : 'Download PDF'}
                         </button>
                     </div>
                 </div>
 
                 {/* Scrollable Form Content */}
                 <div className="flex-1 overflow-y-auto p-12 bg-slate-200/50 scrollbar-thin scrollbar-thumb-slate-300">
-                    <div className="bg-white border border-gray-300 shadow-xl p-12 max-w-3xl mx-auto min-h-[1000px] font-serif text-slate-900 leading-relaxed">
+                    <div ref={documentRef} className="bg-white border border-gray-300 shadow-xl p-12 max-w-3xl mx-auto min-h-[1000px] font-serif text-slate-900 leading-relaxed">
 
                         {/* Official Document Header */}
                         <div className="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
@@ -87,7 +140,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                             <div>
                                 <h4 className="text-[10px] font-black uppercase text-blue-600 border-b-2 border-blue-500 mb-3 tracking-widest">To (Previous Employer)</h4>
                                 <div className="text-sm font-bold uppercase space-y-1">
-                                    <p className="text-lg">{getFieldValue(employer.name)}</p>
+                                    <p className="text-lg">{getFieldValue(employer.companyName || employer.name)}</p>
                                     <p className="text-slate-600 font-medium">{getFieldValue(employer.city)}, {getFieldValue(employer.state)}</p>
                                     {employer.email && <p className="text-blue-600 normal-case">{employer.email}</p>}
                                     {employer.phone && <p className="text-slate-500">{employer.phone}</p>}
@@ -96,7 +149,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                             <div>
                                 <h4 className="text-[10px] font-black uppercase text-slate-500 border-b-2 border-slate-400 mb-3 tracking-widest">From (Prospective Employer)</h4>
                                 <div className="text-sm font-bold uppercase space-y-1">
-                                    <p className="text-lg">[PROSPECTIVE COMPANY]</p>
+                                    <p className="text-lg">{companyName}</p>
                                     <p className="text-slate-600 font-medium">SafeHaul Network Member</p>
                                     <p className="text-slate-500 normal-case italic opacity-50">Verified Business Entity</p>
                                 </div>
@@ -121,7 +174,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                                 </div>
                                 <div className="border-b border-slate-200 pb-1">
                                     <span className="text-[10px] uppercase text-slate-400 block mb-0.5">Reported Service Dates</span>
-                                    {getFieldValue(employer.dates)}
+                                    {getFieldValue(employer.startDate)} to {getFieldValue(employer.endDate)}
                                 </div>
                             </div>
                         </div>
@@ -303,7 +356,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                         {/* Compliance Footer */}
                         <div className="mt-20 border-t border-slate-200 pt-4 text-center">
                             <p className="text-[8px] text-slate-400 font-sans uppercase tracking-[0.2em]">
-                                Protected by SafeHaul Encryption Services &bull; Secure Audit ID: {Math.random().toString(36).substring(2, 15).toUpperCase()}
+                                Protected by SafeHaul Encryption Services &bull; Secure Audit ID: {auditId}
                             </p>
                         </div>
 

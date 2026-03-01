@@ -12,7 +12,8 @@ import {
     Clock,
     Mail,
     Send,
-    Building2
+    Building2,
+    History
 } from 'lucide-react';
 import { StatusBadge } from '@shared/components/badges/StatusBadge';
 import { formatPhoneNumber } from '@shared/utils/helpers';
@@ -30,6 +31,7 @@ export function DossierSidebar({
         { id: 'application', label: 'Application', icon: LayoutDashboard },
         { id: 'documents', label: 'Documents', icon: FileText },
         { id: 'dq', label: 'DQ File', icon: ShieldCheck },
+        { id: 'pev', label: 'Previous Employment', icon: History },
         { id: 'activity', label: 'Activity', icon: Activity },
         { id: 'notes', label: 'Notes', icon: StickyNote },
     ];

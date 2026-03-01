@@ -3,7 +3,7 @@ import { Section } from '../application/ApplicationUI';
 import {
     Briefcase, ChevronRight, FileText, CheckCircle, AlertCircle,
     Mail, ShieldCheck, Clock, CheckCircle2, AlertTriangle, Send,
-    ExternalLink, Printer, Plus, Info, RefreshCcw
+    ExternalLink, Printer, Plus, Info, RefreshCcw, Loader2
 } from 'lucide-react';
 import { getFieldValue } from '@shared/utils/helpers';
 import { logActivity } from '@shared/utils/activityLogger';
@@ -11,22 +11,38 @@ import { useToast } from '@shared/components/feedback/ToastProvider';
 
 import { VOEPreviewModal } from '../modals/VOEPreviewModal';
 import { PEVRequestModal } from '../modals/PEVRequestModal';
+import { db, storage } from '@lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-export function PEVTab({ companyId, applicationId, appData }) {
+export function PEVTab({ companyId, applicationId, appData, collectionName = 'applications' }) {
     const { showSuccess, showError } = useToast();
     const [selectedEmployer, setSelectedEmployer] = useState(null);
     const [showInitiateModal, setShowInitiateModal] = useState(false);
     const [showPreviewModal, setShowPreviewModal] = useState(false);
 
-    // Local state for demonstration - in production this would come from Firestore
-    // This simulates the 'status' and 'history' of verifications per employer
-    const [verificationStatuses, setVerificationStatuses] = useState(() => {
-        const initial = {};
-        (appData?.employers || []).forEach((_, idx) => {
-            initial[idx] = { status: 'Not Started', lastAction: null };
+    // Base statuses derived from Firestore data (reactive to parent appData refreshes)
+    const baseStatuses = useMemo(() => {
+        const result = {};
+        (appData?.employers || []).forEach((emp, idx) => {
+            result[idx] = emp.verification || { status: 'Not Started', history: [] };
         });
-        return initial;
-    });
+        return result;
+    }, [appData]);
+
+    // Local overrides for instant optimistic UI updates (merged over base)
+    const [localOverrides, setLocalOverrides] = useState({});
+
+    // Merged view: base from Firestore + any local optimistic changes
+    const verificationStatuses = useMemo(() => ({
+        ...baseStatuses,
+        ...localOverrides
+    }), [baseStatuses, localOverrides]);
+
+    const [uploadingResult, setUploadingResult] = useState(false);
+    const fileRef = React.useRef(null);
+    const [uploadTargetIndex, setUploadTargetIndex] = useState(null);
+    const [historyTargetIndex, setHistoryTargetIndex] = useState(null);
 
     const employers = useMemo(() => appData?.employers || [], [appData]);
 
@@ -54,33 +70,90 @@ export function PEVTab({ companyId, applicationId, appData }) {
             const method = emp.deliveryMethod === 'email' ? 'Email' : emp.deliveryMethod === 'fax' ? 'Fax' : 'Manual';
             const recipient = emp.contactInfo?.email || emp.contactInfo?.fax || 'Manual Download';
 
-            // Log Activity with Detailed Recipient Info
+            const logEntry = `Initiated ${method} verification for ${getFieldValue(emp.companyName || emp.name)} (Sent to: ${recipient})`;
+
+            // Log Activity
             await logActivity(
                 companyId,
-                'applications',   // collectionName
-                applicationId,    // docId
-                'PEV_REQUEST',    // action
-                `Initiated ${method} verification for ${getFieldValue(emp.name)} (Sent to: ${recipient})`,
-                'pev'             // type
+                collectionName,
+                applicationId,
+                'PEV_REQUEST',
+                logEntry,
+                'pev'
             );
 
-            // Update local state (simulate DB update including correction persistence)
-            setVerificationStatuses(prev => ({
+            // Update appData directly since verifications are usually stored alongside employers
+            const updatedEmployers = [...employers];
+            if (!updatedEmployers[emp.index].verification) {
+                updatedEmployers[emp.index].verification = { history: [] };
+            }
+            updatedEmployers[emp.index].verification.status = 'Sent';
+            updatedEmployers[emp.index].verification.method = method;
+            updatedEmployers[emp.index].verification.history.push({
+                action: 'Sent',
+                method,
+                recipient,
+                timestamp: new Date().toISOString()
+            });
+
+            const appRef = doc(db, 'companies', companyId, collectionName, applicationId);
+            await updateDoc(appRef, { employers: updatedEmployers });
+
+            setLocalOverrides(prev => ({
                 ...prev,
-                [emp.index]: {
-                    status: 'Sent',
-                    lastAction: new Date().toISOString(),
-                    method,
-                    recipient
-                }
+                [emp.index]: updatedEmployers[emp.index].verification
             }));
 
-            showSuccess(`Verification request sent to ${getFieldValue(emp.name)} via ${method} (${recipient})`);
+            showSuccess(`Verification request sent to ${getFieldValue(emp.companyName || emp.name)} via ${method} (${recipient})`);
             setShowPreviewModal(false);
             setSelectedEmployer(null);
         } catch (error) {
             console.error("PEV Send Error:", error);
             showError("Failed to initiate verification.");
+        }
+    };
+
+    const handleUploadResult = async (e, index) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingResult(true);
+        try {
+            const storagePath = `companies/${companyId}/${collectionName}/${applicationId}/pev_results/${Date.now()}_${file.name}`;
+            const fileRefObj = ref(storage, storagePath);
+            await uploadBytes(fileRefObj, file);
+            const downloadUrl = await getDownloadURL(fileRefObj);
+
+            // Update DB
+            const updatedEmployers = [...employers];
+            if (!updatedEmployers[index].verification) {
+                updatedEmployers[index].verification = { history: [] };
+            }
+            updatedEmployers[index].verification.status = 'Completed';
+            updatedEmployers[index].verification.resultUrl = downloadUrl;
+            updatedEmployers[index].verification.history.push({
+                action: 'Result Uploaded',
+                fileName: file.name,
+                url: downloadUrl,
+                timestamp: new Date().toISOString()
+            });
+
+            const appRef = doc(db, 'companies', companyId, collectionName, applicationId);
+            await updateDoc(appRef, { employers: updatedEmployers });
+
+            setLocalOverrides(prev => ({
+                ...prev,
+                [index]: updatedEmployers[index].verification
+            }));
+
+            showSuccess('Verification result uploaded successfully.');
+        } catch (error) {
+            console.error("Upload Error:", error);
+            showError("Failed to upload verification result.");
+        } finally {
+            setUploadingResult(false);
+            if (fileRef.current) fileRef.current.value = null;
+            setUploadTargetIndex(null);
         }
     };
 
@@ -172,7 +245,7 @@ export function PEVTab({ companyId, applicationId, appData }) {
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-2">
-                                                        <h4 className="font-bold text-slate-900 leading-tight">{getFieldValue(emp.name)}</h4>
+                                                        <h4 className="font-bold text-slate-900 leading-tight">{getFieldValue(emp.companyName || emp.name)}</h4>
                                                         <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${getStatusStyles(vStatus.status)}`}>
                                                             <StatusIcon status={vStatus.status} />
                                                             {vStatus.status}
@@ -180,7 +253,7 @@ export function PEVTab({ companyId, applicationId, appData }) {
                                                     </div>
                                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
                                                         <span className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                                                            <Clock size={12} /> {getFieldValue(emp.dates)}
+                                                            <Clock size={12} /> {getFieldValue(emp.startDate)} to {getFieldValue(emp.endDate)}
                                                         </span>
                                                         <span className="text-xs font-medium text-slate-500">
                                                             {getFieldValue(emp.city)}, {getFieldValue(emp.state)}
@@ -204,7 +277,31 @@ export function PEVTab({ companyId, applicationId, appData }) {
                                                     </button>
                                                 ) : (
                                                     <>
+                                                        {vStatus.resultUrl && (
+                                                            <a
+                                                                href={vStatus.resultUrl}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="px-4 py-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2"
+                                                            >
+                                                                <FileText size={14} /> View Result
+                                                            </a>
+                                                        )}
+                                                        {vStatus.status === 'Sent' && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setUploadTargetIndex(index);
+                                                                    if (fileRef.current) fileRef.current.click();
+                                                                }}
+                                                                disabled={uploadingResult}
+                                                                className="px-4 py-2 bg-purple-50 text-purple-700 text-xs font-bold rounded-xl hover:bg-purple-100 transition-all flex items-center gap-2 disabled:opacity-50"
+                                                            >
+                                                                {uploadingResult && uploadTargetIndex === index ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                                                Upload Result
+                                                            </button>
+                                                        )}
                                                         <button
+                                                            onClick={() => setHistoryTargetIndex(index)}
                                                             className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2"
                                                         >
                                                             <FileText size={14} /> View History
@@ -251,6 +348,51 @@ export function PEVTab({ companyId, applicationId, appData }) {
                     }}
                     onSend={handleFinalSend}
                 />
+            )}
+
+            {/* Hidden File Input for Result Upload */}
+            <input
+                type="file"
+                ref={fileRef}
+                className="hidden"
+                accept=".pdf,image/*"
+                onChange={(e) => handleUploadResult(e, uploadTargetIndex)}
+            />
+
+            {/* History Modal */}
+            {historyTargetIndex !== null && (
+                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                        <div className="p-4 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-800">Verification History</h3>
+                            <button onClick={() => setHistoryTargetIndex(null)} className="text-slate-500 hover:text-slate-800">
+                                <Plus size={20} className="rotate-45" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <h4 className="font-bold text-lg mb-4">{getFieldValue(employers[historyTargetIndex]?.companyName)}</h4>
+                            <div className="space-y-4">
+                                {verificationStatuses[historyTargetIndex]?.history?.length > 0 ? (
+                                    verificationStatuses[historyTargetIndex].history.map((log, i) => (
+                                        <div key={i} className="flex gap-3 text-sm">
+                                            <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
+                                            <div>
+                                                <p className="font-bold text-slate-800">{log.action}</p>
+                                                <p className="text-slate-500 text-xs">
+                                                    {new Date(log.timestamp).toLocaleString()}
+                                                </p>
+                                                {log.recipient && <p className="text-slate-600 text-xs mt-1">Sent to: {log.recipient} ({log.method})</p>}
+                                                {log.url && <a href={log.url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs mt-1 hover:underline">View Uploaded Document</a>}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-slate-500 italic">No history available yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

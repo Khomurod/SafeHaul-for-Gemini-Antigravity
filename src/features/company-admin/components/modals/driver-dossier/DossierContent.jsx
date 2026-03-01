@@ -60,6 +60,7 @@ export function DossierContent({
                             companyId={companyId}
                             applicationId={driverId}
                             appData={appData}
+                            collectionName={collectionName}
                         />
                     </Suspense>
                 );

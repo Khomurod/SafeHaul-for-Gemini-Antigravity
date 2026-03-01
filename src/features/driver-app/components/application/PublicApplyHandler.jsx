@@ -125,7 +125,7 @@ export function PublicApplyHandler() {
 
       const getSignedUrlFn = httpsCallable(functions, 'getSignedUploadUrl');
 
-      const { data: { url, storagePath, publicUrl } } = await getSignedUrlFn({
+      const { data: { url, storagePath, publicUrl, token } } = await getSignedUrlFn({
         companyId: company.id,
         fileName: file.name,
         fileType: file.type,
@@ -133,9 +133,15 @@ export function PublicApplyHandler() {
       });
 
       // 2. Perform PUT Request to Google Cloud Storage
+      // The signed URL includes extensionHeaders requirements, we must pass the exact headers it expects
+      const headers = { 'Content-Type': file.type };
+      if (token) {
+        headers['x-goog-meta-firebasestoragedownloadtokens'] = token;
+      }
+
       const uploadRes = await fetch(url, {
         method: 'PUT',
-        headers: { 'Content-Type': file.type },
+        headers: headers,
         body: file
       });
 

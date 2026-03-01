@@ -120,10 +120,27 @@ export function useAppFetch(companyId, applicationId) {
           if (!fileData) return null;
           try {
             if (fileData.storagePath) {
-              return await getDownloadURL(ref(storage, fileData.storagePath));
+              const fileRef = ref(storage, fileData.storagePath);
+              try {
+                return await getDownloadURL(fileRef);
+              } catch (downloadErr) {
+                // FALLBACK: If the file was uploaded via signed URL without a Firebase token,
+                // getDownloadURL will fail. However, if the user has read access via security rules,
+                // getBlob() will still work.
+                console.warn(`[useAppFetch] getDownloadURL failed for ${fileData.storagePath}. Attempting getBlob fallback.`, downloadErr.message);
+                try {
+                  const { getBlob } = await import('firebase/storage');
+                  const blob = await getBlob(fileRef);
+                  return URL.createObjectURL(blob);
+                } catch (blobErr) {
+                  console.error(`[useAppFetch] getBlob fallback failed for ${fileData.storagePath}.`, blobErr.message);
+                  return fileData.url || null;
+                }
+              }
             }
             return fileData.url || null;
           } catch (e) {
+            console.error(`[useAppFetch] Unhandled error getting URL:`, e.message);
             return null;
           }
         };
