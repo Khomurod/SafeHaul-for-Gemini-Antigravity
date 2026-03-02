@@ -84,7 +84,10 @@ exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
         let subject = "Quick follow up";
         let body = `<p>Hi ${placeholders?.driverfirstname || 'there'},</p>`;
 
-        if (triggerType === 'pev_request') {
+        if (triggerType === 'manual_email') {
+            subject = placeholders?.subject || 'Message from SafeHaul';
+            body = placeholders?.body || '';
+        } else if (triggerType === 'pev_request') {
             subject = `Previous Employment Verification Request – ${placeholders?.applicantname || 'Applicant'}`;
             body = `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
