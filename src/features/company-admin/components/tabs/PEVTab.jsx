@@ -81,7 +81,7 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
                 const startDate = getFieldValue(emp.startDate);
                 const endDate = getFieldValue(emp.endDate);
 
-                await sendEmailFn({
+                const emailResult = await sendEmailFn({
                     companyId,
                     recipientEmail: emp.contactInfo.email,
                     triggerType: 'pev_request',
@@ -92,6 +92,11 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
                         employmentdates: `${startDate} to ${endDate}`
                     }
                 });
+
+                if (emailResult.data && !emailResult.data.success) {
+                    showError(`Email failed to send: ${emailResult.data.error || 'Unknown error'}. Please check your email settings.`);
+                    return;
+                }
             }
 
             const logEntry = `Initiated ${method} verification for ${getFieldValue(emp.companyName || emp.name)} (Sent to: ${recipient})`;
