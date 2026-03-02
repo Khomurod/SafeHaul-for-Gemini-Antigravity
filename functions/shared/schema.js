@@ -17,7 +17,7 @@ const companyUpdateSchema = Joi.object({
 const sendEmailSchema = Joi.object({
     companyId: idSchema,
     recipientEmail: emailSchema,
-    triggerType: Joi.string().valid('no_answer', 'generic', 'follow_up').required(),
+    triggerType: Joi.string().valid('no_answer', 'generic', 'follow_up', 'pev_request').required(),
     placeholders: Joi.object({
         driverfirstname: Joi.string().allow('', null),
         companyname: Joi.string().allow('', null),

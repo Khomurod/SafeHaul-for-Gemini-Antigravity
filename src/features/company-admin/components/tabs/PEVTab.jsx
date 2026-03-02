@@ -8,15 +8,18 @@ import {
 import { getFieldValue } from '@shared/utils/helpers';
 import { logActivity } from '@shared/utils/activityLogger';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { useData } from '@/context/DataContext';
 
 import { VOEPreviewModal } from '../modals/VOEPreviewModal';
 import { PEVRequestModal } from '../modals/PEVRequestModal';
-import { db, storage } from '@lib/firebase';
+import { db, storage, functions } from '@lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 
 export function PEVTab({ companyId, applicationId, appData, collectionName = 'applications' }) {
     const { showSuccess, showError } = useToast();
+    const { currentCompanyProfile } = useData();
     const [selectedEmployer, setSelectedEmployer] = useState(null);
     const [showInitiateModal, setShowInitiateModal] = useState(false);
     const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -69,6 +72,27 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
             const emp = selectedEmployer;
             const method = emp.deliveryMethod === 'email' ? 'Email' : emp.deliveryMethod === 'fax' ? 'Fax' : 'Manual';
             const recipient = emp.contactInfo?.email || emp.contactInfo?.fax || 'Manual Download';
+
+            // Send actual email via Cloud Function when delivery method is email
+            if (emp.deliveryMethod === 'email' && emp.contactInfo?.email) {
+                const sendEmailFn = httpsCallable(functions, 'sendAutomatedEmail');
+                const applicantName = `${getFieldValue(appData?.firstName)} ${getFieldValue(appData?.lastName)}`.trim();
+                const employerName = getFieldValue(emp.companyName || emp.name);
+                const startDate = getFieldValue(emp.startDate);
+                const endDate = getFieldValue(emp.endDate);
+
+                await sendEmailFn({
+                    companyId,
+                    recipientEmail: emp.contactInfo.email,
+                    triggerType: 'pev_request',
+                    placeholders: {
+                        applicantname: applicantName,
+                        employername: employerName,
+                        companyname: currentCompanyProfile?.companyName || currentCompanyProfile?.name || 'Prospective Employer',
+                        employmentdates: `${startDate} to ${endDate}`
+                    }
+                });
+            }
 
             const logEntry = `Initiated ${method} verification for ${getFieldValue(emp.companyName || emp.name)} (Sent to: ${recipient})`;
 
