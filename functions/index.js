@@ -158,3 +158,11 @@ exports.onLeadCallbackScheduled = notificationTriggers.onLeadCallbackScheduled;
 // 16. Pipeline Tracking
 const pipelineTriggers = require('./pipelineTriggers');
 exports.onPipelineEntryWrite = pipelineTriggers.onPipelineEntryWrite;
+
+// 17. Employment Verification (PEV Portal)
+const employmentVerification = require('./employmentVerification');
+exports.sendVerificationRequest = employmentVerification.sendVerificationRequest;
+exports.getVerificationRequest = employmentVerification.getVerificationRequest;
+exports.submitVerificationResponse = employmentVerification.submitVerificationResponse;
+exports.trackVerificationOpen = employmentVerification.trackVerificationOpen;
+exports.processVerificationReminders = employmentVerification.processVerificationReminders;

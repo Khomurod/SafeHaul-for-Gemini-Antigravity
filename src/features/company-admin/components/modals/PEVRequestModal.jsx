@@ -10,9 +10,9 @@ export function PEVRequestModal({ employer, applicant, onClose, onProceed }) {
     });
 
     const methods = [
-        { id: 'email', label: 'E-mail Delivery', icon: Mail, description: 'Send a digital form link to the employer.', active: !!employer.email },
-        { id: 'fax', label: 'Fax Transmission', icon: Printer, description: 'Electronic fax delivery to the carrier.', active: !!employer.fax },
-        { id: 'manual', label: 'Download / Print', icon: FileText, description: 'Download PDF to mail or email manually.', active: true }
+        { id: 'email', label: 'E-mail with Portal Link', icon: Mail, description: 'Send a secure online verification form to the employer. They can respond in 2-3 minutes.', active: !!employer.email },
+        { id: 'fax', label: 'Fax Transmission', icon: Printer, description: 'Electronic fax delivery + generate portal link to share manually.', active: !!employer.fax },
+        { id: 'manual', label: 'Download / Print', icon: FileText, description: 'Download PDF + generate a sharable portal link to email or hand over.', active: true }
     ];
 
     return (

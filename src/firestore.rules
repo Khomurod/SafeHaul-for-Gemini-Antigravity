@@ -124,6 +124,19 @@ service cloud.firestore {
       allow read: if true; // Safe because it only contains sanitized data
     }
 
+    // --- VERIFICATION REQUESTS (Token-based public access via Cloud Functions only) ---
+    // All reads/writes go through Cloud Functions (Admin SDK) — no direct client access.
+    // This rule blocks any direct Firestore client access to verification_requests.
+    match /verification_requests/{token} {
+      allow read: if isSuperAdmin();
+      allow write: if false; // Only Cloud Functions (Admin SDK) can write
+      
+      match /responses/{responseId} {
+        allow read: if isSuperAdmin();
+        allow write: if false; // Only Cloud Functions (Admin SDK) can write
+      }
+    }
+
     // --- COMPANIES (Locked down — sensitive data) ---
     match /companies/{companyId} {
       // LOCKED: Only team members and super admins can read company data

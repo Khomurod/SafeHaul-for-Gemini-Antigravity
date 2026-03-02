@@ -73,33 +73,33 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
             const method = emp.deliveryMethod === 'email' ? 'Email' : emp.deliveryMethod === 'fax' ? 'Fax' : 'Manual';
             const recipient = emp.contactInfo?.email || emp.contactInfo?.fax || 'Manual Download';
 
-            // Send actual email via Cloud Function when delivery method is email
-            if (emp.deliveryMethod === 'email' && emp.contactInfo?.email) {
-                const sendEmailFn = httpsCallable(functions, 'sendAutomatedEmail');
-                const applicantName = `${getFieldValue(appData?.firstName)} ${getFieldValue(appData?.lastName)}`.trim();
-                const employerName = getFieldValue(emp.companyName || emp.name);
-                const startDate = getFieldValue(emp.startDate);
-                const endDate = getFieldValue(emp.endDate);
+            const applicantName = `${getFieldValue(appData?.firstName)} ${getFieldValue(appData?.lastName)}`.trim();
+            const employerName = getFieldValue(emp.companyName || emp.name);
+            const startDate = getFieldValue(emp.startDate);
+            const endDate = getFieldValue(emp.endDate);
 
-                const emailResult = await sendEmailFn({
-                    companyId,
-                    recipientEmail: emp.contactInfo.email,
-                    triggerType: 'pev_request',
-                    placeholders: {
-                        applicantname: applicantName,
-                        employername: employerName,
-                        companyname: currentCompanyProfile?.companyName || currentCompanyProfile?.name || 'Prospective Employer',
-                        employmentdates: `${startDate} to ${endDate}`
-                    }
-                });
+            // Use the new token-based verification system
+            const sendVerificationFn = httpsCallable(functions, 'sendVerificationRequest');
+            const result = await sendVerificationFn({
+                companyId,
+                applicationId,
+                collectionName,
+                employerIndex: emp.index,
+                employerName,
+                employerEmail: emp.deliveryMethod === 'email' ? emp.contactInfo?.email : null,
+                applicantName,
+                employmentStartDate: startDate,
+                employmentEndDate: endDate,
+                deliveryMethod: emp.deliveryMethod,
+            });
 
-                if (emailResult.data && !emailResult.data.success) {
-                    showError(`Email failed to send: ${emailResult.data.error || 'Unknown error'}. Please check your email settings.`);
-                    return;
-                }
+            if (!result.data?.success) {
+                showError(`Verification request failed: ${result.data?.error || 'Unknown error'}. Please check your email settings.`);
+                return;
             }
 
-            const logEntry = `Initiated ${method} verification for ${getFieldValue(emp.companyName || emp.name)} (Sent to: ${recipient})`;
+            const verificationUrl = result.data.verificationUrl;
+            const logEntry = `Initiated ${method} verification for ${employerName} (Sent to: ${recipient})${verificationUrl ? ` | Portal: ${verificationUrl}` : ''}`;
 
             // Log Activity
             await logActivity(
@@ -118,10 +118,14 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
             }
             updatedEmployers[emp.index].verification.status = 'Sent';
             updatedEmployers[emp.index].verification.method = method;
+            updatedEmployers[emp.index].verification.token = result.data.token;
+            updatedEmployers[emp.index].verification.verificationUrl = verificationUrl;
             updatedEmployers[emp.index].verification.history.push({
-                action: 'Sent',
+                action: 'Sent via Portal',
                 method,
                 recipient,
+                verificationUrl,
+                token: result.data.token,
                 timestamp: new Date().toISOString()
             });
 
@@ -192,6 +196,7 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
             case 'Sent':
             case 'Requested': return 'bg-blue-100 text-blue-700 border-blue-200';
             case 'Discrepancy': return 'bg-red-100 text-red-700 border-red-200';
+            case 'No Response (Good Faith Documented)': return 'bg-amber-100 text-amber-700 border-amber-200';
             default: return 'bg-slate-100 text-slate-600 border-slate-200';
         }
     };
@@ -202,6 +207,7 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
             case 'Sent':
             case 'Requested': return <Clock size={14} className="animate-pulse" />;
             case 'Discrepancy': return <AlertTriangle size={14} />;
+            case 'No Response (Good Faith Documented)': return <AlertTriangle size={14} />;
             default: return <Plus size={14} />;
         }
     };
@@ -292,6 +298,11 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
                                                                 <Send size={12} /> Sent via {vStatus.method}
                                                             </span>
                                                         )}
+                                                        {vStatus.respondentName && (
+                                                            <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                                                                <CheckCircle2 size={12} /> Responded by: {vStatus.respondentName}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -315,6 +326,18 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
                                                             >
                                                                 <FileText size={14} /> View Result
                                                             </a>
+                                                        )}
+                                                        {vStatus.verificationUrl && vStatus.status !== 'Completed' && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText(vStatus.verificationUrl);
+                                                                    showSuccess('Verification link copied to clipboard!');
+                                                                }}
+                                                                className="px-4 py-2 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl hover:bg-indigo-100 transition-all flex items-center gap-2"
+                                                                title="Copy verification portal link"
+                                                            >
+                                                                <ExternalLink size={14} /> Copy Link
+                                                            </button>
                                                         )}
                                                         {vStatus.status === 'Sent' && (
                                                             <button

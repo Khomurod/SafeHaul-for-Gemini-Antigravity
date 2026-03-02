@@ -29,6 +29,9 @@ const InterestPage = React.lazy(() => import('@features/driver-app/components/In
 // --- DIGITAL SIGNATURE FEATURES ---
 const SigningRoom = React.lazy(() => import('@features/signing/SigningRoom'));
 
+// --- EMPLOYMENT VERIFICATION PORTAL (Public) ---
+const VerificationPortal = React.lazy(() => import('@features/verification/VerificationPortal'));
+
 // NEW: The Documents Dashboard (Replaces CreateEnvelopePage)
 const DocumentsManager = React.lazy(() => import('@features/company-admin/views/DocumentsManager'));
 
@@ -72,6 +75,9 @@ function AppRoutes() {
 
         {/* Signing Room (Publicly Accessible via Token) */}
         <Route path="/sign/:companyId/:requestId" element={<SigningRoom />} />
+
+        {/* Employment Verification Portal (Publicly Accessible via Token) */}
+        <Route path="/verify/:token" element={<VerificationPortal />} />
 
         {/* --- PROTECTED ROUTES (Login Required) --- */}
 
