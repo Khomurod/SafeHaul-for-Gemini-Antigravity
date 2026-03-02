@@ -33,6 +33,7 @@
 - [Deployment](#deployment)
 - [Testing](#testing)
 - [Key Integrations](#key-integrations)
+- [Scaling Roadmap](#scaling-roadmap)
 - [License](#license)
 
 ---
@@ -415,7 +416,6 @@ npm run lint
 ## Known Issues & Audit Findings
 
 > **Last Audited:** February 26, 2026
-> See also: [`Recommendations.md`](Recommendations.md) for detailed descriptions and fix instructions.
 
 ### 🔴 Critical
 
@@ -475,6 +475,33 @@ npm run lint
 | L5 | Rate limit records accumulate forever (no TTL) | `rate_limits` collection | Recommendations |
 | 9 | CampaignEditor auto-save fires on mount with defaults | `CampaignEditor.jsx` | Audit |
 | 10 | Internal fields visible in bulk upload preview table | `BulkUploadLayout.jsx` | Audit |
+
+---
+
+## Scaling Roadmap
+
+Strategic path from ATS to a full-scale **Compliance & Automation Platform**.
+
+### 🚨 Phase 1 — Compliance Engine
+
+| Feature | Tasks |
+|---------|-------|
+| **Automated VOE** | `sendVOERequest` Cloud Function (pre-filled PDF + digital signature) · External Verification Portal for past employers |
+| **Smart DQ File Management** | Schema standardization (`expirationDate` as Timestamp, `medCardExpirationDate`) · Daily expiry monitor (30/60/90-day scan) · Auto-email alerts to drivers + dashboard alerts for recruiters · Red/Yellow row highlighting in driver lists |
+
+### 🤖 Phase 2 — Marketing Automation
+
+| Feature | Tasks |
+|---------|-------|
+| **"Speed to Lead" Auto-SMS** | Twilio integration · Triggered SMS on lead assignment · 2-way chat interface in Recruiter Workspace |
+| **Drip Campaigns** | Automated 4-week nurture workflow for "No Answer" / "Not Interested" leads · Re-engagement trigger on email click |
+
+### 🔗 Phase 3 — Integrations
+
+| Feature | Tasks |
+|---------|-------|
+| **Background Checks (MVR & PSP)** | Provider integration (SambaSafety / Asurint) · "Order MVR" button in DriverProfile · Auto-save report to DocumentsManager |
+| **FMCSA Clearinghouse** | Clearinghouse Limited Query Consent step · Query automation (MVP: formatted text; Scale: direct API) |
 
 ---
 
