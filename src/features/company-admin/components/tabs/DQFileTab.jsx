@@ -70,12 +70,16 @@ export function DQFileTab({ companyId, applicationId, collectionName = 'applicat
         const appData = appSnap.data();
 
         // C. Define Sync Mapping with Expiration Fields
+        // Must match the cloud function mappings in driverSync.js
         const syncTargets = [
-          { field: 'medical-card-upload', type: 'Medical Card', expirationField: 'medCardExpiration' }, // Fallback if added later
           { field: 'cdl-front', type: 'CDL (Front)', expirationField: 'cdlExpiration' },
           { field: 'cdl-back', type: 'CDL (Back)', expirationField: 'cdlExpiration' },
+          { field: 'medical-card-upload', type: 'Medical Card', expirationField: 'medCardExpiration' },
           { field: 'twic-card-upload', type: 'TWIC Card', expirationField: 'twicExpiration' },
-          { field: 'mvr-upload', type: 'MVR (Annual)' }
+          { field: 'mvr-upload', type: 'MVR (Annual)' },
+          { field: 'mvr-consent-upload', type: 'MVR Consent' },
+          { field: 'drug-test-consent-upload', type: 'Drug Test Consent' },
+          { field: 'ssc-upload', type: 'SSN Card' }
         ];
 
         // D. Perform Sync

@@ -1,6 +1,6 @@
 // hr portal/functions/driverSync.js
 
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 // UPDATED: Import from shared singleton
 const { admin, db, auth } = require("./firebaseAdmin");
 const { LIFECYCLE_STATUSES } = require("./shared/constants");
@@ -205,7 +205,11 @@ exports.onApplicationSubmitted = onDocumentCreated({
     { field: 'cdl-front', type: 'license_front', label: 'CDL Front' },
     { field: 'cdl-back', type: 'license_back', label: 'CDL Back' },
     { field: 'medical-card-upload', type: 'medical_card', label: 'Medical Card' },
-    { field: 'twic-card-upload', type: 'twic_card', label: 'TWIC Card' }
+    { field: 'twic-card-upload', type: 'twic_card', label: 'TWIC Card' },
+    { field: 'mvr-upload', type: 'mvr', label: 'MVR' },
+    { field: 'mvr-consent-upload', type: 'mvr_consent', label: 'MVR Consent' },
+    { field: 'drug-test-consent-upload', type: 'drug_test_consent', label: 'Drug Test Consent' },
+    { field: 'ssc-upload', type: 'ssn_card', label: 'SSN Card' }
   ];
 
   const dqRef = appRef.collection('dq_files');
@@ -213,20 +217,24 @@ exports.onApplicationSubmitted = onDocumentCreated({
   for (const mapping of fileMappings) {
     const fileData = data[mapping.field];
     if (fileData && fileData.url) {
-      // Check if already exists to prevent duplicates (though maxInstances=2 handles some overlap)
       // We use a deterministic ID based on the file type
       const docId = mapping.type;
 
       await dqRef.doc(docId).set({
         type: mapping.type,
+        fileType: mapping.label, // Added for consistency with client-side sync
         label: mapping.label,
         status: 'pending_review', // Default status for new uploads
         fileUrl: fileData.url,
+        url: fileData.url, // Added for consistency with client-side
         storagePath: fileData.ref || fileData.storagePath || '', // Handle varied naming
         fileName: fileData.name || `${mapping.label}.jpg`,
         uploadedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         uploadedBy: 'driver_app',
-        applicationId: appId
+        applicationId: appId,
+        isSynced: true,
+        sourceField: mapping.field
       }, { merge: true });
 
       console.log(`[onApplicationSubmitted] Fanned out ${mapping.type} to dq_files for ${appId}`);
@@ -248,6 +256,80 @@ exports.onApplicationSubmitted = onDocumentCreated({
     console.log(`[onApplicationSubmitted] Successfully processed ${appId}`);
   } catch (completeError) {
     console.error(`[onApplicationSubmitted] Failed to mark complete for ${appId}:`, completeError);
+  }
+});
+
+/**
+ * Sync Files on Application Update
+ * Handles files that are uploaded AFTER the initial application submission.
+ * This ensures DQ files are synced even when documents are added later.
+ */
+exports.onApplicationUpdated = onDocumentUpdated({
+  document: "companies/{companyId}/applications/{applicationId}",
+  maxInstances: 3
+}, async (event) => {
+  const beforeData = event.data.before.data();
+  const afterData = event.data.after.data();
+  const companyId = event.params.companyId;
+  const appId = event.params.applicationId;
+
+  // FILE MAPPINGS - same as in onApplicationSubmitted
+  const fileMappings = [
+    { field: 'cdl-front', type: 'license_front', label: 'CDL Front' },
+    { field: 'cdl-back', type: 'license_back', label: 'CDL Back' },
+    { field: 'medical-card-upload', type: 'medical_card', label: 'Medical Card' },
+    { field: 'twic-card-upload', type: 'twic_card', label: 'TWIC Card' },
+    { field: 'mvr-upload', type: 'mvr', label: 'MVR' },
+    { field: 'mvr-consent-upload', type: 'mvr_consent', label: 'MVR Consent' },
+    { field: 'drug-test-consent-upload', type: 'drug_test_consent', label: 'Drug Test Consent' },
+    { field: 'ssc-upload', type: 'ssn_card', label: 'SSN Card' }
+  ];
+
+  const appRef = db.collection("companies").doc(companyId).collection("applications").doc(appId);
+  const dqRef = appRef.collection('dq_files');
+
+  let syncCount = 0;
+
+  for (const mapping of fileMappings) {
+    const beforeFile = beforeData[mapping.field];
+    const afterFile = afterData[mapping.field];
+
+    // Check if a NEW file was added (didn't exist before, exists now)
+    const hadFileBefore = beforeFile && beforeFile.url;
+    const hasFileNow = afterFile && afterFile.url;
+
+    // Only sync if file was newly added or URL changed
+    if (hasFileNow && (!hadFileBefore || beforeFile.url !== afterFile.url)) {
+      const docId = mapping.type;
+
+      try {
+        await dqRef.doc(docId).set({
+          type: mapping.type,
+          fileType: mapping.label, // Added for consistency with client-side sync
+          label: mapping.label,
+          status: 'pending_review',
+          fileUrl: afterFile.url,
+          url: afterFile.url, // Added for consistency with client-side
+          storagePath: afterFile.storagePath || afterFile.ref || '',
+          fileName: afterFile.name || `${mapping.label}.jpg`,
+          uploadedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          uploadedBy: 'driver_app',
+          applicationId: appId,
+          isSynced: true,
+          sourceField: mapping.field
+        }, { merge: true });
+
+        syncCount++;
+        console.log(`[onApplicationUpdated] Synced NEW file ${mapping.type} for ${appId}`);
+      } catch (syncError) {
+        console.error(`[onApplicationUpdated] Failed to sync ${mapping.type}:`, syncError);
+      }
+    }
+  }
+
+  if (syncCount > 0) {
+    console.log(`[onApplicationUpdated] Synced ${syncCount} new files for application ${appId}`);
   }
 });
 

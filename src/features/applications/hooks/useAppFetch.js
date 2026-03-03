@@ -145,10 +145,11 @@ export function useAppFetch(companyId, applicationId) {
           }
         };
 
-        const [cdl, cdlBack, ssc, medical, twic, mvrConsent, drugTestConsent] = await Promise.all([
+        const [cdl, cdlBack, ssc, medical, twic, mvrConsent, drugTestConsent, mvr] = await Promise.all([
           getUrl(data['cdl-front']), getUrl(data['cdl-back']), getUrl(data['ssc-upload']),
           getUrl(data['medical-card-upload']), getUrl(data['twic-card-upload']),
-          getUrl(data['mvr-consent-upload']), getUrl(data['drug-test-consent-upload'])
+          getUrl(data['mvr-consent-upload']), getUrl(data['drug-test-consent-upload']),
+          getUrl(data['mvr-upload'])
         ]);
 
         setFileUrls({
@@ -158,7 +159,8 @@ export function useAppFetch(companyId, applicationId) {
           'medical-card-upload': medical,
           'twic-card-upload': twic,
           'mvr-consent-upload': mvrConsent,
-          'drug-test-consent-upload': drugTestConsent
+          'drug-test-consent-upload': drugTestConsent,
+          'mvr-upload': mvr
         });
 
       } else {

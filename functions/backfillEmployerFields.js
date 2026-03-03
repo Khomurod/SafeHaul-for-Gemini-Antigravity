@@ -1,139 +1,118 @@
-/**
- * Backfill Employer Fields — Cloud Function
- * 
- * One-time migration to rename old employer field names to schema-compliant names.
- * Renames: name → companyName, street → address, reason → reasonForLeaving
- * Preserves original fields alongside new ones for backward compatibility.
- * 
- * Idempotent — safe to run multiple times.
- * 
- * @module backfillEmployerFields
- */
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
 
-const functions = require('firebase-functions/v1');
-const { db } = require('./firebaseAdmin');
+if (!admin.apps.length) {
+    admin.initializeApp();
+}
+const firestore = admin.firestore();
 
-exports.backfillEmployerFields = functions
-    .runWith({ memory: '512MB', timeoutSeconds: 540 })
-    .https.onCall(async (data, context) => {
-        // Only super admins should be able to run this
-        // But we'll check auth at minimum
-        if (!context.auth) {
-            throw new functions.https.HttpsError(
-                'unauthenticated',
-                'Must be authenticated to run backfill.'
-            );
-        }
+const BATCH_LIMIT = 200;
+const WRITE_BATCH_LIMIT = 400;
 
-        console.log('[backfillEmployerFields] Starting employer field migration...');
+function normalizeEmployer(emp = {}) {
+    return {
+        companyName: emp.companyName || emp.name || emp.company || '',
+        address: emp.address || emp.street || emp.location || emp.addr || '',
+        city: emp.city || emp.town || '',
+        state: emp.state || '',
+        phone: emp.phone || emp.phoneNumber || emp.contact || '',
+        position: emp.position || emp.title || '',
+        startDate: emp.startDate || emp.from || null,
+        endDate: emp.endDate || emp.to || null,
+        reasonForLeaving: emp.reasonForLeaving || emp.reason || '',
+        supervisorName: emp.supervisorName || emp.supervisor || '',
+        mayContact: (typeof emp.mayContact === 'boolean') ? emp.mayContact : (emp.mayContact === 'yes' || emp.mayContact === true)
+    };
+}
 
-        let totalDocs = 0;
-        let updatedDocs = 0;
-        let skippedDocs = 0;
-        let errorDocs = 0;
+async function processBatch(snapshot, dryRun) {
+    let updated = 0;
+    const batch = firestore.batch();
+    let writes = 0;
 
-        try {
-            // Get all companies
-            const companiesSnap = await db.collection('companies').get();
-            console.log(`[backfillEmployerFields] Found ${companiesSnap.size} companies`);
+    for (const doc of snapshot.docs) {
+        const dataDoc = doc.data();
+        let employers = dataDoc.employers || dataDoc.employment || dataDoc.employer || [];
+        if (employers && !Array.isArray(employers) && typeof employers === 'object') employers = [employers];
+        if (!Array.isArray(employers)) employers = [];
 
-            for (const companyDoc of companiesSnap.docs) {
-                const companyId = companyDoc.id;
+        const normalized = employers.map(normalizeEmployer);
+        let needsUpdate = false;
 
-                // Get all applications for this company
-                const appsSnap = await db
-                    .collection('companies')
-                    .doc(companyId)
-                    .collection('applications')
-                    .get();
-
-                if (appsSnap.empty) continue;
-
-                // Process in batches of 400 (Firestore max is 500 per batch)
-                let batch = db.batch();
-                let batchCount = 0;
-
-                for (const appDoc of appsSnap.docs) {
-                    totalDocs++;
-                    const appData = appDoc.data();
-                    const employers = appData.employers;
-
-                    // Skip if no employers array
-                    if (!Array.isArray(employers) || employers.length === 0) {
-                        skippedDocs++;
-                        continue;
-                    }
-
-                    // Check if any employer needs migration
-                    let needsMigration = false;
-                    const migratedEmployers = employers.map(emp => {
-                        const updated = { ...emp };
-
-                        // name → companyName (only if companyName doesn't already exist)
-                        if (emp.name && !emp.companyName) {
-                            updated.companyName = emp.name;
-                            needsMigration = true;
-                        }
-
-                        // street → address (only if address doesn't already exist)
-                        if (emp.street && !emp.address) {
-                            updated.address = emp.street;
-                            needsMigration = true;
-                        }
-
-                        // reason → reasonForLeaving (only if reasonForLeaving doesn't already exist)
-                        if (emp.reason && !emp.reasonForLeaving) {
-                            updated.reasonForLeaving = emp.reason;
-                            needsMigration = true;
-                        }
-
-                        return updated;
-                    });
-
-                    if (!needsMigration) {
-                        skippedDocs++;
-                        continue;
-                    }
-
-                    try {
-                        batch.update(appDoc.ref, { employers: migratedEmployers });
-                        batchCount++;
-                        updatedDocs++;
-
-                        // Commit batch when it reaches 400
-                        if (batchCount >= 400) {
-                            await batch.commit();
-                            console.log(`[backfillEmployerFields] Committed batch of ${batchCount} for company ${companyId}`);
-                            batch = db.batch();
-                            batchCount = 0;
-                        }
-                    } catch (err) {
-                        console.error(`[backfillEmployerFields] Error updating ${appDoc.ref.path}:`, err);
-                        errorDocs++;
-                    }
-                }
-
-                // Commit remaining batch for this company
-                if (batchCount > 0) {
-                    await batch.commit();
-                    console.log(`[backfillEmployerFields] Committed final batch of ${batchCount} for company ${companyId}`);
+        if (normalized.length > 0) {
+            for (let i = 0; i < normalized.length; i++) {
+                const orig = employers[i] || {};
+                const norm = normalized[i];
+                if ((!orig.companyName && norm.companyName) ||
+                        (!orig.address && norm.address) ||
+                        (!orig.reasonForLeaving && norm.reasonForLeaving) ||
+                        (!orig.supervisorName && norm.supervisorName)) {
+                    needsUpdate = true;
+                    break;
                 }
             }
-
-            const message = `Backfill complete! Processed ${totalDocs} applications: ${updatedDocs} updated, ${skippedDocs} skipped (already correct), ${errorDocs} errors.`;
-            console.log(`[backfillEmployerFields] ${message}`);
-
-            return {
-                success: true,
-                message,
-                stats: { totalDocs, updatedDocs, skippedDocs, errorDocs }
-            };
-
-        } catch (error) {
-            console.error('[backfillEmployerFields] Fatal error:', error);
-            throw new functions.https.HttpsError(
-                'internal',
-                `Backfill failed: ${error.message}. Processed ${updatedDocs}/${totalDocs} before failure.`
-            );
         }
-    });
+
+        if (needsUpdate) {
+            updated++;
+            if (!dryRun) {
+                batch.update(doc.ref, { employers: normalized, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                writes++;
+                if (writes >= WRITE_BATCH_LIMIT) {
+                    await batch.commit();
+                    // start a fresh batch
+                    writes = 0;
+                }
+            }
+        }
+    }
+
+    if (!dryRun && writes > 0) {
+        await batch.commit();
+    }
+
+    return updated;
+}
+
+exports.backfillEmployerFields = functions.https.onCall(async (data, context) => {
+    if (!context.auth || context.auth.token?.globalRole !== 'super_admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only super_admin can run backfill');
+    }
+
+    const dryRun = !!data.dryRun;
+    const maxDocs = (Number.isInteger(data.maxDocs) && data.maxDocs > 0) ? data.maxDocs : Infinity;
+
+    let processed = 0;
+    let updated = 0;
+    let errors = 0;
+    let lastDoc = null;
+    let finished = false;
+
+    try {
+        while (!finished && processed < maxDocs) {
+            let q = firestore.collectionGroup('applications').orderBy('__name__').limit(BATCH_LIMIT);
+            if (lastDoc) q = q.startAfter(lastDoc);
+
+            const snap = await q.get();
+            if (snap.empty) break;
+
+            try {
+                const u = await processBatch(snap, dryRun);
+                updated += u;
+            } catch (err) {
+                console.error('processBatch error', err);
+                errors++;
+            }
+
+            processed += snap.size;
+            lastDoc = snap.docs[snap.docs.length - 1];
+            if (snap.size < BATCH_LIMIT) finished = true;
+        }
+    } catch (err) {
+        console.error('backfill loop error', err);
+        throw new functions.https.HttpsError('internal', 'Backfill failed: ' + (err.message || err));
+    }
+
+    return { processed, updated, errors, dryRun };
+});
+

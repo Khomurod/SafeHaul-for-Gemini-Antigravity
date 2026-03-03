@@ -40,6 +40,7 @@ export function DocumentsTab({ fileUrls = {}, appData }) {
     addDoc('medical-card-upload', 'Medical Card');
     addDoc('ssc-upload', 'SSN Card');
     addDoc('twic-card-upload', 'TWIC Card');
+    addDoc('mvr-upload', 'MVR Report');
     addDoc('mvr-consent-upload', 'MVR Consent');
     addDoc('drug-test-consent-upload', 'Drug Test Consent');
 

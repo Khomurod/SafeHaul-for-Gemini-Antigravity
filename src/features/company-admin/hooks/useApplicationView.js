@@ -125,7 +125,7 @@ export function useApplicationView(companyId, applicationId, onStatusUpdate, onC
         showMoveModal, setShowMoveModal,
         showOfferModal, setShowOfferModal,
         activeSection, setActiveSection,
-        dqFiles, dqStatus,
+        dqStatus,
         // Computed
         isSuperAdmin,
         canEditAllFields,

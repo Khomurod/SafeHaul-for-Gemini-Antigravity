@@ -59,6 +59,7 @@ exports.syncPublicProfile = companyAdmin.syncPublicProfile;
 
 // 4. Applications & Driver Sync
 exports.onApplicationSubmitted = driverSync.onApplicationSubmitted;
+exports.onApplicationUpdated = driverSync.onApplicationUpdated;  // NEW: Sync files on update
 exports.onLeadSubmitted = driverSync.onLeadSubmitted;
 exports.syncDriverOnLog = driverSync.syncDriverOnLog;
 exports.syncDriverOnActivity = driverSync.syncDriverOnActivity;
