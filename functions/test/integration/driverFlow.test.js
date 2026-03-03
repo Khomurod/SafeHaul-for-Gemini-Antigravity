@@ -38,7 +38,8 @@ jest.mock('../../firebaseAdmin', () => {
 
 // Mock firestore v2 - Define mock impl here
 jest.mock('firebase-functions/v2/firestore', () => ({
-    onDocumentCreated: jest.fn((config, handler) => handler)
+    onDocumentCreated: jest.fn((config, handler) => handler),
+    onDocumentUpdated: jest.fn((config, handler) => handler)
 }));
 
 // Mock encryption
