@@ -1,5 +1,6 @@
 // Reset module cache before each suite to allow key validation testing
-let encrypt, decrypt;
+let encrypt;
+let decrypt;
 
 describe('Encryption Utility', () => {
     const VALID_KEY = '12345678901234567890123456789012'; // Exactly 32 chars

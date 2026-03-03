@@ -135,9 +135,9 @@ function buildVerificationEmailHTML({ applicantName, employerName, companyName, 
 // ============================================================
 function buildReminderEmailHTML({ applicantName, employerName, companyName, employmentDates, token, baseUrl, deadlineDate, reminderType }) {
     const urgencyStyles = {
-        first_reminder:  { bannerColor: '#f59e0b', bannerText: 'Reminder', urgencyText: 'This is a friendly reminder that we are still awaiting your response.' },
+        first_reminder: { bannerColor: '#f59e0b', bannerText: 'Reminder', urgencyText: 'This is a friendly reminder that we are still awaiting your response.' },
         second_reminder: { bannerColor: '#f97316', bannerText: '2nd Reminder', urgencyText: 'We have not yet received your response. This is your second notice.' },
-        final_notice:    { bannerColor: '#dc2626', bannerText: 'FINAL NOTICE', urgencyText: 'This is your FINAL NOTICE. Federal regulation requires you to respond within 30 days. Failure to respond will be documented.' }
+        final_notice: { bannerColor: '#dc2626', bannerText: 'FINAL NOTICE', urgencyText: 'This is your FINAL NOTICE. Federal regulation requires you to respond within 30 days. Failure to respond will be documented.' }
     };
     const style = urgencyStyles[reminderType] || urgencyStyles.first_reminder;
 
