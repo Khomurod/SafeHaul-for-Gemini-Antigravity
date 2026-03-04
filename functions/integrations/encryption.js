@@ -44,4 +44,8 @@ function decrypt(text) {
     return decrypted.toString();
 }
 
-module.exports = { encrypt, decrypt };
+module.exports = {
+    encrypt,
+    decrypt,
+    _resetEncryptionKeyForTesting: () => { _encryptionKey = null; }
+};

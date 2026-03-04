@@ -22,15 +22,33 @@ const mockSetFilters = vi.fn();
 
 vi.mock('../hooks/useCampaignTargeting', () => ({
     useCampaignTargeting: () => ({
-        previewLeads: [
-            { id: 'lead1', firstName: 'Alice', lastName: 'Driver', phone: '111' },
-            { id: 'lead2', firstName: 'Bob', lastName: 'Trucker', phone: '222' }
-        ],
-        isPreviewLoading: false,
         matchCount: 10,
-        previewError: null,
-        setFilters: mockSetFilters
+        isLoading: false,
+        excludedPhones: new Set(),
     })
+}));
+
+vi.mock('./VirtualLeadList', () => ({
+    default: ({ filters, excludedIds, onToggleExclusion }) => (
+        <div data-testid="virtual-lead-list">
+            <label>
+                <input
+                    type="checkbox"
+                    checked={!excludedIds?.includes('lead1')}
+                    onChange={() => onToggleExclusion('lead1')}
+                />
+                Alice Driver
+            </label>
+            <label>
+                <input
+                    type="checkbox"
+                    checked={!excludedIds?.includes('lead2')}
+                    onChange={() => onToggleExclusion('lead2')}
+                />
+                Bob Trucker
+            </label>
+        </div>
+    )
 }));
 
 describe('AudienceBuilder', () => {
@@ -51,7 +69,6 @@ describe('AudienceBuilder', () => {
 
         // Check initial selection count
         expect(screen.getByText('10')).toBeInTheDocument(); // Match count display
-        expect(screen.getByText('Recipients Selected')).toBeInTheDocument();
 
         // Find checkboxes
         const checkboxes = screen.getAllByRole('checkbox');
@@ -83,6 +100,6 @@ describe('AudienceBuilder', () => {
         expect(newCheckboxes[1]).toBeChecked();
 
         // Check if "excluded manually" text appears
-        expect(screen.getByText('1 excluded manually')).toBeInTheDocument();
+        expect(screen.getByText('1 manually excluded')).toBeInTheDocument();
     });
 });

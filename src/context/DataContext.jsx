@@ -7,7 +7,7 @@ import { SafeHaulLoader } from '@shared/components/SafeHaulLoader';
 import { CompanyChooserModal } from '@shared/components/modals';
 import { RoleSelectionModal } from '@shared/components/modals/RoleSelectionModal';
 
-const DataContext = createContext();
+export const DataContext = createContext();
 
 export const useData = () => {
   const context = useContext(DataContext);

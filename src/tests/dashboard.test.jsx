@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { CompanyAdminDashboard } from '@features/company-admin/components/CompanyAdminDashboard';
 import { DataProvider } from '@/context/DataContext';
+import { ToastProvider } from '@shared/components/feedback/ToastProvider';
 
 // Mock Firebase with complete auth state management
 vi.mock('firebase/auth', () => ({
@@ -19,6 +20,19 @@ vi.mock('firebase/auth', () => ({
     }),
 }));
 
+vi.mock('firebase/firestore', () => ({
+    collection: vi.fn(),
+    query: vi.fn(),
+    orderBy: vi.fn(),
+    limit: vi.fn(),
+    startAfter: vi.fn(),
+    where: vi.fn(),
+    getDocs: vi.fn(() => Promise.resolve({ docs: [], empty: true })),
+    getCountFromServer: vi.fn(() => Promise.resolve({ data: () => ({ count: 0 }) })),
+    doc: vi.fn(),
+    getDoc: vi.fn(() => Promise.resolve({ exists: () => true, data: () => ({ name: 'Test Admin', role: 'company_admin' }) }))
+}));
+
 vi.mock('@lib/firebase', () => ({
     auth: {
         onAuthStateChanged: vi.fn((callback) => {
@@ -31,12 +45,16 @@ vi.mock('@lib/firebase', () => ({
     functions: {},
 }));
 
+import { DataContext } from '@/context/DataContext';
+
 // Mock DataContext with test utilities
 const MockDataProvider = ({ children, value }) => {
     return (
-        <DataProvider>
-            {children}
-        </DataProvider>
+        <DataContext.Provider value={value}>
+            <ToastProvider>
+                {children}
+            </ToastProvider>
+        </DataContext.Provider>
     );
 };
 
@@ -80,9 +98,9 @@ describe('CompanyAdminDashboard Smoke Tests', () => {
             </BrowserRouter>
         );
 
-        // Dashboard should render some content (exact structure may vary)
-        const dashboard = screen.getByRole('main') || document.querySelector('[class*="dashboard"]');
-        expect(dashboard).toBeTruthy();
+        // Dashboard should render the company name in the welcome text
+        const welcomeText = screen.getByText(/Acme Trucking LLC/i);
+        expect(welcomeText).toBeInTheDocument();
     });
 
     it('should handle missing company profile gracefully', () => {

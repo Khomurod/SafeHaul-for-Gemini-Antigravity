@@ -35,9 +35,9 @@ describe('Authentication Flow', () => {
             </BrowserRouter>
         );
 
-        expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument();
-        expect(screen.getByPlaceholderText(/password/i)).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /sign in|login/i })).toBeInTheDocument();
+        expect(screen.getByPlaceholderText(/you@example.com/i)).toBeInTheDocument();
+        expect(screen.getByPlaceholderText(/Enter your password/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
     });
 
     it('should handle successful login', async () => {
@@ -57,9 +57,9 @@ describe('Authentication Flow', () => {
             </BrowserRouter>
         );
 
-        const emailInput = screen.getByPlaceholderText(/email/i);
-        const passwordInput = screen.getByPlaceholderText(/password/i);
-        const submitButton = screen.getByRole('button', { name: /sign in|login/i });
+        const emailInput = screen.getByPlaceholderText(/you@example.com/i);
+        const passwordInput = screen.getByPlaceholderText(/Enter your password/i);
+        const submitButton = screen.getByRole('button', { name: /sign in/i });
 
         fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
         fireEvent.change(passwordInput, { target: { value: 'password123' } });
@@ -78,13 +78,9 @@ describe('Authentication Flow', () => {
         const { signInWithEmailAndPassword } = await import('firebase/auth');
 
         // Mock failed login with wrong password error
-        signInWithEmailAndPassword.mockRejectedValue({
-            code: 'auth/wrong-password',
-            message: 'The password is invalid',
-        });
-
-        // Mock window.alert
-        const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => { });
+        const authError = new Error('Firebase error');
+        authError.code = 'auth/wrong-password';
+        signInWithEmailAndPassword.mockRejectedValue(authError);
 
         render(
             <BrowserRouter>
@@ -92,31 +88,24 @@ describe('Authentication Flow', () => {
             </BrowserRouter>
         );
 
-        const emailInput = screen.getByPlaceholderText(/email/i);
-        const passwordInput = screen.getByPlaceholderText(/password/i);
-        const submitButton = screen.getByRole('button', { name: /sign in|login/i });
+        const emailInput = screen.getByPlaceholderText(/you@example.com/i);
+        const passwordInput = screen.getByPlaceholderText(/Enter your password/i);
+        const submitButton = screen.getByRole('button', { name: /sign in/i });
 
         fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
         fireEvent.change(passwordInput, { target: { value: 'wrongpassword' } });
         fireEvent.click(submitButton);
 
         await waitFor(() => {
-            expect(alertMock).toHaveBeenCalled();
+            expect(screen.getByText('Invalid email or password.')).toBeInTheDocument();
         });
-
-        alertMock.mockRestore();
     });
 
     it('should display error message on network error', async () => {
         const { signInWithEmailAndPassword } = await import('firebase/auth');
 
         // Mock network error
-        signInWithEmailAndPassword.mockRejectedValue({
-            code: 'auth/network-request-failed',
-            message: 'Network error',
-        });
-
-        const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => { });
+        signInWithEmailAndPassword.mockRejectedValue(new Error('Network error'));
 
         render(
             <BrowserRouter>
@@ -124,19 +113,17 @@ describe('Authentication Flow', () => {
             </BrowserRouter>
         );
 
-        const emailInput = screen.getByPlaceholderText(/email/i);
-        const passwordInput = screen.getByPlaceholderText(/password/i);
-        const submitButton = screen.getByRole('button', { name: /sign in|login/i });
+        const emailInput = screen.getByPlaceholderText(/you@example.com/i);
+        const passwordInput = screen.getByPlaceholderText(/Enter your password/i);
+        const submitButton = screen.getByRole('button', { name: /sign in/i });
 
         fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
         fireEvent.change(passwordInput, { target: { value: 'password123' } });
         fireEvent.click(submitButton);
 
         await waitFor(() => {
-            expect(alertMock).toHaveBeenCalled();
+            expect(screen.getByText('An unexpected error occurred. Please try again.')).toBeInTheDocument();
         });
-
-        alertMock.mockRestore();
     });
 
     it('should show loading state during authentication', async () => {
@@ -153,9 +140,9 @@ describe('Authentication Flow', () => {
             </BrowserRouter>
         );
 
-        const emailInput = screen.getByPlaceholderText(/email/i);
-        const passwordInput = screen.getByPlaceholderText(/password/i);
-        const submitButton = screen.getByRole('button', { name: /sign in|login/i });
+        const emailInput = screen.getByPlaceholderText(/you@example.com/i);
+        const passwordInput = screen.getByPlaceholderText(/Enter your password/i);
+        const submitButton = screen.getByRole('button', { name: /sign in/i });
 
         fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
         fireEvent.change(passwordInput, { target: { value: 'password123' } });

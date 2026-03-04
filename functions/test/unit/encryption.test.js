@@ -1,3 +1,6 @@
+// @vitest-environment node
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
 // Reset module cache before each suite to allow key validation testing
 let encrypt;
 let decrypt;
@@ -7,9 +10,9 @@ describe('Encryption Utility', () => {
 
     beforeEach(() => {
         // Reset the module cache so _encryptionKey is cleared between tests
-        jest.resetModules();
-        process.env.SMS_ENCRYPTION_KEY = VALID_KEY;
         const enc = require('../../integrations/encryption');
+        if (enc._resetEncryptionKeyForTesting) enc._resetEncryptionKeyForTesting();
+        process.env.SMS_ENCRYPTION_KEY = VALID_KEY;
         encrypt = enc.encrypt;
         decrypt = enc.decrypt;
     });
@@ -52,18 +55,18 @@ describe('Encryption Utility', () => {
     });
 
     it('should throw if encryption key is missing', () => {
-        jest.resetModules();
+        const enc = require('../../integrations/encryption');
+        if (enc._resetEncryptionKeyForTesting) enc._resetEncryptionKeyForTesting();
         delete process.env.SMS_ENCRYPTION_KEY;
-        const { encrypt: freshEncrypt } = require('../../integrations/encryption');
 
-        expect(() => freshEncrypt('test')).toThrow('SMS_ENCRYPTION_KEY environment variable is not set');
+        expect(() => enc.encrypt('test')).toThrow('SMS_ENCRYPTION_KEY environment variable is not set');
     });
 
     it('should throw if encryption key is wrong length', () => {
-        jest.resetModules();
+        const enc = require('../../integrations/encryption');
+        if (enc._resetEncryptionKeyForTesting) enc._resetEncryptionKeyForTesting();
         process.env.SMS_ENCRYPTION_KEY = 'too-short';
-        const { encrypt: freshEncrypt } = require('../../integrations/encryption');
 
-        expect(() => freshEncrypt('test')).toThrow('must be exactly 32 characters');
+        expect(() => enc.encrypt('test')).toThrow('must be exactly 32 characters');
     });
 });
