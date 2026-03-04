@@ -122,6 +122,14 @@ export function DriverDashboard() {
                         <p className="text-xs font-bold text-gray-400 uppercase">Active Offers</p>
                         <p className="text-2xl font-bold text-green-600">{applications.filter(a => a.status === 'Offer Sent').length}</p>
                     </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <p className="text-xs font-bold text-gray-400 uppercase">In Review</p>
+                        <p className="text-2xl font-bold text-amber-600">{applications.filter(a => a.status === 'New Application' || a.status === 'In Review').length}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <p className="text-xs font-bold text-gray-400 uppercase">Hired</p>
+                        <p className="text-2xl font-bold text-emerald-600">{applications.filter(a => a.status === 'Hired').length}</p>
+                    </div>
                 </div>
 
                 {/* 3. My Applications List */}
@@ -156,7 +164,7 @@ export function DriverDashboard() {
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-4 text-sm text-gray-500">
-                                            <span className="flex items-center gap-1"><Clock size={14} /> {app.submittedAt ? new Date(app.submittedAt.seconds * 1000).toLocaleDateString() : 'Draft'}</span>
+                                            <span className="flex items-center gap-1"><Clock size={14} /> {app.submittedAt ? new Date(app.submittedAt?.toDate ? app.submittedAt.toDate() : app.submittedAt?.seconds ? app.submittedAt.seconds * 1000 : app.submittedAt).toLocaleDateString() : 'Draft'}</span>
                                             <span className="flex items-center gap-1"><MapPin size={14} /> {app.city || 'Remote'}, {app.state || 'US'}</span>
                                         </div>
                                     </div>

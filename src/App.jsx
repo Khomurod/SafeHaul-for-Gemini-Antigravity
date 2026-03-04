@@ -43,12 +43,24 @@ function RootRedirect() {
   if (!currentUser) return <Navigate to="/login" />;
 
   if (userRole === 'super_admin') return <Navigate to="/super-admin" />;
-  if (userRole === 'company_admin') return <Navigate to="/company/dashboard" />;
+  // P2 FIX: Accept all company-side roles, not just 'company_admin'
+  if (['company_admin', 'hr_user', 'recruiter'].includes(userRole)) return <Navigate to="/company/dashboard" />;
   if (userRole === 'driver') return <Navigate to="/driver/dashboard" />;
 
-  return <GlobalLoadingState />;
+  // P0 FIX: If role is null (pending selection modal), don't show infinite loader
+  // The RoleSelectionModal in DataContext will handle this case
+  if (!userRole) return null;
+
+  return <Navigate to="/login" />;
 }
 
+// P3-12 FIX: Redirect authenticated users away from login page
+function AuthGuardedLogin() {
+  const { currentUser, loading } = useData();
+  if (loading) return <GlobalLoadingState />;
+  if (currentUser) return <Navigate to="/" replace />;
+  return <LoginScreen />;
+}
 function ProtectedRoute({ children, allowedRoles }) {
   const { currentUser, userRole, loading } = useData();
   if (loading) return <GlobalLoadingState />;
@@ -65,7 +77,8 @@ function AppRoutes() {
     <Suspense fallback={<GlobalLoadingState />}>
       <Routes>
         {/* --- PUBLIC ROUTES (No Login Required) --- */}
-        <Route path="/login" element={<LoginScreen />} />
+        {/* P3-12 FIX: Redirect authenticated users away from login */}
+        <Route path="/login" element={<AuthGuardedLogin />} />
         <Route path="/join/:companyId" element={<TeamMemberSignup />} />
 
         {/* Public Driver Routes */}

@@ -1,4 +1,4 @@
-const { describe, it, expect } = require('@jest/globals');
+// vitest globals (describe, it, expect) available via globals: true config
 
 describe('Email Service Unit Tests', () => {
     it('should create a Nodemailer transporter with valid SMTP credentials', () => {

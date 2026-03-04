@@ -142,8 +142,11 @@ exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
 const migrationLogic = onCall({
     cors: true, region: "us-central1", maxInstances: 10
 }, async (request) => {
-    // SECURITY: Strict Auth Check (Super Admin Only recommended, but at least Auth)
+    // P1-5 FIX: Require super_admin role, not just authentication
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
+    if (!request.auth.token?.super_admin) {
+        throw new HttpsError('permission-denied', 'Super admin access required for migrations.');
+    }
 
     if (request.data?.mode === 'ping') return { success: true, message: "Pong!" };
     try {

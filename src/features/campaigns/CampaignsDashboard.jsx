@@ -156,14 +156,14 @@ export function CampaignsDashboard({ companyId }) {
 
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-                {[
-                    { label: 'Live Campaigns', value: liveCount, icon: Zap, color: 'blue' },
-                    { label: 'Total Outreach', value: totalOutreach, icon: Users, color: 'emerald' },
-                    { label: 'Response Rate', value: responseRate, icon: TrendingUp, color: 'amber' },
-                    { label: 'Carrier Score', value: '100', icon: BarChart3, color: 'indigo' },
+                {[  
+                    { label: 'Live Campaigns', value: liveCount, icon: Zap, bgColor: 'bg-blue-50', textColor: 'text-blue-600', ringColor: 'ring-blue-100' },
+                    { label: 'Total Outreach', value: totalOutreach, icon: Users, bgColor: 'bg-emerald-50', textColor: 'text-emerald-600', ringColor: 'ring-emerald-100' },
+                    { label: 'Response Rate', value: responseRate, icon: TrendingUp, bgColor: 'bg-amber-50', textColor: 'text-amber-600', ringColor: 'ring-amber-100' },
+                    { label: 'Carrier Score', value: '100', icon: BarChart3, bgColor: 'bg-indigo-50', textColor: 'text-indigo-600', ringColor: 'ring-indigo-100' },
                 ].map((stat, i) => (
                     <div key={i} className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm flex items-center gap-5">
-                        <div className={`w-14 h-14 rounded-2xl bg-${stat.color}-50 flex items-center justify-center text-${stat.color}-600 ring-1 ring-${stat.color}-100`}>
+                        <div className={`w-14 h-14 rounded-2xl ${stat.bgColor} flex items-center justify-center ${stat.textColor} ring-1 ${stat.ringColor}`}>
                             <stat.icon size={26} />
                         </div>
                         <div>

@@ -75,6 +75,17 @@ exports.submitGuestApplication = functions
             console.warn('[submitGuestApplication] Called without App Check token — flagging for monitoring');
         }
 
+        // P1-3 FIX: Rate limiting — 5 submissions per IP per minute
+        const { checkRateLimit } = require('./shared/rateLimiter');
+        const clientIp = context.rawRequest?.ip || 'unknown';
+        const allowed = await checkRateLimit(`guest_submit_${clientIp}`, 5, 60, 'closed');
+        if (!allowed) {
+            throw new functions.https.HttpsError(
+                'resource-exhausted',
+                'Too many submissions. Please try again in a minute.'
+            );
+        }
+
         // 2. Extract & validate required fields
         const { companyId, email, phone, signature, formData: rawFormData } = data || {};
 

@@ -18,7 +18,7 @@ import { useOnboarding } from '@features/onboarding/hooks/useOnboarding';
 import { OnboardingTour } from '@features/onboarding/components/OnboardingTour';
 
 import {
-    Search, FileText, Zap, Briefcase, User
+    Search, FileText, Zap, Briefcase, User, CheckCircle
 } from 'lucide-react';
 
 export function CompanyAdminDashboard() {
@@ -120,6 +120,16 @@ export function CompanyAdminDashboard() {
                         icon={<User size={20} />}
                         colorClass="ring-green-500 bg-green-500"
                         onClick={() => navigate('/company/drivers/leads/my')}
+                        active={false}
+                    />
+                    {/* P4 FIX: 4th StatCard to fill the 4-column grid */}
+                    <StatCard
+                        id="stat-card-hired"
+                        title="Hired"
+                        value={dashboard.counts?.hired || 0}
+                        icon={<CheckCircle size={20} />}
+                        colorClass="ring-emerald-500 bg-emerald-500"
+                        onClick={() => navigate('/company/drivers/applications')}
                         active={false}
                     />
                 </div>

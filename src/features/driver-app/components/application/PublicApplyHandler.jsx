@@ -90,6 +90,19 @@ export function PublicApplyHandler() {
           setCurrentCompanyProfile(companyData);
         }
 
+        // P2-5 FIX: Recover saved draft from localStorage on page revisit
+        try {
+          const savedDraft = localStorage.getItem(`draft_${slug}`);
+          if (savedDraft) {
+            const parsed = JSON.parse(savedDraft);
+            if (parsed && typeof parsed === 'object') {
+              setFormData(prev => ({ ...prev, ...parsed }));
+            }
+          }
+        } catch (draftErr) {
+          console.warn('[PublicApplyHandler] Failed to load draft:', draftErr);
+        }
+
         const recruiter = searchParams.get('r') || searchParams.get('recruiter');
         if (recruiter) {
           sessionStorage.setItem('pending_application_recruiter', recruiter);
@@ -349,6 +362,19 @@ export function PublicApplyHandler() {
         <Building2 size={40} className="text-green-600 mx-auto mb-6" />
         <h2 className="text-2xl font-bold text-gray-900 mb-3">Application Submitted!</h2>
         <p className="text-gray-600 mb-6">Your application has been received and a recruiter will contact you soon.</p>
+        <button onClick={() => navigate('/')} className="text-blue-600 hover:underline text-sm font-medium">Go to home</button>
+      </div>
+    </div>
+  );
+
+  // P3-3 FIX: Queued status UI — shown when all direct submit attempts failed but data is queued
+  if (submissionStatus === 'queued') return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md border border-amber-100">
+        <Building2 size={40} className="text-amber-500 mx-auto mb-6" />
+        <h2 className="text-2xl font-bold text-gray-900 mb-3">Application Saved</h2>
+        <p className="text-gray-600 mb-4">Your application has been securely saved and will be automatically submitted when your connection is restored.</p>
+        <p className="text-sm text-gray-500 mb-6">You can safely close this page. No data will be lost.</p>
         <button onClick={() => navigate('/')} className="text-blue-600 hover:underline text-sm font-medium">Go to home</button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 // src/context/DataContext.jsx
-import React, { useState, useEffect, useContext, createContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, createContext, useCallback, useRef } from 'react';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from '@lib/firebase';
 import { doc, getDoc, collection, getCountFromServer } from 'firebase/firestore';
@@ -31,6 +31,9 @@ export function DataProvider({ children }) {
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [selectedPortal, setSelectedPortal] = useState(null);
 
+  // P0 FIX: Auth version counter prevents stale async callbacks from overwriting logout state
+  const authVersionRef = useRef(0);
+
   const loginToCompany = useCallback(async (companyId, role, isAutoLogin = false) => {
     if (!isAutoLogin) setLoading(true);
     try {
@@ -54,36 +57,41 @@ export function DataProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // REFACTOR: Removed "safety timer". Now relying on try/finally for robust loading state.
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      // P0 FIX: Increment version on every auth state change. If another callback fires
+      // while we're awaiting, the old callback will detect version mismatch and bail.
+      const thisVersion = ++authVersionRef.current;
+
       try {
         if (user) {
-          setCurrentUser(user);
+          // P0 FIX: Set loading true on subsequent auth changes to prevent stale renders
+          setLoading(true);
 
           // 1. Get Claims
           const idTokenResult = await user.getIdTokenResult();
+          if (authVersionRef.current !== thisVersion) return; // Stale — bail
+
           const claims = idTokenResult.claims;
-          setCurrentUserClaims(claims);
 
           const roles = claims.roles || {};
           const companyRoleKeys = Object.keys(roles).filter(k => k !== 'globalRole');
 
-          // M3 FIX: Super admin fallback email is now read from VITE_SUPER_ADMIN_EMAIL env variable
-          // instead of being hardcoded in source. Primary auth is always via Firebase Custom Claims.
-          const superAdminEmail = import.meta.env.VITE_SUPER_ADMIN_EMAIL;
-          const isSuperAdmin = claims.globalRole === 'super_admin' || roles.globalRole === 'super_admin' || (superAdminEmail && user.email === superAdminEmail);
+          // P1 FIX: Removed client-side super admin email fallback — only trust Firebase Custom Claims
+          const isSuperAdmin = claims.globalRole === 'super_admin' || roles.globalRole === 'super_admin';
 
           const hasCompanyRoles = companyRoleKeys.length > 0;
 
           // 2. Check Driver Profile
           const driverDoc = await getDoc(doc(db, "drivers", user.uid));
+          if (authVersionRef.current !== thisVersion) return; // Stale — bail
+
           const isDriver = driverDoc.exists();
 
+          // Only set state if this is still the current auth version
+          setCurrentUser(user);
+          setCurrentUserClaims(claims);
           setHasDriverProfile(isDriver);
           setHasEmployerProfile(isSuperAdmin || hasCompanyRoles);
-
-          // Debug logs removed — claims/profile data should not be exposed in browser console
 
           // 3. Cache Platform Stats (Super Admin Only)
           if (isSuperAdmin) {
@@ -92,6 +100,7 @@ export function DataProvider({ children }) {
                 getCountFromServer(collection(db, "companies")),
                 getCountFromServer(collection(db, "drivers"))
               ]);
+              if (authVersionRef.current !== thisVersion) return;
               const platformStats = {
                 companies: companiesSnap.data().count || 0,
                 drivers: driversSnap.data().count || 0,
@@ -119,7 +128,10 @@ export function DataProvider({ children }) {
               setUserRole('driver');
               setSelectedPortal('driver');
             } else if (savedPortal === 'employer') {
-              setUserRole('company_admin');
+              // P2 FIX: Surface the actual granular role instead of always 'company_admin'
+              const firstCompanyKey = companyRoleKeys[0];
+              const actualRole = roles[firstCompanyKey] || 'company_admin';
+              setUserRole(actualRole);
               setSelectedPortal('employer');
 
               const savedCompanyId = localStorage.getItem('selectedCompanyId');
@@ -133,7 +145,10 @@ export function DataProvider({ children }) {
               setUserRole(null);
             }
           } else if (hasCompanyRoles) {
-            setUserRole('company_admin');
+            // P2 FIX: Surface the actual granular role
+            const firstCompanyKey = companyRoleKeys[0];
+            const actualRole = roles[firstCompanyKey] || 'company_admin';
+            setUserRole(actualRole);
             setSelectedPortal('employer');
 
             const savedCompanyId = localStorage.getItem('selectedCompanyId');
@@ -152,7 +167,7 @@ export function DataProvider({ children }) {
           }
 
         } else {
-          // No User
+          // No User — clean up all state
           setCurrentUser(null);
           setCurrentUserClaims(null);
           setCurrentCompanyProfile(null);
@@ -164,13 +179,14 @@ export function DataProvider({ children }) {
           setSelectedPortal(null);
           localStorage.removeItem('selectedCompanyId');
           localStorage.removeItem('selectedPortal');
+          localStorage.removeItem('platformStats');
         }
       } catch (error) {
         console.error("Error initializing user data:", error);
-        // Optional: You could set a 'globalError' state here to show a friendly UI
       } finally {
-        // CRITICAL: This ensures the loading spinner ALWAYS stops, success or fail.
-        setLoading(false);
+        if (authVersionRef.current === thisVersion) {
+          setLoading(false);
+        }
       }
     });
 
@@ -188,7 +204,12 @@ export function DataProvider({ children }) {
       setUserRole('driver');
       window.location.href = '/driver/dashboard';
     } else {
-      setUserRole('company_admin');
+      // P2 FIX: Use the actual role from claims instead of always 'company_admin'
+      const roles = currentUserClaims?.roles || {};
+      const companyRoleKeys = Object.keys(roles).filter(k => k !== 'globalRole');
+      const firstCompanyKey = companyRoleKeys[0];
+      const actualRole = roles[firstCompanyKey] || 'company_admin';
+      setUserRole(actualRole);
       const savedCompanyId = localStorage.getItem('selectedCompanyId');
       if (savedCompanyId) {
         await loginToCompany(savedCompanyId, null, true);
@@ -245,7 +266,6 @@ export function DataProvider({ children }) {
     returnToCompanyChooser,
     setShowCompanyChooser,
     loading,
-    setLoading,
     hasDriverProfile,
     hasEmployerProfile,
     selectedPortal,

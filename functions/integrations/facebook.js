@@ -125,7 +125,7 @@ exports.facebookWebhook = onRequest(
                 const signature = req.headers['x-hub-signature'];
                 if (!signature) {
                     console.warn("Missing X-Hub-Signature");
-                    // return res.sendStatus(401); // Optional: Enforcement
+                    return res.sendStatus(401); // P1-4 FIX: Enforce signature validation
                 } else {
                     const elements = signature.split('=');
                     const signatureHash = elements[1];

@@ -104,8 +104,10 @@ const Stepper = ({
     }, [step, isSignatureStep]);
 
     const barColor = submissionStatus === 'success' ? 'bg-green-600' :
-        submissionStatus === 'error' ? 'bg-red-600' : 'bg-blue-600';
-    const barWidth = submissionStatus ? '100%' : `${progressPercent}%`;
+        submissionStatus === 'error' ? 'bg-red-600' :
+        submissionStatus === 'queued' ? 'bg-amber-500' : 'bg-blue-600';
+    // P3 FIX: Only show 100% on success, not on error/queued
+    const barWidth = submissionStatus === 'success' ? '100%' : `${progressPercent}%`;
 
     if (!CurrentStepComponent) {
         return <div className="p-6 text-center text-red-500">Error: Step {step + 1} not found.</div>;

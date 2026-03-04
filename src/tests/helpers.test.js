@@ -5,7 +5,7 @@ import {
     formatPhoneNumber, 
     getFieldValue, 
     getStatusColor 
-} from '../utils/helpers';
+} from '../shared/utils/helpers';
 
 describe('Utility Helpers', () => {
     

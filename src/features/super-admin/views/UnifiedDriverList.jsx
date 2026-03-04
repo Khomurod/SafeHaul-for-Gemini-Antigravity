@@ -165,8 +165,10 @@ export function UnifiedDriverList({
             data = data.filter(item => (item.status || 'New') === filters.status);
         }
         if (filters.driverType !== 'All') {
-            const types = Array.isArray(item => item.driverType) ? item.driverType : [item.driverType];
-            data = data.filter(item => types?.includes(filters.driverType));
+            data = data.filter(item => {
+                const types = Array.isArray(item.driverType) ? item.driverType : [item.driverType];
+                return types?.includes(filters.driverType);
+            });
         }
         if (filters.docsStatus !== 'All') {
             data = data.filter(item => {

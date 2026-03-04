@@ -29,7 +29,7 @@ export function PEVRequestModal({ employer, applicant, onClose, onProceed }) {
                         </div>
                         <h3 className="text-xl font-bold">Initiate Verification</h3>
                     </div>
-                    <p className="text-slate-400 text-sm">Verify employment for <span className="text-white font-semibold">{employer.name}</span></p>
+                    <p className="text-slate-400 text-sm">Verify employment for <span className="text-white font-semibold">{employer.companyName || employer.name}</span></p>
                 </div>
 
                 <div className="p-6 space-y-6">

@@ -344,9 +344,11 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
         },
     });
 
-    // BUGFIX: Add serverTimestamp() AFTER sanitizeData() — sanitizeData destroys FieldValue sentinels
-    finalData.submittedAt = serverTimestamp();
-    finalData.createdAt = serverTimestamp();
+    // P0-5 FIX: Use ISO string for queue (IndexedDB can't serialize FieldValue sentinels).
+    // serverTimestamp() will be applied right before Firestore write.
+    const nowISO = new Date().toISOString();
+    finalData.submittedAt = nowISO;
+    finalData.createdAt = nowISO;
 
     // 4. Queue first (if supported) for guaranteed delivery
     let queueId = null;
@@ -384,8 +386,11 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
                 docRef = doc(db, "leads", applicationId);
             }
 
+            // P0-5 FIX: Override ISO timestamps with serverTimestamp() for Firestore write
+            // (queue copy keeps ISO strings, Firestore gets canonical server time)
+            const firestoreData = { ...finalData, submittedAt: serverTimestamp(), createdAt: serverTimestamp() };
             // setDoc with deterministic ID is idempotent - safe to retry
-            await setDoc(docRef, finalData);
+            await setDoc(docRef, firestoreData);
 
             // Success! Dequeue if we queued earlier
             if (queueId) {

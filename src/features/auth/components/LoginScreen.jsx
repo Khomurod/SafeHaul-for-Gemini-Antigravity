@@ -78,17 +78,17 @@ export function LoginScreen() {
         getMembershipsForUser(user.uid)
       ]);
 
-      // Check Super Admin via claims or role
+      // P2-3 FIX: Check Super Admin via claims (primary) with Firestore fallback
       const token = await user.getIdTokenResult();
-      const isSuperAdmin = token.claims.super_admin || userDoc?.role === 'super_admin';
+      const isSuperAdmin = token.claims.super_admin === true || userDoc?.role === 'super_admin';
 
       if (isSuperAdmin) {
         navigate('/super-admin', { replace: true });
         return;
       }
 
-      // Check Roles
-      const isDriver = userDoc?.role === 'driver';
+      // P2-3 FIX: Check actual role from claims for proper role-based routing
+      const isDriver = token.claims.driver === true || userDoc?.role === 'driver';
       const hasCompanyAccess = !membershipsSnap.empty;
 
       if (isDriver && hasCompanyAccess) {

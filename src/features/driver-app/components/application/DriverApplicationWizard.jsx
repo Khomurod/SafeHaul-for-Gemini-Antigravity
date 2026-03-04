@@ -289,7 +289,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
     try {
       const activeCompanyId = targetCompanyId;
-      await submitDriverApplication(currentUser, formData, activeCompanyId, job);
+      const result = await submitDriverApplication(currentUser, formData, activeCompanyId, job);
 
       // Clear Draft (Company Specific)
       const draftId = `app_${activeCompanyId}`;
@@ -299,8 +299,14 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       // Cleanup Session
       sessionStorage.removeItem('pending_application_company');
 
-      setSubmissionStatus('success');
-      showSuccess("Application Submitted!");
+      // P3-3 FIX: Handle queued (offline-safe) vs full success
+      if (result?.queued && !result?.success) {
+        setSubmissionStatus('queued');
+        showSuccess("Application saved! It will be submitted automatically when connection is restored.");
+      } else {
+        setSubmissionStatus('success');
+        showSuccess("Application Submitted!");
+      }
 
       if (onSuccess && job?.id) {
         onSuccess(job.id);

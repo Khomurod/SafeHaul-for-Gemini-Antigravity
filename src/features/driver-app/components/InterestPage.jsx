@@ -27,16 +27,16 @@ export function InterestPage() {
     useEffect(() => {
         async function loadContext() {
             try {
-                // A. Find Company
+                // A. Find Company — P2-6 FIX: Query public_profiles (not companies)
                 let companyData = null;
-                const q = query(collection(db, "companies"), where("appSlug", "==", slug));
+                const q = query(collection(db, "public_profiles"), where("appSlug", "==", slug));
                 const compSnap = await getDocs(q);
 
                 if (!compSnap.empty) {
                     companyData = { id: compSnap.docs[0].id, ...compSnap.docs[0].data() };
                 } else {
                     // Fallback to ID
-                    const docSnap = await getDoc(doc(db, "companies", slug));
+                    const docSnap = await getDoc(doc(db, "public_profiles", slug));
                     if (docSnap.exists()) companyData = { id: docSnap.id, ...docSnap.data() };
                 }
 
@@ -88,12 +88,20 @@ export function InterestPage() {
     };
 
     // 3. Handle "Not Interested"
+    const [declined, setDeclined] = useState(false);
     const handleDecline = () => {
-        // Optional: Call backend to mark as 'Not Interested'
-        alert("Thank you. We have noted your response.");
-        // Redirect to safe page
-        window.location.href = "https://google.com";
+        setDeclined(true);
     };
+
+    if (declined) return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="bg-white p-8 rounded-xl shadow text-center max-w-md">
+                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+                <h2 className="text-xl font-bold text-gray-900">Thank You</h2>
+                <p className="text-gray-500 mt-2">We've noted your response. No further action is needed.</p>
+            </div>
+        </div>
+    );
 
     if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" /></div>;
 

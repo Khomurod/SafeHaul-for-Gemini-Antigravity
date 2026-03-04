@@ -1,27 +1,18 @@
 /**
  * Server-side phone normalization utility.
- * Mirrors client-side normalizePhone from src/shared/utils/helpers.js
+ * P2-1 FIX: Delegates to shared/normalizePhone.js for consistent E.164 formatting.
+ * This ensures blacklist lookups, bulk messaging, and all phone comparisons
+ * use the same canonical format (+1XXXXXXXXXX).
  */
+const { normalizePhone: normalizeToE164 } = require('../shared/normalizePhone');
 
 /**
- * Strips a phone number to raw digits for database searching/comparison.
- * Returns raw digits even if length != 10 to prevent data loss.
+ * Normalizes a phone number to E.164 format for consistent storage/comparison.
  * @param {string} phone - The phone number to normalize
- * @returns {string} Normalized phone number (digits only)
+ * @returns {string} Normalized phone in E.164 (+1XXXXXXXXXX) or empty string if invalid
  */
 function normalizePhone(phone) {
-    if (!phone) return "";
-
-    // 1. Convert to string and remove non-digits
-    let cleaned = String(phone).trim().replace(/\D/g, '');
-
-    // 2. Handle US Country Code (Strip leading 1 if length is 11)
-    if (cleaned.length === 11 && cleaned.startsWith('1')) {
-        cleaned = cleaned.substring(1);
-    }
-
-    // 3. Return whatever digits we have.
-    return cleaned;
+    return normalizeToE164(phone) || "";
 }
 
 module.exports = { normalizePhone };

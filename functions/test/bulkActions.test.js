@@ -1,7 +1,5 @@
-const { describe, it, expect, beforeEach, afterEach } = require('@jest/globals');
-const firebaseFunctionsTest = require('firebase-functions-test');
-const test = firebaseFunctionsTest();
-const jestMock = require('@jest/globals').jest;
+// vitest globals (describe, it, expect, vi, etc.) available via globals: true config
+const jestMock = { fn: vi.fn.bind(vi) };
 
 // =====================================================================
 // MOCK SETUP — Matches the modular bulkActions/ directory structure

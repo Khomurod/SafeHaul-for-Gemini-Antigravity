@@ -52,7 +52,7 @@ function processActivity(data) {
 
     const userId = data.performedBy || 'unknown';
     const userName = data.performedByName || 'Unknown';
-    const isContact = data.isContact || ['interested', 'callback'].includes(outcome);
+    const isContact = data.isContact === true;  // P2-7 FIX: Match aggregator — trust the boolean flag only
 
     return {
         userId,

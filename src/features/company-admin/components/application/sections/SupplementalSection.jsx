@@ -183,16 +183,16 @@ export function SupplementalSection({ appData }) {
                             <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
                                     <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                                        <Truck size={16} className="text-gray-400" /> {emp.name}
+                                        <Truck size={16} className="text-gray-400" /> {emp.companyName || emp.name}
                                     </h4>
                                     <span className="text-xs font-semibold text-gray-500 bg-white px-2 py-1 border rounded mt-1 sm:mt-0">
-                                        {emp.dates}
+                                        {emp.startDate && emp.endDate ? `${emp.startDate} – ${emp.endDate}` : emp.dates}
                                     </span>
                                 </div>
                                 <div className="text-sm text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <p><span className="font-medium">Location:</span> {emp.city}, {emp.state}</p>
                                     <p><span className="font-medium">Position:</span> {emp.position}</p>
-                                    <p className="sm:col-span-2"><span className="font-medium">Reason for Leaving:</span> {emp.reason}</p>
+                                    <p className="sm:col-span-2"><span className="font-medium">Reason for Leaving:</span> {emp.reasonForLeaving || emp.reason}</p>
                                     {emp.phone && <p className="sm:col-span-2"><span className="font-medium">Contact:</span> {formatPhone(emp.phone)}</p>}
                                 </div>
                             </div>
