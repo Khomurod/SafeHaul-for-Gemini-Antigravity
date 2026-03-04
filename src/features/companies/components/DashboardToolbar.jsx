@@ -45,7 +45,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     };
 
     const handleFilterChange = (key, value) => {
-        setFilters(key, value);
+        setFilters(prev => ({ ...prev, [key]: value }));
     };
 
     const hasActiveFilters = useMemo(() => {

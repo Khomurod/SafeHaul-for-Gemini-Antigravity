@@ -343,13 +343,16 @@ export function useCompanyDashboard(companyId) {
         lastVisibleDocsRef.current = {};
     };
 
-    const handleSetFilters = (keyOrObj, value) => {
-        if (typeof keyOrObj === 'object' && keyOrObj !== null) {
+    const handleSetFilters = (keyOrObjOrFn, value) => {
+        if (typeof keyOrObjOrFn === 'function') {
+            // Updater function — used by DashboardToolbar's handleFilterChange
+            setFilters(keyOrObjOrFn);
+        } else if (typeof keyOrObjOrFn === 'object' && keyOrObjOrFn !== null) {
             // Full replacement — used by clearFilters
-            setFilters(keyOrObj);
+            setFilters(keyOrObjOrFn);
         } else {
             // Single key update
-            setFilters(prev => ({ ...prev, [keyOrObj]: value }));
+            setFilters(prev => ({ ...prev, [keyOrObjOrFn]: value }));
         }
     };
 

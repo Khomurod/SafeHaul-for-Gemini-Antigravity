@@ -360,7 +360,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                         searchQuery={dashboard.searchQuery}
                         setSearchQuery={dashboard.setSearchQuery}
                         filters={dashboard.filters}
-                        setFilters={(key, val) => dashboard.setFilters(key, val)}
+                        setFilters={dashboard.setFilters}
                         clearFilters={() => {
                             dashboard.setFilters({ state: '', driverType: '', dob: '', assignee: '', dateSort: '', dateFilter: '' });
                             dashboard.setSearchQuery('');
