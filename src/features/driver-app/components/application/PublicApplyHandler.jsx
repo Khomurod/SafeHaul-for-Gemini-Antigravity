@@ -40,6 +40,11 @@ export function PublicApplyHandler() {
   const [submissionStatus, setSubmissionStatus] = useState(null);
   const hasStarted = useRef(false);
 
+  // #7 FIX: Derive custom questions from company profile for public applicants
+  const customQuestions = company?.customQuestions || [];
+  // #8 FIX: Dynamic consent step index based on whether custom questions exist
+  const consentStepIndex = customQuestions.length > 0 ? 9 : 8;
+
   // 1. Load Company Info from Slug
   useEffect(() => {
     if (hasStarted.current) return;
@@ -120,9 +125,6 @@ export function PublicApplyHandler() {
     try {
       // SECURE UPLOAD: Use Signed URL for Guests
       // 1. Get Signed URL from Backend
-      const { httpsCallable } = await import('firebase/functions');
-      const { functions } = await import('@lib/firebase'); // Lazy load to ensure init
-
       const getSignedUrlFn = httpsCallable(functions, 'getSignedUploadUrl');
 
       const { data: { url, storagePath, publicUrl, token } } = await getSignedUrlFn({
@@ -166,8 +168,8 @@ export function PublicApplyHandler() {
   const handleFinalSubmit = async () => {
     // Validate signature and certification
     if (!formData.signature || !formData['final-certification']) {
-      showError("Please complete the electronic signature in Step 9.");
-      setCurrentStep(8);
+      showError("Please complete the electronic signature.");
+      setCurrentStep(consentStepIndex);
       return;
     }
 
@@ -215,17 +217,16 @@ export function PublicApplyHandler() {
 
       // Note: No client-side sanitizeData() needed here — httpsCallable handles JSON serialization,
       // and the Cloud Function (submitGuestApplication) does its own sanitization server-side.
+      // AF6 FIX: Removed redundant `personalInfo` wrapper — all fields are spread from formData
+      // at the top level, matching the authenticated submission structure exactly.
       const applicationData = {
         applicantId: applicationId,
         applicationId: applicationId,
         confirmationNumber: confirmationNumber,
-        personalInfo: {
-          firstName: formData.firstName || '',
-          lastName: formData.lastName || '',
-          email: email,
-          phone: phone,
-        },
         ...formData,
+        // Ensure these top-level keys always exist (overrides from formData if present)
+        firstName: formData.firstName || '',
+        lastName: formData.lastName || '',
         email: email,
         phone: phone,
         signature: formData.signature,
@@ -359,7 +360,7 @@ export function PublicApplyHandler() {
         <div className="max-w-4xl mx-auto flex items-center justify-between font-bold">{company.companyName}</div>
       </div>
       <div className="max-w-4xl mx-auto mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <Stepper step={currentStep} formData={formData} updateFormData={handleUpdateFormData} onNavigate={handleNavigate} onPartialSubmit={handlePartialSubmit} onFinalSubmit={handleFinalSubmit} handleFileUpload={handleFileUpload} isUploading={isUploading} submissionStatus={submissionStatus} />
+        <Stepper step={currentStep} formData={formData} updateFormData={handleUpdateFormData} onNavigate={handleNavigate} onPartialSubmit={handlePartialSubmit} onFinalSubmit={handleFinalSubmit} handleFileUpload={handleFileUpload} isUploading={isUploading} submissionStatus={submissionStatus} customQuestions={customQuestions} />
       </div>
 
     </div>

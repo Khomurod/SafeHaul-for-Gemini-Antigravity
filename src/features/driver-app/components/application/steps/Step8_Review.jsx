@@ -155,7 +155,11 @@ const Step8_Review = ({ formData, onNavigate }) => {
                             getFileName('cdl-front'),
                             getFileName('cdl-back'),
                             getFileName('medical-card-upload'),
-                            getFileName('twic-card-upload')
+                            getFileName('twic-card-upload'),
+                            getFileName('ssc-upload'),
+                            getFileName('mvr-upload'),
+                            getFileName('mvr-consent-upload'),
+                            getFileName('drug-test-consent-upload')
                         ].map((file, i) => file && (
                             <span key={i} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium border border-blue-100">
                                 {file}

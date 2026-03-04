@@ -94,7 +94,13 @@ exports.handleLeadOutcome = onCall(RUNTIME_OPTS, async (request) => {
 
 // --- 6. DRIVER INTEREST ---
 exports.confirmDriverInterest = onCall(RUNTIME_OPTS, async (request) => {
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Authentication required.");
+    }
     const { leadId, companyId, recruiterId } = request.data;
+    if (!leadId || !companyId) {
+        throw new HttpsError("invalid-argument", "leadId and companyId are required.");
+    }
     try {
         const result = await confirmDriverInterest(request.data);
         return result;
@@ -365,8 +371,6 @@ exports.getBadLeadsAnalytics = onCall(RUNTIME_OPTS, async (request) => {
     }
 });
 
-// --- 13. REBUILD LEAD STATS (Background Worker) ---
-// Scans database to populate the cache. Runs monthly to correct drift.
 // --- 13. REBUILD LEAD STATS (Background Worker) ---
 // Scans database to populate the cache. Runs monthly to correct drift.
 // OOM FIX: Uses stream() instead of get() to handle large datasets.

@@ -13,7 +13,8 @@ SafeHaul uses three distinct patterns for frontend-backend communication, optimi
 
 ### B. High-Scale Heavy Processing (Cloud Functions)
 - **Primary Use**: Lead distribution, Bulk messaging, Auth management.
-- **Mechanism**: Triggered via `httpsCallable` (v2). used only when logic is too complex for security rules or requires third-party API integration.
+- **Mechanism**: Triggered via `httpsCallable`. Uses a mix of **v1** (legacy callable functions like `submitGuestApplication`) and **v2** (newer triggers like `onDocumentCreated`). Only used when logic is too complex for security rules or requires third-party API integration.
+- **Migration Note (L1)**: The codebase uses both `firebase-functions/v1` (callable HTTPS functions) and `firebase-functions/v2` (Firestore triggers, scheduled functions). Both are production-stable. A full v2 migration is planned but not urgent.
 
 ### C. Background Triggers (Cloud Firestore Triggers)
 - **Primary Use**: Stats aggregation, PDF generation.
@@ -40,7 +41,7 @@ To reduce latency and cloud costs, several core features have been migrated from
 Guaranteed delivery system ensuring **zero data loss** for driver applications, even with network failures.
 
 ### A. Deterministic IDs
-Application IDs are generated using `SHA256(companyId + email + phone)`. This ensures that even if a submission is retried multiple times, it results in the same document ID, preventing duplicates.
+Application IDs are generated using `SHA256(companyId + ":" + email + ":" + phone)`, truncated to 20 hex characters. This ensures that even if a submission is retried multiple times, it results in the same document ID, preventing duplicates.
 
 ### B. Submission Queue
  submissions are queued in **IndexedDB** (`src/lib/submissionQueue.js`) with exponential backoff. The system auto-retries when the connection is restored.
@@ -69,7 +70,7 @@ The Lead Distribution system (`functions/leadLogic.js`) operates on a **Dealer A
 
 ## 5. SMS Integration (The "Digital Wallet")
 
-SafeHaul uses a robust, multi-tenant system to manage SMS provider credentials (RingCentral) and routing.
+SafeHaul uses a robust, multi-tenant system to manage SMS provider credentials (RingCentral primary, 8x8 alternate) and routing.
 
 ### A. Factory Pattern (`SMSAdapterFactory.js`)
 *   **Role**: The Gatekeeper.

@@ -18,6 +18,15 @@ import { formatDate } from '@shared/utils/helpers';
 import { APPLICATION_SCHEMA } from '@/config/applicationSchema';
 import { SchemaSection } from '@shared/components/schema/SchemaRenderer';
 
+/** Safely convert Firestore Timestamps, ISO strings, or epoch values to a Date (or null). */
+function toDateOrNull(val) {
+    if (!val) return null;
+    if (typeof val?.toDate === 'function') return val.toDate();          // Firestore Timestamp
+    if (typeof val === 'object' && val.seconds) return new Date(val.seconds * 1000); // {seconds, nanoseconds}
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 export function ApplicationTab({ appData, fileUrls = {} }) {
     const [viewMode, setViewMode] = useState('summary'); // 'summary' | 'full'
 
@@ -155,7 +164,7 @@ function IdentityCard({ appData }) {
 
 function LicenseCard({ appData, fileUrls = {} }) {
     const rawExp = appData.cdlExpiration || appData.cdlExpirationDate;
-    const expDate = rawExp ? new Date(rawExp) : null;
+    const expDate = toDateOrNull(rawExp);
     const today = new Date();
     const daysUntilExp = expDate ? Math.ceil((expDate - today) / (1000 * 60 * 60 * 24)) : null;
 

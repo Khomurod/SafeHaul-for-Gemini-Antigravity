@@ -75,7 +75,12 @@ async function processBatch(snapshot, dryRun) {
 }
 
 exports.backfillEmployerFields = functions.https.onCall(async (data, context) => {
-    if (!context.auth || context.auth.token?.globalRole !== 'super_admin') {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
+    }
+    const roles = context.auth.token.roles || {};
+    const globalRole = context.auth.token.globalRole || roles.globalRole;
+    if (globalRole !== 'super_admin') {
         throw new functions.https.HttpsError('permission-denied', 'Only super_admin can run backfill');
     }
 

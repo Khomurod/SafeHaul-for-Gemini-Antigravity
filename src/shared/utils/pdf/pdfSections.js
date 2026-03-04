@@ -255,9 +255,13 @@ export function addSignatureBlock(doc, y, applicantData) {
     doc.text(`Date Signed: ${sigDate}`, rightColX, contentY + 8);
     doc.text(`Printed Name: ${name}`, rightColX, contentY + 18);
 
-    // 3. SSN (Unmasked for DOT compliance in file)
+    // 3. SSN (masked — show only last 4 digits for PII protection)
     if (applicantData.ssn) {
-        doc.text(`Social Security No: ${applicantData.ssn}`, rightColX, contentY + 28);
+        const rawSsn = String(applicantData.ssn).replace(/\D/g, '');
+        const maskedSsn = rawSsn.length >= 4
+            ? `***-**-${rawSsn.slice(-4)}`
+            : '***-**-****';
+        doc.text(`Social Security No: ${maskedSsn}`, rightColX, contentY + 28);
     }
 
     return y + 45; // Return Y after the box

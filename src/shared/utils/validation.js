@@ -3,9 +3,23 @@ export const isValidEmail = (email) => {
 };
 
 export const isValidPhone = (phone) => {
-    // Basic US Phone: (555) 555-5555, 555-555-5555, 5555555555
+    // US Phone: 10 digits or 11 digits with leading country code '1'
     const cleaned = phone.replace(/\D/g, '');
-    return cleaned.length === 10;
+    if (cleaned.length === 10) return true;
+    if (cleaned.length === 11 && cleaned.startsWith('1')) return true;
+    return false;
+};
+
+/**
+ * Normalize a US phone number to 10 digits by stripping the leading '1' country code.
+ */
+export const normalizePhone = (phone) => {
+    if (!phone) return '';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 11 && cleaned.startsWith('1')) {
+        return cleaned.substring(1);
+    }
+    return cleaned;
 };
 
 export const isValidSSN = (ssn) => {
@@ -16,7 +30,11 @@ export const isValidSSN = (ssn) => {
 
 export const formatPhone = (value) => {
     if (!value) return value;
-    const phoneNumber = value.replace(/[^\d]/g, '');
+    let phoneNumber = value.replace(/[^\d]/g, '');
+    // Strip leading '1' country code for formatting
+    if (phoneNumber.length === 11 && phoneNumber.startsWith('1')) {
+        phoneNumber = phoneNumber.substring(1);
+    }
     const phoneNumberLength = phoneNumber.length;
     if (phoneNumberLength < 4) return phoneNumber;
     if (phoneNumberLength < 7) {

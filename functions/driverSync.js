@@ -4,6 +4,7 @@ const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/
 // UPDATED: Import from shared singleton
 const { admin, db, auth } = require("./firebaseAdmin");
 const { LIFECYCLE_STATUSES } = require("./shared/constants");
+const { isPlaceholderEmail } = require("./shared/placeholderDomains");
 
 /**
  * SHARED HELPER: Finds or Creates the Auth User and syncs data to the Master Profile.
@@ -15,8 +16,8 @@ async function processDriverData(data, docId) {
   const email = data.email;
   const phone = data.phone;
 
-  // Check if this is a placeholder email
-  const isPlaceholder = !email || email.includes('@placeholder.com');
+  // Check if this is a placeholder email (covers @placeholder.com, @system.local, etc.)
+  const isPlaceholder = isPlaceholderEmail(email);
 
   // If we have neither a valid email nor a phone number, we can't identify the driver.
   if (isPlaceholder && !phone) {

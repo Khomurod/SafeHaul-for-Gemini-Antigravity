@@ -1,29 +1,37 @@
 /**
- * Quick script to check if Valentin Joseph's CDL files exist in Firestore/Storage
+ * Diagnostic script to check if a specific driver's CDL files exist in Firestore/Storage
+ * Usage: node scripts/check-cdl.js <firstName> <lastName>
+ * #13/#14 FIX: Parametrized driver name (no hardcoded PII), uses FIREBASE_STORAGE_BUCKET env var
  */
 const admin = require('firebase-admin');
 const path = require('path');
 
+const args = process.argv.slice(2);
+if (args.length < 2) {
+    console.error('Usage: node scripts/check-cdl.js <firstName> <lastName>');
+    process.exit(1);
+}
+const [targetFirst, targetLast] = args;
+
 // Initialize with service account
+const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || 'truckerapp-system.firebasestorage.app';
 const serviceAccountPath = path.join(__dirname, '..', 'functions', 'serviceAccountKey.json');
 try {
     const serviceAccount = require(serviceAccountPath);
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        storageBucket: 'truckerapp-system.appspot.com'
+        storageBucket
     });
 } catch (e) {
     // Try default if service account not found
-    admin.initializeApp({
-        storageBucket: 'truckerapp-system.appspot.com'
-    });
+    admin.initializeApp({ storageBucket });
 }
 
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
-async function checkValentinCDL() {
-    console.log('🔍 Searching for Valentin Joseph across all companies...\n');
+async function checkDriverCDL() {
+    console.log(`🔍 Searching for ${targetFirst} ${targetLast} across all companies...\n`);
 
     // Search across all companies' applications
     const companiesSnap = await db.collection('companies').get();
@@ -37,7 +45,7 @@ async function checkValentinCDL() {
             const firstName = (data.firstName || '').toLowerCase();
             const lastName = (data.lastName || '').toLowerCase();
 
-            if (firstName.includes('valentin') || lastName.includes('joseph')) {
+            if (firstName.includes(targetFirst.toLowerCase()) || lastName.includes(targetLast.toLowerCase())) {
                 console.log(`✅ FOUND: ${data.firstName} ${data.lastName}`);
                 console.log(`   Company ID: ${companyId}`);
                 console.log(`   Application ID: ${appDoc.id}`);
@@ -135,7 +143,7 @@ async function checkValentinCDL() {
         const data = leadDoc.data();
         const firstName = (data.firstName || '').toLowerCase();
         const lastName = (data.lastName || '').toLowerCase();
-        if (firstName.includes('valentin') || lastName.includes('joseph')) {
+        if (firstName.includes(targetFirst.toLowerCase()) || lastName.includes(targetLast.toLowerCase())) {
             console.log(`📋 Also found in LEADS collection: ${data.firstName} ${data.lastName} (ID: ${leadDoc.id})`);
         }
     }
@@ -144,7 +152,7 @@ async function checkValentinCDL() {
     process.exit(0);
 }
 
-checkValentinCDL().catch(err => {
+checkDriverCDL().catch(err => {
     console.error('Fatal error:', err);
     process.exit(1);
 });

@@ -3,12 +3,15 @@ const { admin, db } = require("./firebaseAdmin");
 
 /**
  * Smart Segments: Automatically categorizes drivers into lists based on rules.
+ * L4 FIX: Rules are exported as a constant so they can be overridden or extended
+ * by company-level config in the future. See SEGMENT_RULES below.
  */
 
-// Rules definitions
-const RULES = {
+// Rules definitions — exported for testability and future configurability
+const SEGMENT_RULES = {
     INACTIVE_30_DAYS: {
         slug: 'inactive_30_days',
+        label: 'Inactive (30 Days)',
         check: (data) => {
             if (!data.lastContactedAt) return true;
             const lastContact = data.lastContactedAt.toDate();
@@ -19,12 +22,14 @@ const RULES = {
     },
     GHOSTED: {
         slug: 'ghosted',
+        label: 'Ghosted',
         check: (data) => {
             return data.status === 'applied' && data.lastCallOutcome === 'no_answer';
         }
     },
     NEW_LEADS: {
         slug: 'new_leads',
+        label: 'New Leads',
         check: (data) => {
             const createdAt = data.createdAt?.toDate() || new Date();
             const fortyEightHoursAgo = new Date();
@@ -33,6 +38,9 @@ const RULES = {
         }
     }
 };
+
+// Export for external use / testing
+exports.SEGMENT_RULES = SEGMENT_RULES;
 
 /**
  * Trigger: Watch for changes in driver applications within a company.
@@ -61,8 +69,8 @@ exports.onApplicationCreatedSegments = onDocumentCreated("companies/{companyId}/
 async function updateSegments(companyId, recordId, data) {
     const batch = db.batch();
 
-    for (const ruleKey in RULES) {
-        const rule = RULES[ruleKey];
+    for (const ruleKey in SEGMENT_RULES) {
+        const rule = SEGMENT_RULES[ruleKey];
         const isMember = rule.check(data);
         const segmentRef = db.collection('companies').doc(companyId)
             .collection('segments').doc(rule.slug);

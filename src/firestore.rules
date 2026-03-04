@@ -313,8 +313,9 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow create: if isSignedIn();
       allow read: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid || isEmailOwner(resource.data.email);
-      // Allow Super Admin, Owner, OR Company Team (to report outcomes to the pool)
-      allow update: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid || isStaff();
+      // #18 FIX: Scoped update — staff can only update leads belonging to their company (was: isStaff() — too permissive)
+      allow update: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid ||
+                    (isSignedIn() && resource.data.companyId is string && isCompanyTeam(resource.data.companyId));
       allow delete: if isSuperAdmin();
     }
 
@@ -399,7 +400,8 @@ service cloud.firestore {
                   (isSignedIn() && resource.data.userId == request.auth.uid);
     }
     match /{path=**}/activity_logs/{activityId} {
-       allow read: if isSuperAdmin() || (isSignedIn() && isCompanyTeam(resource.data.companyId));
+       // #20 FIX: Require companyId to be a string — prevents reads on logs missing the field
+       allow read: if isSuperAdmin() || (isSignedIn() && resource.data.companyId is string && isCompanyTeam(resource.data.companyId));
     }
     match /{path=**}/signing_requests/{requestId} {
        allow read: if isSuperAdmin() || (isSignedIn() && resource.data.recipientId == request.auth.uid) || (isSignedIn() && isCompanyTeam(resource.data.companyId));

@@ -6,6 +6,38 @@ const nodemailer = require('nodemailer');
  * Sends emails using company-specific SMTP credentials stored in Firestore
  */
 
+// --- Transporter cache (keyed by companyId, expires after 10 minutes) ---
+const transporterCache = new Map();
+const TRANSPORTER_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function getCachedTransporter(companyId, smtpConfig) {
+    const cacheKey = companyId;
+    const cached = transporterCache.get(cacheKey);
+
+    if (cached && (Date.now() - cached.createdAt) < TRANSPORTER_TTL_MS) {
+        return cached.transporter;
+    }
+
+    const transporter = nodemailer.createTransport({
+        host: smtpConfig.smtpHost,
+        port: smtpConfig.smtpPort || 587,
+        secure: smtpConfig.smtpPort === 465,
+        auth: {
+            user: smtpConfig.smtpUser,
+            pass: smtpConfig.smtpPass,
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 30000,
+        pool: true,         // use connection pooling
+        maxConnections: 3,
+        maxMessages: 50,
+    });
+
+    transporterCache.set(cacheKey, { transporter, createdAt: Date.now() });
+    return transporter;
+}
+
 /**
  * Shared helper: Fetch email settings for a company.
  * Checks legacy 'emailSettings' field first, then the 'system_settings/email_config' subcollection.
@@ -55,20 +87,8 @@ async function sendDynamicEmail(companyId, to, subject, html, options = {}) {
             );
         }
 
-        // Create Nodemailer transporter with company's SMTP credentials
-        const transporter = nodemailer.createTransport({
-            host: emailSettings.smtpHost,
-            port: emailSettings.smtpPort || 587,
-            secure: emailSettings.smtpPort === 465, // true for 465, false for other ports
-            auth: {
-                user: emailSettings.smtpUser,
-                pass: emailSettings.smtpPass,
-            },
-            // Timeout settings
-            connectionTimeout: 10000, // 10 seconds
-            greetingTimeout: 10000,
-            socketTimeout: 30000, // 30 seconds
-        });
+        // Reuse cached Nodemailer transporter (pooled, per-company, 10-min TTL)
+        const transporter = getCachedTransporter(companyId, emailSettings);
 
         // Prepare email options
         const mailOptions = {

@@ -146,11 +146,11 @@ export function CompanyBulkUpload({ companyId, onClose, onUploadComplete }) {
 
     const uploadInstructions = `
       Format: CSV, XLS, or XLSX.
-      Required: First Name + Last Name (or just "Name"), Email, Phone.
+      Required: First Name + Last Name (or just "Name"), Phone.
       
       - We automatically detect headers.
       - Phone numbers are normalized automatically.
-      - Emails are required for automation.
+      - Emails are optional — placeholders are auto-generated when missing.
   `;
 
     return (

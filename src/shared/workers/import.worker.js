@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import Papa from 'papaparse';
 import { formatPhoneNumber, normalizePhone } from '@/shared/utils/helpers';
+import { PLACEHOLDER_DOMAIN } from '@/config/placeholderDomains';
 
 // Helper to find key in row object
 const findKey = (row, keywords) => {
@@ -142,7 +143,7 @@ self.onmessage = async (e) => {
                 const seed = `${normPhone || 'nophone'}_${fName}_${lName}`;
                 // Simple hash to safe string
                 const safeHash = btoa(unescape(encodeURIComponent(seed))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
-                record.email = `placeholder_${safeHash}@system.local`;
+                record.email = `placeholder_${safeHash}@${PLACEHOLDER_DOMAIN}`;
                 record.isEmailPlaceholder = true;
             }
 

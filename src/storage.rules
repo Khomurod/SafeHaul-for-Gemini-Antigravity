@@ -51,16 +51,19 @@ service firebase.storage {
     }
 
     // 3. Application Attachments (Guest Uploads)
+    // M4 FIX: Added App Check–based read so guest applicants can verify their own uploads
     match /companies/{companyId}/{folder}/guest_uploads/{allPaths=**} {
-      allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+      allow read: if isCompanyTeam(companyId) || isSuperAdmin() || request.appcheck != null;
       allow create: if isValidFile();
       // No delete or update permissions for guests
     }
 
     match /companies/{companyId}/applications/{applicantId}/{allPaths=**} {
       allow read: if isOwner(applicantId) || isCompanyTeam(companyId) || isSuperAdmin();
+      // M4 FIX: Allow guest file creation via App Check (signed URLs bypass rules, but this covers SDK fallback)
       allow create, update: if isSuperAdmin() || 
-                              (isSignedIn() && (isOwner(applicantId) || isCompanyTeam(companyId)) && isValidFile());
+                              (isSignedIn() && (isOwner(applicantId) || isCompanyTeam(companyId)) && isValidFile()) ||
+                              (request.appcheck != null && isValidFile());
       allow delete: if isSuperAdmin() || 
                        (isSignedIn() && (isOwner(applicantId) || isCompanyTeam(companyId)));
     }

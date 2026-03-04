@@ -7,7 +7,6 @@ import {
     addPageHeader,
     addAgreementHeader,
     addSignatureBlock,
-    addHosTable,
     addEmploymentSection,
     addDrivingHistorySection,
     addCustomQuestionsSection,

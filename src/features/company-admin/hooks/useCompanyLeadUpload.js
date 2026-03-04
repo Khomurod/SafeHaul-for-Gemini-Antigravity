@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { db, auth } from '@lib/firebase';
 import { writeBatch, collection, doc, serverTimestamp, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { formatPhoneNumber, normalizePhone } from '@shared/utils/helpers';
+import { PLACEHOLDER_DOMAIN } from '@/config/placeholderDomains';
 
 export function useCompanyLeadUpload(companyId, onUploadComplete) {
     const [uploading, setUploading] = useState(false);
@@ -61,7 +62,7 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
                     const newNormalized = normalizePhone(newPhone);
                     const newFormatted = formatPhoneNumber(newPhone);
 
-                    const placeholderEmail = `no_email_${Date.now()}_${docSnap.id.substring(0, 5)}@placeholder.com`;
+                    const placeholderEmail = `no_email_${Date.now()}_${docSnap.id.substring(0, 5)}@${PLACEHOLDER_DOMAIN}`;
 
                     const updatePayload = {
                         email: placeholderEmail,

@@ -137,6 +137,9 @@ missing_functions.txt
 .env
 .env.local
 .env.*.local
+serviceAccountKey.json
+*-key.json
+functions/serviceAccountKey.json
 cloud_functions.txt
 .gemini/
 .vercel/

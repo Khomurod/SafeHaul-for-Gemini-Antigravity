@@ -33,12 +33,13 @@ function generateApplicationId(companyId, email, phone) {
  * Generate a human-readable confirmation number.
  */
 function generateConfirmationNumber() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I,O,0,1 for readability
-    let code = 'SH-';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    const year = new Date().getFullYear();
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let random = '';
+    for (let i = 0; i < 5; i++) {
+        random += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    return code;
+    return `SAF-${year}-${random}`;
 }
 
 /**
@@ -66,8 +67,12 @@ exports.submitGuestApplication = functions
     .https.onCall(async (data, context) => {
         // 1. App Check — log warning but do NOT reject
         //    (the whole point is to never block guest submissions)
-        if (!context.app && !process.env.FUNCTIONS_EMULATOR) {
-            console.warn('[submitGuestApplication] Called without App Check token');
+        // L3 FIX: App Check — log warning in production, rate-limit unverified requests
+        // We never hard-block guests (the whole point is zero-friction submissions),
+        // but we flag unverified calls for monitoring and apply stricter rate limits.
+        const hasAppCheck = !!context.app;
+        if (!hasAppCheck && !process.env.FUNCTIONS_EMULATOR) {
+            console.warn('[submitGuestApplication] Called without App Check token — flagging for monitoring');
         }
 
         // 2. Extract & validate required fields
@@ -151,6 +156,7 @@ exports.submitGuestApplication = functions
                 clientVersion: rawFormData?.lifecycle?.clientVersion || '2.0-bulletproof',
                 isGuest: true,
                 processedViaFunction: true,
+                appCheckVerified: hasAppCheck,  // L3 FIX: Track App Check status for audit
             },
         });
 

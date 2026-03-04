@@ -24,6 +24,17 @@ export function BulkUploadLayout({
     onDownloadTemplate,
     instructions
 }) {
+    // #10 FIX: Filter out internal/system fields from the preview table
+    const INTERNAL_FIELDS = new Set([
+        '__rowNum', '__parsed', '__index', '_raw', 'id', 'uid',
+        'createdAt', 'updatedAt', 'companyId', 'assignedTo',
+        'sourceType', 'status', 'lifecycle', 'processingStatus'
+    ]);
+
+    const getVisibleKeys = (row) => {
+        if (!row) return [];
+        return Object.keys(row).filter(k => !INTERNAL_FIELDS.has(k)).slice(0, 8);
+    };
     const steps = [
         { id: 'upload', label: 'Upload' },
         { id: 'preview', label: 'Preview' },
@@ -156,7 +167,7 @@ export function BulkUploadLayout({
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
                             <tr>
-                                {csvData?.[0] && Object.keys(csvData[0]).slice(0, 8).map((key) => (
+                                {csvData?.[0] && getVisibleKeys(csvData[0]).map((key) => (
                                     <th key={key} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                                         {key}
                                     </th>
@@ -166,9 +177,9 @@ export function BulkUploadLayout({
                         <tbody className="divide-y divide-gray-100">
                             {csvData?.slice(0, 10).map((row, i) => (
                                 <tr key={i} className="hover:bg-gray-50">
-                                    {Object.values(row).slice(0, 8).map((val, j) => (
+                                    {getVisibleKeys(csvData[0]).map((key, j) => (
                                         <td key={j} className="px-3 py-2 text-gray-700 truncate max-w-[150px]">
-                                            {String(val || '')}
+                                            {String(row[key] || '')}
                                         </td>
                                     ))}
                                 </tr>

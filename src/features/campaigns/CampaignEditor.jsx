@@ -28,6 +28,10 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
 
     const { saveDraft, isSaving } = useCampaignDraft(companyId);
 
+    // #9 FIX: Track whether user has made actual changes — prevents auto-save on mount with defaults
+    const [isDirty, setIsDirty] = useState(false);
+    const isInitializedRef = React.useRef(false);
+
     // 1. Sync Logic (Read)
     useEffect(() => {
         if (!companyId || !campaignId) return;
@@ -43,6 +47,8 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
                     }
                     return { ...prev, ...incoming, filters: mergedFilters };
                 });
+                // Mark initialization complete after first snapshot
+                isInitializedRef.current = true;
             }
         });
         return () => unsub();
@@ -50,7 +56,9 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
 
     // 2. Auto-Save Logic (Write)
     // We debounce the save to avoid thrashing Firestore
+    // #9 FIX: Only save when user has actually made changes (isDirty)
     useEffect(() => {
+        if (!isDirty || !isInitializedRef.current) return;
         const timer = setTimeout(() => {
             if (campaignId) {
                 // Strip rawData before saving — it's a large array that only lives in React state
@@ -60,9 +68,10 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
             }
         }, 2000); // 2 second auto-save delay
         return () => clearTimeout(timer);
-    }, [campaignData, campaignId, saveDraft]);
+    }, [campaignData, campaignId, saveDraft, isDirty]);
 
     const updateData = (section, data) => {
+        setIsDirty(true);
         setCampaignData(prev => ({
             ...prev,
             [section]: { ...prev[section], ...data }
@@ -92,7 +101,7 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
                         <input
                             type="text"
                             value={campaignData.name}
-                            onChange={(e) => setCampaignData(prev => ({ ...prev, name: e.target.value }))}
+                            onChange={(e) => { setIsDirty(true); setCampaignData(prev => ({ ...prev, name: e.target.value })); }}
                             className="w-full text-lg font-black text-slate-900 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none transition-all pb-1 truncate placeholder-slate-300"
                             placeholder="Enter campaign name..."
                         />

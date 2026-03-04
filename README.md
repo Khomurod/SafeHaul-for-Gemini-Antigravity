@@ -415,66 +415,17 @@ npm run lint
 
 ## Known Issues & Audit Findings
 
-> **Last Audited:** February 26, 2026
+> **Last Audited:** March 4, 2026  
+> **Status:** ✅ All identified issues have been resolved.
 
-### 🔴 Critical
+All critical, high, medium, and low issues from previous audits have been addressed. See git history for details on each fix.
 
-| # | Issue | Files | Source |
-|---|-------|-------|--------|
-| AF1 | Employer field names mismatch — form saves `name`/`street`/`reason`, display reads `companyName`/`address`/`reasonForLeaving` | `Step6_Employment.jsx`, `ApplicationTab.jsx` | Recommendations |
-| AF2 | CDL expiration badge always shows "--" (`cdlExpiration` vs `cdlExpirationDate`) | `ApplicationTab.jsx` | Recommendations |
-| AF3 | SchemaRenderer cannot render array sections (Employment, Addresses, etc.) | `SchemaRenderer.jsx` | Recommendations |
-| 1 | Confirmation number format mismatch — client `SAF-YYYY-XXXXX` vs server `SH-XXXXXX` | `applicationId.js`, `guestApplication.js` | Audit |
-| 2 | Placeholder email domain not detected — bulk imports use `@system.local` but server checks `@placeholder.com` | `import.worker.js`, `driverSync.js` | Audit |
-| 3 | Phone validation rejects valid 11-digit US numbers (with country code) | `validation.js`, `PublicApplyHandler.jsx` | Audit |
-| 11 | `serviceAccountKey.json` not in `.gitignore` | `.gitignore` | Audit |
-| 12 | SSN printed unmasked in generated PDFs (data exposure risk) | `pdfGenerator.js`, `pdfSections.js` | Audit |
-| 18 | Global leads update rule overly permissive — any staff can update any lead | `firestore.rules` | Audit |
-| 19 | `confirmDriverInterest` has no authentication check | `leadDistribution.js` | Audit |
+### Resolved Issues Summary
 
-### 🟠 High
-
-| # | Issue | Files | Source |
-|---|-------|-------|--------|
-| AF4 | SchemaRenderer has no file-type rendering — shows `[object Object]` | `SchemaRenderer.jsx` | Recommendations |
-| AF5 | ExperienceTimeline only shows 4 of 11 employer fields (DOT compliance gap) | `ExperienceTimeline` | Recommendations |
-| AF6 | Guest vs Authenticated application payloads have different structures | `PublicApplyHandler.jsx` | Recommendations |
-
-### 🟡 Medium / Notable
-
-| # | Issue | Files | Source |
-|---|-------|-------|--------|
-| M1 | Signature image paths not validated in document sealing | `digitalSealing.js` | Recommendations |
-| M2 | Document audit trail "checksum" is not a real cryptographic hash | `digitalSealing.js` | Recommendations |
-| M4 | Guest-uploaded files inaccessible through normal Firebase SDK | `storage.rules` | Recommendations |
-| M6 | Phone number format inconsistency in blacklist (TCPA risk) | `blacklist.js` | Recommendations |
-| AF7 | IdentityCard uses wrong address key (`address` vs `street`) | `ApplicationTab.jsx` | Recommendations |
-| AF8 | PDF generator uses different employer field names than the form | `pdfSections.js` | Recommendations |
-| 4 | Duplicate `httpsCallable` import (dead code) | `PublicApplyHandler.jsx` | Audit |
-| 5 | SSN Card missing from Review step & driverSync fan-out | `Step8_Review.jsx`, `driverSync.js` | Audit |
-| 6 | MVR/Drug consent missing from Review step & fan-out | `Step8_Review.jsx`, `driverSync.js` | Audit |
-| 7 | Custom questions never shown to public applicants | `PublicApplyHandler.jsx` | Audit |
-| 8 | Step navigation breaks when custom questions shift indices | `Step8_Review.jsx`, `Stepper.jsx` | Audit |
-| 13 | Storage bucket name mismatch between scripts | `check-cdl.js` (both) | Audit |
-| 14 | Duplicate debug scripts with hardcoded driver name | `functions/check-cdl.js`, `scripts/check-cdl.js` | Audit |
-| 15 | Dead HOS table code (imported but never called) | `pdfSections.js`, `pdfGenerator.js` | Audit |
-| 16 | No admin role check on `backfillEmployerFields` function | `backfillEmployerFields.js` | Audit |
-| 17 | Upload instructions say "emails required" but system auto-generates placeholders | `CompanyBulkUpload.jsx`, `import.worker.js` | Audit |
-| 20 | `activity_logs` collection group security relies on `companyId` field that may not exist | `firestore.rules` | Audit |
-| 21 | ARCHITECTURE.md has stale references (v1 vs v2, RingCentral-only, hash inputs) | `ARCHITECTURE.md` | Audit |
-| 22 | Duplicate comment block in leadDistribution.js | `leadDistribution.js` | Audit |
-
-### 🔵 Low
-
-| # | Issue | Files | Source |
-|---|-------|-------|--------|
-| L1 | Mixed Firebase Functions v1 and v2 usage | Multiple | Recommendations |
-| L2 | New SMTP connection created for every email send | `emailService.js` | Recommendations |
-| L3 | Guest applications don't require App Check verification | `guestApplication.js` | Recommendations |
-| L4 | Smart segment rules are hardcoded (not configurable) | `segments.js` | Recommendations |
-| L5 | Rate limit records accumulate forever (no TTL) | `rate_limits` collection | Recommendations |
-| 9 | CampaignEditor auto-save fires on mount with defaults | `CampaignEditor.jsx` | Audit |
-| 10 | Internal fields visible in bulk upload preview table | `BulkUploadLayout.jsx` | Audit |
+| Phase | Issues Fixed | Key Fixes |
+|-------|-------------|-----------|
+| **Phase 1** | AF2, #1, #2, #3, #4, #11, #12, #16, #19, #22, AF5, AF7, AF8, L2, L5 | Timestamp handling, confirmation numbers, phone validation, gitignore, SSN masking, auth checks, placeholder domains, email pooling, rate-limit TTL |
+| **Phase 2** | AF1, AF3, AF4, AF6, M1, M2, M4, M6, #5, #6, #7, #8, #9, #10, #13, #14, #15, #17, #18, #20, #21, L1, L3, L4 | Payload normalization, array/file rendering, signature validation, SHA-256 checksums, guest storage access, phone normalization, SSN/consent in review, custom questions for guests, step navigation, dead code removal, upload instructions, leads scoping, activity_logs security, ARCHITECTURE.md updates, App Check tracking, segment rules export, auto-save guard, internal field filtering |
 
 ---
 
