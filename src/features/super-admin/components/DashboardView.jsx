@@ -1,6 +1,6 @@
 import React from 'react';
 import { Building, Users, FileText } from 'lucide-react';
-import { DistributionControl } from './DistributionControl';
+
 
 function StatCard({ title, value, icon, loading, hasError }) {
   let displayValue = value;
@@ -50,8 +50,6 @@ export function DashboardView({ stats, statsLoading, statsError }) {
         />
       </div>
 
-      {/* Distribution Control Panel */}
-      <DistributionControl />
     </div>
   );
 }

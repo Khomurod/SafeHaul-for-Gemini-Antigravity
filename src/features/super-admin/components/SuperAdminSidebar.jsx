@@ -3,13 +3,12 @@ import {
   Building,
   Users,
   FileText,
-  Database,
-  Plus,
   Layers,
+  Plus,
   BarChart3,
   Activity,
   MessageSquare,
-  RefreshCw, // For Stats Backfill
+  RefreshCw,
 } from "lucide-react";
 
 function NavItem({ label, icon, isActive, onClick }) {
@@ -58,12 +57,6 @@ export function SuperAdminSidebar({
         onClick={() => handleNavClick("analytics")}
       />
 
-      <NavItem
-        label="Lead Pool"
-        icon={<Database size={20} />}
-        isActive={activeView === "lead-pool" && !isSearching}
-        onClick={() => handleNavClick("lead-pool")}
-      />
 
       <div className="my-2 border-t border-gray-100"></div>
 
@@ -125,12 +118,7 @@ export function SuperAdminSidebar({
 
       <div className="my-2 border-t border-gray-100"></div>
 
-      <NavItem
-        label="Bulk Lead Adding"
-        icon={<Database size={20} />}
-        isActive={activeView === "bulk-lead-adding" && !isSearching}
-        onClick={() => handleNavClick("bulk-lead-adding")}
-      />
+
       <NavItem
         label="Create New"
         icon={<Plus size={20} />}

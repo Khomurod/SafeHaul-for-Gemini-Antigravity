@@ -6,13 +6,13 @@ import { GlobalSearchResults } from './GlobalSearchResults.jsx';
 import { DashboardView } from './DashboardView.jsx';
 import { CompaniesView } from './CompaniesView.jsx';
 import { UsersView } from './UsersView.jsx';
-import { BulkLeadAddingView } from './BulkLeadAddingView.jsx';
+
 import { CreateView } from './CreateView.jsx';
 import { FeaturesView } from './FeaturesView.jsx';
 import { SystemHealthView } from './SystemHealthView.jsx';
 import { IntegrationManager } from './integrations/IntegrationManager.jsx';
 import StatsBackfillPanel from './StatsBackfillPanel.jsx';
-import { LeadPoolView } from './LeadPoolView.jsx';
+
 
 // --- Views from Parent Directory ---
 import { AnalyticsView } from '../views/AnalyticsView.jsx';
@@ -79,10 +79,7 @@ export function ViewRouter({
             return (
                 <AnalyticsView />
             );
-        case 'lead-pool':
-            return (
-                <LeadPoolView onDataUpdate={onDataUpdate} />
-            );
+
         case 'companies':
             return (
                 <CompaniesView
@@ -129,13 +126,7 @@ export function ViewRouter({
             return (
                 <SystemHealthView />
             );
-        case 'bulk-lead-adding':
-            return (
-                <BulkLeadAddingView
-                    onDataUpdate={onDataUpdate}
-                    onClose={() => setActiveView('dashboard')}
-                />
-            );
+
         case 'create':
             return (
                 <CreateView

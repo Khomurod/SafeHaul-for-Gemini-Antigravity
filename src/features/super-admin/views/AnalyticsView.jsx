@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { 
-     BarChart3, Download, Calendar, Users, Phone, 
-     FileText, Zap, TrendingUp, ArrowUpRight, User 
+import {
+    BarChart3, Download, Calendar, Users, Phone,
+    FileText, Zap, TrendingUp, ArrowUpRight, User
 } from 'lucide-react';
 import { useAnalytics } from '@features/analytics';
-import LeadInventoryWidget from '../components/LeadInventoryWidget'; // <--- NEW IMPORT
+
 
 // --- HELPER COMPONENTS (PRESERVED) ---
 
@@ -45,28 +45,28 @@ function ActivityTrendChart({ data }) {
         <div className="w-full h-64 overflow-hidden">
             <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
                 {[0, 0.25, 0.5, 0.75, 1].map(tick => (
-                    <line 
+                    <line
                         key={tick}
-                        x1={padding} 
-                        y1={height - (tick * (height - padding * 2)) - padding} 
-                        x2={width - padding} 
-                        y2={height - (tick * (height - padding * 2)) - padding} 
-                        stroke="#f3f4f6" 
-                        strokeWidth="1" 
-                     />
+                        x1={padding}
+                        y1={height - (tick * (height - padding * 2)) - padding}
+                        x2={width - padding}
+                        y2={height - (tick * (height - padding * 2)) - padding}
+                        stroke="#f3f4f6"
+                        strokeWidth="1"
+                    />
                 ))}
-                <polyline 
-                     fill="none" 
-                     stroke="#2563eb" 
-                     strokeWidth="3" 
-                     points={points} 
-                     strokeLinecap="round" 
-                     strokeLinejoin="round" 
+                <polyline
+                    fill="none"
+                    stroke="#2563eb"
+                    strokeWidth="3"
+                    points={points}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                 />
-                <polygon 
-                     fill="url(#gradient)" 
-                     points={`${padding},${height-padding} ${points} ${width-padding},${height-padding}`} 
-                     opacity="0.1" 
+                <polygon
+                    fill="url(#gradient)"
+                    points={`${padding},${height - padding} ${points} ${width - padding},${height - padding}`}
+                    opacity="0.1"
                 />
                 <defs>
                     <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
@@ -75,8 +75,8 @@ function ActivityTrendChart({ data }) {
                     </linearGradient>
                 </defs>
                 <text x={padding} y={height} className="text-[10px] fill-gray-400">{data[0]?.date}</text>
-                <text x={width/2} y={height} className="text-[10px] fill-gray-400 text-anchor-middle">{data[Math.floor(data.length/2)]?.date}</text>
-                <text x={width-padding} y={height} className="text-[10px] fill-gray-400 text-anchor-end">{data[data.length-1]?.date}</text>
+                <text x={width / 2} y={height} className="text-[10px] fill-gray-400 text-anchor-middle">{data[Math.floor(data.length / 2)]?.date}</text>
+                <text x={width - padding} y={height} className="text-[10px] fill-gray-400 text-anchor-end">{data[data.length - 1]?.date}</text>
             </svg>
         </div>
     );
@@ -135,21 +135,20 @@ export function AnalyticsView() {
                 <div className="flex gap-2">
                     <div className="flex bg-gray-100 p-1 rounded-lg">
                         {['7d', '30d', '90d'].map(range => (
-                            <button 
+                            <button
                                 key={range}
                                 onClick={() => setDateRange(range)}
-                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-                                    dateRange === range 
-                                     ? 'bg-white text-blue-700 shadow-sm' 
-                                     : 'text-gray-500 hover:text-gray-700'
-                                }`}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${dateRange === range
+                                        ? 'bg-white text-blue-700 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
                             >
                                 {range.toUpperCase()}
                             </button>
                         ))}
                     </div>
 
-                    <button 
+                    <button
                         onClick={handleExport}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition shadow-sm"
                     >
@@ -160,36 +159,36 @@ export function AnalyticsView() {
 
             {/* 2. NEW: LEAD INVENTORY WIDGET */}
             <div className="shrink-0">
-                <LeadInventoryWidget />
+
             </div>
 
             {/* 3. Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-                <SummaryCard 
-                    title="Total Calls" 
-                    value={stats.summary.totalCalls} 
-                    icon={Phone} 
+                <SummaryCard
+                    title="Total Calls"
+                    value={stats.summary.totalCalls}
+                    icon={Phone}
                     colorClass="bg-blue-100 text-blue-600"
                     trend="Real-time"
                 />
-                <SummaryCard 
-                    title="Active Companies" 
-                    value={stats.companyPerformance.length} 
-                    icon={Users} 
+                <SummaryCard
+                    title="Active Companies"
+                    value={stats.companyPerformance.length}
+                    icon={Users}
                     colorClass="bg-purple-100 text-purple-600"
                     trend="Active"
                 />
-                <SummaryCard 
-                    title="Active Recruiters" 
-                    value={stats.summary.activeRecruiters} 
-                    icon={User} 
+                <SummaryCard
+                    title="Active Recruiters"
+                    value={stats.summary.activeRecruiters}
+                    icon={User}
                     colorClass="bg-orange-100 text-orange-600"
                     trend="This Period"
                 />
-                <SummaryCard 
-                    title="Platform Health" 
-                    value="100%" 
-                    icon={Zap} 
+                <SummaryCard
+                    title="Platform Health"
+                    value="100%"
+                    icon={Zap}
                     colorClass="bg-yellow-100 text-yellow-600"
                     trend="Operational"
                 />
@@ -198,19 +197,19 @@ export function AnalyticsView() {
             {/* 4. Tabs & Content */}
             <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
                 <div className="flex border-b border-gray-200 px-6 pt-2 overflow-x-auto">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('overview')}
                         className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                     >
                         Activity Overview
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('companies')}
                         className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'companies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                     >
                         Company Performance
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('users')}
                         className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                     >
@@ -243,8 +242,8 @@ export function AnalyticsView() {
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <div className="h-2 w-24 bg-gray-100 rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-blue-500 rounded-full" 
+                                                        <div
+                                                            className="h-full bg-blue-500 rounded-full"
                                                             style={{ width: `${(comp.callsMade / (stats.summary.totalCalls || 1)) * 100}%` }}
                                                         ></div>
                                                     </div>
@@ -298,11 +297,10 @@ export function AnalyticsView() {
                                             <td className="px-6 py-4 text-center text-gray-600">{comp.callsMade}</td>
                                             <td className="px-6 py-4 text-center text-gray-600">{comp.actions}</td>
                                             <td className="px-6 py-4 text-right">
-                                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold ${
-                                                    comp.callsMade > 20 
-                                                        ? 'bg-green-100 text-green-700' 
+                                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold ${comp.callsMade > 20
+                                                        ? 'bg-green-100 text-green-700'
                                                         : 'bg-yellow-100 text-yellow-700'
-                                                }`}>
+                                                    }`}>
                                                     {comp.callsMade > 20 ? 'High' : 'Low'} <ArrowUpRight size={12} />
                                                 </span>
                                             </td>
@@ -336,8 +334,8 @@ export function AnalyticsView() {
                                             <td className="px-6 py-4 text-gray-600">{user.companyName}</td>
                                             <td className="px-6 py-4 text-center text-blue-600 font-mono font-bold">{user.callsMade}</td>
                                             <td className="px-6 py-4 text-right text-sm text-gray-500">
-                                                {user.lastActive?.toDate 
-                                                    ? user.lastActive.toDate().toLocaleString() 
+                                                {user.lastActive?.toDate
+                                                    ? user.lastActive.toDate().toLocaleString()
                                                     : 'Unknown'}
                                             </td>
                                         </tr>

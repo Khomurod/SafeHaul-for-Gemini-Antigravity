@@ -27,7 +27,7 @@ exports.checkImportPhones = bulkActions.checkImportPhones;
 const driverSync = require('./driverSync');
 const hrAdmin = require('./hrAdmin');
 const companyAdmin = require('./companyAdmin');
-const leadDistribution = require('./leadDistribution');
+
 const digitalSealing = require('./digitalSealing');
 const notifySigner = require('./notifySigner');
 const publicSigning = require('./publicSigning');
@@ -71,20 +71,7 @@ exports.submitGuestApplication = require('./guestApplication').submitGuestApplic
 exports.sendAutomatedEmail = companyAdmin.sendAutomatedEmail;
 
 
-// 5. Leads & Distribution
-exports.cleanupBadLeads = leadDistribution.cleanupBadLeads;
-exports.handleLeadOutcome = leadDistribution.handleLeadOutcome;
-exports.migrateDriversToLeads = leadDistribution.migrateDriversToLeads;
-exports.confirmDriverInterest = leadDistribution.confirmDriverInterest;
-exports.runLeadDistribution = leadDistribution.runLeadDistribution;
 
-exports.distributeDailyLeads = leadDistribution.distributeDailyLeads;
-exports.getLeadSupplyAnalytics = leadDistribution.getLeadSupplyAnalytics;
-// Lead Pool Management (new)
-exports.recallAllPlatformLeads = leadDistribution.recallAllPlatformLeads;
-exports.forceUnlockPool = leadDistribution.forceUnlockPool;
-exports.getBadLeadsAnalytics = leadDistribution.getBadLeadsAnalytics;
-exports.getCompanyDistributionStatus = leadDistribution.getCompanyDistributionStatus;
 
 // 6. System Integrity
 exports.syncSystemStructure = systemIntegrity.syncSystemStructure;
@@ -132,8 +119,7 @@ exports.onActivityLogCreated = statsAggregator.onActivityLogCreated;
 exports.onLegacyActivityCreated = statsAggregator.onLegacyActivityCreated;
 exports.onLeadsActivityLogCreated = statsAggregator.onLeadsActivityLogCreated; // NEW: Leads trigger
 
-// 12. Cloud Tasks Worker
-exports.processCompanyDistribution = require('./workers/distributeWorker').processCompanyDistribution;
+
 
 // 13. Stats Backfill (Admin Tools)
 const statsBackfill = require('./statsBackfill');
