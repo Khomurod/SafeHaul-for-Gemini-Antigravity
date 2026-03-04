@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { DataProvider, useData } from '@/context/DataContext';
 import { ToastProvider, ErrorBoundary, GlobalLoadingState } from '@shared/components/feedback';
 import { QueueStatusIndicator } from '@shared/components/feedback/QueueStatusIndicator';
+import { DiscontinuedLeadsPopup } from '@shared/components/modals/DiscontinuedLeadsPopup';
 
 // Keep Auth screens eager-loaded as they are the entry point
 import { LoginScreen, TeamMemberSignup } from '@features/auth';
@@ -151,6 +152,7 @@ export default function App() {
             <AppRoutes />
             {/* Bulletproof: Show queue/offline status indicator */}
             <QueueStatusIndicator />
+            <DiscontinuedLeadsPopup />
           </Router>
         </DataProvider>
       </ToastProvider>
