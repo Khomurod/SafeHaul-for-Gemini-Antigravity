@@ -4,7 +4,7 @@ import { DashboardToolbar } from '@features/companies/components/DashboardToolba
 import { ModernDriverTable } from '@shared/components/table';
 import { useData } from '@/context/DataContext';
 import { useToast } from '@shared/components/feedback/ToastProvider';
-import { SafeHaulLeadsDriverModal } from '@shared/components/modals/SafeHaulLeadsDriverModal';
+
 import { CallOutcomeModal } from '@shared/components/modals/CallOutcomeModal';
 import { LeadAssignmentModal } from '../components/LeadAssignmentModal';
 import { DriverProfileModal } from '../components/modals/driver-dossier/DriverProfileModal';
@@ -137,15 +137,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
     // ── Modals ──
     const renderSelectedModal = () => {
         if (!selectedApp) return null;
-        if (scope === 'find_driver' || selectedApp.isPlatformLead) {
-            return (
-                <SafeHaulLeadsDriverModal
-                    lead={selectedApp}
-                    onClose={() => setSelectedApp(null)}
-                    onCallStart={() => handlePhoneClick(null, selectedApp)}
-                />
-            );
-        }
+
         return (
             <DriverProfileModal
                 key={selectedApp.id}
@@ -160,14 +152,14 @@ export const CompanyCandidatesListPage = ({ scope }) => {
     const getPageTitle = () => {
         switch (scope) {
             case 'applications': return 'Driver Applications';
-            case 'find_driver': return 'SafeHaul Leads';
+
             case 'company_leads': return 'Company Leads';
             case 'my_leads': return 'My Leads';
             default: return 'Candidates';
         }
     };
 
-    const canAssign = isCompanyAdmin && (scope === 'find_driver' || scope === 'company_leads');
+    const canAssign = isCompanyAdmin && (scope === 'company_leads');
 
     // ── Column Config ──
     const columns = useMemo(() => {
@@ -180,28 +172,19 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                     const name = item.fullName
                         ? toTitleCase(item.fullName)
                         : toTitleCase(`${item.firstName || 'Unknown'} ${item.lastName || 'Driver'}`.trim());
-                    const isSafeHaul = item.isPlatformLead === true;
 
                     return (
                         <div className="min-w-[200px]">
                             <div className="flex items-center gap-2">
                                 <p className="text-sm font-semibold text-slate-900">{name}</p>
-                                {isSafeHaul && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 uppercase">
-                                        <Zap size={9} className="mr-0.5 fill-purple-700" /> Lead
-                                    </span>
-                                )}
                             </div>
                             <div className="mt-1">
                                 <button
                                     onClick={(e) => handlePhoneClick(e, item)}
-                                    className={`text-xs rounded px-2 py-0.5 inline-flex items-center gap-1 transition-colors border ${isSafeHaul
-                                        ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
-                                        : 'text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                                        }`}
+                                    className="text-xs rounded px-2 py-0.5 inline-flex items-center gap-1 transition-colors border text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700"
                                 >
-                                    {isSafeHaul ? <Lock size={10} /> : <Phone size={11} />}
-                                    {isSafeHaul ? 'Click to contact' : formatPhoneNumber(getFieldValue(item.phone))}
+                                    <Phone size={11} />
+                                    {formatPhoneNumber(getFieldValue(item.phone))}
                                 </button>
                             </div>
                         </div>
@@ -212,19 +195,19 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         ];
 
         // Status — hidden for SafeHaul Leads
-        if (scope !== 'find_driver') {
-            cols.push({
-                key: 'status',
-                header: 'Status',
-                headerClassName: 'text-center',
-                cellClassName: 'text-center',
-                render: (item) => (
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusPillStyle(item.status)}`}>
-                        {item.status || 'New'}
-                    </span>
-                ),
-            });
-        }
+
+        cols.push({
+            key: 'status',
+            header: 'Status',
+            headerClassName: 'text-center',
+            cellClassName: 'text-center',
+            render: (item) => (
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusPillStyle(item.status)}`}>
+                    {item.status || 'New'}
+                </span>
+            ),
+        });
+
 
         // Qualifications: Position + Type + Experience + State
         cols.push({

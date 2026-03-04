@@ -69,7 +69,7 @@ export const CompanySidebar = () => {
       icon: Users,
       children: [
         { label: 'Applications', path: '/company/drivers/applications', icon: FileText },
-        { label: 'SafeHaul Leads', path: '/company/drivers/leads/safehaul', icon: Truck },
+
         { label: 'Company Leads', path: '/company/drivers/leads/company', icon: Building2 },
         { label: 'My Leads', path: '/company/drivers/leads/my', icon: User },
         { label: 'Pipeline', path: '/company/drivers/pipeline', icon: GitBranch },

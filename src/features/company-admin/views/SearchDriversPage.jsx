@@ -30,10 +30,10 @@ export const SearchDriversPage = () => {
                         Please contact your account representative to unlock this feature.
                     </p>
                     <button
-                        onClick={() => navigate('/company/drivers/leads/safehaul')}
+                        onClick={() => navigate('/company/dashboard')}
                         className="w-full py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
                     >
-                        Browse SafeHaul Leads Instead
+                        Back to Dashboard
                     </button>
                 </div>
             </div>

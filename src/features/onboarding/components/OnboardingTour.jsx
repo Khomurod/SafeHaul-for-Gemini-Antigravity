@@ -14,12 +14,7 @@ const TOUR_STEPS = [
     content: "View full applications submitted directly to your company here.",
     position: 'bottom'
   },
-  {
-    target: 'stat-card-find_driver',
-    title: "SafeHaul Leads",
-    content: "Access our exclusive pool of high-intent drivers. These leads are time-sensitive!",
-    position: 'bottom'
-  },
+
   {
     target: 'stat-card-company_leads',
     title: "Imported Leads",
@@ -64,10 +59,10 @@ export function OnboardingTour({ onComplete }) {
       }
 
       if (left < 10) left = 10;
-      
+
       setCoords({ top, left });
       setIsVisible(true);
-      
+
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
       console.warn(`Target ${stepData.target} not found, skipping.`);
@@ -101,7 +96,7 @@ export function OnboardingTour({ onComplete }) {
     <div className="fixed inset-0 z-[100] pointer-events-none">
       {isCenter && <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity duration-500" />}
 
-      <div 
+      <div
         className={`absolute pointer-events-auto bg-white rounded-xl shadow-2xl border border-blue-100 p-6 w-80 transition-all duration-500 ease-in-out ${isCenter ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2' : ''}`}
         style={!isCenter ? { top: coords.top, left: coords.left } : {}}
       >
@@ -129,14 +124,14 @@ export function OnboardingTour({ onComplete }) {
         <div className="flex justify-between items-center relative z-10">
           <div className="flex gap-1">
             {TOUR_STEPS.map((_, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className={`w-2 h-2 rounded-full transition-colors ${idx === currentStep ? 'bg-blue-600' : 'bg-gray-200'}`}
               />
             ))}
           </div>
-          
-          <button 
+
+          <button
             onClick={handleNext}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5"
           >

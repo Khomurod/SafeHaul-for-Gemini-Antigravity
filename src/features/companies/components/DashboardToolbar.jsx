@@ -10,89 +10,7 @@ const DRIVER_TYPE_OPTIONS = [
     "Intermodal", "Power Only", "Hotshot"
 ];
 
-// --- SECTION TIMER COMPONENT ---
-// M5 FIX: Now fetches rotationEndsAt from system_settings instead of local 7AM calculation
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '@lib/firebase';
 
-function BatchTimer({ startTime }) {
-    const [timeLeft, setTimeLeft] = useState('--:--:--');
-    const [isUrgent, setIsUrgent] = useState(false);
-    const [status, setStatus] = useState('pending'); // pending, active, expired
-    const [rotationEndsAt, setRotationEndsAt] = useState(null);
-
-    // Listen to system_settings/distribution for rotationEndsAt
-    useEffect(() => {
-        const unsub = onSnapshot(doc(db, 'system_settings', 'distribution'), (snap) => {
-            if (snap.exists() && snap.data().rotationEndsAt) {
-                setRotationEndsAt(snap.data().rotationEndsAt.toDate());
-            }
-        });
-        return () => unsub();
-    }, []);
-
-    useEffect(() => {
-        if (!rotationEndsAt) {
-            setStatus('pending');
-            return;
-        }
-
-        const calculate = () => {
-            const now = new Date();
-            const diff = rotationEndsAt.getTime() - now.getTime();
-
-            if (diff <= 0) {
-                setTimeLeft("00:00:00");
-                setIsUrgent(true);
-                setStatus('expired');
-            } else {
-                setStatus('active');
-                const hours = Math.floor(diff / (1000 * 60 * 60));
-                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-                const h = hours.toString().padStart(2, '0');
-                const m = minutes.toString().padStart(2, '0');
-                const s = seconds.toString().padStart(2, '0');
-                setTimeLeft(`${h}:${m}:${s}`);
-                setIsUrgent(hours < 4);
-            }
-        };
-
-        calculate();
-        const interval = setInterval(calculate, 1000);
-        return () => clearInterval(interval);
-    }, [rotationEndsAt]);
-
-    // Render based on status
-    if (status === 'pending') {
-        return (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-500 text-xs font-medium" title="Waiting for Super Admin to trigger distribution">
-                <Clock size={14} />
-                <span>Next Batch: Pending</span>
-            </div>
-        );
-    }
-
-    if (status === 'expired') {
-        return (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-orange-200 bg-orange-50 text-orange-700 text-xs font-bold animate-pulse">
-                <RefreshCw size={14} className="animate-spin" />
-                <span>Rotation In Progress...</span>
-            </div>
-        );
-    }
-
-    return (
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-mono font-bold shadow-sm transition-colors duration-500
-            ${isUrgent ? 'bg-red-50 text-red-600 border-red-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}
-            title="Time remaining until these leads rotate to another company"
-        >
-            <Clock size={16} className={isUrgent ? "animate-pulse" : ""} />
-            <span>{timeLeft}</span>
-        </div>
-    );
-}
 
 export const DashboardToolbar = memo(function DashboardToolbar({
     activeTab,
@@ -119,7 +37,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     const getTabTitle = () => {
         switch (activeTab) {
             case 'applications': return 'Direct Applications';
-            case 'find_driver': return 'SafeHaul Network Leads';
+
             case 'company_leads': return 'Imported Company Leads';
             case 'my_leads': return 'My Assigned Drivers';
             default: return 'Drivers';
@@ -143,7 +61,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                 <div className="flex items-center gap-4 flex-wrap">
                     <div>
                         <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            {activeTab === 'find_driver' && <Zap size={18} className="text-purple-600 fill-purple-100" />}
+
                             {activeTab === 'company_leads' && <Briefcase size={18} className="text-orange-600" />}
                             {getTabTitle()}
                         </h2>
@@ -152,20 +70,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                         </p>
                     </div>
 
-                    {/* Info Button & Timer for SafeHaul Leads Tab */}
-                    {activeTab === 'find_driver' && (
-                        <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-                            <BatchTimer startTime={latestBatchTime} />
 
-                            <button
-                                onClick={onShowSafeHaulInfo}
-                                className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-colors"
-                                title="How SafeHaul Leads Work"
-                            >
-                                <Info size={18} />
-                            </button>
-                        </div>
-                    )}
 
                     {/* NEW ASSIGN BUTTON */}
                     {canAssign && selectedCount > 0 && (

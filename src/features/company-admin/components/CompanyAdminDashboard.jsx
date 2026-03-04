@@ -103,15 +103,7 @@ export function CompanyAdminDashboard() {
                         onClick={() => navigate('/company/drivers/applications')}
                         active={false}
                     />
-                    <StatCard
-                        id="stat-card-find_driver"
-                        title="SafeHaul Leads"
-                        value={dashboard.counts?.platformLeads || 0}
-                        icon={<Zap size={20} />}
-                        colorClass="ring-purple-500 bg-purple-500"
-                        onClick={() => navigate('/company/drivers/leads/safehaul')}
-                        active={false}
-                    />
+
                     <StatCard
                         id="stat-card-company_leads"
                         title="Company Leads"
@@ -170,7 +162,7 @@ export function CompanyAdminDashboard() {
                     onClose={() => setShowFeatureLocked(false)}
                     onGoToLeads={() => {
                         setShowFeatureLocked(false);
-                        navigate('/company/drivers/leads/safehaul');
+                        navigate('/company/drivers/applications');
                     }}
                     featureName="Search For Drivers"
                 />

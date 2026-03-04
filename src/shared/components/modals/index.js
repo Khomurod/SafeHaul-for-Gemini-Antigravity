@@ -5,7 +5,6 @@ export { FeatureLockedModal } from './FeatureLockedModal';
 export { CallOutcomeModal } from './CallOutcomeModal';
 export { CallOutcomeModalUI } from './CallOutcomeModalUI';
 export { ManageTeamModal } from './ManageTeamModal';
-export { SafeHaulInfoModal } from './SafeHaulInfoModal';
-export { SafeHaulLeadsDriverModal } from './SafeHaulLeadsDriverModal';
+
 export { MoveApplicationModal, DeleteConfirmModal } from './ApplicationModals';
 export { RoleSelectionModal } from './RoleSelectionModal';
