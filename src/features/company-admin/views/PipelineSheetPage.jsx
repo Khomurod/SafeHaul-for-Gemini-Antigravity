@@ -330,6 +330,9 @@ export function PipelineSheetPage() {
             <th className="w-[140px] px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
                 Last Checked
             </th>
+            <th className="w-[120px] px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                Added Date
+            </th>
             <th className="w-[50px] px-3 py-3 border-b border-gray-200" />
         </tr>
     );
@@ -408,6 +411,21 @@ export function PipelineSheetPage() {
                             Stale — 24h+
                         </div>
                     )}
+                </td>
+
+                {/* Added Date */}
+                <td className={`px-2 py-1 border-b border-gray-100 text-sm text-gray-600 ${getRowBg(entry.hiringStage)}`}>
+                    {(() => {
+                        const ts = entry.createdAt;
+                        if (!ts) return <span className="text-gray-400 italic">—</span>;
+                        try {
+                            const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+                            if (isNaN(d.getTime())) return <span className="text-gray-400 italic">—</span>;
+                            return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+                        } catch {
+                            return <span className="text-gray-400 italic">—</span>;
+                        }
+                    })()}
                 </td>
 
                 {/* Delete */}

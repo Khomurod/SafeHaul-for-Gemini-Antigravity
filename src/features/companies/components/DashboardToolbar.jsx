@@ -1,7 +1,7 @@
 // src/features/companies/components/DashboardToolbar.jsx
 
 import React, { useState, useEffect, useMemo, memo } from 'react';
-import { Search, Filter, X, Zap, Briefcase, Info, Clock, RefreshCw, Users } from 'lucide-react';
+import { Search, Filter, X, Zap, Briefcase, Info, Clock, RefreshCw, Users, Calendar } from 'lucide-react';
 
 // --- CONFIGURATION ---
 const DRIVER_TYPE_OPTIONS = [
@@ -49,7 +49,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     };
 
     const hasActiveFilters = useMemo(() => {
-        return filters && (filters.state || filters.driverType || filters.dob || filters.assignee);
+        return filters && (filters.state || filters.driverType || filters.dob || filters.assignee || filters.dateSort || filters.dateFilter);
     }, [filters]);
 
 
@@ -118,7 +118,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
             {/* --- Filter Panel --- */}
             {showFilters && (
                 <div className="pt-3 pb-1 border-t border-dashed border-gray-200 animate-in slide-in-from-top-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
 
                         {/* Filter: Driver Type */}
                         <div>
@@ -162,15 +162,44 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                             </select>
                         </div>
 
-                        {/* Clear Button */}
-                        <div className="flex items-end">
-                            <button
-                                onClick={clearFilters}
-                                className="w-full p-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                        {/* Sort: Date Order */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                <span className="flex items-center gap-1"><Calendar size={11} /> Sort by Date</span>
+                            </label>
+                            <select
+                                className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={filters?.dateSort || ''}
+                                onChange={(e) => handleFilterChange('dateSort', e.target.value)}
                             >
-                                <X size={14} /> Clear Filters
-                            </button>
+                                <option value="">Default</option>
+                                <option value="latest">Latest First</option>
+                                <option value="earliest">Earliest First</option>
+                            </select>
                         </div>
+
+                        {/* Filter: Specific Date */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                <span className="flex items-center gap-1"><Calendar size={11} /> Filter by Date</span>
+                            </label>
+                            <input
+                                type="date"
+                                className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={filters?.dateFilter || ''}
+                                onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
+                            />
+                        </div>
+
+                    </div>
+                    {/* Clear Button — full width below filters */}
+                    <div className="mt-3">
+                        <button
+                            onClick={clearFilters}
+                            className="w-full sm:w-auto px-4 p-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <X size={14} /> Clear All Filters
+                        </button>
                     </div>
                 </div>
             )}

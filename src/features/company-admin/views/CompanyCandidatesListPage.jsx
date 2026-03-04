@@ -9,7 +9,7 @@ import { CallOutcomeModal } from '@shared/components/modals/CallOutcomeModal';
 import { LeadAssignmentModal } from '../components/LeadAssignmentModal';
 import { DriverProfileModal } from '../components/modals/driver-dossier/DriverProfileModal';
 import {
-    Phone, Lock, Zap, User, Briefcase, MapPin
+    Phone, Lock, Zap, User, Briefcase, MapPin, Calendar
 } from 'lucide-react';
 import { getFieldValue, formatPhoneNumber, toTitleCase } from '@shared/utils/helpers';
 
@@ -45,6 +45,18 @@ const getOutcomePillStyle = (outcome) => {
     return 'bg-slate-50 text-slate-500 border-slate-100';
 };
 
+// ── Format Firestore timestamp to MM/DD/YYYY ──
+const formatAddedDate = (item) => {
+    const ts = item.submittedAt || item.createdAt || item.distributedAt;
+    if (!ts) return null;
+    try {
+        const date = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+        if (isNaN(date.getTime())) return null;
+        return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    } catch {
+        return null;
+    }
+};
 
 export const CompanyCandidatesListPage = ({ scope }) => {
     const { currentCompanyProfile, currentUserClaims } = useData();
@@ -245,6 +257,26 @@ export const CompanyCandidatesListPage = ({ scope }) => {
             },
         });
 
+        // Added Date
+        cols.push({
+            key: 'addedDate',
+            header: 'Added Date',
+            headerClassName: 'text-center',
+            cellClassName: 'text-center',
+            render: (item) => {
+                const dateStr = formatAddedDate(item);
+                if (!dateStr) {
+                    return <span className="text-[10px] text-slate-300 italic">—</span>;
+                }
+                return (
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-600 font-medium">
+                        <Calendar size={11} className="text-slate-400" />
+                        {dateStr}
+                    </span>
+                );
+            },
+        });
+
         // Last Call
         cols.push({
             key: 'lastCall',
@@ -330,7 +362,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                         filters={dashboard.filters}
                         setFilters={(key, val) => dashboard.setFilters(prev => ({ ...prev, [key]: val }))}
                         clearFilters={() => {
-                            dashboard.setFilters({ state: '', driverType: '', dob: '', assignee: '' });
+                            dashboard.setFilters({ state: '', driverType: '', dob: '', assignee: '', dateSort: '', dateFilter: '' });
                             dashboard.setSearchQuery('');
                         }}
                         latestBatchTime={dashboard.latestBatchTime}

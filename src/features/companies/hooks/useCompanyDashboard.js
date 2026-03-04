@@ -45,7 +45,9 @@ export function useCompanyDashboard(companyId) {
         state: '',
         driverType: '',
         dob: '',
-        assignee: ''
+        assignee: '',
+        dateSort: '',
+        dateFilter: ''
     });
 
     // --- Debounce Search ---
@@ -198,7 +200,7 @@ export function useCompanyDashboard(companyId) {
 
             // EXECUTE QUERY
             const snapshot = await getDocs(q);
-            const newData = snapshot.docs.map(doc => {
+            let newData = snapshot.docs.map(doc => {
                 const d = doc.data();
                 return {
                     id: doc.id,
@@ -209,6 +211,34 @@ export function useCompanyDashboard(companyId) {
                     lastCallOutcome: d.lastCallOutcome
                 };
             });
+
+            // --- Client-side date sorting ---
+            if (filters.dateSort) {
+                newData.sort((a, b) => {
+                    const tsA = a.submittedAt?.seconds || a.createdAt?.seconds || a.distributedAt?.seconds || 0;
+                    const tsB = b.submittedAt?.seconds || b.createdAt?.seconds || b.distributedAt?.seconds || 0;
+                    return filters.dateSort === 'latest' ? (tsB - tsA) : (tsA - tsB);
+                });
+            }
+
+            // --- Client-side date filter (specific date) ---
+            if (filters.dateFilter) {
+                const filterDate = new Date(filters.dateFilter + 'T00:00:00');
+                const filterYear = filterDate.getFullYear();
+                const filterMonth = filterDate.getMonth();
+                const filterDay = filterDate.getDate();
+
+                newData = newData.filter(item => {
+                    const ts = item.submittedAt || item.createdAt || item.distributedAt;
+                    if (!ts) return false;
+                    try {
+                        const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+                        return d.getFullYear() === filterYear && d.getMonth() === filterMonth && d.getDate() === filterDay;
+                    } catch {
+                        return false;
+                    }
+                });
+            }
 
             setData(newData);
 
