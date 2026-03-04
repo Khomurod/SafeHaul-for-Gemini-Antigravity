@@ -343,8 +343,14 @@ export function useCompanyDashboard(companyId) {
         lastVisibleDocsRef.current = {};
     };
 
-    const handleSetFilters = (key, value) => {
-        setFilters(prev => ({ ...prev, [key]: value }));
+    const handleSetFilters = (keyOrObj, value) => {
+        if (typeof keyOrObj === 'object' && keyOrObj !== null) {
+            // Full replacement — used by clearFilters
+            setFilters(keyOrObj);
+        } else {
+            // Single key update
+            setFilters(prev => ({ ...prev, [keyOrObj]: value }));
+        }
     };
 
     return {
