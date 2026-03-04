@@ -49,7 +49,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     };
 
     const hasActiveFilters = useMemo(() => {
-        return filters && (filters.state || filters.driverType || filters.dob || filters.assignee || filters.dateSort || filters.dateFilter);
+        return filters && (filters.state || filters.driverType || filters.dob || filters.assignee || filters.dateFilter);
     }, [filters]);
 
 
@@ -118,7 +118,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
             {/* --- Filter Panel --- */}
             {showFilters && (
                 <div className="pt-3 pb-1 border-t border-dashed border-gray-200 animate-in slide-in-from-top-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
 
                         {/* Filter: Driver Type */}
                         <div>
@@ -159,22 +159,6 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                                 {teamMembers.map(m => (
                                     <option key={m.id} value={m.id}>{m.name || m.displayName || m.email}</option>
                                 ))}
-                            </select>
-                        </div>
-
-                        {/* Sort: Date Order */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                <span className="flex items-center gap-1"><Calendar size={11} /> Sort by Date</span>
-                            </label>
-                            <select
-                                className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={filters?.dateSort || ''}
-                                onChange={(e) => handleFilterChange('dateSort', e.target.value)}
-                            >
-                                <option value="">Default</option>
-                                <option value="latest">Latest First</option>
-                                <option value="earliest">Earliest First</option>
                             </select>
                         </div>
 

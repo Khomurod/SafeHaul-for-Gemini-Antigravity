@@ -46,7 +46,6 @@ export function useCompanyDashboard(companyId) {
         driverType: '',
         dob: '',
         assignee: '',
-        dateSort: '',
         dateFilter: ''
     });
 
@@ -211,15 +210,6 @@ export function useCompanyDashboard(companyId) {
                     lastCallOutcome: d.lastCallOutcome
                 };
             });
-
-            // --- Client-side date sorting ---
-            if (filters.dateSort) {
-                newData.sort((a, b) => {
-                    const tsA = a.submittedAt?.seconds || a.createdAt?.seconds || a.distributedAt?.seconds || 0;
-                    const tsB = b.submittedAt?.seconds || b.createdAt?.seconds || b.distributedAt?.seconds || 0;
-                    return filters.dateSort === 'latest' ? (tsB - tsA) : (tsA - tsB);
-                });
-            }
 
             // --- Client-side date filter (specific date) ---
             if (filters.dateFilter) {

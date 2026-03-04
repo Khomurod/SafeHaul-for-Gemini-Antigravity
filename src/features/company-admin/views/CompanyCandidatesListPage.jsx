@@ -9,7 +9,7 @@ import { CallOutcomeModal } from '@shared/components/modals/CallOutcomeModal';
 import { LeadAssignmentModal } from '../components/LeadAssignmentModal';
 import { DriverProfileModal } from '../components/modals/driver-dossier/DriverProfileModal';
 import {
-    Phone, Lock, Zap, User, Briefcase, MapPin, Calendar
+    Phone, Lock, Zap, User, Briefcase, MapPin, Calendar, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { getFieldValue, formatPhoneNumber, toTitleCase } from '@shared/utils/helpers';
 
@@ -74,8 +74,17 @@ export const CompanyCandidatesListPage = ({ scope }) => {
     const [assigningLeads, setAssigningLeads] = useState([]);
     const [selectedRowIds, setSelectedRowIds] = useState([]);
 
-    // Sorting
+    // Sorting — date sort lives here; other sortConfig keys reserved for future use
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+    // Toggle date sort direction on arrow click
+    const handleDateSort = (direction) => {
+        setSortConfig(prev =>
+            prev.key === 'date' && prev.direction === direction
+                ? { key: null, direction: 'asc' }   // clicking same arrow again clears sort
+                : { key: 'date', direction }
+        );
+    };
 
     // Force hook to respect the scope prop
     useEffect(() => {
@@ -257,10 +266,40 @@ export const CompanyCandidatesListPage = ({ scope }) => {
             },
         });
 
-        // Added Date
+        // Added Date — with inline sort arrows
+        const isDateSorted = sortConfig.key === 'date';
         cols.push({
             key: 'addedDate',
-            header: 'Added Date',
+            header: (
+                <span className="inline-flex items-center gap-1.5">
+                    <Calendar size={11} className="text-slate-400" />
+                    Added Date
+                    <span className="inline-flex flex-col gap-0 ml-0.5" onClick={e => e.stopPropagation()}>
+                        {/* Up arrow = Earliest first (asc) */}
+                        <button
+                            onClick={() => handleDateSort('asc')}
+                            title="Earliest first"
+                            className={`leading-none transition-colors ${isDateSorted && sortConfig.direction === 'asc'
+                                ? 'text-blue-600'
+                                : 'text-slate-300 hover:text-slate-500'
+                                }`}
+                        >
+                            <ArrowUp size={10} strokeWidth={2.5} />
+                        </button>
+                        {/* Down arrow = Latest first (desc) */}
+                        <button
+                            onClick={() => handleDateSort('desc')}
+                            title="Latest first"
+                            className={`leading-none transition-colors ${isDateSorted && sortConfig.direction === 'desc'
+                                ? 'text-blue-600'
+                                : 'text-slate-300 hover:text-slate-500'
+                                }`}
+                        >
+                            <ArrowDown size={10} strokeWidth={2.5} />
+                        </button>
+                    </span>
+                </span>
+            ),
             headerClassName: 'text-center',
             cellClassName: 'text-center',
             render: (item) => {
@@ -339,7 +378,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         });
 
         return cols;
-    }, [scope]);
+    }, [scope, sortConfig]);
 
     return (
         <div className="h-full flex flex-col bg-gray-50">
@@ -362,7 +401,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                         filters={dashboard.filters}
                         setFilters={dashboard.setFilters}
                         clearFilters={() => {
-                            dashboard.setFilters({ state: '', driverType: '', dob: '', assignee: '', dateSort: '', dateFilter: '' });
+                            dashboard.setFilters({ state: '', driverType: '', dob: '', assignee: '', dateFilter: '' });
                             dashboard.setSearchQuery('');
                         }}
                         latestBatchTime={dashboard.latestBatchTime}
