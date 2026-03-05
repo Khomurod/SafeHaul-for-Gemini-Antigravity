@@ -22,7 +22,8 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
     };
 
     const cdlUploadConfig = getConfig('cdlUpload', true);
-    const medCardConfig = getConfig('medCardUpload', false);
+    // Keep default in sync with applicationSchema where medical card upload is required.
+    const medCardConfig = getConfig('medCardUpload', true);
 
     const licenseClassOptions = LICENSE_CLASS_OPTIONS;
     const endorsementOptions = ENDORSEMENT_OPTIONS;
@@ -231,6 +232,14 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                             onUpload={handleFileUpload}
                             onChange={(name, fileData) => updateFormData(name, fileData)}
                             required={medCardConfig.required && !formData['medical-card-upload']}
+                        />
+                        <InputField
+                            label="Medical Card Expiration"
+                            id="medical-card-expiration"
+                            name="medCardExpiration"
+                            type="date"
+                            value={formData.medCardExpiration}
+                            onChange={updateFormData}
                         />
                     </div>
                 )}

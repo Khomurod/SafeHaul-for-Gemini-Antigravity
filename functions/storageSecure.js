@@ -79,7 +79,8 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
         return {
             url: url,
             storagePath: finalPath,
-            publicUrl: firebaseUrl // Replaces the raw GCS link
+            publicUrl: firebaseUrl, // Replaces the raw GCS link
+            token: downloadToken
         };
     } catch (e) {
         console.error("Error generating signed URL:", e);
