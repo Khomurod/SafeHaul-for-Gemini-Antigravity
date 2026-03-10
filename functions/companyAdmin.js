@@ -77,6 +77,11 @@ exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
     if (error) throw new HttpsError('invalid-argument', error.message);
     const { companyId, recipientEmail, triggerType, placeholders } = value;
 
+    // SECURITY (SH-002): Enforce company membership — prevent any authenticated user from
+    // sending email as an arbitrary company by supplying a foreign companyId.
+    const { assertCompanyAdmin } = require('./bulkActions/helpers/auth');
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
+
     try {
         const { sendDynamicEmail } = require('./emailService');
 

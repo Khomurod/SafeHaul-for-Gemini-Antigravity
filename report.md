@@ -4,36 +4,33 @@
 
 - Project: `SafeHaul-for-Gemini-Antigravity`
 - Repository root: `C:\Users\Kholmurod\Desktop\SafeHaul-for-Gemini-Antigravity`
-- Audit date: 2026-03-08 (Asia/Tashkent)
+- Audit date: 2026-03-08 (Asia/Tashkent) — last updated 2026-03-10
 - Auditor: Codex (GPT-5 coding agent)
-- Audit type: Read-only full-scale production readiness and security audit
-- Code changes made during audit: None (except creation of this report file)
+- Audit type: Full-scale production readiness and security audit with targeted security remediation
+- Code changes made: Security fixes for SH-001, SH-002, SH-003, SH-005, SH-006, SH-011
 
 ## 2. Executive Summary
 
 ### Final Verdict
 
-**Not production ready.**
+**Not yet production ready** (7 of 11 issues still open).
 
-### Why
+Critical and high security issues SH-001, SH-002, SH-003, SH-005, and SH-006 have been **fixed** in this audit pass.
+SH-011 (secrets in git history) has been partially mitigated (files untracked; history not purged).
 
-The application has multiple **critical and high severity security issues** that can allow:
+Remaining blockers before production launch:
 
-1. Untrusted users to upload files in ways that can be abused.
-2. Any authenticated user to send email as any company.
-3. Privilege escalation by trusting editable profile fields.
-4. Weak integrity controls on guest application writes.
-
-In addition, release quality gates are not reliable:
-
-- Lint is broken/noisy.
-- Tests are not consistently runnable due to framework mismatch.
-- CI does not validate the full app.
-- Production dependency vulnerabilities are present.
+- SH-004: Guest application submission can overwrite records (data integrity)
+- SH-007: Known production dependency vulnerabilities (`jspdf`, `axios`, `fast-xml-parser`)
+- SH-008: Test framework mismatch makes CI unreliable
+- SH-009: Lint pipeline is broken/noisy
+- SH-010: CI validates only part of the system
+- SH-011: `.env` secrets were in git history — **rotate all keys immediately** (see SH-011)
 
 ### Business Risk in Plain Language
 
-If released as-is, the app risks account abuse, unauthorized actions, data tampering, billing spikes (storage abuse), and reputational damage (spoofed outbound email), while also lacking reliable automated checks to catch regressions.
+With the critical security holes patched (email impersonation, storage abuse, privilege escalation, app-check-only writes, webhook forgery), the immediate exploit surface is substantially reduced.  
+However the app should still **not be released** until SH-004 is hardened, SH-007 vulnerabilities are patched, and quality gates (lint, tests, CI) are operational.
 
 ---
 
@@ -83,11 +80,11 @@ Each finding includes:
 
 ---
 
-## SH-001: Guest upload path is too open (Critical)
+## SH-001: Guest upload path is too open (Critical) — **FIXED**
 
 - Severity: **Critical**
 - Category: Access Control / Abuse Prevention
-- Status: Open
+- Status: **Fixed** — `src/storage.rules` line 57 now requires `request.appcheck != null && isValidFile()` for guest upload creation.
 
 ### Plain-language explanation
 
@@ -140,11 +137,11 @@ Right now, strangers can upload files too easily. The system does not require st
 
 ---
 
-## SH-002: Any authenticated user can send email as any company (Critical)
+## SH-002: Any authenticated user can send email as any company (Critical) — **FIXED**
 
 - Severity: **Critical**
 - Category: Authorization
-- Status: Open
+- Status: **Fixed** — `functions/companyAdmin.js` `sendAutomatedEmail` now calls `assertCompanyAdmin(uid, companyId, token)` before sending. A user who is not a member of the target company receives `permission-denied`.
 
 ### Plain-language explanation
 
@@ -189,11 +186,14 @@ The "send automated email" function checks only whether user is logged in, not w
 
 ---
 
-## SH-003: Privilege escalation via editable user profile fields (High)
+## SH-003: Privilege escalation via editable user profile fields (High) — **FIXED**
 
 - Severity: **High**
 - Category: Broken Access Control
-- Status: Open
+- Status: **Fixed** — `functions/bulkActions/helpers/auth.js` `assertCompanyAdmin` now:
+  1. Checks custom claims (immutable, server-set) as the primary fast path.
+  2. Removed the dangerous mutable `users/{uid}` document role/companyId checks.
+  3. Super-admin bypass now reads directly from `admin.auth().getUser()` custom claims, not the user document.
 
 ### Plain-language explanation
 
@@ -283,11 +283,11 @@ Guest submissions use deterministic IDs (based on company/email/phone) and write
 
 ---
 
-## SH-005: Firestore rules allow App Check-only updates to applications (High)
+## SH-005: Firestore rules allow App Check-only updates to applications (High) — **FIXED**
 
 - Severity: **High**
 - Category: Security Rules Misconfiguration
-- Status: Open
+- Status: **Fixed** — `src/firestore.rules` removed the `request.appcheck != null && isDeterministicApplicationId(...)` update path. Application documents can now only be updated by company team members, the application owner (signed-in), or a super admin.
 
 ### Plain-language explanation
 
@@ -325,11 +325,14 @@ Some updates are allowed just because request has App Check, even without user i
 
 ---
 
-## SH-006: Legacy Facebook webhook fallback is weak (High)
+## SH-006: Legacy Facebook webhook fallback is weak (High) — **FIXED**
 
 - Severity: **High**
 - Category: Webhook Authentication
-- Status: Open
+- Status: **Fixed** — `functions/integrations/facebook.js`:
+  1. Removed hardcoded fallback `'safehaul_verify_123'` verify token.
+  2. Webhook now fails-closed (HTTP 500) if either `FACEBOOK_APP_SECRET_VALUE` or `FACEBOOK_VERIFY_TOKEN_VALUE` is not configured.
+  3. HMAC signature check is always enforced on POST — no longer conditional on `APP_SECRET` being set (because it is now required).
 
 ### Plain-language explanation
 
@@ -540,39 +543,19 @@ Current GitHub workflow mostly tests `functions/` and does not enforce full root
 
 ---
 
-## SH-011: `.env` files are tracked in git history (Medium process risk)
+## SH-011: `.env` files are tracked in git history (Medium process risk) — **PARTIALLY MITIGATED**
 
 - Severity: **Medium**
 - Category: Secret Management
-- Status: Open
-
-### Plain-language explanation
-
-Even though `.env` is now in `.gitignore`, these files are already tracked in repository. That means past commits can still contain sensitive configuration values.
-
-### Technical evidence
-
-- Tracked files include:
-  - `.env`
-  - `.env.local`
-- Ignore added at:
-  - `.gitignore:137`+
-
-### Impact
-
-- Secret exposure through repo clones/forks/history
-- Hard-to-control propagation once exposed
-
-### Recommended fix
-
-1. Rotate any sensitive values that may have been committed.
-2. Remove tracked env files from git and ensure templates are used (`.env.example`).
-3. Add secret scanning in CI/pre-commit.
-
-### Verification checklist
-
-- No real secrets in current or recent history (or all rotated).
-- Only template env files remain tracked.
+- Status: **Partially Mitigated**
+  - `.env` and `.env.local` have been removed from git tracking (`git rm --cached`).
+  - `.env.example` template added so contributors know what variables to supply without committing values.
+  - **ACTION REQUIRED**: The secrets were already committed in git history. All values that appeared in the committed `.env` file must be **rotated immediately**:
+    - Firebase API Key (`VITE_FIREBASE_API_KEY`) — regenerate in Firebase Console
+    - Sentry DSN (`VITE_SENTRY_DSN`) — revoke and regenerate in Sentry
+    - reCAPTCHA Enterprise site key (`VITE_RECAPTCHA_ENTERPRISE_SITE_KEY`) — rotate in Google Cloud Console
+    - Super admin email (`VITE_SUPER_ADMIN_EMAIL`) — update the value and re-deploy
+  - To fully purge from history, run `git filter-repo` (or BFG Repo Cleaner) and force-push. Coordinate with all contributors to re-clone.
 
 ---
 
@@ -596,34 +579,34 @@ Even though `.env` is now in `.gitignore`, these files are already tracked in re
 
 | Area | Status | Notes |
 |---|---|---|
-| AuthZ / Access Control | FAIL | Critical issues SH-001, SH-002, SH-003, SH-005 |
-| Data Integrity | FAIL | SH-004 |
-| Webhook Security | FAIL | SH-006 |
-| Dependency Security | FAIL | SH-007 |
-| Test Reliability | FAIL | SH-008 |
-| Lint/Static Gates | FAIL | SH-009 |
-| CI/CD Coverage | FAIL | SH-010 |
-| Secret Hygiene | FAIL | SH-011 |
+| AuthZ / Access Control | **FIXED** | SH-001, SH-002, SH-003, SH-005 resolved |
+| Data Integrity | FAIL | SH-004 still open |
+| Webhook Security | **FIXED** | SH-006 resolved |
+| Dependency Security | FAIL | SH-007 still open |
+| Test Reliability | FAIL | SH-008 still open |
+| Lint/Static Gates | FAIL | SH-009 still open |
+| CI/CD Coverage | FAIL | SH-010 still open |
+| Secret Hygiene | PARTIAL | SH-011: files untracked; **rotate all committed secrets** |
 | Buildability | PASS (with warnings) | Build succeeds but chunk size warning |
 
 ---
 
 ## 7. Prioritized Remediation Plan
 
-## Phase 0 (Immediate, 24-48 hours)
+## Phase 0 (Done ✅)
 
-1. Patch SH-002 (email authorization).
-2. Patch SH-001 + SH-005 (upload and rules lockdown).
-3. Patch SH-003 (remove mutable profile-field auth trust).
-4. Patch SH-006 (remove insecure webhook fallback/defaults).
+1. ✅ SH-002: Email authorization — `sendAutomatedEmail` now enforces company membership.
+2. ✅ SH-001 + SH-005: Upload and Firestore rules lockdown.
+3. ✅ SH-003: Removed mutable profile-field auth trust; custom claims are the primary check.
+4. ✅ SH-006: Facebook webhook is now fail-closed and always enforces HMAC signature.
 
-## Phase 1 (Within 1 week)
+## Phase 1 (Immediate — Within 48 hours)
 
-1. Patch SH-004 (guest write integrity controls).
-2. Resolve SH-007 high/critical production dependency vulnerabilities.
-3. Standardize claim checks and role schema.
+1. **ROTATE ALL COMMITTED SECRETS** (SH-011): Firebase API key, Sentry DSN, reCAPTCHA site key, super admin email. This is urgent because the secrets are in git history.
+2. Patch SH-004 (guest write integrity controls).
+3. Resolve SH-007 high/critical production dependency vulnerabilities.
 
-## Phase 2 (Within 2 weeks)
+## Phase 2 (Within 1 week)
 
 1. Fix SH-008 (test framework consistency).
 2. Fix SH-009 (lint signal quality and cross-platform scripts).
@@ -631,7 +614,7 @@ Even though `.env` is now in `.gitignore`, these files are already tracked in re
 
 ## Phase 3 (Within 1 month)
 
-1. Complete SH-011 secret hygiene hardening.
+1. Complete SH-011 full history purge (`git filter-repo`, force-push, re-clone).
 2. Add E2E smoke suite and release checklist.
 3. Add periodic security regression checks.
 

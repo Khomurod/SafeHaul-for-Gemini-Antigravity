@@ -259,9 +259,10 @@ service cloud.firestore {
         // UPDATE:
         // Company Team can update status/notes.
         // Driver can only update if it matches their ID (mostly separate write, but allowing for now)
+        // SH-005 FIX: Removed App Check-only path — App Check proves device origin, not identity.
+        //             Guest application progress writes should go through Cloud Functions (Admin SDK).
         allow update: if isCompanyTeam(companyId) || 
                       (isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid)) ||
-                      (request.appcheck != null && isDeterministicApplicationId(companyId, applicationId)) ||
                       isSuperAdmin();
 
         allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
