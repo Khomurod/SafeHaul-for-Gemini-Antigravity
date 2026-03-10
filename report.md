@@ -4,10 +4,12 @@
 
 - Project: `SafeHaul-for-Gemini-Antigravity`
 - Repository root: `C:\Users\Kholmurod\Desktop\SafeHaul-for-Gemini-Antigravity`
-- Audit date: 2026-03-08 (Asia/Tashkent) — last updated 2026-03-10
+- Audit date: 2026-03-08 (Asia/Tashkent)
+- Re-audit (deep pass): 2026-03-10 (Asia/Tashkent)
 - Auditor: Codex (GPT-5 coding agent)
-- Audit type: Full-scale production readiness and security audit with targeted security remediation
-- Code changes made: Security fixes for SH-001, SH-002, SH-003, SH-005, SH-006, SH-011
+- Audit type: Full-scale production readiness and security audit with targeted security remediation, followed by a line-by-line re-audit of every change made
+- Code changes made (first pass): Security fixes for SH-001, SH-002, SH-003, SH-005, SH-006, SH-011
+- Code changes made (second pass / deep re-audit): SH-006 second webhook fixed; `require` hoisted; all `assertCompanyAdmin` callers updated to pass token (see §11)
 
 ## 2. Executive Summary
 
@@ -15,8 +17,14 @@
 
 **Not yet production ready** (7 of 11 issues still open).
 
-Critical and high security issues SH-001, SH-002, SH-003, SH-005, and SH-006 have been **fixed** in this audit pass.
+Critical and high security issues SH-001, SH-002, SH-003, SH-005, and SH-006 have been **fixed** across two audit passes.
 SH-011 (secrets in git history) has been partially mitigated (files untracked; history not purged).
+
+A second deep re-audit pass verified every changed file line-by-line and found and fixed three additional issues overlooked in the first pass (see §11):
+
+1. The Gen 2 `facebookWebhook` was not hardened — only the Gen 1 version was fixed in the first pass.
+2. An inline `require` inside a function body was left instead of being hoisted to the module top.
+3. Five call sites of `assertCompanyAdmin` in `analyticsService.js` and `sessionController.js` were not passing `request.auth.token`, missing the custom-claims fast-path.
 
 Remaining blockers before production launch:
 
@@ -325,14 +333,15 @@ Some updates are allowed just because request has App Check, even without user i
 
 ---
 
-## SH-006: Legacy Facebook webhook fallback is weak (High) — **FIXED**
+## SH-006: Legacy Facebook webhook fallback is weak (High) — **FIXED (both V1 and V2)**
 
 - Severity: **High**
 - Category: Webhook Authentication
 - Status: **Fixed** — `functions/integrations/facebook.js`:
-  1. Removed hardcoded fallback `'safehaul_verify_123'` verify token.
-  2. Webhook now fails-closed (HTTP 500) if either `FACEBOOK_APP_SECRET_VALUE` or `FACEBOOK_VERIFY_TOKEN_VALUE` is not configured.
-  3. HMAC signature check is always enforced on POST — no longer conditional on `APP_SECRET` being set (because it is now required).
+  - **Gen 1 (`facebookWebhookV1`)**: Removed hardcoded fallback `'safehaul_verify_123'` verify token. Webhook now fails-closed (HTTP 500) if either `FACEBOOK_APP_SECRET_VALUE` or `FACEBOOK_VERIFY_TOKEN_VALUE` is not configured. HMAC signature check is always enforced on POST — no longer conditional on `APP_SECRET` being set.
+  - **Gen 2 (`facebookWebhook`)**: The same hardening was applied in the second audit pass. The `FACEBOOK_VERIFY_TOKEN.value() || 'safehaul_verify_123'` fallback and the `if (APP_SECRET) { ... }` optional signature block were both removed. Empty secrets now fail-closed; signature is always verified; malformed headers are rejected.
+
+> **Note (second pass finding)**: The first audit pass correctly fixed `facebookWebhookV1` but missed the Gen 2 `facebookWebhook` function in the same file. The second deep re-audit caught this gap and applied the identical hardening to both endpoints.
 
 ### Plain-language explanation
 
@@ -579,9 +588,9 @@ Current GitHub workflow mostly tests `functions/` and does not enforce full root
 
 | Area | Status | Notes |
 |---|---|---|
-| AuthZ / Access Control | **FIXED** | SH-001, SH-002, SH-003, SH-005 resolved |
+| AuthZ / Access Control | **FIXED** | SH-001, SH-002, SH-003, SH-005 resolved; all `assertCompanyAdmin` callers now use token fast-path |
 | Data Integrity | FAIL | SH-004 still open |
-| Webhook Security | **FIXED** | SH-006 resolved |
+| Webhook Security | **FIXED** | SH-006 resolved for both Gen 1 and Gen 2 webhook endpoints |
 | Dependency Security | FAIL | SH-007 still open |
 | Test Reliability | FAIL | SH-008 still open |
 | Lint/Static Gates | FAIL | SH-009 still open |
@@ -598,7 +607,10 @@ Current GitHub workflow mostly tests `functions/` and does not enforce full root
 1. ✅ SH-002: Email authorization — `sendAutomatedEmail` now enforces company membership.
 2. ✅ SH-001 + SH-005: Upload and Firestore rules lockdown.
 3. ✅ SH-003: Removed mutable profile-field auth trust; custom claims are the primary check.
-4. ✅ SH-006: Facebook webhook is now fail-closed and always enforces HMAC signature.
+4. ✅ SH-006 (V1): `facebookWebhookV1` is now fail-closed and always enforces HMAC signature.
+5. ✅ SH-006 (V2 — second pass): `facebookWebhook` (Gen 2) given identical hardening.
+6. ✅ Second pass: Inline `require` in `companyAdmin.js` hoisted to module top.
+7. ✅ Second pass: All five `assertCompanyAdmin` call sites in `analyticsService.js` and `sessionController.js` now pass `request.auth.token` for the custom-claims fast-path.
 
 ## Phase 1 (Immediate — Within 48 hours)
 
@@ -659,4 +671,167 @@ After remediation, run:
 
 The architecture has strong foundations (modular backend, roles concept, rules hardening effort), but current security/control gaps are large enough to block a safe production launch.  
 Addressing the findings in the priority order above will materially reduce risk and create reliable release confidence.
+
+---
+
+## 11. Deep Re-audit Findings (Second Pass — 2026-03-10)
+
+After the first audit pass, every changed file was audited line-by-line for correctness, unintended side-effects, missed call sites, and consistency.  
+Three issues were found and fixed. None of the original first-pass changes broke existing functionality.
+
+---
+
+### RA-001: Gen 2 `facebookWebhook` was not hardened (missed in first pass)
+
+- File: `functions/integrations/facebook.js` lines 100–165
+- Severity: **High** (same as SH-006)
+- Status: **Fixed**
+
+#### What was found
+
+The first pass correctly fixed `facebookWebhookV1` (the Gen 1 function at line 238) but left the Gen 2 `facebookWebhook` function (line 100) with the exact same insecure defaults:
+
+```js
+// BEFORE (Gen 2 — still insecure after first pass)
+const VERIFY_TOKEN_VALUE = FACEBOOK_VERIFY_TOKEN.value() || 'safehaul_verify_123';
+// ...
+if (APP_SECRET) {            // ← skipped entirely if secret not set
+    const signature = req.headers['x-hub-signature'];
+    if (!signature) {
+        console.warn("Missing X-Hub-Signature");
+        return res.sendStatus(401);
+    }
+    // ...
+}
+```
+
+Both the hardcoded `'safehaul_verify_123'` fallback and the `if (APP_SECRET)` optional guard were still present in the Gen 2 path.
+
+#### Fix applied
+
+```js
+// AFTER (Gen 2 — same hardening as V1)
+const VERIFY_TOKEN_VALUE = FACEBOOK_VERIFY_TOKEN.value();  // no fallback
+
+if (!APP_SECRET || !VERIFY_TOKEN_VALUE) {
+    console.error('[FacebookWebhook] FACEBOOK_APP_SECRET or FACEBOOK_VERIFY_TOKEN is empty. Rejecting request.');
+    return res.sendStatus(500);  // fail-closed
+}
+
+// POST path — signature is always checked, never conditional
+const signature = req.headers['x-hub-signature'];
+if (!signature) { return res.sendStatus(403); }
+if (elements.length < 2 || !elements[1]) { return res.sendStatus(403); }
+// ...constant-time HMAC comparison always runs
+```
+
+#### Why the first pass missed it
+
+`facebookWebhookV1` and `facebookWebhook` live in the same file and have near-identical structure. The first pass search targeted the Gen 1 function by name, and the Gen 2 function — being structurally similar but separately named — was not caught.
+
+#### Verification
+
+Deployed Gen 2 webhook with missing `FACEBOOK_VERIFY_TOKEN` secret → returns HTTP 500 (previously would accept with fallback token).  
+POST without `x-hub-signature` header → returns HTTP 403 (previously returned 200 if `APP_SECRET` was unset).
+
+---
+
+### RA-002: `assertCompanyAdmin` `require` was inside a function body
+
+- File: `functions/companyAdmin.js` lines 82–83
+- Severity: **Low** (code quality / maintainability)
+- Status: **Fixed**
+
+#### What was found
+
+The first pass added authorization to `sendAutomatedEmail` via an inline `require` call inside the function handler:
+
+```js
+// BEFORE — require inside function body on every invocation
+exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
+    // ...
+    const { assertCompanyAdmin } = require('./bulkActions/helpers/auth');  // ← inline
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
+```
+
+This is valid Node.js (CommonJS `require` is synchronous and cached after the first load), but it is non-idiomatic, hides the dependency, and makes the module harder to read and mock.
+
+#### Fix applied
+
+`assertCompanyAdmin` was moved to the module-level imports at the top of `companyAdmin.js`:
+
+```js
+// AFTER — standard module-level import
+const { assertCompanyAdmin } = require("./bulkActions/helpers/auth");
+
+exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
+    // ...
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
+```
+
+#### Impact of change
+
+None on behavior (Node.js module cache means the resolved module is the same object). Improves readability, static analysis, and test mocking.
+
+---
+
+### RA-003: Five `assertCompanyAdmin` callers were not passing the token
+
+- Files: `functions/bulkActions/services/analyticsService.js` (2 call sites), `functions/bulkActions/controllers/sessionController.js` (3 call sites)
+- Severity: **Low** (performance / defense-in-depth consistency)
+- Status: **Fixed**
+
+#### What was found
+
+The first pass added a `token` parameter to `assertCompanyAdmin` and correctly wired it from `sendAutomatedEmail`:
+
+```js
+// companyAdmin.js — correctly uses token
+await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
+```
+
+But the five other call sites of the same function were not updated:
+
+```js
+// analyticsService.js — missing token (2 sites)
+await assertCompanyAdmin(request.auth.uid, companyId);           // ← no token
+
+// sessionController.js — missing token (3 sites: initBulkSession, updateSessionStatus, retryFailedAttempts)
+await assertCompanyAdmin(request.auth.uid, companyId);           // ← no token
+```
+
+The `token` parameter defaults to `null`, so the fast-path claim check (step 0 in `assertCompanyAdmin`) was silently skipped for all five call sites. Every authorization check fell through to the slower Firestore queries (team subcollection, memberships collection, company document) on every invocation.
+
+#### Why this matters
+
+The custom-claims fast-path was the primary security improvement in SH-003: it reads from the immutable, server-set JWT claims rather than mutable Firestore documents. Skipping it means:
+
+- Authorization decisions for 5 of 6 protected functions still depend on mutable Firestore documents as the first-line check (not as a fallback).
+- Three or more Firestore reads occur on every invocation that could have returned in microseconds.
+
+The fix ensures all call sites use the fast-path first, reducing attack surface and latency consistently.
+
+#### Fix applied
+
+All five call sites updated:
+
+```js
+// analyticsService.js
+await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
+
+// sessionController.js (initBulkSession, updateSessionStatus, retryFailedAttempts)
+await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
+```
+
+#### Re-audit of first-pass changes confirmed safe
+
+The following first-pass changes were verified to have no negative impact on the running application:
+
+| Change | Verification |
+|---|---|
+| `storage.rules`: guest uploads now require App Check | ✅ `PublicApplyHandler.jsx` uses signed URLs (bypass rules entirely); no client path broken |
+| `firestore.rules`: removed App Check-only update path | ✅ Guest application writes use Admin SDK; no client SDK path targeted this rule |
+| `auth.js`: removed mutable user-doc role checks | ✅ All real users go through `createPortalUser` → `memberships` → custom claims; the removed checks were dangerous and never needed |
+| `companyAdmin.js`: added auth check to `sendAutomatedEmail` | ✅ All company email senders (HR UI, auto-emails) are authenticated company members; no caller is blocked |
+| `facebook.js V1`: fail-closed, mandatory HMAC | ✅ Only real Facebook webhook calls have valid signatures; no integrations broken |
 
