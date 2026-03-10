@@ -17,7 +17,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
     }
 
     // RBAC
-    await assertCompanyAdmin(request.auth.uid, companyId);
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
 
     const leadSourceType = filters.leadType || 'applications'; // 'global', 'leads', 'applications' (default)
 
@@ -392,7 +392,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 const updateSessionStatus = async (request, status) => {
     if (!request.auth) throw new HttpsError('unauthenticated');
     const { companyId, sessionId } = request.data;
-    await assertCompanyAdmin(request.auth.uid, companyId);
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
 
     const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
     await sessionRef.update({
@@ -423,7 +423,7 @@ exports.cancelBulkSession = onCall({ cors: true }, (req) => updateSessionStatus(
 exports.retryFailedAttempts = onCall({ cors: true }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated');
     const { companyId, sessionId } = request.data;
-    await assertCompanyAdmin(request.auth.uid, companyId);
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
 
     const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
     const snap = await sessionRef.get();

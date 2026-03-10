@@ -4,9 +4,26 @@ const { admin, db } = require("../../firebaseAdmin");
 /**
  * SECURITY HELPER: Assert User is Company Admin/Member
  * Prevents IDOR attacks where a user manages another company's data.
+ *
+ * @param {string} userId  - Firebase Auth UID
+ * @param {string} companyId - Target company
+ * @param {object} [token]   - Optional decoded Firebase ID token (request.auth.token).
+ *                             When provided, custom claims are checked first (fast path),
+ *                             which avoids trusting mutable Firestore documents for auth.
  */
-const assertCompanyAdmin = async (userId, companyId) => {
+const assertCompanyAdmin = async (userId, companyId, token = null) => {
     if (!userId || !companyId) throw new HttpsError('invalid-argument', 'Missing authentication context.');
+
+    // 0. Fast path: custom claims (immutable, server-set, cannot be self-edited).
+    //    Token shape can be either flat (token.globalRole) or nested (token.roles.globalRole)
+    //    depending on when the claim was last refreshed.  Both are checked here.
+    if (token) {
+        const globalRole = token.globalRole || (token.roles && token.roles.globalRole);
+        if (globalRole === 'super_admin') return;
+
+        const companyRole = token.roles && token.roles[companyId];
+        if (companyRole && ['company_admin', 'hr_user', 'recruiter'].includes(companyRole)) return;
+    }
 
     // 1. Check Team Membership (Subcollection - Legacy)
     const memberSnap = await db.collection('companies').doc(companyId).collection('team').doc(userId).get();
@@ -24,54 +41,30 @@ const assertCompanyAdmin = async (userId, companyId) => {
         console.warn(`[Auth Warning] Failed to check memberships for ${userId}: ${err.message}`);
     }
 
-    // 2. Check Company Document Fields (Owner/Creator Fallback)
+    // 2. Check Company Document Fields (Owner/Creator).
+    //    These fields are written exclusively by server-side Cloud Functions / Admin SDK
+    //    (e.g. company creation, ownership transfer), not by user-controlled writes.
+    //    Firestore rules for /companies/{id} allow only company_admin or super_admin to
+    //    update the document, so these fields cannot be self-assigned by ordinary users.
     const companySnap = await db.collection('companies').doc(companyId).get();
     if (companySnap.exists) {
         const data = companySnap.data();
-        // Check common ownership fields
         if (data.ownerId === userId) return;
         if (data.createdBy === userId) return;
         if (data.adminId === userId) return;
-        if (data.userId === userId) return; // Some systems use this
     }
 
-    // 3. Super Admin Bypass (Database Check)
-    // REMOVED: Hardcoded Backdoor for 5921L...
-
-    const userSnap = await db.collection('users').doc(userId).get();
-    let userEmail = null;
-
-    if (userSnap.exists) {
-        const userData = userSnap.data();
-        userEmail = userData.email;
-        // console.log(`[Auth Debug] Checking user ${userId} (${userEmail}) for company ${companyId}. Role: ${userData.role}, CompanyId: ${userData.companyId}`);
-
-        if (userData.role === 'super_admin' || userData.globalRole === 'super_admin') return;
-        if (userData.role === 'admin') return;
-        if (userData.companyId === companyId) return;
-    } else {
-        // Fallback: Try to get email from Auth if not in DB
-        try {
-            const userRecord = await admin.auth().getUser(userId);
-            userEmail = userRecord.email;
-            console.log(`[Auth Debug] User doc missing, fetched email from Auth: ${userEmail}`);
-        } catch (e) {
-            console.warn(`[Auth Debug] Failed to fetch user email for ${userId}: ${e.message}`);
-        }
+    // 3. Super Admin Bypass — use only the Admin SDK user record; do NOT trust the
+    //    mutable users/{uid} document for role checks (SH-003 fix).
+    try {
+        const userRecord = await admin.auth().getUser(userId);
+        const claims = userRecord.customClaims || {};
+        const claimRole = claims.globalRole || (claims.roles && claims.roles.globalRole);
+        if (claimRole === 'super_admin') return;
+    } catch (e) {
+        console.warn(`[Auth Debug] Failed to fetch custom claims for ${userId}: ${e.message}`);
     }
 
-    // 5. Email Fallback (Legacy/Simple Auth)
-    if (userEmail) {
-        const cSnap = await db.collection('companies').doc(companyId).get();
-        if (cSnap.exists) {
-            const cData = cSnap.data();
-            if (cData.ownerEmail === userEmail) return;
-            if (cData.email === userEmail) return;
-            if (cData.teamEmails && Array.isArray(cData.teamEmails) && cData.teamEmails.includes(userEmail)) return;
-        }
-    }
-
-    // console.warn(`[Auth Failure] User ${userId} denied access to Company ${companyId}.`);
     throw new HttpsError('permission-denied', 'You do not have administrative access to this company.');
 };
 
