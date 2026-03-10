@@ -18,6 +18,7 @@
     "@sentry/react": "^10.32.1",
     "@tiptap/react": "^3.17.1",
     "@tiptap/starter-kit": "^3.17.1",
+    "@floating-ui/dom": "1.7.6",
     "canvas-confetti": "^1.9.4",
     "exceljs": "^4.4.0",
     "firebase": "^11.0.2",
