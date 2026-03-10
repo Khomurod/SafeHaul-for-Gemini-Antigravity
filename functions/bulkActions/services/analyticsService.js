@@ -24,9 +24,7 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
     if (!companyId) throw new HttpsError('invalid-argument', 'Company ID is required.');
 
     // RBAC
-    await assertCompanyAdmin(request.auth.uid, companyId);
-
-    // Build Queries
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
     const queries = buildLeadQueries(companyId, filters || {}, request.auth.uid);
 
     // Run Count Aggregation
@@ -157,7 +155,7 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
     const limit = Math.min(pageSize || 50, 100);
 
     // RBAC
-    await assertCompanyAdmin(request.auth.uid, companyId);
+    await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
 
     // NOTE: Pagination with split queries (OR logic) is complex.
     // Simplifying: If multiple queries (OR), we just execute the first one for preview,

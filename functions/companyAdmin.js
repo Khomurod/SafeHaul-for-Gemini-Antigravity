@@ -5,6 +5,7 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { admin, db } = require("./firebaseAdmin");
 const { deleteCompanySchema, sendEmailSchema } = require("./shared/schema");
+const { assertCompanyAdmin } = require("./bulkActions/helpers/auth");
 
 // --- IN-MEMORY CACHE FOR SLUG RESOLUTION (REMOVED - HANDLED CLIENT SIDE) ---
 
@@ -79,7 +80,6 @@ exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
 
     // SECURITY (SH-002): Enforce company membership — prevent any authenticated user from
     // sending email as an arbitrary company by supplying a foreign companyId.
-    const { assertCompanyAdmin } = require('./bulkActions/helpers/auth');
     await assertCompanyAdmin(request.auth.uid, companyId, request.auth.token);
 
     try {

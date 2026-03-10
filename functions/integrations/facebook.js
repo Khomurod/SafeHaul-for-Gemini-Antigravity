@@ -101,7 +101,15 @@ exports.facebookWebhook = onRequest(
     { secrets: [FACEBOOK_APP_SECRET, FACEBOOK_VERIFY_TOKEN], invoker: 'public' },
     async (req, res) => {
         const APP_SECRET = FACEBOOK_APP_SECRET.value();
-        const VERIFY_TOKEN_VALUE = FACEBOOK_VERIFY_TOKEN.value() || 'safehaul_verify_123';
+        const VERIFY_TOKEN_VALUE = FACEBOOK_VERIFY_TOKEN.value();
+
+        // SH-006 FIX: Fail-closed when required secrets are not configured.
+        // Firebase Secrets Manager guarantees secrets are injected at deploy time,
+        // but guard against empty string values defensively.
+        if (!APP_SECRET || !VERIFY_TOKEN_VALUE) {
+            console.error('[FacebookWebhook] FACEBOOK_APP_SECRET or FACEBOOK_VERIFY_TOKEN is empty. Rejecting request.');
+            return res.sendStatus(500);
+        }
 
         // A. Verification (GET)
         if (req.method === 'GET') {
@@ -120,24 +128,27 @@ exports.facebookWebhook = onRequest(
         }
 
         // B. Security (Signature Check for POST)
+        // SH-006 FIX: Always enforce HMAC signature — APP_SECRET is guaranteed non-empty above.
         if (req.method === 'POST') {
-            if (APP_SECRET) {
-                const signature = req.headers['x-hub-signature'];
-                if (!signature) {
-                    console.warn("Missing X-Hub-Signature");
-                    return res.sendStatus(401); // P1-4 FIX: Enforce signature validation
-                } else {
-                    const elements = signature.split('=');
-                    const signatureHash = elements[1];
-                    const expectedHash = crypto.createHmac('sha1', APP_SECRET)
-                        .update(req.rawBody) // Firebase Functions preserves rawBody
-                        .digest('hex');
+            const signature = req.headers['x-hub-signature'];
+            if (!signature) {
+                console.error('[FacebookWebhook] Missing x-hub-signature header.');
+                return res.sendStatus(403);
+            }
+            const elements = signature.split('=');
+            // Expect "sha1=<hex>" format; reject anything malformed.
+            if (elements.length < 2 || !elements[1]) {
+                console.error('[FacebookWebhook] Malformed x-hub-signature header.');
+                return res.sendStatus(403);
+            }
+            const signatureHash = elements[1];
+            const expectedHash = crypto.createHmac('sha1', APP_SECRET)
+                .update(req.rawBody) // Firebase Functions preserves rawBody
+                .digest('hex');
 
-                    if (signatureHash !== expectedHash) {
-                        console.error("Invalid Signature");
-                        return res.sendStatus(403);
-                    }
-                }
+            if (signatureHash !== expectedHash) {
+                console.error('[FacebookWebhook] Invalid HMAC signature.');
+                return res.sendStatus(403);
             }
 
             // C. Process Entries
