@@ -46,7 +46,10 @@ const assertCompanyAdmin = async (userId, companyId) => {
         userEmail = userData.email;
         // console.log(`[Auth Debug] Checking user ${userId} (${userEmail}) for company ${companyId}. Role: ${userData.role}, CompanyId: ${userData.companyId}`);
 
-        if (userData.role === 'super_admin' || userData.globalRole === 'super_admin') return;
+        try {
+            const userRecord = await admin.auth().getUser(userId);
+            if (userRecord.customClaims && userRecord.customClaims.globalRole === 'super_admin') return;
+        } catch (e) { /* ignore and fall through */ }
         if (userData.role === 'admin') return;
         if (userData.companyId === companyId) return;
     } else {

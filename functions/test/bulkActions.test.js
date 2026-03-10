@@ -1,5 +1,4 @@
-// vitest globals (describe, it, expect, vi, etc.) available via globals: true config
-const jestMock = { fn: vi.fn.bind(vi) };
+
 
 // =====================================================================
 // MOCK SETUP — Matches the modular bulkActions/ directory structure
@@ -7,77 +6,77 @@ const jestMock = { fn: vi.fn.bind(vi) };
 
 // --- Firebase Admin Mock ---
 const firestoreMock = {
-    settings: jestMock.fn(),
-    collection: jestMock.fn(),
-    doc: jestMock.fn(),
-    batch: jestMock.fn(() => ({
-        set: jestMock.fn(),
-        delete: jestMock.fn(),
-        commit: jestMock.fn().mockResolvedValue(true)
+    settings: jest.fn(),
+    collection: jest.fn(),
+    doc: jest.fn(),
+    batch: jest.fn(() => ({
+        set: jest.fn(),
+        delete: jest.fn(),
+        commit: jest.fn().mockResolvedValue(true)
     })),
-    runTransaction: jestMock.fn(),
-    getAll: jestMock.fn().mockResolvedValue([]), // For sms_sent_phones checks
+    runTransaction: jest.fn(),
+    getAll: jest.fn().mockResolvedValue([]), // For sms_sent_phones checks
 };
 
-const collectionFn = jestMock.fn(() => ({
-    doc: docFn,
-    where: jestMock.fn().mockReturnThis(),
-    select: jestMock.fn().mockReturnThis(),
-    limit: jestMock.fn().mockReturnThis(),
-    get: jestMock.fn().mockResolvedValue({ docs: [], size: 0 }),
-    add: jestMock.fn(),
+const mockCollectionFn = jest.fn(() => ({
+    doc: mockDocFn,
+    where: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    get: jest.fn().mockResolvedValue({ docs: [], size: 0 }),
+    add: jest.fn(),
 }));
 
-const docFn = jestMock.fn(() => ({
-    collection: collectionFn,
-    get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) }),
-    set: jestMock.fn().mockResolvedValue(true),
-    update: jestMock.fn().mockResolvedValue(true),
+const mockDocFn = jest.fn(() => ({
+    collection: mockCollectionFn,
+    get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }),
+    set: jest.fn().mockResolvedValue(true),
+    update: jest.fn().mockResolvedValue(true),
     id: 'mock-doc-id'
 }));
 
-firestoreMock.collection.mockImplementation(collectionFn);
-firestoreMock.doc.mockImplementation(docFn);
+firestoreMock.collection.mockImplementation(mockCollectionFn);
+firestoreMock.doc.mockImplementation(mockDocFn);
 
-const firestoreFn = jestMock.fn(() => firestoreMock);
-firestoreFn.FieldValue = {
+const mockFirestoreFn = jest.fn(() => firestoreMock);
+mockFirestoreFn.FieldValue = {
     serverTimestamp: () => 'SERVER_TIMESTAMP',
     increment: (n) => ({ increment: n })
 };
-firestoreFn.Timestamp = {
+mockFirestoreFn.Timestamp = {
     fromDate: (date) => date,
 };
-firestoreFn.Filter = {
+mockFirestoreFn.Filter = {
     or: (...args) => ({ or: args }),
     where: (field, op, val) => ({ field, op, val })
 };
 
-jestMock.mock('firebase-admin', () => ({
+jest.mock('firebase-admin', () => ({
     apps: [{}], // Pretend app is initialized
-    app: jestMock.fn(() => ({ options: { projectId: 'test-project' } })),
-    initializeApp: jestMock.fn(),
-    firestore: firestoreFn,
-    auth: jestMock.fn()
+    app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
+    initializeApp: jest.fn(),
+    firestore: mockFirestoreFn,
+    auth: jest.fn()
 }));
 
 // --- Mock firebaseAdmin.js (shared module) ---
-jestMock.mock('../firebaseAdmin', () => ({
+jest.mock('../firebaseAdmin', () => ({
     admin: require('firebase-admin'),
     db: require('firebase-admin').firestore()
 }));
 
 // --- Mock firebase-admin/firestore and storage ---
-jestMock.mock('firebase-admin/firestore', () => ({
-    getFirestore: jestMock.fn(() => require('firebase-admin').firestore())
+jest.mock('firebase-admin/firestore', () => ({
+    getFirestore: jest.fn(() => require('firebase-admin').firestore())
 }));
-jestMock.mock('firebase-admin/storage', () => ({
-    getStorage: jestMock.fn()
+jest.mock('firebase-admin/storage', () => ({
+    getStorage: jest.fn()
 }));
 
 // --- Mock firebase-functions/v2/https ---
-jestMock.mock('firebase-functions/v2/https', () => ({
-    onRequest: jestMock.fn((opts, handler) => handler),
-    onCall: jestMock.fn((opts, handler) => handler),
+jest.mock('firebase-functions/v2/https', () => ({
+    onRequest: jest.fn((opts, handler) => handler),
+    onCall: jest.fn((opts, handler) => handler),
     HttpsError: class extends Error {
         constructor(code, message) {
             super(message);
@@ -87,31 +86,31 @@ jestMock.mock('firebase-functions/v2/https', () => ({
 }));
 
 // --- Mock Cloud Tasks (queueService dependency) ---
-const mockCreateTask = jestMock.fn().mockResolvedValue([{}]);
-jestMock.mock('@google-cloud/tasks', () => ({
-    CloudTasksClient: jestMock.fn(() => ({
-        queuePath: jestMock.fn((project, location, queue) =>
+const mockCreateTask = jest.fn().mockResolvedValue([{}]);
+jest.mock('@google-cloud/tasks', () => ({
+    CloudTasksClient: jest.fn(() => ({
+        queuePath: jest.fn((project, location, queue) =>
             `projects/${project}/locations/${location}/queues/${queue}`),
         createTask: mockCreateTask
     }))
 }));
 
 // --- Mock SMS/Integrations ---
-const mockGetAdapterForUser = jestMock.fn();
-jestMock.mock('../integrations/factory', () => ({
+const mockGetAdapterForUser = jest.fn();
+jest.mock('../integrations/factory', () => ({
     getAdapterForUser: mockGetAdapterForUser
 }));
 
-jestMock.mock('../blacklist', () => ({
-    isBlacklisted: jestMock.fn().mockResolvedValue(false)
+jest.mock('../blacklist', () => ({
+    isBlacklisted: jest.fn().mockResolvedValue(false)
 }));
 
-jestMock.mock('../integrations/encryption', () => ({
-    decrypt: jestMock.fn(text => text)
+jest.mock('../integrations/encryption', () => ({
+    decrypt: jest.fn(text => text)
 }));
 
-jestMock.mock('../utils/phoneUtils', () => ({
-    normalizePhone: jestMock.fn(phone => phone ? phone.replace(/\D/g, '') : '')
+jest.mock('../utils/phoneUtils', () => ({
+    normalizePhone: jest.fn(phone => phone ? phone.replace(/\D/g, '') : '')
 }));
 
 // --- Environment ---
@@ -134,14 +133,14 @@ describe('Bulk Actions Tests', () => {
 
     beforeEach(() => {
         db = admin.firestore();
-        jestMock.clearAllMocks();
+        jest.clearAllMocks();
         // Re-apply default mocks after clearAllMocks
-        firestoreMock.collection.mockImplementation(collectionFn);
-        firestoreMock.getAll = jestMock.fn().mockResolvedValue([]);
+        firestoreMock.collection.mockImplementation(mockCollectionFn);
+        firestoreMock.getAll = jest.fn().mockResolvedValue([]);
     });
 
     afterEach(() => {
-        test.cleanup();
+        jest.clearAllMocks();
     });
 
     // ---------------------------------------------------------------
@@ -159,7 +158,7 @@ describe('Bulk Actions Tests', () => {
 
         // Mock the auth check (assertCompanyAdmin)
         const userDoc = {
-            get: jestMock.fn().mockResolvedValue({
+            get: jest.fn().mockResolvedValue({
                 exists: true,
                 data: () => ({ role: 'company_admin', companyId: 'company123' })
             })
@@ -168,34 +167,34 @@ describe('Bulk Actions Tests', () => {
         // Session doc mock
         const sessionDocMock = {
             id: 'session-abc',
-            set: jestMock.fn().mockResolvedValue(true),
-            update: jestMock.fn().mockResolvedValue(true),
-            collection: jestMock.fn(() => ({
-                doc: jestMock.fn(() => ({ set: jestMock.fn(), get: jestMock.fn().mockResolvedValue({ exists: false }) }))
+            set: jest.fn().mockResolvedValue(true),
+            update: jest.fn().mockResolvedValue(true),
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({ set: jest.fn(), get: jest.fn().mockResolvedValue({ exists: false }) }))
             }))
         };
 
         // Company doc mock
         const companyDocMock = {
-            get: jestMock.fn().mockResolvedValue({
+            get: jest.fn().mockResolvedValue({
                 exists: true,
                 data: () => ({ name: 'Test Company', ownerId: 'user123' })
             }),
-            collection: jestMock.fn((name) => {
-                if (name === 'bulk_sessions') return { doc: jestMock.fn(() => sessionDocMock) };
+            collection: jest.fn((name) => {
+                if (name === 'bulk_sessions') return { doc: jest.fn(() => sessionDocMock) };
                 if (name === 'team') return {
-                    doc: jestMock.fn(() => ({
-                        get: jestMock.fn().mockResolvedValue({
+                    doc: jest.fn(() => ({
+                        get: jest.fn().mockResolvedValue({
                             exists: true,
                             data: () => ({ role: 'company_admin' })
                         })
                     }))
                 };
                 return {
-                    doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: false }) })),
-                    where: jestMock.fn().mockReturnThis(),
-                    select: jestMock.fn().mockReturnThis(),
-                    get: jestMock.fn().mockResolvedValue({
+                    doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: false }) })),
+                    where: jest.fn().mockReturnThis(),
+                    select: jest.fn().mockReturnThis(),
+                    get: jest.fn().mockResolvedValue({
                         docs: [{ id: 'lead1', data: () => ({}) }, { id: 'lead2', data: () => ({}) }],
                         size: 2
                     })
@@ -205,23 +204,23 @@ describe('Bulk Actions Tests', () => {
 
         // Global leads query mock
         const leadsCollectionMock = {
-            doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) }) })),
-            where: jestMock.fn().mockReturnThis(),
-            select: jestMock.fn().mockReturnThis(),
-            limit: jestMock.fn().mockReturnThis(),
-            get: jestMock.fn().mockResolvedValue({
+            doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }) })),
+            where: jest.fn().mockReturnThis(),
+            select: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
                 docs: [{ id: 'lead1', data: () => ({}) }, { id: 'lead2', data: () => ({}) }],
                 size: 2
             })
         };
 
         db.collection.mockImplementation((name) => {
-            if (name === 'companies') return { doc: jestMock.fn(() => companyDocMock) };
+            if (name === 'companies') return { doc: jest.fn(() => companyDocMock) };
             if (name === 'leads') return leadsCollectionMock;
             if (name === 'memberships') return {
-                where: jestMock.fn().mockReturnThis(),
-                limit: jestMock.fn().mockReturnThis(),
-                get: jestMock.fn().mockResolvedValue({
+                where: jest.fn().mockReturnThis(),
+                limit: jest.fn().mockReturnThis(),
+                get: jest.fn().mockResolvedValue({
                     docs: [{ data: () => ({ role: 'company_admin', companyId: 'company123' }) }]
                 })
             };
@@ -250,8 +249,8 @@ describe('Bulk Actions Tests', () => {
             body: { companyId: 'company123', sessionId: 'session123' }
         };
         const res = {
-            status: jestMock.fn().mockReturnThis(),
-            send: jestMock.fn()
+            status: jest.fn().mockReturnThis(),
+            send: jest.fn()
         };
 
         const sessionData = {
@@ -266,19 +265,19 @@ describe('Bulk Actions Tests', () => {
         };
 
         const sessionRefMock = {
-            get: jestMock.fn().mockResolvedValue({ exists: true, data: () => sessionData }),
-            update: jestMock.fn().mockResolvedValue(true),
-            collection: jestMock.fn((name) => {
+            get: jest.fn().mockResolvedValue({ exists: true, data: () => sessionData }),
+            update: jest.fn().mockResolvedValue(true),
+            collection: jest.fn((name) => {
                 if (name === 'logs') return {
-                    doc: jestMock.fn(() => ({
-                        get: jestMock.fn().mockResolvedValue({ exists: false }),
-                        set: jestMock.fn().mockResolvedValue(true)
+                    doc: jest.fn(() => ({
+                        get: jest.fn().mockResolvedValue({ exists: false }),
+                        set: jest.fn().mockResolvedValue(true)
                     }))
                 };
                 return {
-                    doc: jestMock.fn(() => ({
-                        get: jestMock.fn().mockResolvedValue({ exists: false }),
-                        set: jestMock.fn().mockResolvedValue(true)
+                    doc: jest.fn(() => ({
+                        get: jest.fn().mockResolvedValue({ exists: false }),
+                        set: jest.fn().mockResolvedValue(true)
                     }))
                 };
             })
@@ -287,57 +286,57 @@ describe('Bulk Actions Tests', () => {
         // Transaction mock — returns batch claim
         db.runTransaction.mockImplementation(async (callback) => {
             const mockT = {
-                get: jestMock.fn().mockResolvedValue({
+                get: jest.fn().mockResolvedValue({
                     exists: true,
                     data: () => sessionData
                 }),
-                update: jestMock.fn()
+                update: jest.fn()
             };
             return await callback(mockT);
         });
 
         const companyDocMock = {
-            get: jestMock.fn().mockResolvedValue({
+            get: jest.fn().mockResolvedValue({
                 exists: true,
                 data: () => ({ name: 'Test Company' })
             }),
-            collection: jestMock.fn((name) => {
-                if (name === 'bulk_sessions') return { doc: jestMock.fn(() => sessionRefMock) };
+            collection: jest.fn((name) => {
+                if (name === 'bulk_sessions') return { doc: jest.fn(() => sessionRefMock) };
                 if (name === 'leads') return {
-                    doc: jestMock.fn((id) => ({
-                        get: jestMock.fn().mockResolvedValue({
+                    doc: jest.fn((id) => ({
+                        get: jest.fn().mockResolvedValue({
                             exists: true,
                             data: () => ({ firstName: 'John', phone: '1234567890' })
                         }),
-                        update: jestMock.fn().mockResolvedValue(true)
+                        update: jest.fn().mockResolvedValue(true)
                     }))
                 };
                 if (name === 'sms_sent_phones') return {
-                    doc: jestMock.fn(() => ({ set: jestMock.fn().mockResolvedValue(true) }))
+                    doc: jest.fn(() => ({ set: jest.fn().mockResolvedValue(true) }))
                 };
-                return { doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: false }) })) };
+                return { doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: false }) })) };
             })
         };
 
         const companiesCollectionMock = {
-            doc: jestMock.fn(() => companyDocMock)
+            doc: jest.fn(() => companyDocMock)
         };
 
         db.collection.mockImplementation((name) => {
             if (name === 'companies') return companiesCollectionMock;
             return {
-                doc: jestMock.fn(() => ({
-                    get: jestMock.fn().mockResolvedValue({ exists: false }),
-                    set: jestMock.fn().mockResolvedValue(true),
-                    update: jestMock.fn().mockResolvedValue(true)
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue({ exists: false }),
+                    set: jest.fn().mockResolvedValue(true),
+                    update: jest.fn().mockResolvedValue(true)
                 }))
             };
         });
 
         // Mock SMS adapter
         mockGetAdapterForUser.mockResolvedValue({
-            sendSMS: jestMock.fn().mockResolvedValue(true),
-            ensureLoggedIn: jestMock.fn().mockResolvedValue(true)
+            sendSMS: jest.fn().mockResolvedValue(true),
+            ensureLoggedIn: jest.fn().mockResolvedValue(true)
         });
 
         await bulkActions.processBulkBatch(req, res);
@@ -369,51 +368,51 @@ describe('Bulk Actions Tests', () => {
 
         const sessionDocMock = {
             id: 'session-abc',
-            set: jestMock.fn().mockResolvedValue(true),
-            update: jestMock.fn().mockResolvedValue(true),
-            collection: jestMock.fn(() => ({
-                doc: jestMock.fn(() => ({ set: jestMock.fn(), get: jestMock.fn().mockResolvedValue({ exists: false }) }))
+            set: jest.fn().mockResolvedValue(true),
+            update: jest.fn().mockResolvedValue(true),
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({ set: jest.fn(), get: jest.fn().mockResolvedValue({ exists: false }) }))
             }))
         };
 
         const companyDocMock = {
-            get: jestMock.fn().mockResolvedValue({
+            get: jest.fn().mockResolvedValue({
                 exists: true,
                 data: () => ({ name: 'Test Company', ownerId: 'user123' })
             }),
-            collection: jestMock.fn((name) => {
-                if (name === 'bulk_sessions') return { doc: jestMock.fn(() => sessionDocMock) };
+            collection: jest.fn((name) => {
+                if (name === 'bulk_sessions') return { doc: jest.fn(() => sessionDocMock) };
                 if (name === 'team') return {
-                    doc: jestMock.fn(() => ({
-                        get: jestMock.fn().mockResolvedValue({
+                    doc: jest.fn(() => ({
+                        get: jest.fn().mockResolvedValue({
                             exists: true,
                             data: () => ({ role: 'company_admin' })
                         })
                     }))
                 };
-                return { doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: false }) })) };
+                return { doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: false }) })) };
             })
         };
 
         // Global leads — return 2 leads (lead1 should be filtered out by excludedLeadIds)
         const leadsCollectionMock = {
-            doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: true, data: () => ({}) }) })),
-            where: jestMock.fn().mockReturnThis(),
-            select: jestMock.fn().mockReturnThis(),
-            limit: jestMock.fn().mockReturnThis(),
-            get: jestMock.fn().mockResolvedValue({
+            doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }) })),
+            where: jest.fn().mockReturnThis(),
+            select: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
                 docs: [{ id: 'lead1', data: () => ({}) }, { id: 'lead2', data: () => ({}) }],
                 size: 2
             })
         };
 
         db.collection.mockImplementation((name) => {
-            if (name === 'companies') return { doc: jestMock.fn(() => companyDocMock) };
+            if (name === 'companies') return { doc: jest.fn(() => companyDocMock) };
             if (name === 'leads') return leadsCollectionMock;
             if (name === 'memberships') return {
-                where: jestMock.fn().mockReturnThis(),
-                limit: jestMock.fn().mockReturnThis(),
-                get: jestMock.fn().mockResolvedValue({
+                where: jest.fn().mockReturnThis(),
+                limit: jest.fn().mockReturnThis(),
+                get: jest.fn().mockResolvedValue({
                     docs: [{ data: () => ({ role: 'company_admin', companyId: 'company123' }) }]
                 })
             };
@@ -442,53 +441,53 @@ describe('Bulk Actions Tests', () => {
             auth: { uid: 'user123', token: { roles: { company123: 'company_admin' } } }
         };
 
-        const mockWhere = jestMock.fn().mockReturnThis();
+        const mockWhere = jest.fn().mockReturnThis();
         const sessionDocMock = {
             id: 'sess1',
-            set: jestMock.fn().mockResolvedValue(true),
-            update: jestMock.fn().mockResolvedValue(true),
-            collection: jestMock.fn(() => ({
-                doc: jestMock.fn(() => ({ set: jestMock.fn(), get: jestMock.fn().mockResolvedValue({ exists: false }) }))
+            set: jest.fn().mockResolvedValue(true),
+            update: jest.fn().mockResolvedValue(true),
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({ set: jest.fn(), get: jest.fn().mockResolvedValue({ exists: false }) }))
             }))
         };
 
         const leadsCollectionMock = {
-            doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: false }) })),
+            doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: false }) })),
             where: mockWhere,
-            select: jestMock.fn().mockReturnThis(),
-            limit: jestMock.fn().mockReturnThis(),
-            get: jestMock.fn().mockResolvedValue({
+            select: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
                 docs: [{ id: 'lead1', data: () => ({}) }],
                 size: 1
             })
         };
 
         const companyDocMock = {
-            get: jestMock.fn().mockResolvedValue({
+            get: jest.fn().mockResolvedValue({
                 exists: true,
                 data: () => ({ ownerId: 'user123' })
             }),
-            collection: jestMock.fn((colName) => {
+            collection: jest.fn((colName) => {
                 if (colName === 'leads') return leadsCollectionMock;
-                if (colName === 'bulk_sessions') return { doc: jestMock.fn(() => sessionDocMock) };
+                if (colName === 'bulk_sessions') return { doc: jest.fn(() => sessionDocMock) };
                 if (colName === 'team') return {
-                    doc: jestMock.fn(() => ({
-                        get: jestMock.fn().mockResolvedValue({
+                    doc: jest.fn(() => ({
+                        get: jest.fn().mockResolvedValue({
                             exists: true,
                             data: () => ({ role: 'company_admin' })
                         })
                     }))
                 };
-                return { doc: jestMock.fn(() => ({ get: jestMock.fn().mockResolvedValue({ exists: false }) })) };
+                return { doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: false }) })) };
             })
         };
 
         db.collection.mockImplementation((colName) => {
-            if (colName === 'companies') return { doc: jestMock.fn(() => companyDocMock) };
+            if (colName === 'companies') return { doc: jest.fn(() => companyDocMock) };
             if (colName === 'memberships') return {
-                where: jestMock.fn().mockReturnThis(),
-                limit: jestMock.fn().mockReturnThis(),
-                get: jestMock.fn().mockResolvedValue({
+                where: jest.fn().mockReturnThis(),
+                limit: jest.fn().mockReturnThis(),
+                get: jest.fn().mockResolvedValue({
                     docs: [{ data: () => ({ role: 'company_admin', companyId: 'company123' }) }]
                 })
             };

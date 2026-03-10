@@ -183,8 +183,18 @@ exports.submitGuestApplication = functions
                 .collection('applications')
                 .doc(applicationId);
 
-            // Use set() — creates if new, overwrites if exists (idempotent for retries)
-            await docRef.set(applicationDoc, { merge: true });
+            try {
+                // Attempt to create. This throws if the document already exists.
+                await docRef.create(applicationDoc);
+            } catch (writeError) {
+                if (writeError.code === 6 || (typeof writeError.message === 'string' && writeError.message.includes('ALREADY_EXISTS'))) {
+                    throw new functions.https.HttpsError(
+                        'already-exists',
+                        'An application with this email/phone already exists for this company.'
+                    );
+                }
+                throw writeError;
+            }
 
             console.log(
                 `[submitGuestApplication] ✅ Wrote application ${applicationId} for company ${companyId}`
@@ -196,6 +206,9 @@ exports.submitGuestApplication = functions
                 confirmationNumber,
             };
         } catch (writeError) {
+            if (writeError instanceof functions.https.HttpsError) {
+                throw writeError;
+            }
             console.error('[submitGuestApplication] Firestore write failed:', writeError);
             throw new functions.https.HttpsError(
                 'internal',

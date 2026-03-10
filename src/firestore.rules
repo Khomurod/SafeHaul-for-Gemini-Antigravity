@@ -261,7 +261,6 @@ service cloud.firestore {
         // Driver can only update if it matches their ID (mostly separate write, but allowing for now)
         allow update: if isCompanyTeam(companyId) || 
                       (isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid)) ||
-                      (request.appcheck != null && isDeterministicApplicationId(companyId, applicationId)) ||
                       isSuperAdmin();
 
         allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
@@ -336,7 +335,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isSuperAdmin() || (isSignedIn() && isStaff());
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isOwner(userId) || isSuperAdmin();
+      allow update: if isSuperAdmin() || (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'globalRole', 'companyId']));
       allow delete: if isSuperAdmin();
     }
 

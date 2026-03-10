@@ -1,13 +1,13 @@
 const assert = require('assert');
-// vi is available globally via vitest globals: true config
+// jest is available globally via jest globals: true config
 
 // --- MOCK FACTORY ---
-vi.mock('../../firebaseAdmin', () => {
+jest.mock('../../firebaseAdmin', () => {
     const mockFirestore = {
-        collection: vi.fn(),
-        batch: vi.fn(),
-        runTransaction: vi.fn(),
-        settings: vi.fn()
+        collection: jest.fn(),
+        batch: jest.fn(),
+        runTransaction: jest.fn(),
+        settings: jest.fn()
     };
 
     const mockAdmin = {
@@ -23,10 +23,10 @@ vi.mock('../../firebaseAdmin', () => {
             }
         },
         auth: () => ({
-            getUserByEmail: vi.fn()
+            getUserByEmail: jest.fn()
         }),
         apps: ['mockApp'],
-        initializeApp: vi.fn()
+        initializeApp: jest.fn()
     };
 
     return {
@@ -38,13 +38,13 @@ vi.mock('../../firebaseAdmin', () => {
 });
 
 // Mock firestore v2 - Define mock impl here
-vi.mock('firebase-functions/v2/firestore', () => ({
-    onDocumentCreated: vi.fn((config, handler) => handler),
-    onDocumentUpdated: vi.fn((config, handler) => handler)
+jest.mock('firebase-functions/v2/firestore', () => ({
+    onDocumentCreated: jest.fn((config, handler) => handler),
+    onDocumentUpdated: jest.fn((config, handler) => handler)
 }));
 
 // Mock encryption
-vi.mock('../../integrations/encryption', () => ({
+jest.mock('../../integrations/encryption', () => ({
     encrypt: (val) => `ENCRYPTED_${val}`
 }));
 
@@ -60,36 +60,36 @@ describe('E2E: Driver Application Submission Flow', () => {
     const capturedHandler = match ? match[1] : null;
 
     beforeEach(() => {
-        vi.clearAllMocks();
+        jest.clearAllMocks();
 
         // Setup generic mocks
 
         // Setup generic mocks
         const docMock = {
-            collection: vi.fn(),
-            update: vi.fn().mockResolvedValue(),
-            set: vi.fn().mockResolvedValue(),
-            get: vi.fn().mockResolvedValue({
+            collection: jest.fn(),
+            update: jest.fn().mockResolvedValue(),
+            set: jest.fn().mockResolvedValue(),
+            get: jest.fn().mockResolvedValue({
                 exists: false, data: () => ({}),
-                ref: { collection: vi.fn() }
+                ref: { collection: jest.fn() }
             })
         };
         const collectionMock = {
-            doc: vi.fn().mockReturnValue(docMock),
-            where: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
-            add: vi.fn().mockResolvedValue({ id: 'new_doc_id' })
+            doc: jest.fn().mockReturnValue(docMock),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+            add: jest.fn().mockResolvedValue({ id: 'new_doc_id' })
         };
         docMock.collection.mockReturnValue(collectionMock);
         mockFirestore.collection.mockReturnValue(collectionMock);
 
         mockFirestore.runTransaction.mockImplementation(async (callback) => {
             const t = {
-                get: vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
-                set: vi.fn(),
-                update: vi.fn(),
-                delete: vi.fn()
+                get: jest.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+                set: jest.fn(),
+                update: jest.fn(),
+                delete: jest.fn()
             };
             await callback(t);
         });

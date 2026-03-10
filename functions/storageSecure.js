@@ -18,10 +18,12 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
     const { companyId, fileName, fileType, folder } = data;
 
     // 1. Security: App Check & Rate Limiting (Prevent abuse)
-    // Note: For guest uploads, we log a warning but allow the upload to proceed
-    // (matching the submitGuestApplication pattern — never block guest submissions)
     if (!context.app && !process.env.FUNCTIONS_EMULATOR) {
-        console.warn('[getSignedUploadUrl] Called without App Check token — allowing for guest compatibility');
+        console.error('[getSignedUploadUrl] App Check token missing.');
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'The function must be called from an App Check verified app.'
+        );
     }
 
     if (!context.auth) {

@@ -101,7 +101,8 @@ exports.facebookWebhook = onRequest(
     { secrets: [FACEBOOK_APP_SECRET, FACEBOOK_VERIFY_TOKEN], invoker: 'public' },
     async (req, res) => {
         const APP_SECRET = FACEBOOK_APP_SECRET.value();
-        const VERIFY_TOKEN_VALUE = FACEBOOK_VERIFY_TOKEN.value() || 'safehaul_verify_123';
+        const VERIFY_TOKEN_VALUE = FACEBOOK_VERIFY_TOKEN.value();
+        if (!VERIFY_TOKEN_VALUE) throw new Error("FACEBOOK_VERIFY_TOKEN secret is not set in production.");
 
         // A. Verification (GET)
         if (req.method === 'GET') {
@@ -121,22 +122,25 @@ exports.facebookWebhook = onRequest(
 
         // B. Security (Signature Check for POST)
         if (req.method === 'POST') {
-            if (APP_SECRET) {
-                const signature = req.headers['x-hub-signature'];
-                if (!signature) {
-                    console.warn("Missing X-Hub-Signature");
-                    return res.sendStatus(401); // P1-4 FIX: Enforce signature validation
-                } else {
-                    const elements = signature.split('=');
-                    const signatureHash = elements[1];
-                    const expectedHash = crypto.createHmac('sha1', APP_SECRET)
-                        .update(req.rawBody) // Firebase Functions preserves rawBody
-                        .digest('hex');
+            if (!APP_SECRET) {
+                console.error("Critical: APP_SECRET not set.");
+                return res.sendStatus(500);
+            }
 
-                    if (signatureHash !== expectedHash) {
-                        console.error("Invalid Signature");
-                        return res.sendStatus(403);
-                    }
+            const signature = req.headers['x-hub-signature'];
+            if (!signature) {
+                console.warn("Missing X-Hub-Signature");
+                return res.sendStatus(401); // P1-4 FIX: Enforce signature validation
+            } else {
+                const elements = signature.split('=');
+                const signatureHash = elements[1];
+                const expectedHash = crypto.createHmac('sha1', APP_SECRET)
+                    .update(req.rawBody) // Firebase Functions preserves rawBody
+                    .digest('hex');
+
+                if (signatureHash !== expectedHash) {
+                    console.error("Invalid Signature");
+                    return res.sendStatus(403);
                 }
             }
 
@@ -238,7 +242,11 @@ async function processLead(value) {
 exports.facebookWebhookV1 = functions.https.onRequest(async (req, res) => {
     // Use runtime config or environment for secrets in V1
     const APP_SECRET = process.env.FACEBOOK_APP_SECRET_VALUE || '';
-    const VERIFY_TOKEN_VALUE = process.env.FACEBOOK_VERIFY_TOKEN_VALUE || 'safehaul_verify_123';
+    const VERIFY_TOKEN_VALUE = process.env.FACEBOOK_VERIFY_TOKEN_VALUE;
+    if (!VERIFY_TOKEN_VALUE) {
+        console.error("FACEBOOK_VERIFY_TOKEN_VALUE is not set.");
+        return res.sendStatus(500);
+    }
 
     // A. Verification (GET)
     if (req.method === 'GET') {
@@ -258,20 +266,26 @@ exports.facebookWebhookV1 = functions.https.onRequest(async (req, res) => {
 
     // B. Security (Signature Check for POST)
     if (req.method === 'POST') {
-        if (APP_SECRET) {
-            const signature = req.headers['x-hub-signature'];
-            if (signature) {
-                const elements = signature.split('=');
-                const signatureHash = elements[1];
-                const expectedHash = crypto.createHmac('sha1', APP_SECRET)
-                    .update(req.rawBody)
-                    .digest('hex');
+        if (!APP_SECRET) {
+            console.error("Critical: APP_SECRET not set for V1 webhook.");
+            return res.sendStatus(500);
+        }
 
-                if (signatureHash !== expectedHash) {
-                    console.error("Invalid Signature V1");
-                    return res.sendStatus(403);
-                }
-            }
+        const signature = req.headers['x-hub-signature'];
+        if (!signature) {
+            console.warn("Missing X-Hub-Signature V1");
+            return res.sendStatus(401);
+        }
+
+        const elements = signature.split('=');
+        const signatureHash = elements[1];
+        const expectedHash = crypto.createHmac('sha1', APP_SECRET)
+            .update(req.rawBody)
+            .digest('hex');
+
+        if (signatureHash !== expectedHash) {
+            console.error("Invalid Signature V1");
+            return res.sendStatus(403);
         }
 
         // C. Process Entries

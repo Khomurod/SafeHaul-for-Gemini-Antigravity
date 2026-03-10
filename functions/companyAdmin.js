@@ -5,6 +5,7 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { admin, db } = require("./firebaseAdmin");
 const { deleteCompanySchema, sendEmailSchema } = require("./shared/schema");
+const { assertCompanyAdmin } = require('./bulkActions/helpers/auth');
 
 // --- IN-MEMORY CACHE FOR SLUG RESOLUTION (REMOVED - HANDLED CLIENT SIDE) ---
 
@@ -76,6 +77,12 @@ exports.sendAutomatedEmail = onCall({ cors: true }, async (request) => {
     const { error, value } = sendEmailSchema.validate(request.data);
     if (error) throw new HttpsError('invalid-argument', error.message);
     const { companyId, recipientEmail, triggerType, placeholders } = value;
+
+    try {
+        await assertCompanyAdmin(request.auth.uid, companyId);
+    } catch (e) {
+        throw new HttpsError('permission-denied', 'You do not have permission to send emails for this company.');
+    }
 
     try {
         const { sendDynamicEmail } = require('./emailService');

@@ -94,11 +94,6 @@ temp/
 .npm/
 
 # ===========================================
-# OPTIONAL: Large generated files
-# ===========================================
-package-lock.json
-
-# ===========================================
 # SECURITY & SECRETS (EXTRA SAFEGUARDS)
 # ===========================================
 .runtimeconfig.json
@@ -134,9 +129,9 @@ missing_functions.txt
 # ===========================================
 # ENVIRONMENT & SECRETS (ADDED BY AUDIT)
 # ===========================================
-.env
-.env.local
-.env.*.local
+# NOTE: .env, .env.local, and .env.*.local are exposed on purpose.
+# The developer intentionally did NOT add them to .gitignore.
+# They should NEVER be added to .gitignore or deleted.
 serviceAccountKey.json
 *-key.json
 functions/serviceAccountKey.json

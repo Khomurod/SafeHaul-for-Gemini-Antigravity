@@ -84,13 +84,10 @@ exports.testEmailConnection = require('./testEmailConnection').testEmailConnecti
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
 exports.backfillPublicProfiles = companyAdmin.backfillPublicProfiles;
-exports.backfillEmployerFields = require('./backfillEmployerFields').backfillEmployerFields;
 
 
 
-// 9. Scheduled Jobs
-const customJobs = require('./customJobs');
-exports.debugAppCounts = customJobs.debugAppCounts;
+// 9. Scheduled Jobs (Removed)
 
 // 10. Integrations
 const facebook = require('./integrations/facebook');
@@ -121,10 +118,7 @@ exports.onLeadsActivityLogCreated = statsAggregator.onLeadsActivityLogCreated; /
 
 
 
-// 13. Stats Backfill (Admin Tools)
-const statsBackfill = require('./statsBackfill');
-exports.backfillCompanyStats = statsBackfill.backfillCompanyStats;
-exports.backfillAllStats = statsBackfill.backfillAllStats;
+// 13. Stats Backfill (Admin Tools - Removed)
 
 // 14. Engagement Engine (Smart Segments & Compliance)
 const segments = require('./segments');

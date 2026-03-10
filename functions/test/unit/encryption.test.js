@@ -1,6 +1,3 @@
-// @vitest-environment node
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
 // Reset module cache before each suite to allow key validation testing
 let encrypt;
 let decrypt;

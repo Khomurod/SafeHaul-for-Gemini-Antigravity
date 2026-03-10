@@ -1,14 +1,12 @@
-// @vitest-environment node
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { checkRateLimit } from '../../shared/rateLimiter';
-import { db } from '../../firebaseAdmin';
+const { checkRateLimit } = require('../../shared/rateLimiter');
+const { db } = require('../../firebaseAdmin');
 
-vi.mock('../../firebaseAdmin', () => {
+jest.mock('../../firebaseAdmin', () => {
     const firestoreMock = {
-        collection: vi.fn().mockReturnThis(),
-        doc: vi.fn().mockReturnThis(),
-        runTransaction: vi.fn(),
-        settings: vi.fn()
+        collection: jest.fn().mockReturnThis(),
+        doc: jest.fn().mockReturnThis(),
+        runTransaction: jest.fn(),
+        settings: jest.fn()
     };
     return {
         admin: {
@@ -18,7 +16,7 @@ vi.mock('../../firebaseAdmin', () => {
                     fromMillis: (ms) => ({ toMillis: () => ms })
                 },
                 FieldValue: {
-                    increment: vi.fn()
+                    increment: jest.fn()
                 }
             }
         },
@@ -28,16 +26,16 @@ vi.mock('../../firebaseAdmin', () => {
 
 describe('Rate Limiter', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        jest.clearAllMocks();
     });
 
     it('should allow request if no record exists', async () => {
         db.runTransaction.mockImplementation(async textCallback => {
             const mockDoc = { exists: false, data: () => ({}) };
             const mockT = {
-                get: vi.fn().mockResolvedValue(mockDoc),
-                set: vi.fn(),
-                update: vi.fn()
+                get: jest.fn().mockResolvedValue(mockDoc),
+                set: jest.fn(),
+                update: jest.fn()
             };
             await textCallback(mockT);
         });
@@ -56,9 +54,9 @@ describe('Rate Limiter', () => {
                 })
             };
             const mockT = {
-                get: vi.fn().mockResolvedValue(mockDoc),
-                set: vi.fn(),
-                update: vi.fn()
+                get: jest.fn().mockResolvedValue(mockDoc),
+                set: jest.fn(),
+                update: jest.fn()
             };
 
             // Allow the callback (which contains logic to throw error) to run
