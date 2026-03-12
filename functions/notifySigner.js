@@ -20,7 +20,11 @@ exports.notifySigner = functions.firestore
         }
 
         // 2. Build signing link
-        const signingLink = `https://truckerapp-system.web.app/sign/${companyId}/${requestId}?token=${data.accessToken}`;
+        // ESIGN-11 FIX: Read base URL from environment variable rather than hardcoding.
+        // The old hardcoded URL 'truckerapp-system.web.app' is an outdated Firebase hosting URL
+        // that may not match the production domain. Set APP_BASE_URL in Cloud Function env config.
+        const baseUrl = process.env.APP_BASE_URL || 'https://app.safehaul.io';
+        const signingLink = `${baseUrl}/sign/${companyId}/${requestId}?token=${data.accessToken}`;
 
         // 3. Build professional HTML email body (kept from original)
         const subject = `Action Required: Please Sign "${data.title || 'Document'}"`;

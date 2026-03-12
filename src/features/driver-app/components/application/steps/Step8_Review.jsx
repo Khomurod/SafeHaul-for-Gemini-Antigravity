@@ -94,7 +94,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
             <ReviewSection title="Personal Information" icon={User} onEdit={() => navigateToStep(0)}>
                 <ReviewItem label="Full Name" value={`${formData.firstName} ${formData.middleName || ''} ${formData.lastName} ${formData.suffix || ''}`} />
                 <ReviewItem label="Date of Birth" value={formData.dob} />
-                <ReviewItem label="SSN" value={formData.ssn} />
+                <ReviewItem label="SSN" value={formData.ssn ? `***-**-${String(formData.ssn).slice(-4)}` : 'Not Provided'} />
                 <ReviewItem label="Phone" value={formData.phone} />
                 <ReviewItem label="Email" value={formData.email} />
                 <ReviewItem label="Referral Source" value={formData.referralSource} />

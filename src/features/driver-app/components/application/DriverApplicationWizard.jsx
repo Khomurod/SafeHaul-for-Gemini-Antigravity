@@ -55,7 +55,11 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   useEffect(() => {
     const loadDraft = async () => {
       // Wait for targetCompanyId to be resolved before loading draft
-      if (!currentUser || !targetCompanyId) return;
+      if (!currentUser || !targetCompanyId) {
+        // BUG-1: Always stop spinner even on early return, so UI is not stuck.
+        setLoading(false);
+        return;
+      }
 
       try {
         // SECURITY FIX: Isolate drafts by Company ID
@@ -147,9 +151,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       setFormData(mergedData);
       lastFormDataRef.current = mergedData;
 
+      // SEC-1: Never persist PII fields (SSN, signature) in Firestore drafts.
+      // These are entered fresh on each session; drafts only recover progress, not sensitive data.
+      const { ssn: _ssn, signature: _sig, ...draftPayload } = mergedData;
+
       const draftId = `app_${targetCompanyId}`;
       const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
-      await setDoc(draftRef, mergedData, { merge: true });
+      await setDoc(draftRef, draftPayload, { merge: true });
     } catch (err) {
       console.error("Auto-save failed:", err);
     } finally {
@@ -283,6 +291,22 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       return;
     }
 
+    // VAL-2: Validate ESIGN/FCRA required consent checkboxes.
+    // Electronic consent is required for legal ESIGN validity (15 U.S.C. § 7001).
+    // Background-check authorization must be affirmatively given per FCRA.
+    if (formData['agree-electronic'] !== 'agreed') {
+      showError("You must consent to use electronic records and signatures before submitting.");
+      const consentStepIndex = (customQuestions && customQuestions.length > 0) ? 9 : 8;
+      setCurrentStep(consentStepIndex);
+      return;
+    }
+    if (formData['agree-background-check'] !== 'agreed') {
+      showError("You must authorize the background check before submitting.");
+      const consentStepIndex = (customQuestions && customQuestions.length > 0) ? 9 : 8;
+      setCurrentStep(consentStepIndex);
+      return;
+    }
+
     // Set Guard Ref
     isSubmitting.current = true;
     setSubmissionStatus('submitting');
@@ -332,7 +356,16 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   };
 
   if (loading) {
-    if (isOpen) return null; // Or a subtle loader inside the modal
+    if (isOpen) {
+      // BUG-4: Show a spinner inside the modal shell instead of blank/null
+      return (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-5xl max-h-[95vh] rounded-2xl shadow-2xl flex items-center justify-center min-h-[300px]">
+            <Loader2 className="animate-spin text-blue-600" size={40} />
+          </div>
+        </div>
+      );
+    }
     return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
   }
 
@@ -403,7 +436,14 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
             </span>
           )}
         </div>
-        <button onClick={() => navigate('/driver/dashboard')} className="text-sm text-gray-500 hover:text-gray-800 font-medium">
+        <button
+          onClick={async () => {
+            // BUG-2: Save draft before navigating so in-progress changes are never lost.
+            await saveDraft();
+            navigate('/driver/dashboard');
+          }}
+          className="text-sm text-gray-500 hover:text-gray-800 font-medium"
+        >
           Save & Exit
         </button>
       </div>

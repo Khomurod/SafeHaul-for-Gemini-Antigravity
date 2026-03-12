@@ -7,6 +7,18 @@ const Step2_Qualifications = ({ formData, updateFormData, onNavigate }) => {
     const drugTestPositive = formData['drug-test-positive'] === 'yes';
     const experienceOptions = EXPERIENCE_OPTIONS;
 
+    // VAL-1: Validate required radio fields before advancing.
+    // form.checkValidity() does not catch radio groups unless they have a required attribute
+    // tied to an actual <input>, so we validate explicitly here.
+    const handleContinue = () => {
+        const form = document.getElementById('driver-form');
+        if (form && !form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+        onNavigate('next');
+    };
+
     return (
         <div id="page-2" className="form-step space-y-6">
             <h3 className="text-xl font-semibold text-gray-800">Step 2 of 9: Qualification Information</h3>
@@ -90,7 +102,7 @@ const Step2_Qualifications = ({ formData, updateFormData, onNavigate }) => {
                 </button>
                 <button 
                     type="button" 
-                    onClick={() => onNavigate('next')}
+                    onClick={handleContinue}
                     className="w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
                 >
                     Continue

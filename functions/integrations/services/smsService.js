@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const SMSAdapterFactory = require('../factory');
+const { assertCompanyAdmin } = require('../../bulkActions/helpers/auth');
 
 // Shared options for functions that need encryption capabilities
 const encryptedCallOptions = {
@@ -91,16 +92,19 @@ exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) 
 
     const { companyId, leadIds, messageText } = request.data; // leadIds is array of [leadId]
 
-    // Validation
     if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
         return { success: false, message: "No leads provided." };
     }
     if (leadIds.length > 50) {
         throw new HttpsError('invalid-argument', 'Batch size limit exceeded (Max 50).');
     }
+    if (!companyId) {
+        throw new HttpsError('invalid-argument', 'companyId is required.');
+    }
 
-    // Permission Check: User should belong to this company (simplified here)
-    // In real app, check request.auth.token.claims.companyId === companyId
+    // BULK-4 FIX: Enforce RBAC — verify the caller is a member of the specified company.
+    // Without this, any authenticated user can send bulk SMS to leads belonging to any company.
+    await assertCompanyAdmin(request.auth.uid, companyId);
 
     let successCount = 0;
     let failCount = 0;

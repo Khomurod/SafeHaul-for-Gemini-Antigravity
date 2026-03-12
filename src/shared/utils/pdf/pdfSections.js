@@ -125,7 +125,7 @@ export function addDrivingHistorySection(doc, y, violations, accidents) {
             if (i > 0) y += 1;
             const label = `Accident ${i + 1}`;
             let content = `Date: ${a.date || 'N/A'} | Loc: ${a.city}, ${a.state}`;
-            content += `\nCMV: ${a.commercial === 'yes' ? 'Yes' : 'No'} | Preventable: ${a.preventable === 'yes' ? 'Yes' : 'No'} | Fatalities: 0 | Injuries: 0`;
+            content += `\nCMV: ${a.commercial === 'yes' ? 'Yes' : 'No'} | Preventable: ${a.preventable === 'yes' ? 'Yes' : 'No'} | Fatalities: ${a.fatalities ?? 0} | Injuries: ${a.injuries ?? 0}`;
             content += `\nDetails: ${a.details || 'N/A'}`;
             y = addTableRow(doc, y, label, content);
         });

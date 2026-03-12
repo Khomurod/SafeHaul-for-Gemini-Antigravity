@@ -174,8 +174,17 @@ export function PublicApplyHandler() {
   };
 
   const handlePartialSubmit = () => {
-    localStorage.setItem(`draft_${slug}`, JSON.stringify(formData));
-    showSuccess("Progress saved.");
+    // SEC-2: Never persist SSN or signature in localStorage — they are PII/biometric data
+    // accessible to any JavaScript on the page (XSS vector) and persisted across sessions.
+    // DL-1: Wrap in try/catch so a QuotaExceededError is surfaced rather than silently swallowed.
+    const { ssn: _ssn, signature: _sig, ...draftPayload } = formData;
+    try {
+      localStorage.setItem(`draft_${slug}`, JSON.stringify(draftPayload));
+      showSuccess("Progress saved.");
+    } catch (err) {
+      console.warn('[PublicApplyHandler] Draft save failed (quota or privacy policy):', err);
+      showError("Could not save progress locally. Your data is still here — please continue filling the form.");
+    }
   };
 
   const handleFinalSubmit = async () => {
@@ -356,16 +365,27 @@ export function PublicApplyHandler() {
 
   if (error) return <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4"><div className="bg-white p-8 rounded-xl shadow-lg border border-red-100 text-center max-w-md"><AlertCircle size={32} className="text-red-600 mx-auto mb-4" /><h3 className="text-xl font-bold text-gray-900 mb-2">Link Error</h3><p className="text-gray-600">{error}</p></div></div>;
 
-  if (submissionStatus === 'success') return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md border border-green-100">
-        <Building2 size={40} className="text-green-600 mx-auto mb-6" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-3">Application Submitted!</h2>
-        <p className="text-gray-600 mb-6">Your application has been received and a recruiter will contact you soon.</p>
-        <button onClick={() => navigate('/')} className="text-blue-600 hover:underline text-sm font-medium">Go to home</button>
+  if (submissionStatus === 'success') {
+    // DL-3: Display the confirmation number so applicants have a reference for follow-up.
+    const confirmNum = sessionStorage.getItem('lastConfirmationNumber');
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md border border-green-100">
+          <Building2 size={40} className="text-green-600 mx-auto mb-6" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Application Submitted!</h2>
+          <p className="text-gray-600 mb-4">Your application has been received and a recruiter will contact you soon.</p>
+          {confirmNum && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-6">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Confirmation Number</p>
+              <p className="text-lg font-bold font-mono text-gray-800">{confirmNum}</p>
+              <p className="text-xs text-gray-400 mt-1">Save this number for your records.</p>
+            </div>
+          )}
+          <button onClick={() => navigate('/')} className="text-blue-600 hover:underline text-sm font-medium">Go to home</button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   // P3-3 FIX: Queued status UI — shown when all direct submit attempts failed but data is queued
   if (submissionStatus === 'queued') return (

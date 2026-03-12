@@ -4,6 +4,7 @@ const { assertCompanyAdmin } = require("../helpers/auth");
 const { buildLeadQueries } = require("../helpers/queryBuilder");
 const { enqueueWorker } = require("../services/queueService");
 const { normalizePhone } = require("../../utils/phoneUtils");
+const { checkRateLimit } = require("../../shared/rateLimiter");
 
 /**
  * 1. Initialize Bulk Session
@@ -18,6 +19,14 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
     // RBAC
     await assertCompanyAdmin(request.auth.uid, companyId);
+
+    // BULK-5 FIX: Rate limit bulk session creation to prevent runaway SMS spend.
+    // Maximum 10 bulk sessions per company per hour. A session may still contain thousands
+    // of recipients, so this prevents accidental double-submits, not intentional high volume.
+    const isAllowed = await checkRateLimit(`bulk_init_${companyId}`, 10, 3600, 'closed');
+    if (!isAllowed) {
+        throw new HttpsError('resource-exhausted', 'Too many bulk sessions created recently. Please wait before starting another.');
+    }
 
     const leadSourceType = filters.leadType || 'applications'; // 'global', 'leads', 'applications' (default)
 

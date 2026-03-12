@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { testEmailCredentials } = require('./emailService');
+const { checkRateLimit } = require('./shared/rateLimiter');
 
 /**
  * Test Email Connection (Cloud Function)
@@ -12,6 +13,14 @@ exports.testEmailConnection = onCall({
     // Require authentication
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'You must be logged in to test email connection.');
+    }
+
+    // CONN-3 FIX: Rate limit to 5 test attempts per user per minute.
+    // Without this, an attacker could use this endpoint to brute-force SMTP credentials
+    // against external mail servers, making SafeHaul an SMTP credential spraying proxy.
+    const isAllowed = await checkRateLimit(`test_email_${request.auth.uid}`, 5, 60, 'closed');
+    if (!isAllowed) {
+        throw new HttpsError('resource-exhausted', 'Too many connection tests. Please wait a moment before trying again.');
     }
 
     const { smtpHost, smtpPort, smtpUser, smtpPass } = request.data;

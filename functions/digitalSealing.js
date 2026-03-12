@@ -63,9 +63,20 @@ exports.sealDocument = functions.runWith({
             const fields = newData.fields || [];
             const values = newData.fieldValues || {};
 
+            // ESIGN-3 FIX: Track which required fields are missing so we can fail properly
+            // instead of silently marking the document as 'signed' with blank required fields.
+            const missingRequiredFields = [];
+            const sigPathsToDelete = []; // ESIGN-9: collect paths for cleanup after sealing
+
             for (const field of fields) {
                 const val = values[field.id];
-                if (!val) continue;
+                if (!val) {
+                    // ESIGN-3 FIX: Track missing required fields
+                    if (field.required) {
+                        missingRequiredFields.push(field.id);
+                    }
+                    continue;
+                }
 
                 const pageIndex = Math.max(0, (field.pageNumber || 1) - 1);
                 if (pageIndex >= pdfDoc.getPages().length) continue;
@@ -117,15 +128,18 @@ exports.sealDocument = functions.runWith({
                             sigPath = sigPath.replace(`gs://${bucket.name}/`, '');
                         }
 
-                        // M1 FIX: Validate signature path belongs to this company
+                        // Validate signature path belongs to this company
                         const sigAllowedPrefix = `secure_documents/${companyId}/signatures/`;
                         if (!sigPath.startsWith(sigAllowedPrefix)) {
                             console.error(`[Security] Signature path rejected: ${sigPath}`);
+                            if (field.required) missingRequiredFields.push(field.id);
                             continue; // Skip this field — don't throw, continue sealing
                         }
 
                         await bucket.file(sigPath).download({ destination: sigTempPath });
                         tempSigPaths.push(sigTempPath);
+                        // ESIGN-9 FIX: Track Storage paths for post-sealing cleanup
+                        sigPathsToDelete.push(sigPath);
 
                         const sigBytes = fs.readFileSync(sigTempPath);
                         const sigImage = await pdfDoc.embedPng(sigBytes);
@@ -142,8 +156,22 @@ exports.sealDocument = functions.runWith({
                         });
                     } catch (sigErr) {
                         console.error(`Failed to load signature ${field.id}:`, sigErr);
+                        if (field.required) missingRequiredFields.push(field.id);
                     }
                 }
+            }
+
+            // ESIGN-3 FIX: Fail sealing if any required fields were missing or skipped.
+            // Previously the function would seal a "complete" document with blank fields
+            // and mark it 'signed', creating a legally void document.
+            if (missingRequiredFields.length > 0) {
+                console.error(`[Seal] Required fields missing: ${missingRequiredFields.join(', ')}`);
+                await change.after.ref.update({
+                    status: 'error_sealing',
+                    errorLog: `Required fields not completed: ${missingRequiredFields.join(', ')}`,
+                    missingFields: missingRequiredFields,
+                });
+                return;
             }
 
             // 5. Append Enhanced Audit Trail Page
@@ -195,6 +223,18 @@ exports.sealDocument = functions.runWith({
                 sha256Checksum: sha256,
                 completedAt: admin.firestore.FieldValue.serverTimestamp()
             });
+
+            // ESIGN-9 FIX: Delete the raw signature PNG files from Cloud Storage after sealing.
+            // They are embedded in the sealed PDF and no longer needed as standalone files.
+            // Keeping them is a PII retention risk under GDPR/CCPA.
+            for (const sigPath of sigPathsToDelete) {
+                try {
+                    await bucket.file(sigPath).delete();
+                } catch (delErr) {
+                    // Non-fatal — log but don't fail the whole operation
+                    console.warn(`[Seal] Could not delete signature file ${sigPath}:`, delErr.message);
+                }
+            }
 
         } catch (err) {
             console.error("Sealing Failed:", err);

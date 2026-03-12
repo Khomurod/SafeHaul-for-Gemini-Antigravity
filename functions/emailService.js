@@ -186,10 +186,42 @@ async function testEmailCredentials(smtpConfig) {
             };
         }
 
+        // CONN-2 FIX: SSRF protection — reject private/loopback/link-local hostnames.
+        // Without this, an attacker (or misconfigured admin) could use the test endpoint to probe
+        // internal GCP metadata servers (169.254.169.254), localhost services, or internal VPC hosts.
+        const SSRF_BLOCKLIST = [
+            /^127\./,                          // IPv4 loopback
+            /^10\./,                           // RFC-1918 private
+            /^192\.168\./,                     // RFC-1918 private
+            /^172\.(1[6-9]|2\d|3[01])\./,    // RFC-1918 private
+            /^169\.254\./,                     // Link-local (GCP metadata)
+            /^::1$/,                           // IPv6 loopback
+            /^fc00:/i,                         // IPv6 unique local
+            /^fe80:/i,                         // IPv6 link-local
+            /^0\./,                            // Reserved
+        ];
+        const hostLower = smtpHost.toLowerCase().trim();
+        // Block obvious localhost variants
+        if (hostLower === 'localhost' || hostLower === '0.0.0.0') {
+            return { success: false, error: 'Invalid SMTP host.' };
+        }
+        for (const pattern of SSRF_BLOCKLIST) {
+            if (pattern.test(smtpHost)) {
+                return { success: false, error: 'Invalid SMTP host: internal addresses are not allowed.' };
+            }
+        }
+
+        // Validate port is in the allowed SMTP range
+        const port = parseInt(smtpPort) || 587;
+        const ALLOWED_PORTS = [25, 465, 587, 2525];
+        if (!ALLOWED_PORTS.includes(port)) {
+            return { success: false, error: `Invalid SMTP port. Allowed ports: ${ALLOWED_PORTS.join(', ')}.` };
+        }
+
         const transporter = nodemailer.createTransport({
             host: smtpHost,
-            port: smtpPort || 587,
-            secure: smtpPort === 465,
+            port: port,
+            secure: port === 465,
             auth: {
                 user: smtpUser,
                 pass: smtpPass,
