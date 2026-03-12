@@ -10,20 +10,7 @@
 
 ### 2. High‑Priority Findings & Recommendations
 
-- **F1 – Environment files not ignored by git (secrets risk)**
-  - **Finding**: `.gitignore` had the `.env`, `.env.local`, `.env.*.local` patterns removed while `.env`/`.env.local` exist in the repo.
-  - **Risk**: Accidental commit of API keys, DSNs, and other secrets.
-  - **Status**: **Fixed in this audit**.
-    - `.gitignore` now contains:
-      - `.env`
-      - `.env.local`
-      - `.env.*.local`
-  - **Recommendation**:
-    - Ensure no secrets are tracked:
-      - `git ls-files | findstr /R "\.env"` (or use your editor) and confirm no `.env*` files are committed.
-      - If any are in history, rotate the exposed keys and consider using GitHub’s secret scanning / security advisories to track the incident.
-
-- **F2 – Lockfile not tracked (reproducibility risk)**
+- **F1 – Lockfile not tracked (reproducibility risk)**
   - **Finding**: `.gitignore` was ignoring `package-lock.json` while `package-lock.json` and `functions/package-lock.json` exist and are modified.
   - **Risk**: Non‑deterministic installs between dev/CI/prod; “works on my machine” drift.
   - **Status**: **Fixed in this audit**.
@@ -34,7 +21,7 @@
       - `git commit -m "chore: track lockfiles for reproducible builds"`
     - Treat changes to these files as part of normal review for dependency updates.
 
-- **F3 – Node version mismatch (local vs CI/prod)**
+- **F2 – Node version mismatch (local vs CI/prod)**
   - **Finding**:
     - `functions/package.json` declares `"engines": { "node": "20" }`.
     - GitHub Actions workflow uses Node 20.x.
@@ -51,7 +38,7 @@
       - `npm test`
       - `cd functions && npm ci && npm run lint && npm test`
 
-- **F4 – Incomplete toolchain install during checks**
+- **F3 – Incomplete toolchain install during checks**
   - **Finding**:
     - `npm run build` failed because `@vitejs/plugin-react` could not be resolved while `npm ci` was still running.
     - `npm run lint` and `functions/npm run lint` failed with `eslint` not found before dependencies finished installing.
@@ -62,7 +49,7 @@
       - Functions: `cd functions && npm ci`
     - Once installs complete, treat any remaining failures in `build`, `lint`, or `test` as real issues to fix before release.
 
-- **F5 – Dependencies with known vulnerabilities**
+- **F4 – Dependencies with known vulnerabilities**
   - **Finding**:
     - `cd functions && npm ci` reported **13 vulnerabilities** (10 low, 2 moderate, 1 high) at the time of this audit.
   - **Risk**: Potential exploit paths in transitive dependencies (most often low, but the high‑severity item must be understood).
@@ -80,7 +67,7 @@
           - Why the vulnerable code path is not reachable or is mitigated by other controls (e.g., App Check, auth, Firestore rules).
           - Plan and owner for re‑evaluation on a future date.
 
-- **F6 – Large set of deletions (backfill scripts, reports, artifacts)**
+- **F5 – Large set of deletions (backfill scripts, reports, artifacts)**
   - **Finding**:
     - Git diff shows ~1800 deletions across 21 files, mostly:
       - Historical backfill scripts (`functions/backfillEmployerFields.js`, `functions/scripts/backfillPhoneNumbers.js`, `functions/statsBackfill.js`).
@@ -96,7 +83,7 @@
     - If any are still needed:
       - Restore them or move them into a dedicated `tools/` or `scripts/` directory with clear documentation and restricted access.
 
-### 3. Security & Access Control Review (Spot‑Check)
+### 4. Security & Access Control Review (Spot‑Check)
 
 - **Firestore rules (`src/firestore.rules`)**
   - Positive patterns observed:
@@ -169,7 +156,6 @@
 
 - **Conditional verdict**:
   - **If you implement and enforce all of the following**, SafeHaul is in a **production‑ready** state from the perspective of this audit:
-    - `.env*` files are ignored and no secrets are committed.
     - `package-lock.json` and `functions/package-lock.json` are tracked and up to date.
     - All environments that build or run functions use **Node 20.x**.
     - `npm ci && npm run build && npm run lint && npm test` succeed at the root.
