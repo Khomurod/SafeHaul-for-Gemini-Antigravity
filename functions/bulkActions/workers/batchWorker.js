@@ -179,16 +179,13 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
 
 
         // --- SEQUENTIAL LOOP ---
-        console.log(`[BatchWorker] DEBUG: Starting batch for Session ${sessionId}`);
-        console.log(`[BatchWorker] DEBUG: targetIds total: ${targetIds.length}`);
-        console.log(`[BatchWorker] DEBUG: batchIds size: ${batchIds.length}`);
-        console.log(`[BatchWorker] DEBUG: batchIds content:`, JSON.stringify(batchIds));
+        console.log(`[BatchWorker] Starting batch for Session ${sessionId}: ${batchIds.length} items`);
 
         try {
 
             for (let i = 0; i < batchIds.length; i++) {
                 const leadId = batchIds[i];
-                console.log(`[BatchWorker] DEBUG: Processing item ${i + 1}/${batchIds.length}: ${leadId}`);
+                // Note: Lead ID not logged to avoid exposing PII in Cloud Function logs
 
                 const loopStart = Date.now();
                 let success = false;

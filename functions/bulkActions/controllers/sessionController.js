@@ -82,9 +82,8 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
     } else {
         // Query Based
-        console.log("DEBUG: Building queries with filters:", JSON.stringify(filters));
         const queries = buildLeadQueries(companyId, filters, request.auth.uid);
-        console.log(`DEBUG: Generated ${queries.length} queries.`);
+        console.log(`[BulkSession] Building ${queries.length} queries for company ${companyId}`);
 
         // Apply .select() to only fetch fields needed for in-memory filtering.
         // This prevents crashes from corrupt Timestamp fields in documents.
@@ -97,12 +96,11 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             const snapshots = [];
             for (let i = 0; i < selectQueries.length; i++) {
                 try {
-                    console.log(`DEBUG: Executing query #${i}...`);
                     const snap = await selectQueries[i].get();
                     snapshots.push(snap);
-                    console.log(`DEBUG: Query #${i} returned ${snap.size} docs.`);
+                    console.log(`[BulkSession] Query #${i} returned ${snap.size} docs.`);
                 } catch (innerErr) {
-                    console.error(`DEBUG: Query #${i} failed:`, innerErr.message);
+                    console.error(`[BulkSession] Query #${i} failed:`, innerErr.message);
                     throw innerErr;
                 }
             }
@@ -120,16 +118,16 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                     let days = parseInt(filters.excludeRecentDays);
                     if (isNaN(days) || days <= 0) {
                         days = 7; // Default: exclude leads contacted in last 7 days
-                        console.log("DEBUG: excludeRecentDays was not a number, defaulting to 7 days");
+                        console.log('[BulkSession] excludeRecentDays was not a valid number, defaulting to 7 days');
                     }
                     const date = new Date();
                     date.setDate(date.getDate() - days);
                     // Hardened Timestamp creation
                     const seconds = Math.floor(date.getTime() / 1000);
                     excludeThreshold = new admin.firestore.Timestamp(seconds, 0);
-                    console.log(`DEBUG: Exclude Threshold: ${excludeThreshold.toDate().toISOString()} (days=${days})`);
+                    console.log(`[BulkSession] Excluding leads contacted within last ${days} days`);
                 } else {
-                    console.log("DEBUG: Exclude mode = FOREVER (all previously messaged)");
+                    console.log('[BulkSession] Exclude mode = FOREVER (all previously messaged)');
                 }
             }
 
