@@ -176,3 +176,83 @@ exports.onLeadCallbackScheduled = onDocumentCreated(
         });
     }
 );
+
+
+// --- TRIGGER 5: DL-4 FIX — Send confirmation email to applicant on new application ---
+// Why a server-side trigger (not client-side send):
+//  1. Ensures the email is sent even when the client drops the connection after submit.
+//  2. The Cloud Function has access to the company's SMTP config (and decrypts the password).
+//  3. Provides a consistent audit trail — the email is sent once, atomically.
+exports.onNewApplicationEmailConfirmation = onDocumentCreated(
+    {
+        document: 'companies/{companyId}/applications/{appId}',
+        region: 'us-central1'
+    },
+    async (event) => {
+        const data = event.data?.data();
+        if (!data) return;
+
+        // Only send for actual driver applications that have a valid applicant email
+        const applicantEmail = data.email;
+        if (!applicantEmail || !applicantEmail.includes('@')) return;
+
+        const applicantName = `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Applicant';
+        const appIdFormatted = event.params.appId.length >= 8
+            ? event.params.appId.slice(0, 8).toUpperCase()
+            : event.params.appId.toUpperCase().padEnd(8, '0');
+        const confirmationNumber = data.confirmationNumber || appIdFormatted;
+        const position = data.positionApplyingTo || 'Driver';
+        const companyId = event.params.companyId;
+
+        try {
+            // Load company name for the email subject/body
+            const companyDoc = await db.collection('companies').doc(companyId).get();
+            const companyName = companyDoc.exists ? (companyDoc.data().companyName || 'SafeHaul') : 'SafeHaul';
+
+            const { sendDynamicEmail } = require('./emailService');
+
+            const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f5f7fa; padding: 20px;">
+                <div style="background: white; border-radius: 12px; padding: 32px; border: 1px solid #e5e7eb;">
+                    <h1 style="color: #1f2937; font-size: 24px; margin-bottom: 8px;">Application Received</h1>
+                    <p style="color: #6b7280; font-size: 16px; margin-bottom: 24px;">Thank you for applying to <strong>${companyName}</strong>.</p>
+
+                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                        <p style="color: #166534; font-size: 14px; margin: 0 0 8px;">
+                            <strong>Confirmation Number:</strong>
+                        </p>
+                        <p style="color: #15803d; font-size: 28px; font-family: monospace; font-weight: bold; letter-spacing: 2px; margin: 0;">
+                            ${confirmationNumber}
+                        </p>
+                        <p style="color: #166534; font-size: 12px; margin: 8px 0 0;">
+                            Keep this number for your records. You may be asked to provide it when following up.
+                        </p>
+                    </div>
+
+                    <div style="margin-bottom: 24px;">
+                        <p style="color: #374151; margin: 0 0 4px;"><strong>Applicant:</strong> ${applicantName}</p>
+                        <p style="color: #374151; margin: 0 0 4px;"><strong>Position:</strong> ${position}</p>
+                        <p style="color: #374151; margin: 0;"><strong>Submitted:</strong> ${new Date().toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
+                    </div>
+
+                    <p style="color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+                        A recruiter from <strong>${companyName}</strong> will review your application and contact you.
+                        This is an automated confirmation — please do not reply to this email.
+                    </p>
+                </div>
+            </div>`;
+
+            await sendDynamicEmail(companyId, {
+                to: applicantEmail,
+                subject: `Application Received – ${companyName} (${confirmationNumber})`,
+                html: emailHtml,
+            });
+
+            console.log(`[DL-4] Confirmation email sent to ${applicantEmail} for application ${confirmationNumber}`);
+        } catch (err) {
+            // Non-fatal: email failure must not prevent application creation from completing.
+            // Log it so the team can investigate SMTP configuration issues.
+            console.error(`[DL-4] Failed to send confirmation email for ${event.params.appId}:`, err.message);
+        }
+    }
+);

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { db, functions } from '@lib/firebase';
+import { functions } from '@lib/firebase';
 import { Save, Loader2, AlertTriangle, CheckCircle, Mail, Server, Lock, HelpCircle, ChevronDown, ChevronUp, TestTube } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
 
@@ -47,13 +46,22 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                 const verifiedSettings = { ...emailSettings, isVerified: true };
                 setEmailSettings(verifiedSettings);
 
-                // Auto-save on success!
+                // CONN-1/CONN-4 FIX: Auto-save via Cloud Function (encrypts password server-side)
+                // instead of direct Firestore write with plain-text password.
                 try {
-                    const companyRef = doc(db, "companies", currentCompanyProfile.id);
-                    await updateDoc(companyRef, { emailSettings: verifiedSettings });
-                    setTestResult({ success: true, message: 'Settings verified and automatically saved!' });
+                    const saveSettingsFn = httpsCallable(functions, 'saveEmailSettings');
+                    await saveSettingsFn({
+                        companyId: currentCompanyProfile.id,
+                        smtpHost: emailSettings.smtpHost,
+                        smtpPort: emailSettings.smtpPort,
+                        smtpUser: emailSettings.smtpUser,
+                        smtpPass: emailSettings.smtpPass,
+                        signature: emailSettings.signature,
+                    });
+                    setTestResult({ success: true, message: 'Settings verified and saved securely!' });
                     showSuccess('✅ Connection successful and settings saved!');
                 } catch (saveError) {
+                    console.error('Save error:', saveError);
                     setTestResult({ success: false, message: 'Verified but failed to save to database.' });
                     showError('Verified but failed to save.');
                 }
@@ -82,9 +90,18 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
 
         setLoading(true);
         try {
-            const companyRef = doc(db, "companies", currentCompanyProfile.id);
-            await updateDoc(companyRef, { emailSettings });
-            showSuccess('Email settings saved successfully!');
+            // CONN-1/CONN-4 FIX: Save via Cloud Function so the password is encrypted at rest.
+            // The saveEmailSettings function uses AES-256 (SMS_ENCRYPTION_KEY) before writing.
+            const saveSettingsFn = httpsCallable(functions, 'saveEmailSettings');
+            await saveSettingsFn({
+                companyId: currentCompanyProfile.id,
+                smtpHost: emailSettings.smtpHost,
+                smtpPort: emailSettings.smtpPort,
+                smtpUser: emailSettings.smtpUser,
+                smtpPass: emailSettings.smtpPass,
+                signature: emailSettings.signature,
+            });
+            showSuccess('Email settings saved securely!');
             setTestResult(null); // Clear test result after save
         } catch (error) {
             console.error("Error saving email settings:", error);

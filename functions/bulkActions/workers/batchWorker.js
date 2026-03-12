@@ -147,12 +147,18 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                     const emailSettings = emailSettingsDoc.data();
                     let mailPass = emailSettings.password;
 
+                    // CONN-12 FIX: Use versioned prefix check instead of fragile `includes(':')` heuristic.
+                    // The old `if (password.includes(':'))` would accidentally trigger decryption on any
+                    // plain-text password containing a colon (e.g. a date or URL), causing auth failures.
                     try {
-                        if (mailPass && mailPass.includes(':')) { // Simple heuristic
-                            const decrypted = decrypt(mailPass);
+                        if (mailPass && mailPass.startsWith('enc:v1:')) {
+                            const decrypted = decrypt(mailPass.slice('enc:v1:'.length));
                             if (decrypted) mailPass = decrypted;
                         }
-                    } catch (decErr) {/* ignore */ }
+                    } catch (decErr) {
+                        console.error('[BatchWorker] Failed to decrypt email password:', decErr.message);
+                        /* Use the raw value — will fail on SMTP auth which is a visible error */
+                    }
 
                     const transportConfig = {};
                     if (emailSettings.host) {
@@ -173,16 +179,13 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
 
 
         // --- SEQUENTIAL LOOP ---
-        console.log(`[BatchWorker] DEBUG: Starting batch for Session ${sessionId}`);
-        console.log(`[BatchWorker] DEBUG: targetIds total: ${targetIds.length}`);
-        console.log(`[BatchWorker] DEBUG: batchIds size: ${batchIds.length}`);
-        console.log(`[BatchWorker] DEBUG: batchIds content:`, JSON.stringify(batchIds));
+        console.log(`[BatchWorker] Starting batch for Session ${sessionId}: ${batchIds.length} items`);
 
         try {
 
             for (let i = 0; i < batchIds.length; i++) {
                 const leadId = batchIds[i];
-                console.log(`[BatchWorker] DEBUG: Processing item ${i + 1}/${batchIds.length}: ${leadId}`);
+                // Note: Lead ID not logged to avoid exposing PII in Cloud Function logs
 
                 const loopStart = Date.now();
                 let success = false;

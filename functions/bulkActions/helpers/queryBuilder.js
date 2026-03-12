@@ -46,7 +46,11 @@ const safeToTimestamp = (val) => {
 const buildLeadQueries = (companyId, filters, userId) => {
     let baseRef;
     if (filters.leadType === 'global') {
-        baseRef = db.collection('leads');
+        // BULK-6 FIX: Always scope the 'global' leads collection query by companyId.
+        // Without this, a company could query leads belonging to any other company.
+        // The global 'leads' collection stores leads captured directly from company forms;
+        // each lead document must have a companyId field for this filter to work correctly.
+        baseRef = db.collection('leads').where('companyId', '==', companyId);
     } else if (filters.leadType === 'leads') {
         baseRef = db.collection('companies').doc(companyId).collection('leads');
     } else {

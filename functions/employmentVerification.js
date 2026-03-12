@@ -21,6 +21,27 @@ const { v4: uuidv4 } = require("uuid");
 const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 const { logger } = require("firebase-functions");
 
+/**
+ * RFC 5321/5322 compatible email validation.
+ * More robust than a simple /^[^\s@]+@[^\s@]+\.[^\s@]+$/ regex.
+ */
+function isValidEmail(email) {
+    if (!email || typeof email !== 'string') return false;
+    // Max 254 chars per RFC 5321
+    if (email.length > 254) return false;
+    // Split into local@domain
+    const atIndex = email.lastIndexOf('@');
+    if (atIndex < 1) return false; // no @ or empty local part
+    const local = email.substring(0, atIndex);
+    const domain = email.substring(atIndex + 1);
+    // local part max 64 chars
+    if (local.length > 64 || domain.length < 3) return false;
+    // Domain must contain a dot and no consecutive dots
+    if (!domain.includes('.') || domain.includes('..')) return false;
+    // Full pattern check (RFC 5322 simplified)
+    return /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/.test(email);
+}
+
 
 // ============================================================
 // HELPER: Build verification email HTML with CTA button
@@ -126,7 +147,7 @@ function buildVerificationEmailHTML({ applicantName, employerName, companyName, 
         </table>
 
         <!-- Tracking Pixel -->
-        <img src="${baseUrl}/api/verification/${token}/track-open" width="1" height="1" style="display:none;" alt="" />
+        <img src="${baseUrl}/api/verification/track-open?t=${token}" width="1" height="1" style="display:none;" alt="" />
     </div>`;
 }
 
@@ -205,6 +226,49 @@ exports.sendVerificationRequest = onCall({ cors: true }, async (request) => {
 
     if (deliveryMethod === 'email' && !employerEmail) {
         throw new HttpsError('invalid-argument', 'Employer email is required for email delivery.');
+    }
+
+    // PEV-SEC-2 FIX: Whitelist collectionName to prevent path injection attacks.
+    const ALLOWED_COLLECTIONS = ['applications', 'leads'];
+    if (!ALLOWED_COLLECTIONS.includes(collectionName)) {
+        throw new HttpsError('invalid-argument', `Invalid collection: ${collectionName}`);
+    }
+
+    // PEV-VAL-2 FIX: Validate employer email format server-side using RFC 5322 compatible check.
+    if (deliveryMethod === 'email' && employerEmail && !isValidEmail(employerEmail)) {
+        throw new HttpsError('invalid-argument', 'Invalid employer email address format.');
+    }
+
+    // PEV-VAL-3 FIX: Validate employerIndex is a non-negative integer.
+    const empIndex = Number(employerIndex);
+    if (!Number.isInteger(empIndex) || empIndex < 0) {
+        throw new HttpsError('invalid-argument', 'employerIndex must be a non-negative integer.');
+    }
+
+    // PEV-SEC-1 FIX: Verify the caller actually belongs to the specified company.
+    // Without this check, any authenticated user from any company can trigger a PEV request
+    // against another company's applications (IDOR vulnerability).
+    try {
+        const userRecord = await admin.auth().getUser(request.auth.uid);
+        const claims = userRecord.customClaims || {};
+        const hasCompanyRole = claims.roles && claims.roles[companyId];
+        const isSuperAdmin = claims.globalRole === 'super_admin';
+
+        if (!hasCompanyRole && !isSuperAdmin) {
+            // Fallback: check team subcollection
+            const memberSnap = await db.collection('companies').doc(companyId)
+                .collection('team').doc(request.auth.uid).get();
+            const companySnap = await db.collection('companies').doc(companyId).get();
+            const companyData = companySnap.exists ? companySnap.data() : {};
+            const isOwner = companyData.ownerId === request.auth.uid || companyData.createdBy === request.auth.uid;
+
+            if (!memberSnap.exists && !isOwner) {
+                throw new HttpsError('permission-denied', 'You do not have access to this company.');
+            }
+        }
+    } catch (authErr) {
+        if (authErr.code === 'functions/permission-denied') throw authErr;
+        logger.warn('[PEV] Auth check error (non-blocking):', authErr.message);
     }
 
     try {
@@ -363,27 +427,48 @@ exports.submitVerificationResponse = onCall({ cors: true }, async (request) => {
 
     try {
         const docRef = db.collection('verification_requests').doc(token);
-        const docSnap = await docRef.get();
+        // PEV-INT-1 FIX: Use a Firestore transaction to atomically check + claim the submission.
+        // A non-atomic read-then-write allows two concurrent submissions to both pass the
+        // 'completed' check, with the second overwriting a legitimate response.
+        let verificationData = null;
+        try {
+            await db.runTransaction(async (txn) => {
+                const snap = await txn.get(docRef);
+                if (!snap.exists) throw new HttpsError('not-found', 'Verification request not found.');
+                const data = snap.data();
 
-        if (!docSnap.exists) {
-            throw new HttpsError('not-found', 'Verification request not found.');
+                if (data.expiresAt && data.expiresAt.toMillis() < Date.now()) {
+                    throw new HttpsError('deadline-exceeded', 'This verification request has expired.');
+                }
+                if (data.status === 'completed') {
+                    throw new HttpsError('already-exists', 'This verification has already been completed.');
+                }
+
+                // Claim the slot atomically — prevents double-submission race
+                txn.update(docRef, { status: 'processing', claimedAt: admin.firestore.FieldValue.serverTimestamp() });
+                verificationData = data;
+            });
+        } catch (txnErr) {
+            if (txnErr instanceof HttpsError) throw txnErr;
+            throw new HttpsError('internal', 'Failed to process verification request.');
         }
 
-        const verificationData = docSnap.data();
+        if (!verificationData) throw new HttpsError('internal', 'Verification data unavailable.');
 
-        // Check expiration
-        if (verificationData.expiresAt && verificationData.expiresAt.toMillis() < Date.now()) {
-            throw new HttpsError('deadline-exceeded', 'This verification request has expired.');
-        }
-
-        // Check if already completed
-        if (verificationData.status === 'completed') {
-            throw new HttpsError('already-exists', 'This verification has already been completed.');
-        }
-
-        // Validate required respondent fields
+        // Validate required respondent fields (after transaction so we don't hold a lock during validation)
         if (!formResponse.respondentName || !formResponse.respondentTitle || !formResponse.respondentPhone) {
             throw new HttpsError('invalid-argument', 'Respondent name, title, and phone are required.');
+        }
+
+        // PEV-VAL-1 FIX: Server-side length limits to prevent oversized PDF / memory exhaustion
+        if (formResponse.violationDetails && formResponse.violationDetails.length > 2000) {
+            throw new HttpsError('invalid-argument', 'Violation details cannot exceed 2000 characters.');
+        }
+        if (formResponse.accidentDetails && formResponse.accidentDetails.length > 2000) {
+            throw new HttpsError('invalid-argument', 'Accident details cannot exceed 2000 characters.');
+        }
+        if (formResponse.additionalComments && formResponse.additionalComments.length > 2000) {
+            throw new HttpsError('invalid-argument', 'Additional comments cannot exceed 2000 characters.');
         }
 
         const now = admin.firestore.Timestamp.now();
@@ -448,9 +533,10 @@ exports.submitVerificationResponse = onCall({ cors: true }, async (request) => {
         });
 
         // Generate PDF for DQ file
-        let pdfUrl = null;
+        let pdfPath = null;
         try {
-            pdfUrl = await generateVerificationPDF(verificationData, responseData, token);
+            // PEV-BRK-3: generateVerificationPDF now returns the permanent pdfPath, not a signed URL
+            pdfPath = await generateVerificationPDF(verificationData, responseData, token);
         } catch (pdfError) {
             logger.error('[PEV] PDF generation failed (non-blocking):', pdfError);
         }
@@ -474,15 +560,18 @@ exports.submitVerificationResponse = onCall({ cors: true }, async (request) => {
                     }
                     employers[idx].verification.status = 'Completed';
                     employers[idx].verification.completedAt = new Date().toISOString();
-                    employers[idx].verification.resultUrl = pdfUrl || null;
-                    employers[idx].verification.responseToken = token;
+                    employers[idx].verification.resultUrl = pdfPath || null;
+                    // PEV-SEC-3 FIX: Do NOT store the raw verification token in the application document.
+                    // The application doc is readable by all company team members; storing the token
+                    // here would allow any team member to reuse it to re-submit or tamper with the
+                    // verification response. Reference the verification by the respondent name only.
                     employers[idx].verification.respondentName = formResponse.respondentName;
                     employers[idx].verification.history = employers[idx].verification.history || [];
                     employers[idx].verification.history.push({
                         action: 'Completed via Portal',
                         respondent: formResponse.respondentName,
                         timestamp: new Date().toISOString(),
-                        url: pdfUrl || null,
+                        url: pdfPath || null,
                     });
 
                     await appRef.update({ employers });
@@ -518,7 +607,9 @@ exports.submitVerificationResponse = onCall({ cors: true }, async (request) => {
 // 4. TRACKING PIXEL (HTTP endpoint for email open tracking)
 // ============================================================
 exports.trackVerificationOpen = onRequest({ cors: true }, async (req, res) => {
-    const token = req.path.split('/').pop();
+    // PEV-BRK-1 FIX: Extract token from query parameter `?t=TOKEN`, not from the URL path.
+    // `req.path.split('/').pop()` returns "track-open", not the token.
+    const token = req.query.t;
 
     if (token && token.length > 10) {
         try {
@@ -764,6 +855,17 @@ async function notifyCarrierNoResponse(verificationData) {
 // ============================================================
 // HELPER: Generate PDF for DQ File
 // ============================================================
+/**
+ * Generate the PEV completion PDF and upload to Cloud Storage.
+ * PEV-BRK-3 FIX: Returns the permanent Cloud Storage path (e.g. `companies/.../pev_results/PEV_...pdf`)
+ * NOT a signed URL. Signed URLs are generated on demand when viewing; storing them would expire in 7
+ * days while FMCSA 49 CFR 391.51 requires 3-year DQ file retention.
+ *
+ * @param {object} verificationData - The verification_request Firestore document data
+ * @param {object} responseData     - The submitted response data from the employer
+ * @param {string} token            - The verification request token (used for naming the PDF)
+ * @returns {Promise<string>}       - The permanent Cloud Storage path of the generated PDF
+ */
 async function generateVerificationPDF(verificationData, responseData, token) {
     try {
         const pdfDoc = await PDFDocument.create();
@@ -985,20 +1087,15 @@ async function generateVerificationPDF(verificationData, responseData, token) {
             metadata: { contentType: 'application/pdf' },
         });
 
-        // Generate signed URL (valid for 7 days)
-        const [url] = await file.getSignedUrl({
-            action: 'read',
-            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        });
-
-        // Also store the storage path in the verification request for permanent reference
+                // PEV-BRK-3 FIX: Store only the pdfPath (permanent Cloud Storage path) rather than a
+        // 7-day expiring signed URL. The signed URL would break after 7 days, but FMCSA 49 CFR 391.51
+        // requires DQ file retention for 3 years. Generate fresh signed URLs on demand when viewing.
         await db.collection('verification_requests').doc(token).update({
             pdfPath,
-            pdfUrl: url,
         });
 
         logger.info(`[PEV] PDF generated: ${pdfPath}`);
-        return url;
+        return pdfPath;
 
     } catch (error) {
         logger.error('[PEV] PDF generation error:', error);

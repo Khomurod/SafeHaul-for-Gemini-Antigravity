@@ -4,6 +4,7 @@ const { assertCompanyAdmin } = require("../helpers/auth");
 const { buildLeadQueries } = require("../helpers/queryBuilder");
 const { enqueueWorker } = require("../services/queueService");
 const { normalizePhone } = require("../../utils/phoneUtils");
+const { checkRateLimit } = require("../../shared/rateLimiter");
 
 /**
  * 1. Initialize Bulk Session
@@ -19,13 +20,59 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
     // RBAC
     await assertCompanyAdmin(request.auth.uid, companyId);
 
+    // BULK-5 FIX: Rate limit bulk session creation to prevent runaway SMS spend.
+    // Maximum 10 bulk sessions per company per hour. A session may still contain thousands
+    // of recipients, so this prevents accidental double-submits, not intentional high volume.
+    const isAllowed = await checkRateLimit(`bulk_init_${companyId}`, 10, 3600, 'closed');
+    if (!isAllowed) {
+        throw new HttpsError('resource-exhausted', 'Too many bulk sessions created recently. Please wait before starting another.');
+    }
+
     const leadSourceType = filters.leadType || 'applications'; // 'global', 'leads', 'applications' (default)
 
     // A. ID Gathering Phase
     let finalTargetIds = [];
     if (targetIds && Array.isArray(targetIds) && targetIds.length > 0) {
         // Direct Selection (e.g. from table selection)
-        finalTargetIds = targetIds;
+        // BULK-2 FIX: Verify server-side that each provided lead ID belongs to the specified company.
+        // Without this check, an attacker (or misconfigured UI) could pass IDs from another company
+        // to exfiltrate data or send SMS to another company's leads (IDOR).
+        const maxTargetIds = 500; // Prevent DoS via oversized ID lists
+        if (targetIds.length > maxTargetIds) {
+            throw new HttpsError('invalid-argument', `Too many targetIds. Maximum is ${maxTargetIds}.`);
+        }
+
+        // Determine which collections to check based on leadSourceType
+        const collections = ['applications', 'leads'];
+        const verifiedIds = new Set();
+
+        for (const collection of collections) {
+            const collectionRef = db.collection('companies').doc(companyId).collection(collection);
+            // Firestore 'in' queries support max 30 values — batch if necessary
+            const chunkSize = 30;
+            for (let i = 0; i < targetIds.length; i += chunkSize) {
+                const chunk = targetIds.slice(i, i + chunkSize);
+                try {
+                    const snap = await collectionRef
+                        .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+                        .select()  // Only fetch ID, not full document
+                        .get();
+                    snap.forEach(doc => verifiedIds.add(doc.id));
+                } catch (queryErr) {
+                    console.warn(`[BULK-2] Ownership check query failed for ${collection}:`, queryErr.message);
+                }
+            }
+        }
+
+        // Filter to only IDs that actually belong to this company
+        finalTargetIds = targetIds.filter(id => verifiedIds.has(id));
+        const rejectedCount = targetIds.length - finalTargetIds.length;
+        if (rejectedCount > 0) {
+            console.warn(`[BULK-2] Rejected ${rejectedCount} targetIds not belonging to company ${companyId}`);
+        }
+        if (finalTargetIds.length === 0) {
+            throw new HttpsError('permission-denied', 'None of the provided lead IDs belong to your company.');
+        }
 
     } else if (leadSourceType === 'import' && request.data.rawData && Array.isArray(request.data.rawData)) {
         // C. Import: Raw Data Handling
@@ -35,9 +82,8 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
     } else {
         // Query Based
-        console.log("DEBUG: Building queries with filters:", JSON.stringify(filters));
         const queries = buildLeadQueries(companyId, filters, request.auth.uid);
-        console.log(`DEBUG: Generated ${queries.length} queries.`);
+        console.log(`[BulkSession] Building ${queries.length} queries for company ${companyId}`);
 
         // Apply .select() to only fetch fields needed for in-memory filtering.
         // This prevents crashes from corrupt Timestamp fields in documents.
@@ -50,12 +96,11 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             const snapshots = [];
             for (let i = 0; i < selectQueries.length; i++) {
                 try {
-                    console.log(`DEBUG: Executing query #${i}...`);
                     const snap = await selectQueries[i].get();
                     snapshots.push(snap);
-                    console.log(`DEBUG: Query #${i} returned ${snap.size} docs.`);
+                    console.log(`[BulkSession] Query #${i} returned ${snap.size} docs.`);
                 } catch (innerErr) {
-                    console.error(`DEBUG: Query #${i} failed:`, innerErr.message);
+                    console.error(`[BulkSession] Query #${i} failed:`, innerErr.message);
                     throw innerErr;
                 }
             }
@@ -73,16 +118,16 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                     let days = parseInt(filters.excludeRecentDays);
                     if (isNaN(days) || days <= 0) {
                         days = 7; // Default: exclude leads contacted in last 7 days
-                        console.log("DEBUG: excludeRecentDays was not a number, defaulting to 7 days");
+                        console.log('[BulkSession] excludeRecentDays was not a valid number, defaulting to 7 days');
                     }
                     const date = new Date();
                     date.setDate(date.getDate() - days);
                     // Hardened Timestamp creation
                     const seconds = Math.floor(date.getTime() / 1000);
                     excludeThreshold = new admin.firestore.Timestamp(seconds, 0);
-                    console.log(`DEBUG: Exclude Threshold: ${excludeThreshold.toDate().toISOString()} (days=${days})`);
+                    console.log(`[BulkSession] Excluding leads contacted within last ${days} days`);
                 } else {
-                    console.log("DEBUG: Exclude mode = FOREVER (all previously messaged)");
+                    console.log('[BulkSession] Exclude mode = FOREVER (all previously messaged)');
                 }
             }
 

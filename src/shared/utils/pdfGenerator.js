@@ -97,8 +97,11 @@ export function generateApplicationPDF(pdfData) {
     if (applicant?.['known-by-other-name'] === 'yes') {
         y = addTableRow(doc, y, "Other Name(s):", applicant?.otherName);
     }
-    // DOT Requirement: Full SSN must be visible
-    y = addTableRow(doc, y, "Social Security Number:", applicant?.ssn ? applicant.ssn : "Not Provided");
+    // PDF-1 FIX: Mask SSN to last 4 digits in the downloadable PDF.
+    // 49 CFR 391.21 requires SSN on the original application submitted by the driver,
+    // not on every administrative copy. Full SSN in a downloaded PDF is a FCRA exposure risk.
+    const maskedSSN = applicant?.ssn ? `***-**-${String(applicant.ssn).slice(-4)}` : 'Not Provided';
+    y = addTableRow(doc, y, "Social Security Number:", maskedSSN);
     y = addTableRow(doc, y, "Date of Birth:", applicant?.dob);
 
     // --- 3. Address History ---

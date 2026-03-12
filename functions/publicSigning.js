@@ -1,6 +1,33 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-// FIX: Added 'admin' to the import list
 const { admin, db, storage } = require("./firebaseAdmin");
+const crypto = require('crypto');
+const { checkRateLimit } = require("./shared/rateLimiter");
+
+// ESIGN-5 FIX: Constant-time token comparison to eliminate timing side-channel attacks.
+// JavaScript's !== operator short-circuits on the first differing character, leaking token length
+// information to attackers who can measure response time.
+function safeCompare(a, b) {
+    if (!a || !b) return false;
+    try {
+        // Pad both values to the same fixed length before comparing to prevent
+        // length-based timing attacks. We use a 256-byte fixed buffer so length
+        // differences don't leak information.
+        const MAX_LEN = 256;
+        const strA = String(a);
+        const strB = String(b);
+        const paddedA = strA.substring(0, MAX_LEN).padEnd(MAX_LEN, '\0');
+        const paddedB = strB.substring(0, MAX_LEN).padEnd(MAX_LEN, '\0');
+        const bufA = Buffer.from(paddedA, 'utf8');
+        const bufB = Buffer.from(paddedB, 'utf8');
+        // Both buffers are now the same length, so timingSafeEqual won't leak length
+        const equal = crypto.timingSafeEqual(bufA, bufB);
+        // Also verify the original lengths match (both checks always run)
+        const lengthsMatch = strA.length === strB.length;
+        return equal && lengthsMatch;
+    } catch {
+        return false;
+    }
+}
 
 // 1. GET PUBLIC DOCUMENT (Read Only)
 exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
@@ -19,8 +46,9 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
 
         const data = docSnap.data();
 
-        if (data.accessToken !== accessToken) {
-            console.warn(`Token Mismatch.`);
+        // ESIGN-5 FIX: Use constant-time comparison
+        if (!safeCompare(data.accessToken, accessToken)) {
+            console.warn(`Token Mismatch for requestId: ${requestId}`);
             throw new HttpsError('permission-denied', 'Invalid Access Token.');
         }
 
@@ -28,7 +56,7 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
             return { status: 'signed' };
         }
 
-        // M5 FIX: Reject if the signing link has expired
+        // Reject if the signing link has expired
         if (data.expiresAt && data.expiresAt.toMillis() < Date.now()) {
             throw new HttpsError('deadline-exceeded', 'This signing link has expired. Please request a new one.');
         }
@@ -56,45 +84,63 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
             return {
                 title: data.title,
                 recipientName: data.recipientName,
-                // H1 FIX: recipientEmail intentionally omitted — never expose PII on public endpoint
+                // recipientEmail intentionally omitted — never expose PII on public endpoint
                 fields: data.fields || [],
                 pdfUrl: url,
                 status: data.status
             };
 
         } catch (signErr) {
-            console.error("Signing Error:", signErr);
+            console.error("Signing URL error:", signErr);
             throw new HttpsError('internal', 'Server permission error: Cannot sign URL.');
         }
 
     } catch (error) {
-        console.error("CRITICAL ERROR in getPublicEnvelope:", error);
-        throw new HttpsError('internal', error.message);
+        // ESIGN-10 FIX: Re-throw intentional HttpsErrors, but wrap unexpected errors
+        // to avoid leaking Firestore paths, project IDs, or stack traces.
+        if (error instanceof HttpsError) throw error;
+        console.error("Error in getPublicEnvelope:", error);
+        throw new HttpsError('internal', 'An unexpected error occurred. Please try again.');
     }
 });
 
-const { checkRateLimit } = require("./shared/rateLimiter");
-
 // 2. SUBMIT SIGNED DOCUMENT (Write)
 exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
-    // RATE LIMIT: 5 attempts per 60s per IP (Approximate via Context)
-    // Note: onCall requests don't always give IP easily, using context.rawRequest.ip if available or context.auth.uid (if auth).
-    // For anonymous public signing, we might limit by RequestID to prevent brute force.
     const { companyId, requestId, accessToken, fieldValues, auditData } = request.data;
 
-    // Limit by Request ID to prevent brute force spam on a single document
-    const isAllowed = await checkRateLimit(`submit_envelope_${requestId}`, 5, 60);
+    // ESIGN-18 FIX: Pass 'closed' as failBehavior so rate-limit system failures don't allow
+    // unlimited requests through (fail-open was the previous default).
+    const isAllowed = await checkRateLimit(`submit_envelope_${requestId}`, 5, 60, 'closed');
     if (!isAllowed) throw new HttpsError('resource-exhausted', 'Too many attempts. Please wait.');
 
     if (!companyId || !requestId) throw new HttpsError('invalid-argument', 'Missing parameters.');
 
     try {
         const docRef = db.collection('companies').doc(companyId).collection('signing_requests').doc(requestId);
-        const docSnap = await docRef.get();
-        if (!docSnap.exists) throw new HttpsError('not-found', 'Document not found');
 
-        const data = docSnap.data();
-        if (data.accessToken !== accessToken) throw new HttpsError('permission-denied', 'Unauthorized');
+        // ESIGN-19 FIX: Use a transaction to atomically verify the status hasn't changed and
+        // update it, preventing double-submission race conditions.
+        let existingData = null;
+        await db.runTransaction(async (txn) => {
+            const docSnap = await txn.get(docRef);
+            if (!docSnap.exists) throw new HttpsError('not-found', 'Document not found');
+
+            const data = docSnap.data();
+
+            // ESIGN-5 FIX: Constant-time token comparison
+            if (!safeCompare(data.accessToken, accessToken)) {
+                throw new HttpsError('permission-denied', 'Unauthorized');
+            }
+
+            // ESIGN-19 FIX: Idempotency guard — reject if already submitted
+            if (data.status !== 'sent') {
+                throw new HttpsError('failed-precondition', 'This document has already been submitted or is no longer available.');
+            }
+
+            // Claim the slot atomically
+            txn.update(docRef, { status: 'processing' });
+            existingData = data;
+        });
 
         const bucket = storage.bucket();
         const finalValues = {};
@@ -114,14 +160,23 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
             }
         }
 
+        // ESIGN-2 FIX: Override the client-supplied IP with the actual server-observed IP.
+        // The client hardcoded '127.0.0.1'; we now use the real forwarded IP from the request.
+        const signerIp =
+            request.rawRequest?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ||
+            request.rawRequest?.ip ||
+            '0.0.0.0';
+
         await docRef.update({
             status: 'pending_seal',
             fieldValues: finalValues,
             signedAt: admin.firestore.FieldValue.serverTimestamp(),
-            // M5 FIX: Invalidate the token so the link cannot be reused after signing
+            // Invalidate the token so the link cannot be reused after signing
             accessToken: null,
             auditTrail: {
                 ...auditData,
+                // ESIGN-2 FIX: Use server-observed IP, not client-supplied value
+                ip: signerIp,
                 timestamp: new Date().toISOString(),
                 method: 'Public Secure Link'
             }
@@ -130,7 +185,9 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
         return { success: true };
 
     } catch (error) {
+        // ESIGN-10 FIX: Never leak internal error details to the public signer
+        if (error instanceof HttpsError) throw error;
         console.error("Submit Error:", error);
-        throw new HttpsError('internal', error.message);
+        throw new HttpsError('internal', 'An error occurred processing your submission. Please try again.');
     }
 });

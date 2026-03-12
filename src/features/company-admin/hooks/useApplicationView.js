@@ -5,9 +5,10 @@ import { generateApplicationPDF } from '@shared/utils/pdfGenerator.js';
 import { getFieldValue } from '@shared/utils/helpers.js';
 import { useData } from '@/context/DataContext';
 import { useApplicationDetails } from '@features/applications/hooks/useApplicationDetails';
+import { logActivity } from '@shared/utils/activityLogger';
 
 export function useApplicationView(companyId, applicationId, onStatusUpdate, onClosePanel, onPhoneClick) {
-    const { currentUserClaims } = useData();
+    const { currentUserClaims, currentUser } = useData();
     const details = useApplicationDetails(companyId, applicationId, onStatusUpdate);
 
     // Deconstruct key items from details for easier access
@@ -74,12 +75,27 @@ export function useApplicationView(companyId, applicationId, onStatusUpdate, onC
     const driverId = appData?.driverId || appData?.userId;
 
     // --- Handlers ---
-    const handleDownloadPdf = () => {
+    const handleDownloadPdf = async () => {
         if (!appData || !companyProfile) return;
         try {
             generateApplicationPDF({ applicant: appData, agreements: [], company: companyProfile });
+            // PDF-2 FIX: Audit every PDF download per FCRA § 604 and 49 CFR Part 391.
+            // Log who downloaded what and when so the DQ file access trail is complete.
+            try {
+                const userName = currentUser?.displayName || currentUser?.email || 'Unknown';
+                await logActivity(
+                    companyId,
+                    collectionName || 'applications',
+                    applicationId,
+                    'PDF Downloaded',
+                    `Application PDF downloaded by ${userName}`
+                );
+            } catch (logErr) {
+                console.warn('[useApplicationView] Failed to log PDF download activity:', logErr);
+            }
         } catch (e) {
-            alert("PDF Generation failed.");
+            console.error('PDF Generation failed:', e);
+            alert("PDF Generation failed. Please try again.");
         }
     };
 

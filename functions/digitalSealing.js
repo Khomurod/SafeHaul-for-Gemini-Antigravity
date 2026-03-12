@@ -63,9 +63,20 @@ exports.sealDocument = functions.runWith({
             const fields = newData.fields || [];
             const values = newData.fieldValues || {};
 
+            // ESIGN-3 FIX: Track which required fields are missing so we can fail properly
+            // instead of silently marking the document as 'signed' with blank required fields.
+            const missingRequiredFields = [];
+            const sigPathsToDelete = []; // ESIGN-9: collect paths for cleanup after sealing
+
             for (const field of fields) {
                 const val = values[field.id];
-                if (!val) continue;
+                if (!val) {
+                    // ESIGN-3 FIX: Track missing required fields
+                    if (field.required) {
+                        missingRequiredFields.push(field.id);
+                    }
+                    continue;
+                }
 
                 const pageIndex = Math.max(0, (field.pageNumber || 1) - 1);
                 if (pageIndex >= pdfDoc.getPages().length) continue;
@@ -117,15 +128,18 @@ exports.sealDocument = functions.runWith({
                             sigPath = sigPath.replace(`gs://${bucket.name}/`, '');
                         }
 
-                        // M1 FIX: Validate signature path belongs to this company
+                        // Validate signature path belongs to this company
                         const sigAllowedPrefix = `secure_documents/${companyId}/signatures/`;
                         if (!sigPath.startsWith(sigAllowedPrefix)) {
                             console.error(`[Security] Signature path rejected: ${sigPath}`);
+                            if (field.required) missingRequiredFields.push(field.id);
                             continue; // Skip this field — don't throw, continue sealing
                         }
 
                         await bucket.file(sigPath).download({ destination: sigTempPath });
                         tempSigPaths.push(sigTempPath);
+                        // ESIGN-9 FIX: Track Storage paths for post-sealing cleanup
+                        sigPathsToDelete.push(sigPath);
 
                         const sigBytes = fs.readFileSync(sigTempPath);
                         const sigImage = await pdfDoc.embedPng(sigBytes);
@@ -142,8 +156,22 @@ exports.sealDocument = functions.runWith({
                         });
                     } catch (sigErr) {
                         console.error(`Failed to load signature ${field.id}:`, sigErr);
+                        if (field.required) missingRequiredFields.push(field.id);
                     }
                 }
+            }
+
+            // ESIGN-3 FIX: Fail sealing if any required fields were missing or skipped.
+            // Previously the function would seal a "complete" document with blank fields
+            // and mark it 'signed', creating a legally void document.
+            if (missingRequiredFields.length > 0) {
+                console.error(`[Seal] Required fields missing: ${missingRequiredFields.join(', ')}`);
+                await change.after.ref.update({
+                    status: 'error_sealing',
+                    errorLog: `Required fields not completed: ${missingRequiredFields.join(', ')}`,
+                    missingFields: missingRequiredFields,
+                });
+                return;
             }
 
             // 5. Append Enhanced Audit Trail Page
@@ -196,6 +224,34 @@ exports.sealDocument = functions.runWith({
                 completedAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
+            // ESIGN-9 FIX: Delete the raw signature PNG files from Cloud Storage after sealing.
+            // They are embedded in the sealed PDF and no longer needed as standalone files.
+            // Keeping them is a PII retention risk under GDPR/CCPA.
+            const failedDeletions = [];
+            for (const sigPath of sigPathsToDelete) {
+                try {
+                    await bucket.file(sigPath).delete();
+                } catch (delErr) {
+                    console.warn(`[Seal] Could not delete signature file ${sigPath}:`, delErr.message);
+                    failedDeletions.push(sigPath);
+                }
+            }
+
+            // If any deletions failed, record the orphaned paths in Firestore so a
+            // scheduled cleanup job can retry them (prevents indefinite PII retention).
+            if (failedDeletions.length > 0) {
+                try {
+                    await db.collection('orphaned_signature_cleanup').add({
+                        paths: failedDeletions,
+                        requestId,
+                        companyId,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                } catch (trackErr) {
+                    console.error('[Seal] Could not record orphaned paths for cleanup:', trackErr.message);
+                }
+            }
+
         } catch (err) {
             console.error("Sealing Failed:", err);
             await change.after.ref.update({ status: 'error_sealing', errorLog: err.message });
@@ -207,3 +263,59 @@ exports.sealDocument = functions.runWith({
             } catch (e) { }
         }
     });
+
+// ESIGN-9 FIX: Scheduled cleanup job for orphaned signature PNG files.
+// When signature deletion fails after sealing, the path is recorded in
+// `orphaned_signature_cleanup`. This job runs nightly to retry those deletions.
+// Without this job, PII (signature images) would accumulate in Storage indefinitely.
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+
+exports.cleanupOrphanedSignatures = onSchedule(
+    { schedule: 'every 24 hours', region: 'us-central1', timeoutSeconds: 300 },
+    async () => {
+        const db = admin.firestore();
+        const bucket = storage.bucket();
+        const collRef = db.collection('orphaned_signature_cleanup');
+
+        // Process entries older than 1 hour (give immediate retries time to complete)
+        const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+        const snap = await collRef.where('createdAt', '<', cutoff).limit(100).get();
+
+        if (snap.empty) {
+            console.log('[CleanupJob] No orphaned signature files to process.');
+            return;
+        }
+
+        let deletedCount = 0;
+        let failedCount = 0;
+        const batch = db.batch();
+
+        for (const doc of snap.docs) {
+            const { paths } = doc.data();
+            let allDeleted = true;
+
+            for (const sigPath of (paths || [])) {
+                try {
+                    await bucket.file(sigPath).delete();
+                    deletedCount++;
+                } catch (err) {
+                    if (err.code === 404) {
+                        // File already deleted — treat as success
+                        deletedCount++;
+                    } else {
+                        console.warn(`[CleanupJob] Still cannot delete ${sigPath}:`, err.message);
+                        failedCount++;
+                        allDeleted = false;
+                    }
+                }
+            }
+
+            if (allDeleted) {
+                batch.delete(doc.ref);
+            }
+        }
+
+        await batch.commit();
+        console.log(`[CleanupJob] Orphaned signatures: ${deletedCount} deleted, ${failedCount} still pending.`);
+    }
+);

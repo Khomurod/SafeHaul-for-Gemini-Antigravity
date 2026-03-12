@@ -151,10 +151,12 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
                                 label="Social Security Number (SSN)"
                                 id="ssn"
                                 name="ssn"
+                                type="password"
                                 required={ssnConfig.required}
                                 value={formData.ssn}
                                 onChange={updateFormData}
                                 placeholder="XXX-XX-XXXX"
+                                autoComplete="off"
                             />
                             {hasSSNWarning(formData.ssn) && <ValidationWarning message="Format usually matches XXX-XX-XXXX" />}
                         </div>

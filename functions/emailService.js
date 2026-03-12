@@ -1,5 +1,6 @@
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+const { decrypt } = require('./integrations/encryption');
 
 /**
  * Dynamic Email Service for SafeHaul
@@ -24,7 +25,8 @@ function getCachedTransporter(companyId, smtpConfig) {
         secure: smtpConfig.smtpPort === 465,
         auth: {
             user: smtpConfig.smtpUser,
-            pass: smtpConfig.smtpPass,
+            // CONN-1 FIX: Decrypt password (supports both encrypted and legacy plain-text)
+            pass: decryptSmtpPassword(smtpConfig.smtpPass),
         },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
@@ -63,6 +65,29 @@ async function getEmailSettings(companyId) {
     }
 
     return { settings: emailSettings, companyName: companyData.companyName || 'SafeHaul' };
+}
+
+/**
+ * CONN-1 FIX: Decrypt SMTP password if it was stored with the `enc:v1:` versioned prefix.
+ * Passwords saved by the new saveEmailSettings Cloud Function are encrypted.
+ * Legacy plain-text passwords (no prefix) are returned as-is for backwards compatibility.
+ * CONN-12 FIX: Use versioned prefix check instead of fragile `includes(':')` heuristic.
+ * @param {string} rawPass - The raw password value from Firestore
+ * @returns {string} - The decrypted (or plain-text legacy) password
+ */
+function decryptSmtpPassword(rawPass) {
+    if (!rawPass) return rawPass;
+    // Versioned prefix ensures we only attempt decryption on known-encrypted values.
+    // A plain-text password containing ':' will never match 'enc:v1:' — no false positives.
+    if (rawPass.startsWith('enc:v1:')) {
+        try {
+            return decrypt(rawPass.slice('enc:v1:'.length));
+        } catch (err) {
+            console.error('[emailService] Failed to decrypt SMTP password:', err.message);
+            throw new Error('Email configuration error: could not decrypt SMTP credentials.');
+        }
+    }
+    return rawPass; // Legacy plain-text password — accepted until migrated
 }
 
 /**
@@ -144,7 +169,7 @@ async function testEmailConnection(companyId) {
             secure: emailSettings.smtpPort === 465,
             auth: {
                 user: emailSettings.smtpUser,
-                pass: emailSettings.smtpPass,
+                pass: decryptSmtpPassword(emailSettings.smtpPass),
             },
             connectionTimeout: 10000,
         });
@@ -186,10 +211,47 @@ async function testEmailCredentials(smtpConfig) {
             };
         }
 
+        // CONN-2 FIX: SSRF protection — reject private/loopback/link-local hostnames.
+        // Without this, an attacker (or misconfigured admin) could use the test endpoint to probe
+        // internal GCP metadata servers (169.254.169.254), localhost services, or internal VPC hosts.
+        // NOTE: This check validates the literal hostname/IP string. DNS rebinding attacks
+        // (where a domain initially resolves to a legitimate IP but re-resolves to a blocked IP)
+        // are not fully mitigated here. For full protection, add a post-DNS-resolution IP check
+        // using Node's dns.lookup() before opening the connection. The connectionTimeout: 10000
+        // below provides a partial defense by failing fast on unexpected hosts.
+        const SSRF_BLOCKLIST = [
+            /^127\./,                          // IPv4 loopback
+            /^10\./,                           // RFC-1918 private
+            /^192\.168\./,                     // RFC-1918 private
+            /^172\.(1[6-9]|2\d|3[01])\./,    // RFC-1918 private
+            /^169\.254\./,                     // Link-local (GCP metadata)
+            /^::1$/,                           // IPv6 loopback
+            /^fc00:/i,                         // IPv6 unique local
+            /^fe80:/i,                         // IPv6 link-local
+            /^0\./,                            // Reserved
+        ];
+        const hostLower = smtpHost.toLowerCase().trim();
+        // Block obvious localhost variants
+        if (hostLower === 'localhost' || hostLower === '0.0.0.0') {
+            return { success: false, error: 'Invalid SMTP host.' };
+        }
+        for (const pattern of SSRF_BLOCKLIST) {
+            if (pattern.test(smtpHost)) {
+                return { success: false, error: 'Invalid SMTP host: internal addresses are not allowed.' };
+            }
+        }
+
+        // Validate port is in the allowed SMTP range
+        const port = parseInt(smtpPort) || 587;
+        const ALLOWED_PORTS = [25, 465, 587, 2525];
+        if (!ALLOWED_PORTS.includes(port)) {
+            return { success: false, error: `Invalid SMTP port. Allowed ports: ${ALLOWED_PORTS.join(', ')}.` };
+        }
+
         const transporter = nodemailer.createTransport({
             host: smtpHost,
-            port: smtpPort || 587,
-            secure: smtpPort === 465,
+            port: port,
+            secure: port === 465,
             auth: {
                 user: smtpUser,
                 pass: smtpPass,

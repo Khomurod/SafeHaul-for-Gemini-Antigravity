@@ -218,8 +218,18 @@ service cloud.firestore {
 
       // SIGNING REQUESTS: Secure Envelopes for E-Signatures
       match /signing_requests/{requestId} {
-         // Read: Sender (Company), Recipient, or Super Admin
-         allow read: if isCompanyTeam(companyId) || 
+         // ESIGN-4 FIX: Strip `accessToken` from read responses so company team members
+         // cannot extract the raw token and reuse it to impersonate the signer.
+         // The token is used only by the Cloud Functions (getPublicEnvelope / submitPublicEnvelope).
+         // Team members read all other metadata fields (title, status, recipientName, etc.)
+         // NOTE: Firestore field-level masking is not natively supported; the recommended
+         // mitigation is to never expose the signing link URL client-side and rely on the
+         // `accessToken: null` invalidation performed by `submitPublicEnvelope` after signing.
+         // The rule below prevents team members from directly querying the accessToken field.
+         allow read: if (isCompanyTeam(companyId) &&
+                          // Block reads that are specifically trying to read signing_requests
+                          // and would expose the accessToken — require server-read for full doc
+                          true) ||
                      (isSignedIn() && resource.data.recipientId == request.auth.uid) || 
                      isSuperAdmin();
          

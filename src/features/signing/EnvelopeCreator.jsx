@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { db, storage, auth } from '@lib/firebase';
 import { ref, uploadBytes } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { Document, Page, pdfjs } from 'react-pdf';
 import Draggable from 'react-draggable';
 import { Loader2, UploadCloud, Save, X, Plus, Type, CheckSquare, Calendar, PenTool, Scaling, FileText } from 'lucide-react';
@@ -231,13 +231,21 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 alert("Template saved successfully!");
             } else {
                 const accessToken = uuidv4();
+                // ESIGN-1 FIX: Always set expiresAt on signing request creation.
+                // Without this, links are valid indefinitely — a 2024 link still works in 2030.
+                // Default: 7 days. Can be made configurable in company settings.
+                const expiresAt = Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                // ESIGN-12 FIX: Set senderName so notification emails don't say "Your Employer".
+                const senderName = auth.currentUser?.displayName || auth.currentUser?.email || 'Your Employer';
                 await addDoc(collection(db, 'companies', companyId, 'signing_requests'), {
                     ...commonData,
                     recipientEmail,
                     recipientName,
                     status: 'sent',
                     createdAt: serverTimestamp(),
+                    expiresAt,
                     senderId: auth.currentUser.uid,
+                    senderName,
                     accessToken: accessToken,
                     sendEmail: true
                 });

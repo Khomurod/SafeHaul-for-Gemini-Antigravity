@@ -212,6 +212,12 @@ export async function uploadApplicationFile(companyId, userId, fieldName, file) 
         throw new Error("File exceeds 20MB limit.");
     }
 
+    // SEC-6: MIME type allowlist — only accept PDFs and common image formats.
+    const ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+        throw new Error("Invalid file type. Only PDF, JPEG, PNG, and WEBP files are allowed.");
+    }
+
     const basePath = companyId
         ? `companies/${companyId}/applications/${userId}`
         : `global_leads/${userId}`;
@@ -389,8 +395,9 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
             // P0-5 FIX: Override ISO timestamps with serverTimestamp() for Firestore write
             // (queue copy keeps ISO strings, Firestore gets canonical server time)
             const firestoreData = { ...finalData, submittedAt: serverTimestamp(), createdAt: serverTimestamp() };
-            // setDoc with deterministic ID is idempotent - safe to retry
-            await setDoc(docRef, firestoreData);
+            // BUG-3 FIX: Use merge:true so a re-submission never destroys recruiter notes,
+            // pipeline status, or any other fields added by the company team after initial intake.
+            await setDoc(docRef, firestoreData, { merge: true });
 
             // Success! Dequeue if we queued earlier
             if (queueId) {

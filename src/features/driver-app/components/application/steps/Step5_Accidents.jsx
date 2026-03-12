@@ -9,6 +9,16 @@ const Step5_Accidents = ({ formData, updateFormData, onNavigate }) => {
     const yesNoOptions = [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }];
     const initialAccident = { date: '', city: '', state: '', commercial: 'no', details: '', preventable: 'no' };
 
+    // VAL-1: Run native form validation before allowing navigation forward.
+    const handleContinue = () => {
+        const form = document.getElementById('driver-form');
+        if (form && !form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+        onNavigate('next');
+    };
+
     const renderAccidentRow = (index, item, handleChange) => (
         <div key={index} className="space-y-3">
             <InputField 
@@ -104,7 +114,7 @@ const Step5_Accidents = ({ formData, updateFormData, onNavigate }) => {
                 </button>
                 <button 
                     type="button" 
-                    onClick={() => onNavigate('next')}
+                    onClick={handleContinue}
                     className="w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
                 >
                     Continue
