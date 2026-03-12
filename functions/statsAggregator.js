@@ -13,9 +13,11 @@ const CONTACT_OUTCOMES = new Set(['interested', 'callback', 'not_qualified', 'no
 // --- SHARED HELPER: Process Stats Update ---
 // This function contains all the common logic for all triggers
 async function processStatsUpdate(db, companyId, data, logId, triggerName) {
-    // Require action === 'Call Logged' to prevent activityLogger.js type:'call' writes
-    // from silently inflating totalDials (CALL-10 FIX).
-    const isCall = data.action === 'Call Logged' || data.type === 'call';
+    // CALL-10 FIX: Require `action === 'Call Logged'` to prevent notes, status changes,
+    // and other activity types from inflating totalDials.
+    // For backwards compatibility, also accept documents with `type === 'call'` and no
+    // `action` field (legacy log format written before the action field was added).
+    const isCall = data.action === 'Call Logged' || (data.type === 'call' && !data.action);
     if (!isCall) {
         return null;
     }

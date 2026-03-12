@@ -189,6 +189,11 @@ async function testEmailCredentials(smtpConfig) {
         // CONN-2 FIX: SSRF protection — reject private/loopback/link-local hostnames.
         // Without this, an attacker (or misconfigured admin) could use the test endpoint to probe
         // internal GCP metadata servers (169.254.169.254), localhost services, or internal VPC hosts.
+        // NOTE: This check validates the literal hostname/IP string. DNS rebinding attacks
+        // (where a domain initially resolves to a legitimate IP but re-resolves to a blocked IP)
+        // are not fully mitigated here. For full protection, add a post-DNS-resolution IP check
+        // using Node's dns.lookup() before opening the connection. The connectionTimeout: 10000
+        // below provides a partial defense by failing fast on unexpected hosts.
         const SSRF_BLOCKLIST = [
             /^127\./,                          // IPv4 loopback
             /^10\./,                           // RFC-1918 private

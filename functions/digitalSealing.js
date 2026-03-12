@@ -227,12 +227,28 @@ exports.sealDocument = functions.runWith({
             // ESIGN-9 FIX: Delete the raw signature PNG files from Cloud Storage after sealing.
             // They are embedded in the sealed PDF and no longer needed as standalone files.
             // Keeping them is a PII retention risk under GDPR/CCPA.
+            const failedDeletions = [];
             for (const sigPath of sigPathsToDelete) {
                 try {
                     await bucket.file(sigPath).delete();
                 } catch (delErr) {
-                    // Non-fatal — log but don't fail the whole operation
                     console.warn(`[Seal] Could not delete signature file ${sigPath}:`, delErr.message);
+                    failedDeletions.push(sigPath);
+                }
+            }
+
+            // If any deletions failed, record the orphaned paths in Firestore so a
+            // scheduled cleanup job can retry them (prevents indefinite PII retention).
+            if (failedDeletions.length > 0) {
+                try {
+                    await db.collection('orphaned_signature_cleanup').add({
+                        paths: failedDeletions,
+                        requestId,
+                        companyId,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                } catch (trackErr) {
+                    console.error('[Seal] Could not record orphaned paths for cleanup:', trackErr.message);
                 }
             }
 
