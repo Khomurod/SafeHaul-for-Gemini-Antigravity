@@ -147,12 +147,18 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                     const emailSettings = emailSettingsDoc.data();
                     let mailPass = emailSettings.password;
 
+                    // CONN-12 FIX: Use versioned prefix check instead of fragile `includes(':')` heuristic.
+                    // The old `if (password.includes(':'))` would accidentally trigger decryption on any
+                    // plain-text password containing a colon (e.g. a date or URL), causing auth failures.
                     try {
-                        if (mailPass && mailPass.includes(':')) { // Simple heuristic
-                            const decrypted = decrypt(mailPass);
+                        if (mailPass && mailPass.startsWith('enc:v1:')) {
+                            const decrypted = decrypt(mailPass.slice('enc:v1:'.length));
                             if (decrypted) mailPass = decrypted;
                         }
-                    } catch (decErr) {/* ignore */ }
+                    } catch (decErr) {
+                        console.error('[BatchWorker] Failed to decrypt email password:', decErr.message);
+                        /* Use the raw value — will fail on SMTP auth which is a visible error */
+                    }
 
                     const transportConfig = {};
                     if (emailSettings.host) {

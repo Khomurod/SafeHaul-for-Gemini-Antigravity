@@ -263,3 +263,59 @@ exports.sealDocument = functions.runWith({
             } catch (e) { }
         }
     });
+
+// ESIGN-9 FIX: Scheduled cleanup job for orphaned signature PNG files.
+// When signature deletion fails after sealing, the path is recorded in
+// `orphaned_signature_cleanup`. This job runs nightly to retry those deletions.
+// Without this job, PII (signature images) would accumulate in Storage indefinitely.
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+
+exports.cleanupOrphanedSignatures = onSchedule(
+    { schedule: 'every 24 hours', region: 'us-central1', timeoutSeconds: 300 },
+    async () => {
+        const db = admin.firestore();
+        const bucket = storage.bucket();
+        const collRef = db.collection('orphaned_signature_cleanup');
+
+        // Process entries older than 1 hour (give immediate retries time to complete)
+        const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+        const snap = await collRef.where('createdAt', '<', cutoff).limit(100).get();
+
+        if (snap.empty) {
+            console.log('[CleanupJob] No orphaned signature files to process.');
+            return;
+        }
+
+        let deletedCount = 0;
+        let failedCount = 0;
+        const batch = db.batch();
+
+        for (const doc of snap.docs) {
+            const { paths } = doc.data();
+            let allDeleted = true;
+
+            for (const sigPath of (paths || [])) {
+                try {
+                    await bucket.file(sigPath).delete();
+                    deletedCount++;
+                } catch (err) {
+                    if (err.code === 404) {
+                        // File already deleted — treat as success
+                        deletedCount++;
+                    } else {
+                        console.warn(`[CleanupJob] Still cannot delete ${sigPath}:`, err.message);
+                        failedCount++;
+                        allDeleted = false;
+                    }
+                }
+            }
+
+            if (allDeleted) {
+                batch.delete(doc.ref);
+            }
+        }
+
+        await batch.commit();
+        console.log(`[CleanupJob] Orphaned signatures: ${deletedCount} deleted, ${failedCount} still pending.`);
+    }
+);

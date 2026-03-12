@@ -7,8 +7,16 @@ export default function StatsBackfillPanel() {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [error, setError] = useState('');
+    // CALL-12 FIX: Replace hardcoded test company ID with an input field.
+    // Having a hardcoded company ID in production code risks running a backfill
+    // against the wrong company (data corruption) and exposes internal IDs.
+    const [companyId, setCompanyId] = useState('');
 
-    const runBackfill = async (companyId, dryRun) => {
+    const runBackfill = async (targetCompanyId, dryRun) => {
+        if (!targetCompanyId.trim()) {
+            setError('Please enter a Company ID');
+            return;
+        }
         setLoading(true);
         setError('');
         setResult(null);
@@ -18,7 +26,7 @@ export default function StatsBackfillPanel() {
             const backfillFn = httpsCallable(functions, 'backfillCompanyStats', {
                 timeout: 540000 // 9 minutes
             });
-            const response = await backfillFn({ companyId, dryRun });
+            const response = await backfillFn({ companyId: targetCompanyId.trim(), dryRun });
             setResult(response.data);
         } catch (err) {
             console.error('Backfill error:', err);
@@ -59,18 +67,30 @@ export default function StatsBackfillPanel() {
                 </p>
             </div>
 
-            {/* Ray Star LLC Section */}
+            {/* Single Company Section */}
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <h3 className="font-semibold text-gray-900 mb-3">
-                    Ray Star LLC (Test Company)
+                    Single Company Backfill
                 </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                    Company ID: <code className="bg-white px-2 py-1 rounded text-xs">iHexmEEmD8ygvL6qZ5Zd</code>
-                </p>
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company ID
+                    </label>
+                    <input
+                        type="text"
+                        value={companyId}
+                        onChange={e => setCompanyId(e.target.value)}
+                        placeholder="Enter Firestore company document ID..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                        Find this in the Firebase Console → Firestore → companies → [document ID]
+                    </p>
+                </div>
                 <div className="flex gap-3">
                     <button
-                        onClick={() => runBackfill('iHexmEEmD8ygvL6qZ5Zd', true)}
-                        disabled={loading}
+                        onClick={() => runBackfill(companyId, true)}
+                        disabled={loading || !companyId.trim()}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {loading ? (
@@ -81,8 +101,8 @@ export default function StatsBackfillPanel() {
                         Dry-Run (Preview)
                     </button>
                     <button
-                        onClick={() => runBackfill('iHexmEEmD8ygvL6qZ5Zd', false)}
-                        disabled={loading}
+                        onClick={() => runBackfill(companyId, false)}
+                        disabled={loading || !companyId.trim()}
                         className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {loading ? (

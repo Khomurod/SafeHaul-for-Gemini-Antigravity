@@ -179,7 +179,10 @@ async function processStatsUpdate(db, companyId, data, logId, triggerName) {
         stats.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
         transaction.set(statsRef, stats);
-        // INFRA-2: processedAt set for TTL policy: `firebase firestore:ttl:create stats_daily/*/processed_signals processedAt`
+        // INFRA-2: processedAt is set for Firestore TTL policy to auto-delete processed_signals after 90 days.
+        // IMPORTANT: The TTL policy must be created once in the Firebase project using the CLI:
+        //   firebase firestore:ttl:create companies/{companyId}/activity_logs/{logId}/processed_signals processedAt
+        // Without this CLI command the documents accumulate indefinitely. This is a one-time setup step.
         transaction.set(processedRef, { processedAt: admin.firestore.FieldValue.serverTimestamp() });
     });
 

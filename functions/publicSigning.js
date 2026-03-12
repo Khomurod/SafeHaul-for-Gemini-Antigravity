@@ -13,14 +13,16 @@ function safeCompare(a, b) {
         // length-based timing attacks. We use a 256-byte fixed buffer so length
         // differences don't leak information.
         const MAX_LEN = 256;
-        const strA = String(a).substring(0, MAX_LEN).padEnd(MAX_LEN, '\0');
-        const strB = String(b).substring(0, MAX_LEN).padEnd(MAX_LEN, '\0');
-        const bufA = Buffer.from(strA, 'utf8');
-        const bufB = Buffer.from(strB, 'utf8');
+        const strA = String(a);
+        const strB = String(b);
+        const paddedA = strA.substring(0, MAX_LEN).padEnd(MAX_LEN, '\0');
+        const paddedB = strB.substring(0, MAX_LEN).padEnd(MAX_LEN, '\0');
+        const bufA = Buffer.from(paddedA, 'utf8');
+        const bufB = Buffer.from(paddedB, 'utf8');
         // Both buffers are now the same length, so timingSafeEqual won't leak length
         const equal = crypto.timingSafeEqual(bufA, bufB);
-        // Also verify the original lengths match (constant-time: both checks always run)
-        const lengthsMatch = String(a).length === String(b).length;
+        // Also verify the original lengths match (both checks always run)
+        const lengthsMatch = strA.length === strB.length;
         return equal && lengthsMatch;
     } catch {
         return false;

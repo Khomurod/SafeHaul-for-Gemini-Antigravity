@@ -561,7 +561,10 @@ exports.submitVerificationResponse = onCall({ cors: true }, async (request) => {
                     employers[idx].verification.status = 'Completed';
                     employers[idx].verification.completedAt = new Date().toISOString();
                     employers[idx].verification.resultUrl = pdfPath || null;
-                    employers[idx].verification.responseToken = token;
+                    // PEV-SEC-3 FIX: Do NOT store the raw verification token in the application document.
+                    // The application doc is readable by all company team members; storing the token
+                    // here would allow any team member to reuse it to re-submit or tamper with the
+                    // verification response. Reference the verification by the respondent name only.
                     employers[idx].verification.respondentName = formResponse.respondentName;
                     employers[idx].verification.history = employers[idx].verification.history || [];
                     employers[idx].verification.history.push({
@@ -852,6 +855,17 @@ async function notifyCarrierNoResponse(verificationData) {
 // ============================================================
 // HELPER: Generate PDF for DQ File
 // ============================================================
+/**
+ * Generate the PEV completion PDF and upload to Cloud Storage.
+ * PEV-BRK-3 FIX: Returns the permanent Cloud Storage path (e.g. `companies/.../pev_results/PEV_...pdf`)
+ * NOT a signed URL. Signed URLs are generated on demand when viewing; storing them would expire in 7
+ * days while FMCSA 49 CFR 391.51 requires 3-year DQ file retention.
+ *
+ * @param {object} verificationData - The verification_request Firestore document data
+ * @param {object} responseData     - The submitted response data from the employer
+ * @param {string} token            - The verification request token (used for naming the PDF)
+ * @returns {Promise<string>}       - The permanent Cloud Storage path of the generated PDF
+ */
 async function generateVerificationPDF(verificationData, responseData, token) {
     try {
         const pdfDoc = await PDFDocument.create();

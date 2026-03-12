@@ -42,6 +42,8 @@ exports.sealDocument = digitalSealing.sealDocument;
 exports.notifySigner = notifySigner.notifySigner;
 exports.getPublicEnvelope = publicSigning.getPublicEnvelope;
 exports.submitPublicEnvelope = publicSigning.submitPublicEnvelope;
+// ESIGN-9 FIX: Nightly cleanup of orphaned signature PNG files after sealing
+exports.cleanupOrphanedSignatures = digitalSealing.cleanupOrphanedSignatures;
 
 // 2. Auth & User Management
 exports.createPortalUser = hrAdmin.createPortalUser;
@@ -81,6 +83,9 @@ exports.getSignedUploadUrl = require('./storageSecure').getSignedUploadUrl;
 // NEW: Email Testing
 exports.testEmailConnection = require('./testEmailConnection').testEmailConnection;
 
+// CONN-1/CONN-4 FIX: Server-side save with encrypted password (replaces direct Firestore writes)
+exports.saveEmailSettings = require('./saveEmailSettings').saveEmailSettings;
+
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
 exports.backfillPublicProfiles = companyAdmin.backfillPublicProfiles;
@@ -115,10 +120,13 @@ exports.verifyLineConnection = smsIntegrations.verifyLineConnection;
 exports.onActivityLogCreated = statsAggregator.onActivityLogCreated;
 exports.onLegacyActivityCreated = statsAggregator.onLegacyActivityCreated;
 exports.onLeadsActivityLogCreated = statsAggregator.onLeadsActivityLogCreated; // NEW: Leads trigger
+exports.onLeadsLegacyActivityCreated = statsAggregator.onLeadsLegacyActivityCreated; // NEW: Leads legacy trigger
 
-
-
-// 13. Stats Backfill (Admin Tools - Removed)
+// 13. Stats Backfill (Admin Tools)
+// CALL-3 FIX: These functions are called by StatsBackfillPanel.jsx and were previously missing.
+const statsBackfill = require('./statsBackfill');
+exports.backfillCompanyStats = statsBackfill.backfillCompanyStats;
+exports.backfillAllStats = statsBackfill.backfillAllStats;
 
 // 14. Engagement Engine (Smart Segments & Compliance)
 const segments = require('./segments');
@@ -135,6 +143,8 @@ exports.onLeadAssigned = notificationTriggers.onLeadAssigned;
 exports.onNewApplicationNotification = notificationTriggers.onNewApplicationNotification;
 exports.onCallbackScheduled = notificationTriggers.onCallbackScheduled;
 exports.onLeadCallbackScheduled = notificationTriggers.onLeadCallbackScheduled;
+// DL-4 FIX: Send confirmation email to applicant on every new application
+exports.onNewApplicationEmailConfirmation = notificationTriggers.onNewApplicationEmailConfirmation;
 
 // 16. Pipeline Tracking
 const pipelineTriggers = require('./pipelineTriggers');

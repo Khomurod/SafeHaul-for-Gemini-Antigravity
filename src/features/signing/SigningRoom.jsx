@@ -4,8 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { Loader2, CheckCircle, PenTool, X, ChevronRight, AlertTriangle } from 'lucide-react';
-import confetti from 'canvas-confetti';
+import { Loader2, CheckCircle, PenTool, X, ChevronRight, AlertTriangle, ShieldCheck, FileText } from 'lucide-react';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -25,6 +24,12 @@ export default function SigningRoom() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [numPages, setNumPages] = useState(null);
+
+    // ESIGN-8 FIX: Track electronic consent before allowing signing.
+    // UETA (15 U.S.C. § 96) and ESIGN Act (15 U.S.C. § 7001) require affirmative consent
+    // to use electronic records/signatures. Without this screen, e-signatures may not be
+    // legally enforceable in disputes.
+    const [hasEsignConsent, setHasEsignConsent] = useState(false);
 
     // Data State
     const [fieldValues, setFieldValues] = useState({});
@@ -96,9 +101,9 @@ export default function SigningRoom() {
 
         setSubmitting(true);
         try {
-            // Collect Audit Info
+            // The server-side publicSigning.js overrides the IP from the actual request context.
+            // We still send userAgent for browser fingerprinting in the audit trail.
             const auditData = {
-                ip: '127.0.0.1', // Cloud Function will resolve real IP if needed
                 userAgent: navigator.userAgent,
                 timestamp: new Date().toISOString()
             };
@@ -113,7 +118,8 @@ export default function SigningRoom() {
             });
 
             setSuccess(true);
-            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            // ESIGN-16 FIX: Confetti removed — document signing is a professional/legal act;
+            // celebratory animations are inappropriate in regulated trucking compliance context.
 
         } catch (e) {
             console.error("Submission Error:", e);
@@ -155,6 +161,63 @@ export default function SigningRoom() {
                 <button onClick={() => window.close()} className="text-blue-600 font-semibold hover:underline">
                     Close Window
                 </button>
+            </div>
+        </div>
+    );
+
+    // ESIGN-8 FIX: Electronic consent screen required before document access.
+    // UETA § 5(b) and ESIGN Act § 101(c) mandate that signers affirmatively agree to
+    // conduct business electronically before they can be bound by electronic signatures.
+    // The consent must be presented BEFORE the document is displayed (not inline).
+    if (!hasEsignConsent) return (
+        <div className="h-screen flex items-center justify-center bg-gray-50 p-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl border border-blue-100 max-w-lg w-full">
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <ShieldCheck size={28} className="text-blue-600" />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">Electronic Signature Consent</h2>
+                        <p className="text-sm text-gray-500">Required before signing</p>
+                    </div>
+                </div>
+
+                <div className="space-y-4 text-sm text-gray-700 mb-6">
+                    <p>
+                        You are about to electronically sign: <strong className="text-gray-900">{request?.title || 'a document'}</strong>.
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                        <p className="font-semibold text-blue-900 flex items-center gap-2">
+                            <FileText size={16} /> Electronic Records & Signature Disclosure
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 text-blue-800 text-xs">
+                            <li>Your electronic signature is legally binding under the ESIGN Act (15 U.S.C. § 7001) and UETA.</li>
+                            <li>You agree to receive and sign this document electronically instead of on paper.</li>
+                            <li>You may withdraw consent and request a paper copy by contacting the sender.</li>
+                            <li>To sign electronically, you need a compatible web browser with JavaScript enabled.</li>
+                            <li>Your IP address and browser information are recorded in the audit trail for this document.</li>
+                        </ul>
+                    </div>
+                    <p className="text-gray-600">
+                        By clicking <strong>"I Agree – Proceed to Sign"</strong>, you confirm that you have read and agree to use electronic records and signatures.
+                    </p>
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => window.close()}
+                        className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition"
+                    >
+                        Decline
+                    </button>
+                    <button
+                        onClick={() => setHasEsignConsent(true)}
+                        className="flex-1 px-4 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                    >
+                        <ShieldCheck size={18} />
+                        I Agree – Proceed to Sign
+                    </button>
+                </div>
             </div>
         </div>
     );
