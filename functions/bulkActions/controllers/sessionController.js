@@ -395,12 +395,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
         filters: filters,
         leadSourceType: leadSourceType,
         targetIds: finalTargetIds, // Array of strings
-        stats: {
-            total: finalTargetIds.length,
-            processed: 0,
-            success: 0,
-            failed: 0
-        },
+        // BUG-4 FIX: Removed redundant 'stats' field — only 'progress' is updated by the worker.
         progress: {
             currentPointer: 0, // Index in targetIds
             totalCount: finalTargetIds.length,
@@ -467,7 +462,11 @@ exports.cancelBulkSession = onCall({ cors: true }, (req) => updateSessionStatus(
  */
 exports.retryFailedAttempts = onCall({ cors: true }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated');
-    const { companyId, sessionId } = request.data;
+    // BUG-1 FIX: Frontend sends 'originalSessionId' but backend expected 'sessionId'.
+    // Accept both for backward compatibility.
+    const { companyId, sessionId: directId, originalSessionId } = request.data;
+    const sessionId = directId || originalSessionId;
+    if (!sessionId) throw new HttpsError('invalid-argument', 'Session ID is required.');
     await assertCompanyAdmin(request.auth.uid, companyId);
 
     const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);

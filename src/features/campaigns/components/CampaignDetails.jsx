@@ -275,7 +275,9 @@ export function CampaignDetails({ campaign, onClose }) {
                     </div>
 
                     {/* NEW: Individual Results Table */}
-                    <CampaignResultsTable companyId={campaign.companyId} campaignId={campaign.id} />
+                    {/* BUG-3 FIX: campaign.companyId is undefined (not stored on session doc).
+                        Use effectiveCompanyId which resolves from context/route params. */}
+                    <CampaignResultsTable companyId={effectiveCompanyId} campaignId={campaign.id} />
 
                 </div>
             </div>
