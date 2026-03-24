@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { db, storage, auth } from '@lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp, Timestamp, writeBatch, doc } from 'firebase/firestore';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -296,7 +297,8 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     senderId: auth.currentUser.uid,
                     senderName,
                     sendEmail,
-                    sendSms
+                    sendSms: false, // SMS sent directly by frontend callable
+                    deliveryMethod // Audit trail
                 });
                 batch.set(doc(signingRef, 'secrets', 'token'), { accessToken });
                 await batch.commit();
@@ -308,8 +310,29 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     await navigator.clipboard.writeText(link);
                     showSuccess('Signing link copied to clipboard!');
                 } else {
-                    const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : deliveryMethod === 'sms' ? 'SMS' : 'Email';
-                    showSuccess(`Document created! ${methodLabel} delivery in progress...`);
+                    // Send SMS directly via callable (not relying on async trigger)
+                    if (sendSms && recipientPhone) {
+                        try {
+                            const baseUrl = window.location.origin;
+                            const signingLink = `${baseUrl}/sign/${companyId}/${signingRef.id}?token=${accessToken}`;
+                            const smsMessage = `📄 ${senderName} sent you "${title || 'Document'}" to sign. Sign here: ${signingLink}`;
+
+                            const functions = getFunctions();
+                            const sendSMSCallable = httpsCallable(functions, 'sendSMS');
+                            await sendSMSCallable({
+                                companyId,
+                                recipientPhone,
+                                messageBody: smsMessage
+                            });
+                            showSuccess('Document created & SMS sent!');
+                        } catch (smsErr) {
+                            console.error('SMS send failed:', smsErr);
+                            showError(`Document created but SMS failed: ${smsErr.message}`);
+                        }
+                    } else {
+                        const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : 'Email';
+                        showSuccess(`Document created! ${methodLabel} delivery in progress...`);
+                    }
                 }
             }
 

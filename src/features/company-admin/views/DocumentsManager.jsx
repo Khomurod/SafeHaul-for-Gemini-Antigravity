@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '@lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, onSnapshot, orderBy, deleteDoc, doc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
 import { useData } from '@/context/DataContext';
 import EnvelopeCreator from '@features/signing/EnvelopeCreator';
@@ -143,7 +144,8 @@ export default function DocumentsManager() {
                 senderId: auth.currentUser.uid,
                 senderName,
                 sendEmail,
-                sendSms,
+                sendSms: false, // SMS is sent directly by frontend callable — do NOT trigger async function
+                deliveryMethod, // Record what user chose for audit trail
                 fields: autoFilledFields,
                 templateId: selectedTemplate.id,
                 fieldValues: autoFilledFields.reduce((acc, f) => {
@@ -166,8 +168,30 @@ export default function DocumentsManager() {
                 await navigator.clipboard.writeText(link);
                 showSuccess('Signing link copied to clipboard!');
             } else {
-                const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : deliveryMethod === 'sms' ? 'SMS' : 'Email';
-                showSuccess(`Document created! ${methodLabel} delivery in progress...`);
+                // Send SMS directly via callable (not relying on async trigger)
+                if (sendSms && manualPhone.trim()) {
+                    try {
+                        const baseUrl = window.location.origin;
+                        const signingLink = `${baseUrl}/sign/${currentCompanyProfile.id}/${signingRef.id}?token=${accessToken}`;
+                        const senderName = auth.currentUser?.displayName || auth.currentUser?.email || 'Your Employer';
+                        const smsMessage = `📄 ${senderName} sent you "${selectedTemplate.title}" to sign. Sign here: ${signingLink}`;
+
+                        const functions = getFunctions();
+                        const sendSMSCallable = httpsCallable(functions, 'sendSMS');
+                        await sendSMSCallable({
+                            companyId: currentCompanyProfile.id,
+                            recipientPhone: manualPhone.trim(),
+                            messageBody: smsMessage
+                        });
+                        showSuccess('Document created & SMS sent!');
+                    } catch (smsErr) {
+                        console.error('SMS send failed:', smsErr);
+                        showError(`Document created but SMS failed: ${smsErr.message}`);
+                    }
+                } else {
+                    const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : 'Email';
+                    showSuccess(`Document created! ${methodLabel} delivery in progress...`);
+                }
             }
 
             setShowDriverPicker(false);
