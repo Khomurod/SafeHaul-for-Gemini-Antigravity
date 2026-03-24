@@ -174,7 +174,7 @@ export default function DocumentsManager() {
                         const baseUrl = window.location.origin;
                         const signingLink = `${baseUrl}/sign/${currentCompanyProfile.id}/${signingRef.id}?token=${accessToken}`;
                         const senderName = auth.currentUser?.displayName || auth.currentUser?.email || 'Your Employer';
-                        const smsMessage = `📄 ${senderName} sent you "${selectedTemplate.title}" to sign. Sign here: ${signingLink}`;
+                        const smsMessage = `${senderName} sent you "${selectedTemplate.title}" to sign: ${signingLink}`;
 
                         const functions = getFunctions();
                         const sendSMSCallable = httpsCallable(functions, 'sendSMS');

@@ -315,7 +315,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                         try {
                             const baseUrl = window.location.origin;
                             const signingLink = `${baseUrl}/sign/${companyId}/${signingRef.id}?token=${accessToken}`;
-                            const smsMessage = `📄 ${senderName} sent you "${title || 'Document'}" to sign. Sign here: ${signingLink}`;
+                            const smsMessage = `${senderName} sent you "${title || 'Document'}" to sign: ${signingLink}`;
 
                             const functions = getFunctions();
                             const sendSMSCallable = httpsCallable(functions, 'sendSMS');
