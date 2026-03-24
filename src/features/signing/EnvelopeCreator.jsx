@@ -308,7 +308,8 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     await navigator.clipboard.writeText(link);
                     showSuccess('Signing link copied to clipboard!');
                 } else {
-                    showSuccess('Document sent to recipient!');
+                    const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : deliveryMethod === 'sms' ? 'SMS' : 'Email';
+                    showSuccess(`Document created! ${methodLabel} delivery in progress...`);
                 }
             }
 

@@ -32,7 +32,8 @@ exports.notifySignerSMS = onDocumentCreated(
                 .collection('signing_requests').doc(requestId)
                 .collection('secrets').doc('token').get();
 
-            const accessToken = secretSnap.exists ? secretSnap.data().accessToken : null;
+            // ADV-4: Fallback to parent doc for pre-migration signing requests
+            const accessToken = secretSnap.exists ? secretSnap.data().accessToken : (data.accessToken || null);
 
             if (!accessToken) {
                 console.warn(`[NotifySignerSMS] No accessToken found for ${requestId}`);
@@ -48,10 +49,10 @@ exports.notifySignerSMS = onDocumentCreated(
             const docTitle = data.title || 'Document';
             const message = `📄 ${senderName} sent you "${docTitle}" to sign. Sign here: ${signingLink}`;
 
-            // Get SMS adapter for the company
-            const adapter = await SMSAdapterFactory.getAdapter(companyId);
+            // Get SMS adapter using sender's assigned phone number (smart routing)
+            const adapter = await SMSAdapterFactory.getAdapterForUser(companyId, data.senderId);
 
-            // Send the SMS
+            // Send the SMS — adapter routes via: sender assignment → default → fallback
             await adapter.sendSMS(data.recipientPhone, message, data.senderId);
 
             // Update the signing request with SMS delivery status

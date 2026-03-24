@@ -34,6 +34,8 @@ export default function DocumentsManager() {
     const [manualEmail, setManualEmail] = useState('');
     const [manualPhone, setManualPhone] = useState('');
     const [deliveryMethod, setDeliveryMethod] = useState('email'); // 'email' | 'sms' | 'both' | 'copy'
+    // Template pre-fill: user can edit field values before sending
+    const [prefillValues, setPrefillValues] = useState({});
 
     // Fetch Templates
     useEffect(() => {
@@ -63,6 +65,14 @@ export default function DocumentsManager() {
         setManualEmail('');
         setManualPhone('');
         setDeliveryMethod('email');
+        // Initialize prefill values from template field defaults
+        const initialPrefill = {};
+        (template.fields || []).forEach(f => {
+            if (f.type === 'text' || f.type === 'date') {
+                initialPrefill[f.id] = f.defaultValue || '';
+            }
+        });
+        setPrefillValues(initialPrefill);
         setShowDriverPicker(true);
     };
 
@@ -92,8 +102,14 @@ export default function DocumentsManager() {
         try {
             const accessToken = uuidv4();
 
-            // AUTO-FILL LOGIC: Map profile data to placeholders
+            // AUTO-FILL LOGIC: Map profile data to placeholders, then apply user prefill overrides
             const autoFilledFields = selectedTemplate.fields.map(f => {
+                // First check if user manually pre-filled this field
+                if (prefillValues[f.id] !== undefined && prefillValues[f.id] !== '') {
+                    return { ...f, defaultValue: prefillValues[f.id] };
+                }
+
+                // Otherwise try auto-fill from recipient data
                 let value = null;
                 const label = (f.label || '').toLowerCase();
 
@@ -150,7 +166,8 @@ export default function DocumentsManager() {
                 await navigator.clipboard.writeText(link);
                 showSuccess('Signing link copied to clipboard!');
             } else {
-                showSuccess(`Document sent to ${manualName.trim()}!`);
+                const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : deliveryMethod === 'sms' ? 'SMS' : 'Email';
+                showSuccess(`Document created! ${methodLabel} delivery in progress...`);
             }
 
             setShowDriverPicker(false);
@@ -301,6 +318,29 @@ export default function DocumentsManager() {
                                     </button>
                                 ))}
                             </div>
+
+                            {/* Template Pre-fill Fields */}
+                            {selectedTemplate?.fields?.filter(f => f.type === 'text' || f.type === 'date').length > 0 && (
+                                <div className="pt-3">
+                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pre-fill Fields (Optional)</h3>
+                                    <div className="max-h-[140px] overflow-y-auto space-y-2 pr-1">
+                                        {selectedTemplate.fields.filter(f => f.type === 'text' || f.type === 'date').map(field => (
+                                            <div key={field.id} className="flex items-center gap-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase w-24 truncate shrink-0" title={field.label}>
+                                                    {field.label}
+                                                </label>
+                                                <input
+                                                    type={field.type === 'date' ? 'date' : 'text'}
+                                                    placeholder={`Enter ${field.label}...`}
+                                                    className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                                                    value={prefillValues[field.id] || ''}
+                                                    onChange={e => setPrefillValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Send / Copy Button */}
                             <button
