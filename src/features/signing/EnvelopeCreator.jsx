@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { db, storage, auth } from '@lib/firebase';
 import { ref, uploadBytes } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, writeBatch, doc } from 'firebase/firestore';
 import { Document, Page, pdfjs } from 'react-pdf';
 import Draggable from 'react-draggable';
-import { Loader2, UploadCloud, Save, X, Plus, Type, CheckSquare, Calendar, PenTool, Scaling, FileText } from 'lucide-react';
+import { Loader2, UploadCloud, Save, X, Plus, Type, CheckSquare, Calendar, PenTool, Scaling, FileText, Mail, Phone, MessageSquare, Copy, Send } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { useToast } from '@shared/components/feedback';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -108,26 +109,59 @@ const ResizableDraggableField = ({ field, pageNum, pageWidth, pageHeight, onStop
 };
 
 export default function EnvelopeCreator({ companyId, onClose, initialMode = 'request' }) {
+    const { showSuccess, showError } = useToast();
     const [file, setFile] = useState(null);
     const [numPages, setNumPages] = useState(null);
     const [loading, setLoading] = useState(false);
     const [creatorMode, setCreatorMode] = useState(initialMode); // 'request' or 'template'
 
+    // FEAT-1: Track the currently visible page for multi-page field placement
+    const [activePage, setActivePage] = useState(1);
+    const pageRefs = useRef({});
+
     // Recipient details only needed for 'request' mode
     const [recipientEmail, setRecipientEmail] = useState('');
     const [recipientName, setRecipientName] = useState('');
+    const [recipientPhone, setRecipientPhone] = useState('');
+    // ADV-2 FIX: Delivery method selector for one-off sends
+    const [deliveryMethod, setDeliveryMethod] = useState('email'); // 'email' | 'sms' | 'both' | 'copy'
     const [title, setTitle] = useState('');
 
     const [fields, setFields] = useState([]);
     const [pageDimensions, setPageDimensions] = useState({});
 
+    // FEAT-1: IntersectionObserver to track which page is visible
+    useEffect(() => {
+        if (!numPages) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        const pageNum = parseInt(entry.target.dataset.pageNum);
+                        if (pageNum) setActivePage(pageNum);
+                    }
+                });
+            },
+            { threshold: 0.5 }
+        );
+        Object.values(pageRefs.current).forEach((el) => {
+            if (el) observer.observe(el);
+        });
+        return () => observer.disconnect();
+    }, [numPages, file]);
+
     const handleFileChange = (e) => {
         const selected = e.target.files[0];
         if (selected && selected.type === 'application/pdf') {
+            // MED-3 FIX: Reject files larger than 25MB
+            if (selected.size > 25 * 1024 * 1024) {
+                showError('File too large. Maximum size is 25MB.');
+                return;
+            }
             setFile(selected);
             setTitle(selected.name.replace('.pdf', ''));
         } else {
-            alert("Please upload a valid PDF.");
+            showError('Please upload a valid PDF file.');
         }
     };
 
@@ -139,10 +173,11 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
         if (type === 'text') { w = 30; h = 5; }
         if (type === 'date') { w = 20; h = 5; }
 
+        // FEAT-1: Place field on the currently visible page instead of always page 1
         const newField = {
             id: uuidv4(),
             type,
-            page: 1,
+            page: activePage,
             x: 10, y: 10,
             width: w, height: h,
             label: type === 'text' ? 'Label' : type
@@ -170,13 +205,23 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
 
     const handleSave = async () => {
         if (!file || fields.length === 0) {
-            alert("Please upload a file and place fields.");
+            showError('Please upload a file and place at least one field.');
             return;
         }
 
-        if (creatorMode === 'request' && (!recipientEmail || !recipientName)) {
-            alert("Please provide recipient details for a direct request.");
-            return;
+        if (creatorMode === 'request') {
+            if (!recipientName) {
+                showError('Please provide a recipient name.');
+                return;
+            }
+            if ((deliveryMethod === 'email' || deliveryMethod === 'both') && !recipientEmail) {
+                showError('Email is required for email delivery.');
+                return;
+            }
+            if ((deliveryMethod === 'sms' || deliveryMethod === 'both') && !recipientPhone) {
+                showError('Phone number is required for SMS delivery.');
+                return;
+            }
         }
 
         setLoading(true);
@@ -228,34 +273,49 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     createdAt: serverTimestamp(),
                     createdBy: auth.currentUser.uid
                 });
-                alert("Template saved successfully!");
+                showSuccess('Template saved successfully!');
             } else {
                 const accessToken = uuidv4();
-                // ESIGN-1 FIX: Always set expiresAt on signing request creation.
-                // Without this, links are valid indefinitely — a 2024 link still works in 2030.
-                // Default: 7 days. Can be made configurable in company settings.
                 const expiresAt = Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
-                // ESIGN-12 FIX: Set senderName so notification emails don't say "Your Employer".
                 const senderName = auth.currentUser?.displayName || auth.currentUser?.email || 'Your Employer';
-                await addDoc(collection(db, 'companies', companyId, 'signing_requests'), {
+
+                // ADV-2 FIX: Set delivery flags based on selected method
+                const sendEmail = deliveryMethod === 'email' || deliveryMethod === 'both';
+                const sendSms = deliveryMethod === 'sms' || deliveryMethod === 'both';
+
+                const signingRef = doc(collection(db, 'companies', companyId, 'signing_requests'));
+                const batch = writeBatch(db);
+                batch.set(signingRef, {
                     ...commonData,
-                    recipientEmail,
+                    recipientEmail: recipientEmail || null,
                     recipientName,
+                    recipientPhone: recipientPhone || null,
                     status: 'sent',
                     createdAt: serverTimestamp(),
                     expiresAt,
                     senderId: auth.currentUser.uid,
                     senderName,
-                    accessToken: accessToken,
-                    sendEmail: true
+                    sendEmail,
+                    sendSms
                 });
-                alert("Document sent to recipient!");
+                batch.set(doc(signingRef, 'secrets', 'token'), { accessToken });
+                await batch.commit();
+
+                // Copy Link mode — copy URL to clipboard instead of sending
+                if (deliveryMethod === 'copy') {
+                    const baseUrl = window.location.origin;
+                    const link = `${baseUrl}/sign/${companyId}/${signingRef.id}?token=${accessToken}`;
+                    await navigator.clipboard.writeText(link);
+                    showSuccess('Signing link copied to clipboard!');
+                } else {
+                    showSuccess('Document sent to recipient!');
+                }
             }
 
             if (onClose) onClose();
         } catch (err) {
             console.error("Error saving:", err);
-            alert("Action failed. Check console for details.");
+            showError('Action failed. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -314,15 +374,44 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                         <div className="p-6 border-b animate-in fade-in slide-in-from-top-2">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">1. Recipient</label>
                             <input
-                                type="text" placeholder="Recipient Name"
+                                type="text" placeholder="Recipient Name *"
                                 className="w-full mb-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white transition-colors"
                                 value={recipientName} onChange={e => setRecipientName(e.target.value)}
                             />
                             <input
                                 type="email" placeholder="Recipient Email"
-                                className="w-full p-2 text-sm border rounded bg-gray-50 focus:bg-white transition-colors"
+                                className="w-full mb-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white transition-colors"
                                 value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)}
                             />
+                            <input
+                                type="tel" placeholder="Recipient Phone"
+                                className="w-full mb-3 p-2 text-sm border rounded bg-gray-50 focus:bg-white transition-colors"
+                                value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)}
+                            />
+                            {/* ADV-2 FIX: Delivery method selector */}
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Delivery Method</label>
+                            <div className="grid grid-cols-4 gap-1.5">
+                                {[
+                                    { key: 'email', icon: <Mail size={12} />, label: 'Email' },
+                                    { key: 'sms', icon: <MessageSquare size={12} />, label: 'SMS' },
+                                    { key: 'both', icon: <Send size={12} />, label: 'Both' },
+                                    { key: 'copy', icon: <Copy size={12} />, label: 'Copy Link' },
+                                ].map(opt => (
+                                    <button
+                                        key={opt.key}
+                                        type="button"
+                                        onClick={() => setDeliveryMethod(opt.key)}
+                                        className={`flex flex-col items-center gap-0.5 p-2 rounded-lg text-[10px] font-bold border transition-all ${
+                                            deliveryMethod === opt.key
+                                                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                                : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        {opt.icon}
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -375,6 +464,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                                             <div className="flex items-center gap-2 truncate">
                                                 <div className="text-gray-400 shrink-0">{getIcon(f.type)}</div>
                                                 <span className="font-bold truncate">{f.label}</span>
+                                                <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full shrink-0">P{f.page}</span>
                                             </div>
                                             <button onClick={() => removeField(f.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"><X size={14} /></button>
                                         </div>
@@ -397,7 +487,11 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                                 const dims = pageDimensions[pageNum];
 
                                 return (
-                                    <div key={pageNum} className="relative shadow-2xl border border-gray-400 bg-white inline-block ring-1 ring-black/5">
+                                    <div key={pageNum} ref={(el) => (pageRefs.current[pageNum] = el)} data-page-num={pageNum} className={`relative shadow-2xl border-2 bg-white inline-block ring-1 ring-black/5 ${activePage === pageNum ? 'border-blue-400' : 'border-gray-400'}`}>
+                                        {/* FEAT-1: Page label badge */}
+                                        <div className={`absolute top-2 left-2 z-20 px-2 py-1 rounded-md text-[10px] font-bold ${activePage === pageNum ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                                            Page {pageNum} / {numPages}
+                                        </div>
                                         <Page
                                             pageNumber={pageNum}
                                             width={700}

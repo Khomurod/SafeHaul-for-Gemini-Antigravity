@@ -273,7 +273,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 exports.cleanupOrphanedSignatures = onSchedule(
     { schedule: 'every 24 hours', region: 'us-central1', timeoutSeconds: 300 },
     async () => {
-        const db = admin.firestore();
+        // LOW-2 FIX: Use the imported `db` instead of re-declaring
         const bucket = storage.bucket();
         const collRef = db.collection('orphaned_signature_cleanup');
 

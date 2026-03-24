@@ -13,18 +13,29 @@ exports.notifySigner = functions.firestore
         const data = snap.data();
         const { companyId, requestId } = context.params;
 
+        // FEAT-4: Skip email if sendEmail is explicitly false (Copy Link or SMS-only)
+        if (data.sendEmail === false) {
+            console.log(`[Notify] Skipped: sendEmail is false for request ${requestId}`);
+            return null;
+        }
+
+        // BUG-2 FIX: Read accessToken from secrets subcollection
+        const secretSnap = await db.collection('companies').doc(companyId)
+            .collection('signing_requests').doc(requestId)
+            .collection('secrets').doc('token').get();
+        // ADV-4 FIX: Fallback to parent doc for pre-migration signing requests
+        const accessToken = secretSnap.exists ? secretSnap.data().accessToken : (data.accessToken || null);
+
         // 1. Validate required fields before proceeding
-        if (!data.recipientEmail || !data.accessToken) {
+        if (!data.recipientEmail || !accessToken) {
             console.warn(`[Notify] Skipped: Missing recipientEmail or accessToken for request ${requestId}`);
             return null;
         }
 
         // 2. Build signing link
         // ESIGN-11 FIX: Read base URL from environment variable rather than hardcoding.
-        // The old hardcoded URL 'truckerapp-system.web.app' is an outdated Firebase hosting URL
-        // that may not match the production domain. Set APP_BASE_URL in Cloud Function env config.
         const baseUrl = process.env.APP_BASE_URL || 'https://app.safehaul.io';
-        const signingLink = `${baseUrl}/sign/${companyId}/${requestId}?token=${data.accessToken}`;
+        const signingLink = `${baseUrl}/sign/${companyId}/${requestId}?token=${accessToken}`;
 
         // 3. Build professional HTML email body (kept from original)
         const subject = `Action Required: Please Sign "${data.title || 'Document'}"`;

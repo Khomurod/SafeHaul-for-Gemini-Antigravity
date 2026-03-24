@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '@lib/firebase';
-import { collection, query, onSnapshot, orderBy, deleteDoc, doc, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, deleteDoc, doc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
 import { useData } from '@/context/DataContext';
 import EnvelopeCreator from '@features/signing/EnvelopeCreator';
 import EnvelopeHistory from '@features/signing/components/EnvelopeHistory';
 import { GlobalLoadingState } from '@shared/components/feedback';
-import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2 } from 'lucide-react';
+import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2, Mail, Phone, Copy, MessageSquare } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
 
@@ -28,6 +28,12 @@ export default function DocumentsManager() {
     const [drivers, setDrivers] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [sending, setSending] = useState(false);
+
+    // FEAT-2/3/4: Manual entry + delivery method state
+    const [manualName, setManualName] = useState('');
+    const [manualEmail, setManualEmail] = useState('');
+    const [manualPhone, setManualPhone] = useState('');
+    const [deliveryMethod, setDeliveryMethod] = useState('email'); // 'email' | 'sms' | 'both' | 'copy'
 
     // Fetch Templates
     useEffect(() => {
@@ -53,10 +59,35 @@ export default function DocumentsManager() {
 
     const handleUseTemplate = (template) => {
         setSelectedTemplate(template);
+        setManualName('');
+        setManualEmail('');
+        setManualPhone('');
+        setDeliveryMethod('email');
         setShowDriverPicker(true);
     };
 
-    const executeTemplateSend = async (driver) => {
+    // FEAT-2: Quick-select a driver to auto-fill manual entry fields
+    const handleQuickSelect = (driver) => {
+        setManualName(`${driver.firstName || ''} ${driver.lastName || ''}`.trim());
+        setManualEmail(driver.email || '');
+        setManualPhone(driver.phone || driver.phoneNumber || '');
+    };
+
+    const executeTemplateSend = async () => {
+        // FEAT-2: Validate based on delivery method
+        if (!manualName.trim()) {
+            showError('Please enter a recipient name.');
+            return;
+        }
+        if ((deliveryMethod === 'email' || deliveryMethod === 'both') && !manualEmail.trim()) {
+            showError('Email address is required for email delivery.');
+            return;
+        }
+        if ((deliveryMethod === 'sms' || deliveryMethod === 'both') && !manualPhone.trim()) {
+            showError('Phone number is required for SMS delivery.');
+            return;
+        }
+
         setSending(true);
         try {
             const accessToken = uuidv4();
@@ -66,39 +97,62 @@ export default function DocumentsManager() {
                 let value = null;
                 const label = (f.label || '').toLowerCase();
 
-                if (label.includes('{{full_name}}')) value = `${driver.firstName} ${driver.lastName}`;
-                else if (label.includes('{{first_name}}')) value = driver.firstName;
-                else if (label.includes('{{last_name}}')) value = driver.lastName;
-                else if (label.includes('{{email}}')) value = driver.email;
-                else if (label.includes('{{phone}}')) value = driver.phone;
+                if (label.includes('{{full_name}}')) value = manualName;
+                else if (label.includes('{{first_name}}')) value = manualName.split(' ')[0];
+                else if (label.includes('{{last_name}}')) value = manualName.split(' ').slice(1).join(' ');
+                else if (label.includes('{{email}}')) value = manualEmail;
+                else if (label.includes('{{phone}}')) value = manualPhone;
                 else if (label.includes('{{date}}')) value = new Date().toLocaleDateString();
 
                 return { ...f, defaultValue: value };
             });
 
+            const expiresAt = Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
+            const senderName = auth.currentUser?.displayName || auth.currentUser?.email || 'Your Employer';
+
+            // FEAT-3/4: Set delivery flags based on method
+            const sendEmail = deliveryMethod === 'email' || deliveryMethod === 'both';
+            const sendSms = deliveryMethod === 'sms' || deliveryMethod === 'both';
+
             const docData = {
                 companyId: currentCompanyProfile.id,
-                recipientEmail: driver.email,
-                recipientName: `${driver.firstName} ${driver.lastName}`,
-                recipientId: driver.driverId || null,
+                recipientEmail: manualEmail.trim() || null,
+                recipientName: manualName.trim(),
+                recipientPhone: manualPhone.trim() || null,
                 title: selectedTemplate.title,
                 status: 'sent',
                 createdAt: serverTimestamp(),
+                expiresAt,
                 storagePath: selectedTemplate.storagePath,
                 senderId: auth.currentUser.uid,
-                accessToken,
-                sendEmail: true,
+                senderName,
+                sendEmail,
+                sendSms,
                 fields: autoFilledFields,
                 templateId: selectedTemplate.id,
-                // Pre-populate the values for the SigningRoom
                 fieldValues: autoFilledFields.reduce((acc, f) => {
                     if (f.defaultValue) acc[f.id] = f.defaultValue;
                     return acc;
                 }, {})
             };
 
-            await addDoc(collection(db, 'companies', currentCompanyProfile.id, 'signing_requests'), docData);
-            showSuccess(`Document sent to ${driver.firstName}!`);
+            // BUG-2 FIX: Use batch write to store accessToken in secrets subcollection
+            const signingRef = doc(collection(db, 'companies', currentCompanyProfile.id, 'signing_requests'));
+            const batch = writeBatch(db);
+            batch.set(signingRef, docData);
+            batch.set(doc(signingRef, 'secrets', 'token'), { accessToken });
+            await batch.commit();
+
+            // FEAT-4: Copy Link mode — copy URL to clipboard instead of sending
+            if (deliveryMethod === 'copy') {
+                const baseUrl = window.location.origin;
+                const link = `${baseUrl}/sign/${currentCompanyProfile.id}/${signingRef.id}?token=${accessToken}`;
+                await navigator.clipboard.writeText(link);
+                showSuccess('Signing link copied to clipboard!');
+            } else {
+                showSuccess(`Document sent to ${manualName.trim()}!`);
+            }
+
             setShowDriverPicker(false);
             setActiveTab('list');
         } catch (err) {
@@ -182,55 +236,117 @@ export default function DocumentsManager() {
                 </div>
             </div>
 
-            {/* DRIVER PICKER MODAL */}
+            {/* FEAT-2/3/4: REDESIGNED DRIVER PICKER MODAL */}
             {showDriverPicker && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="p-6 border-b flex justify-between items-center bg-gray-50">
                             <div>
-                                <h2 className="text-xl font-bold text-gray-900">Send Template</h2>
-                                <p className="text-xs text-gray-500">Select a driver to receive: <b>{selectedTemplate?.title}</b></p>
+                                <h2 className="text-xl font-bold text-gray-900">Send Document</h2>
+                                <p className="text-xs text-gray-500">Sending: <b>{selectedTemplate?.title}</b></p>
                             </div>
                             <button onClick={() => setShowDriverPicker(false)} className="p-2 hover:bg-white rounded-full transition-colors"><X size={20} /></button>
                         </div>
 
-                        <div className="p-4 border-b">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        {/* FEAT-2: Manual Recipient Entry */}
+                        <div className="p-5 space-y-3 border-b">
+                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recipient Details</h3>
+                            <div className="grid grid-cols-1 gap-3">
+                                <div className="relative">
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        type="text" placeholder="Recipient name *"
+                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                                        value={manualName} onChange={e => setManualName(e.target.value)}
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        type="email" placeholder="Email address"
+                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                                        value={manualEmail} onChange={e => setManualEmail(e.target.value)}
+                                    />
+                                </div>
+                                <div className="relative">
+                                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        type="tel" placeholder="Phone number"
+                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                                        value={manualPhone} onChange={e => setManualPhone(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* FEAT-4: Delivery Method Selector */}
+                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider pt-2">Delivery Method</h3>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[
+                                    { key: 'email', icon: <Mail size={14} />, label: 'Email' },
+                                    { key: 'sms', icon: <MessageSquare size={14} />, label: 'SMS' },
+                                    { key: 'both', icon: <Send size={14} />, label: 'Both' },
+                                    { key: 'copy', icon: <Copy size={14} />, label: 'Copy Link' },
+                                ].map(opt => (
+                                    <button
+                                        key={opt.key}
+                                        onClick={() => setDeliveryMethod(opt.key)}
+                                        className={`flex flex-col items-center gap-1 p-2.5 rounded-xl text-xs font-bold border-2 transition-all ${
+                                            deliveryMethod === opt.key
+                                                ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        {opt.icon}
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Send / Copy Button */}
+                            <button
+                                onClick={executeTemplateSend}
+                                disabled={sending || !manualName.trim()}
+                                className="w-full py-3 bg-purple-600 text-white text-sm font-bold rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-md"
+                            >
+                                {sending ? <Loader2 size={16} className="animate-spin" /> :
+                                    deliveryMethod === 'copy' ? <><Copy size={16} /> Copy Signing Link</> :
+                                    <><Send size={16} /> Send Document</>
+                                }
+                            </button>
+                        </div>
+
+                        {/* Quick Select from existing leads */}
+                        <div className="p-4 bg-gray-50">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Or Quick-Select a Lead</h3>
+                            <div className="relative mb-2">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                 <input
-                                    type="text" placeholder="Search by name or email..."
-                                    className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-purple-500 transition-all"
+                                    type="text" placeholder="Search leads..."
+                                    className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 transition-all"
                                     value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                                 />
                             </div>
-                        </div>
-
-                        <div className="max-h-[400px] overflow-y-auto p-2 space-y-1">
-                            {filteredDrivers.length === 0 ? (
-                                <div className="py-12 text-center text-gray-400 text-sm italic">No drivers found.</div>
-                            ) : (
-                                filteredDrivers.map(d => (
-                                    <button
-                                        key={d.id}
-                                        disabled={sending}
-                                        onClick={() => executeTemplateSend(d)}
-                                        className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 group transition-all text-left"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-gray-100 p-2 rounded-lg group-hover:bg-purple-100 group-hover:text-purple-600 transition-colors">
-                                                <User size={18} />
+                            <div className="max-h-[180px] overflow-y-auto space-y-1">
+                                {filteredDrivers.length === 0 ? (
+                                    <div className="py-6 text-center text-gray-400 text-xs italic">No leads found.</div>
+                                ) : (
+                                    filteredDrivers.slice(0, 20).map(d => (
+                                        <button
+                                            key={d.id}
+                                            onClick={() => handleQuickSelect(d)}
+                                            className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-purple-50 group transition-all text-left"
+                                        >
+                                            <div className="bg-white p-1.5 rounded-lg group-hover:bg-purple-100 group-hover:text-purple-600 transition-colors border">
+                                                <User size={14} />
                                             </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-gray-900">{d.firstName} {d.lastName}</p>
-                                                <p className="text-xs text-gray-500">{d.email}</p>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-bold text-gray-900 truncate">{d.firstName} {d.lastName}</p>
+                                                <p className="text-[10px] text-gray-400 truncate">{d.email || 'No email'} · {d.phone || d.phoneNumber || 'No phone'}</p>
                                             </div>
-                                        </div>
-                                        <div className="text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                                        </div>
-                                    </button>
-                                ))
-                            )}
+                                        </button>
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

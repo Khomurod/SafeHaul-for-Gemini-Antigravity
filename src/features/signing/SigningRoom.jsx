@@ -37,6 +37,14 @@ export default function SigningRoom() {
     const [submitting, setSubmitting] = useState(false);
     const [success, setSuccess] = useState(false);
 
+    // MED-4 FIX: Track window width for responsive PDF rendering
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    useEffect(() => {
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     // 1. Load Document via Public API
     useEffect(() => {
         async function load() {
@@ -291,7 +299,7 @@ export default function SigningRoom() {
                             <Page
                                 pageNumber={index + 1}
                                 // Responsive width but max 800px
-                                width={Math.min(window.innerWidth - 40, 800)}
+                                width={Math.min(windowWidth - 40, 800)}
                                 renderAnnotationLayer={false}
                                 renderTextLayer={false}
                             />

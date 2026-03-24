@@ -46,8 +46,13 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
 
         const data = docSnap.data();
 
+        // BUG-2 FIX: Read accessToken from secrets subcollection (not parent doc)
+        const secretSnap = await docRef.collection('secrets').doc('token').get();
+        // ADV-4 FIX: Fallback to parent doc for pre-migration signing requests
+        const storedToken = secretSnap.exists ? secretSnap.data().accessToken : (data.accessToken || null);
+
         // ESIGN-5 FIX: Use constant-time comparison
-        if (!safeCompare(data.accessToken, accessToken)) {
+        if (!safeCompare(storedToken, accessToken)) {
             console.warn(`Token Mismatch for requestId: ${requestId}`);
             throw new HttpsError('permission-denied', 'Invalid Access Token.');
         }
@@ -127,8 +132,13 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
 
             const data = docSnap.data();
 
+            // BUG-2 FIX: Read accessToken from secrets subcollection
+            const secretSnap = await txn.get(docRef.collection('secrets').doc('token'));
+            // ADV-4 FIX: Fallback to parent doc for pre-migration signing requests
+            const storedToken = secretSnap.exists ? secretSnap.data().accessToken : (data.accessToken || null);
+
             // ESIGN-5 FIX: Constant-time token comparison
-            if (!safeCompare(data.accessToken, accessToken)) {
+            if (!safeCompare(storedToken, accessToken)) {
                 throw new HttpsError('permission-denied', 'Unauthorized');
             }
 
@@ -171,8 +181,6 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
             status: 'pending_seal',
             fieldValues: finalValues,
             signedAt: admin.firestore.FieldValue.serverTimestamp(),
-            // Invalidate the token so the link cannot be reused after signing
-            accessToken: null,
             auditTrail: {
                 ...auditData,
                 // ESIGN-2 FIX: Use server-observed IP, not client-supplied value
@@ -181,6 +189,9 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
                 method: 'Public Secure Link'
             }
         });
+
+        // BUG-2 FIX: Delete the secrets sub-doc to invalidate the token
+        await docRef.collection('secrets').doc('token').delete();
 
         return { success: true };
 
