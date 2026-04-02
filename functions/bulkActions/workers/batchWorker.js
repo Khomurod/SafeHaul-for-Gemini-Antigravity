@@ -25,7 +25,7 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         return res.status(403).send("Forbidden");
     }
 
-    const { companyId, sessionId } = req.body;
+    const { companyId, sessionId, workerGeneration } = req.body;
 
     if (!companyId || !sessionId) {
         return res.status(400).send("Missing companyId or sessionId");
@@ -48,6 +48,17 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         // 1. Status Check
         if (status !== 'active') {
             return res.status(200).send(`Session is ${status}. Stopping worker.`);
+        }
+
+        // 1b. AUDIT FIX #4: Stale Worker Generation Check
+        // If workerGeneration was provided in the task payload, verify it matches
+        // the current session. A mismatch means a newer Resume spawned a new worker
+        // and this one is stale.
+        if (typeof workerGeneration === 'number' && typeof sessionData.workerGeneration === 'number') {
+            if (workerGeneration !== sessionData.workerGeneration) {
+                console.log(`[processBulkBatch] Stale worker detected: payload gen=${workerGeneration}, session gen=${sessionData.workerGeneration}. Exiting.`);
+                return res.status(200).send('Stale worker generation. Exiting gracefully.');
+            }
         }
 
         // 1. Claim Batch Transactionally
@@ -135,9 +146,15 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                     console.log('[BatchWorker] SMS adapter pre-authenticated successfully.');
                 }
             } catch (e) {
-                console.error("Failed to load SMS Adapter:", e);
-                // Fail the whole batch? Or just default?
-                // If we can't send, we should fail.
+                // AUDIT FIX #1: If adapter can't load, fail the session immediately
+                // instead of looping through all items and failing each one individually.
+                console.error("Failed to load SMS Adapter — marking session as failed:", e);
+                await sessionRef.update({
+                    status: 'failed',
+                    error: `SMS adapter initialization failed: ${e.message}`,
+                    failedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                return res.status(200).send(`SMS adapter failed to initialize: ${e.message}. Session marked as failed.`);
             }
         } else if (config.method === 'email') {
             // Setup Nodemailer
@@ -187,6 +204,21 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                 const leadId = batchIds[i];
                 // Note: Lead ID not logged to avoid exposing PII in Cloud Function logs
 
+                // AUDIT FIX #5: Mid-batch cancellation check every 10 messages
+                // A batch of 50 with 3s delays takes ~150s. Check periodically so
+                // cancellation is respected within ~30s instead of ~150s.
+                if (i > 0 && i % 10 === 0) {
+                    try {
+                        const midCheck = await sessionRef.get();
+                        if (!midCheck.exists || !['active'].includes(midCheck.data().status)) {
+                            console.log(`[BatchWorker] Mid-batch cancel detected at item ${i}/${batchIds.length}. Breaking.`);
+                            break;
+                        }
+                    } catch (checkErr) {
+                        console.warn('[BatchWorker] Mid-batch status check failed (continuing):', checkErr.message);
+                    }
+                }
+
                 const loopStart = Date.now();
                 let success = false;
                 let errorMsg = null;
@@ -207,7 +239,12 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
 
                     // 1. Fetch Data
                     if (leadSourceType === 'import') {
-                        const tSnap = await sessionRef.collection('targets').doc(leadId).get();
+                        // AUDIT FIX #3: For retries, target docs live under the ORIGINAL session
+                        const sourceSessionId = sessionData.importSourceSessionId || sessionId;
+                        const tSnap = await db.collection('companies').doc(companyId)
+                            .collection('bulk_sessions').doc(sourceSessionId)
+                            .collection('targets').doc(leadId).get();
+                        
                         if (tSnap.exists) leadData = tSnap.data();
                         else errorMsg = "Imported target data missing";
                     } else {
@@ -296,14 +333,18 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                 else batchFailCount++;
 
                 // 4.5 Update Lead Timestamp (Smart Exclusion)
+                // AUDIT FIX #7: Log errors instead of silently swallowing them
                 if (success && leadDocRef) {
                     leadDocRef.update({
                         lastBulkMessageAt: admin.firestore.FieldValue.serverTimestamp(),
                         lastContactedAt: admin.firestore.FieldValue.serverTimestamp()
-                    }).catch(() => { });
+                    }).catch(e => {
+                        console.error(`[BatchWorker] Failed to update lead timestamp for ${leadId}:`, e.message);
+                    });
                 }
 
                 // 4.6 Update Phone Ledger (7-Day SMS Dedup for all sources)
+                // AUDIT FIX #7: Log errors to detect dedup gaps
                 if (success && config.method === 'sms') {
                     const normPhone = normalizePhone(recipientIdentity);
                     if (normPhone) {
@@ -313,7 +354,9 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                                 lastSentAt: admin.firestore.FieldValue.serverTimestamp(),
                                 sessionId: sessionId
                             }, { merge: true })
-                            .catch(() => { });
+                            .catch(e => {
+                                console.error(`[BatchWorker] Failed to update sms_sent_phones for ${normPhone}:`, e.message);
+                            });
                     }
                 }
 
@@ -347,7 +390,8 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
 
         // Loop next batch
         if (!isKnownLast) {
-            await enqueueWorker(companyId, sessionId, 1);
+            // AUDIT FIX #4: Forward workerGeneration so next batch can verify it
+            await enqueueWorker(companyId, sessionId, 1, workerGeneration);
         }
 
         res.status(200).send(`Processed partial batch. Success: ${batchSuccessCount}, Fail: ${batchFailCount}`);

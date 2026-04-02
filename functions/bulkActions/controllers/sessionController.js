@@ -166,7 +166,8 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                         // Track phone for secondary sms_sent_phones check
                         const rawPhone = data.phone || data.phoneNumber || '';
                         const normPhone = normalizePhone(rawPhone);
-                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 11) {
+                        // AUDIT FIX #2: Accept E.164 format (+1XXXXXXXXXX = length 12)
+                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 12) {
                             idPhoneMap.set(d.id, normPhone);
                         }
                     }
@@ -395,6 +396,8 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
         filters: filters,
         leadSourceType: leadSourceType,
         targetIds: finalTargetIds, // Array of strings
+        // AUDIT FIX #4: Worker generation counter for zombie prevention
+        workerGeneration: 1,
         // BUG-4 FIX: Removed redundant 'stats' field — only 'progress' is updated by the worker.
         progress: {
             currentPointer: 0, // Index in targetIds
@@ -415,7 +418,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
     // Kick off the first batch (Delay 1s)
     try {
-        await enqueueWorker(companyId, sessionId, 1);
+        await enqueueWorker(companyId, sessionId, 1, 1); // workerGeneration = 1
     } catch (e) {
         // If queue fails, mark session failed
         await sessionRef.update({ status: 'failed', error: 'Failed to start queue.' });
@@ -435,18 +438,25 @@ const updateSessionStatus = async (request, status) => {
     await assertCompanyAdmin(request.auth.uid, companyId);
 
     const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
-    await sessionRef.update({
+
+    // AUDIT FIX #4: Increment workerGeneration on resume to invalidate stale workers
+    const updatePayload = {
         status: status,
         updatedBy: request.auth.uid,
         lastUpdateAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    };
+    if (status === 'active') {
+        updatePayload.workerGeneration = admin.firestore.FieldValue.increment(1);
+    }
+    await sessionRef.update(updatePayload);
 
     // If resuming, kick off worker again
     if (status === 'active') {
         const snap = await sessionRef.get();
+        const sessionData = snap.data();
         // Check if completed
-        if (snap.data().progress.currentPointer < snap.data().targetIds.length) {
-            await enqueueWorker(companyId, sessionId, 1);
+        if (sessionData.progress.currentPointer < sessionData.targetIds.length) {
+            await enqueueWorker(companyId, sessionId, 1, sessionData.workerGeneration);
         }
     }
     return { success: true };
@@ -501,10 +511,15 @@ exports.retryFailedAttempts = onCall({ cors: true }, async (request) => {
             failedCount: 0
         },
         retryOf: sessionId,
-        retryCount: (data.retryCount || 0) + 1
+        retryCount: (data.retryCount || 0) + 1,
+        // AUDIT FIX #3: For import-type retries, store the original session ID
+        // so the worker knows where to find target docs in the 'targets' subcollection.
+        importSourceSessionId: data.importSourceSessionId || sessionId,
+        // AUDIT FIX #4: Reset worker generation for new session
+        workerGeneration: 1
     });
 
-    await enqueueWorker(companyId, newSessionId, 1);
+    await enqueueWorker(companyId, newSessionId, 1, 1); // workerGeneration = 1
 
     return { success: true, newSessionId };
 });

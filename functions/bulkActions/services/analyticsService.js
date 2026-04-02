@@ -77,7 +77,8 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
                         // Track phone for secondary check
                         const rawPhone = data.phone || data.phoneNumber || '';
                         const normPhone = normalizePhone(rawPhone);
-                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 11) {
+                        // AUDIT FIX #2: Accept E.164 format (+1XXXXXXXXXX = length 12)
+                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 12) {
                             idPhoneMap.set(d.id, normPhone);
                         }
                     }
@@ -239,7 +240,8 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
                 candidates.forEach((lead, idx) => {
                     const rawPhone = lead.phone || '';
                     const normPhone = normalizePhone(rawPhone);
-                    if (normPhone && normPhone.length >= 10 && normPhone.length <= 11) {
+                    // AUDIT FIX #2: Accept E.164 format (+1XXXXXXXXXX = length 12)
+                    if (normPhone && normPhone.length >= 10 && normPhone.length <= 12) {
                         candidatePhoneMap.set(idx, normPhone);
                     }
                 });

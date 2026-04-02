@@ -10,7 +10,8 @@ const TASKS_CLIENT_OPTS = {};
 // Initialize client with fallback if needed, but usually default is fine in Cloud Functions
 const tasksClient = new CloudTasksClient(TASKS_CLIENT_OPTS);
 
-async function enqueueWorker(companyId, sessionId, delaySeconds) {
+// AUDIT FIX #4: Accept workerGeneration to forward in task payload
+async function enqueueWorker(companyId, sessionId, delaySeconds, workerGeneration = null) {
     const queuePath = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
 
     // FIX: V2 URL Logic & Env Var Requirement
@@ -29,6 +30,10 @@ async function enqueueWorker(companyId, sessionId, delaySeconds) {
     const serviceAccountEmail = firebaseConfig.serviceAccount || `${PROJECT_ID}@appspot.gserviceaccount.com`;
 
     const payload = { companyId, sessionId };
+    // AUDIT FIX #4: Include workerGeneration so batch worker can detect stale invocations
+    if (typeof workerGeneration === 'number') {
+        payload.workerGeneration = workerGeneration;
+    }
     const task = {
         httpRequest: {
             httpMethod: "POST",

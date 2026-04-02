@@ -29,7 +29,8 @@ const mockCollectionFn = jest.fn(() => ({
 
 const mockDocFn = jest.fn(() => ({
     collection: mockCollectionFn,
-    get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }),
+    // Add default windowStart to prevent rateLimiter toMillis crash
+    get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ windowStart: { toMillis: () => 0 }, count: 0 }) }),
     set: jest.fn().mockResolvedValue(true),
     update: jest.fn().mockResolvedValue(true),
     id: 'mock-doc-id'
@@ -45,6 +46,8 @@ mockFirestoreFn.FieldValue = {
 };
 mockFirestoreFn.Timestamp = {
     fromDate: (date) => date,
+    now: () => ({ toMillis: () => Date.now() }),
+    fromMillis: (ms) => ({ toMillis: () => ms })
 };
 mockFirestoreFn.Filter = {
     or: (...args) => ({ or: args }),
@@ -137,6 +140,16 @@ describe('Bulk Actions Tests', () => {
         // Re-apply default mocks after clearAllMocks
         firestoreMock.collection.mockImplementation(mockCollectionFn);
         firestoreMock.getAll = jest.fn().mockResolvedValue([]);
+        // AUDIT FIX: Reset runTransaction mock to prevent Test 2 from poisoning Test 3 & 4
+        firestoreMock.runTransaction.mockImplementation(async (cb) => {
+            const mockT = {
+                get: jest.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+                set: jest.fn(),
+                update: jest.fn(),
+                delete: jest.fn()
+            };
+            return await cb(mockT);
+        });
     });
 
     afterEach(() => {
