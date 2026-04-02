@@ -69,6 +69,9 @@ exports.sealDocument = functions.runWith({
             const sigPathsToDelete = []; // ESIGN-9: collect paths for cleanup after sealing
 
             for (const field of fields) {
+                // SAFETY: Skip null/undefined entries that may exist from corrupted Firestore data
+                if (!field) continue;
+
                 const val = values[field.id] || field.defaultValue;
                 if (!val) {
                     // ESIGN-3 FIX: Track missing required fields

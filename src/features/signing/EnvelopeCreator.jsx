@@ -309,7 +309,8 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
 
                 // Hydrate fields (convert stored format back to editor format)
                 if (data.fields) {
-                    const hydratedFields = data.fields.map(f => ({
+                    // SAFETY: Filter out null/undefined elements from Firestore before hydrating
+                    const hydratedFields = (data.fields || []).filter(f => f != null).map(f => ({
                         id: f.id,
                         type: f.type,
                         label: f.label || f.type,
@@ -476,17 +477,18 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
             const commonData = {
                 companyId,
                 title,
-                fields: processedFields.map(f => ({
+                // SAFETY: Aggressively sanitize before Firestore write — strip null/undefined entries
+                fields: (processedFields || []).filter(f => f != null).map(f => ({
                     id: f.id,
                     type: f.type,
                     label: f.label,
-                    pageNumber: f.page,
+                    pageNumber: f.page || 1,
                     xPosition: f.x,
                     yPosition: f.y,
                     width: f.width,
                     height: f.height,
                     required: f.required ?? true,
-                    defaultValue: f.defaultValue || null,
+                    defaultValue: f.defaultValue ?? '',
                     readOnly: f.readOnly || false,
                     fontSize: f.fontSize || 'Auto',
                 })),
@@ -779,7 +781,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                             onLoadSuccess={({ numPages }) => setNumPages(numPages)}
                             className="flex flex-col gap-8 pb-16"
                         >
-                            {Array.from(new Array(numPages), (el, index) => {
+                            {numPages > 0 && Array.from(new Array(numPages), (el, index) => {
                                 const pageNum = index + 1;
                                 const dims = pageDimensions[pageNum];
 

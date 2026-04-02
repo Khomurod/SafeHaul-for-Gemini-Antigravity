@@ -65,10 +65,10 @@ export default function SigningRoom() {
                 const data = result.data;
                 setRequest(data);
 
-                // Initialize Fields
+                // Initialize Fields — filter out null/undefined entries
                 if (data.fields) {
                     const initial = {};
-                    data.fields.forEach(f => {
+                    (data.fields || []).filter(f => f != null).forEach(f => {
                         initial[f.id] = (f.type === 'checkbox' ? false : '');
                     });
                     setFieldValues(initial);
@@ -103,7 +103,8 @@ export default function SigningRoom() {
         // Validate
         // BUG FIX: Exclude readOnly fields from validation — they are pre-filled via defaultValue
         // and rendered as non-editable divs, so fieldValues[f.id] will always be '' for them.
-        const missing = request.fields?.filter(f => f.required && !f.readOnly && !fieldValues[f.id]) || [];
+        // SAFETY: Guard against null/undefined elements in the fields array from corrupted Firestore data.
+        const missing = (request?.fields || []).filter(f => f && f.required && !f.readOnly && !fieldValues[f.id]);
         if (missing.length > 0) {
             alert(`Please complete all required fields. (${missing.length} remaining)`);
             return;
@@ -344,7 +345,7 @@ export default function SigningRoom() {
 
             <main className="flex-1 overflow-y-auto p-8 flex justify-center bg-gray-200/50">
                 <Document file={request.pdfUrl} onLoadSuccess={({ numPages }) => setNumPages(numPages)} className="flex flex-col gap-6">
-                    {Array.from(new Array(numPages), (el, index) => (
+                    {numPages > 0 && Array.from(new Array(numPages), (el, index) => (
                         // FIX: 'inline-block' is CRITICAL here. 
                         // It forces the div to shrink to the PDF image size, making the coordinate system accurate.
                         <div key={index} className="relative shadow-xl border border-gray-300 bg-white inline-block">
@@ -355,7 +356,7 @@ export default function SigningRoom() {
                                 renderAnnotationLayer={false}
                                 renderTextLayer={false}
                             />
-                            {request?.fields?.filter(f => f.pageNumber === index + 1).map(field => <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>)}
+                            {(request?.fields || []).filter(f => f?.pageNumber === index + 1).map(field => <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>)}
                         </div>
                     ))}
                 </Document>
