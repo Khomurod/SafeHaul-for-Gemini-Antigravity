@@ -44,6 +44,12 @@ exports.getPublicEnvelope = publicSigning.getPublicEnvelope;
 exports.submitPublicEnvelope = publicSigning.submitPublicEnvelope;
 // ESIGN-9 FIX: Nightly cleanup of orphaned signature PNG files after sealing
 exports.cleanupOrphanedSignatures = digitalSealing.cleanupOrphanedSignatures;
+// FEAT-3: SMS notification for signing requests
+const notifySignerSMS = require('./notifySignerSMS');
+exports.notifySignerSMS = notifySignerSMS.notifySignerSMS;
+// ADV-1 FIX: Secure callable to retrieve full signing link (with token from secrets)
+const getSigningLink = require('./getSigningLink');
+exports.getSigningLink = getSigningLink.getSigningLink;
 
 // 2. Auth & User Management
 exports.createPortalUser = hrAdmin.createPortalUser;

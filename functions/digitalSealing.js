@@ -78,15 +78,19 @@ exports.sealDocument = functions.runWith({
                     continue;
                 }
 
-                const pageIndex = Math.max(0, (field.pageNumber || 1) - 1);
+                const pageIndex = Math.max(0, (field.pageNumber || field.page || 1) - 1);
                 if (pageIndex >= pdfDoc.getPages().length) continue;
 
                 const page = pdfDoc.getPages()[pageIndex];
                 const { width, height } = page.getSize();
 
+                // Accept both naming conventions: xPosition/yPosition (legacy) and x/y (current)
+                const fieldX = field.xPosition ?? field.x ?? 0;
+                const fieldY = field.yPosition ?? field.y ?? 0;
+
                 // Calculate Coordinates from Percentages
-                const x = (field.xPosition / 100) * width;
-                const y = height - ((field.yPosition / 100) * height);
+                const x = (fieldX / 100) * width;
+                const y = height - ((fieldY / 100) * height);
                 const fieldW = (field.width / 100) * width;
                 const fieldH = (field.height / 100) * height;
 
@@ -273,7 +277,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 exports.cleanupOrphanedSignatures = onSchedule(
     { schedule: 'every 24 hours', region: 'us-central1', timeoutSeconds: 300 },
     async () => {
-        const db = admin.firestore();
+        // LOW-2 FIX: Use the imported `db` instead of re-declaring
         const bucket = storage.bucket();
         const collRef = db.collection('orphaned_signature_cleanup');
 

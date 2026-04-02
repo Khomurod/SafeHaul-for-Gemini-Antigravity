@@ -1,33 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '@lib/firebase'; // Import storage
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage'; // Import getDownloadURL
-import { FileText, CheckCircle, Clock, Download, ExternalLink, Loader2, AlertCircle } from 'lucide-react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FileText, CheckCircle, Clock, Download, ExternalLink, Loader2, AlertCircle, Copy, MessageSquare, Mail } from 'lucide-react';
+import { useToast } from '@shared/components/feedback';
 
 export default function EnvelopeHistory({ companyId }) {
     const [docs, setDocs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [copyingId, setCopyingId] = useState(null);
+    const { showSuccess, showError } = useToast();
 
-    useEffect(() => {
-        fetchDocs();
-    }, [companyId]);
-
-    const fetchDocs = async () => {
-        setLoading(true);
+    // ADV-1 FIX: Use callable Cloud Function to securely retrieve full signing link
+    const handleCopyLink = async (docItem) => {
+        setCopyingId(docItem.id);
         try {
-            const q = query(
-                collection(db, 'companies', companyId, 'signing_requests'),
-                orderBy('createdAt', 'desc')
-            );
-            const snapshot = await getDocs(q);
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setDocs(data);
-        } catch (error) {
-            console.error("Error loading history:", error);
+            const functions = getFunctions();
+            const getSigningLink = httpsCallable(functions, 'getSigningLink');
+            const result = await getSigningLink({ companyId, requestId: docItem.id });
+            await navigator.clipboard.writeText(result.data.signingLink);
+            showSuccess('Full signing link copied to clipboard!');
+        } catch (err) {
+            console.error('Copy link error:', err);
+            showError(err.message || 'Could not retrieve signing link.');
         } finally {
-            setLoading(false);
+            setCopyingId(null);
         }
     };
+
+    useEffect(() => {
+        if (!companyId) return;
+        setLoading(true);
+        // MED-1 FIX: Use onSnapshot for real-time status updates
+        const q = query(
+            collection(db, 'companies', companyId, 'signing_requests'),
+            orderBy('createdAt', 'desc')
+        );
+        const unsub = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setDocs(data);
+            setLoading(false);
+        }, (error) => {
+            console.error("Error loading history:", error);
+            setLoading(false);
+        });
+        return () => unsub();
+    }, [companyId]);
 
     // NEW: Function to handle secure downloads
     const handleDownload = async (storagePath) => {
@@ -46,7 +65,7 @@ export default function EnvelopeHistory({ companyId }) {
             window.open(url, '_blank');
         } catch (err) {
             console.error("Download Error:", err);
-            alert("Could not download file. It may have been deleted or moved.");
+            showError("Could not download file. It may have been deleted or moved.");
         }
     };
 
@@ -66,6 +85,9 @@ export default function EnvelopeHistory({ companyId }) {
         if (s === 'signed') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200"><CheckCircle size={12} /> Signed</span>;
         if (s === 'sent') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200"><Clock size={12} /> Sent</span>;
         if (s === 'pending_seal') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200"><Loader2 size={12} className="animate-spin" /> Sealing...</span>;
+        // MED-2 FIX: Handle error_sealing and processing statuses
+        if (s === 'error_sealing') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200" title={doc.errorLog || 'Sealing failed'}><AlertCircle size={12} /> Seal Failed</span>;
+        if (s === 'processing') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200"><Loader2 size={12} className="animate-spin" /> Processing</span>;
         return <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{doc.status}</span>;
     };
 
@@ -97,7 +119,13 @@ export default function EnvelopeHistory({ companyId }) {
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600">
                                         <div className="font-medium text-gray-900">{doc.recipientName}</div>
-                                        <div className="text-xs text-gray-400">{doc.recipientEmail}</div>
+                                        <div className="text-xs text-gray-400">{doc.recipientEmail || doc.recipientPhone || '—'}</div>
+                                        {/* FEAT-4: Delivery method badge */}
+                                        <div className="flex gap-1 mt-1">
+                                            {doc.sendEmail && <span className="inline-flex items-center gap-0.5 text-[9px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full"><Mail size={8} /> Email</span>}
+                                            {doc.sendSms && <span className="inline-flex items-center gap-0.5 text-[9px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full"><MessageSquare size={8} /> SMS</span>}
+                                            {doc.sendEmail === false && doc.sendSms !== true && <span className="text-[9px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded-full">Manual</span>}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         {getStatusBadge(doc)}
@@ -106,16 +134,25 @@ export default function EnvelopeHistory({ companyId }) {
                                         {doc.createdAt?.seconds ? new Date(doc.createdAt.seconds * 1000).toLocaleDateString() : '--'}
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        {doc.status === 'signed' ? (
-                                            <button
-                                                onClick={() => handleDownload(doc.signedPdfUrl || doc.storagePath)}
-                                                className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
-                                            >
-                                                <Download size={14} /> Download
-                                            </button>
-                                        ) : (
-                                            <button className="text-gray-300 cursor-not-allowed" disabled><ExternalLink size={16} /></button>
-                                        )}
+                                        <div className="flex items-center justify-end gap-2">
+                                            {doc.status === 'signed' ? (
+                                                <button
+                                                    onClick={() => handleDownload(doc.signedPdfUrl || doc.storagePath)}
+                                                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
+                                                >
+                                                    <Download size={14} /> Download
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleCopyLink(doc)}
+                                                    disabled={copyingId === doc.id}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-600 hover:bg-gray-100 disabled:opacity-50 rounded-lg text-xs font-bold transition-colors"
+                                                    title="Copy full signing link"
+                                                >
+                                                    {copyingId === doc.id ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />} Copy Link
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))
