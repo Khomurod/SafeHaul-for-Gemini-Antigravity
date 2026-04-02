@@ -204,10 +204,8 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                 const leadId = batchIds[i];
                 // Note: Lead ID not logged to avoid exposing PII in Cloud Function logs
 
-                // AUDIT FIX #5: Mid-batch cancellation check every 10 messages
-                // A batch of 50 with 3s delays takes ~150s. Check periodically so
-                // cancellation is respected within ~30s instead of ~150s.
-                if (i > 0 && i % 10 === 0) {
+                // BUG-12 FIX: Tightened from every 10 to every 5 messages (~15s window instead of ~30s).
+                if (i > 0 && i % 5 === 0) {
                     try {
                         const midCheck = await sessionRef.get();
                         if (!midCheck.exists || !['active'].includes(midCheck.data().status)) {

@@ -69,7 +69,7 @@ exports.sealDocument = functions.runWith({
             const sigPathsToDelete = []; // ESIGN-9: collect paths for cleanup after sealing
 
             for (const field of fields) {
-                const val = values[field.id];
+                const val = values[field.id] || field.defaultValue;
                 if (!val) {
                     // ESIGN-3 FIX: Track missing required fields
                     if (field.required) {
@@ -95,9 +95,10 @@ exports.sealDocument = functions.runWith({
                 const fieldH = (field.height / 100) * height;
 
                 if (field.type === 'text' || field.type === 'date') {
-                    // DYNAMIC FONT SCALING
-                    // Calculate size based on field height (approx 70% of box height)
-                    const calculatedSize = Math.max(6, fieldH * 0.7);
+                    // DYNAMIC FONT SCALING with fontSize override
+                    const calculatedSize = field.fontSize && field.fontSize !== 'Auto'
+                        ? parseInt(field.fontSize)
+                        : Math.max(6, fieldH * 0.7);
 
                     page.drawText(String(val), {
                         x: x + 2,
@@ -124,7 +125,8 @@ exports.sealDocument = functions.runWith({
                         color: rgb(0, 0, 0),
                     });
                 }
-                else if (field.type === 'signature') {
+                else if (field.type === 'signature' || field.type === 'initial') {
+                    // PHASE 5: Handle both signature and initial types identically
                     const sigTempPath = path.join(os.tmpdir(), `sig_${field.id}.png`);
                     try {
                         let sigPath = val;

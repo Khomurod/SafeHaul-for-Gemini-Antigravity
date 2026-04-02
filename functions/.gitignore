@@ -12,5 +12,8 @@ package-lock.json
 # Logs
 *.log
 
+# DEBT-3 FIX: Test output files should not be committed
+jest_output*.txt
+
 # Cache
 .cache/

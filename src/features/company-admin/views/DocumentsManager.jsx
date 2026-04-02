@@ -19,6 +19,7 @@ export default function DocumentsManager() {
     const [activeTab, setActiveTab] = useState('list');
     const [viewMode, setViewMode] = useState('view');
     const [creatorInitialMode, setCreatorInitialMode] = useState('request');
+    const [editRequestId, setEditRequestId] = useState(null);
 
     const [templates, setTemplates] = useState([]);
     const [templatesLoading, setTemplatesLoading] = useState(true);
@@ -212,8 +213,15 @@ export default function DocumentsManager() {
     if (loading) return <GlobalLoadingState />;
     if (!currentCompanyProfile) { navigate('/company/dashboard'); return null; }
 
+    // PHASE 4: Handle "Correct" action from EnvelopeHistory
+    const handleCorrect = (docItem) => {
+        setEditRequestId(docItem.id);
+        setCreatorInitialMode('request');
+        setViewMode('create');
+    };
+
     if (viewMode === 'create') {
-        return <EnvelopeCreator companyId={currentCompanyProfile.id} initialMode={creatorInitialMode} onClose={() => setViewMode('view')} />;
+        return <EnvelopeCreator companyId={currentCompanyProfile.id} initialMode={creatorInitialMode} editRequestId={editRequestId} onClose={() => { setViewMode('view'); setEditRequestId(null); }} />;
     }
 
     const filteredDrivers = drivers.filter(d =>
@@ -253,7 +261,7 @@ export default function DocumentsManager() {
 
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                     {activeTab === 'list' ? (
-                        <EnvelopeHistory companyId={currentCompanyProfile.id} />
+                        <EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {templatesLoading ? <div className="col-span-full flex justify-center py-12"><Loader2 className="animate-spin text-gray-300" /></div> :

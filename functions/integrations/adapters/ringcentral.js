@@ -62,12 +62,7 @@ class RingCentralAdapter extends BaseAdapter {
             // Login with JWT (cached — only authenticates once per adapter instance)
             await this.ensureLoggedIn();
 
-            // Send Request
-            const payload = {
-                to: [{ phoneNumber: to }],
-                text: text
-            };
-
+            // BUG-9 FIX: Removed shadowed payload variable that was dead code.
             // 5. Attempt Send with Fallback Logic
             try {
                 // First Attempt: Preferred 'From' Number
@@ -84,16 +79,17 @@ class RingCentralAdapter extends BaseAdapter {
                 return true;
 
             } catch (primaryError) {
-                // Check if we can fallback
-                // We fallback if:
-                // 1. We tried to send from a specific number (fromNumber is set)
-                // 2. AND that number is NOT the default number (no point retrying same number)
-                // 3. AND the error suggests a numbering/permission mismatch
+                // BUG-8 FIX: Only fallback on DETERMINISTIC permission errors (4xx).
+                // Timeouts and 5xx errors may have already delivered the message —
+                // falling back would risk double-sending.
+                const statusCode = primaryError.response?.status;
+                const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
 
-                const isPermissionError =
+                const isPermissionError = isClientError && (
                     (primaryError.message || "").includes('PhoneNumber.from') ||
                     (primaryError.response?.data?.errorCode === 'FeatureNotAvailable') ||
-                    (primaryError.response?.data?.errorCode === 'InvalidParameter');
+                    (primaryError.response?.data?.errorCode === 'InvalidParameter')
+                );
 
                 const canFallback = fromNumber && fromNumber !== this.config.defaultPhoneNumber && isPermissionError;
 

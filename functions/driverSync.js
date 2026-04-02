@@ -120,13 +120,19 @@ async function processDriverData(data, docId) {
 // 1. Direct Applications
 exports.onApplicationSubmitted = onDocumentCreated({
   document: "companies/{companyId}/applications/{applicationId}",
-  maxInstances: 2
+  maxInstances: 2,
+  // BUG-10 FIX: This trigger calls processDriverData() → encrypt() for SSN encryption.
+  // Without declaring the secret, the encryption key may not be available at runtime.
+  secrets: ['SMS_ENCRYPTION_KEY']
 }, async (event) => {
   const data = event.data.data();
   const companyId = event.params.companyId;
   const appId = event.params.applicationId;
 
   // IDEMPOTENCY CHECK: Prevent double-processing
+  // BUG-6 FIX: Use create() instead of set({merge}). If create() fails with ALREADY_EXISTS,
+  // another invocation already claimed this work — skip processing entirely.
+  // This eliminates the completed:false/true state machine and its associated race condition.
   const statusRef = db.collection("processing_status").doc(`app_${companyId}_${appId}`);
   const appRef = db.collection("companies").doc(companyId).collection("applications").doc(appId);
 
@@ -134,18 +140,17 @@ exports.onApplicationSubmitted = onDocumentCreated({
     await db.runTransaction(async (transaction) => {
       const statusDoc = await transaction.get(statusRef);
 
-      if (statusDoc.exists && statusDoc.data().completed) {
+      if (statusDoc.exists) {
         console.log(`[onApplicationSubmitted] Already processed: ${appId}, skipping.`);
-        return; // Already processed - skip
+        throw new Error('ALREADY_PROCESSED'); // Exit transaction cleanly
       }
 
-      // Mark as processing
-      transaction.set(statusRef, {
-        started: admin.firestore.FieldValue.serverTimestamp(),
+      // BUG-6 FIX: Single atomic write — no intermediate "started but not completed" state
+      transaction.create(statusRef, {
+        processedAt: admin.firestore.FieldValue.serverTimestamp(), // DEBT-4: For TTL cleanup
         companyId,
         applicationId: appId,
-        completed: false,
-      }, { merge: true });
+      });
 
       // Update lifecycle to processing
       transaction.update(appRef, {
@@ -155,6 +160,7 @@ exports.onApplicationSubmitted = onDocumentCreated({
       });
     });
   } catch (txError) {
+    if (txError.message === 'ALREADY_PROCESSED') return; // Idempotent skip
     console.error(`[onApplicationSubmitted] Transaction failed for ${appId}:`, txError);
     // Continue processing anyway - the status check is defensive, not blocking
   }
@@ -244,11 +250,8 @@ exports.onApplicationSubmitted = onDocumentCreated({
 
   // Mark processing as complete
   try {
-    await statusRef.set({
-      completed: true,
-      completedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-
+    // BUG-6 FIX: No need to update processing_status — its existence already
+    // serves as the idempotency guard. Just update the application lifecycle.
     await appRef.update({
       'lifecycle.status': LIFECYCLE_STATUSES.COMPLETE,
       'lifecycle.processingCompletedAt': admin.firestore.FieldValue.serverTimestamp(),
@@ -368,7 +371,9 @@ async function updateLeadStats(data, delta) {
 // 2. Global Leads (Unbranded)
 exports.onLeadSubmitted = onDocumentCreated({
   document: "leads/{leadId}",
-  maxInstances: 2
+  maxInstances: 2,
+  // BUG-10 FIX: processDriverData() uses encrypt() for SSN
+  secrets: ['SMS_ENCRYPTION_KEY']
 }, async (event) => {
   if (!event.data) return;
   const data = event.data.data();
@@ -445,7 +450,9 @@ async function handleLogSync(event) {
 // 3. Company Leads (Bulk Uploads / Private) - NEW
 exports.onCompanyLeadSubmitted = onDocumentCreated({
   document: "companies/{companyId}/leads/{leadId}",
-  maxInstances: 2
+  maxInstances: 2,
+  // BUG-10 FIX: processDriverData() uses encrypt() for SSN
+  secrets: ['SMS_ENCRYPTION_KEY']
 }, async (event) => {
   if (!event.data) return;
   await processDriverData(event.data.data(), event.params.leadId);

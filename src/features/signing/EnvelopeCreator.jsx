@@ -1,11 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { db, storage, auth } from '@lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp, Timestamp, writeBatch, doc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc, serverTimestamp, Timestamp, writeBatch, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { Document, Page, pdfjs } from 'react-pdf';
 import Draggable from 'react-draggable';
-import { Loader2, UploadCloud, Save, X, Plus, Type, CheckSquare, Calendar, PenTool, Scaling, FileText, Mail, Phone, MessageSquare, Copy, Send } from 'lucide-react';
+import {
+    Loader2, UploadCloud, Save, X, Plus, Type, CheckSquare, Calendar, PenTool,
+    Scaling, FileText, Mail, Phone, MessageSquare, Copy, Send, Fingerprint,
+    User, Building2, ChevronDown, ChevronRight, Settings2, Lock, ToggleLeft, ToggleRight
+} from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
 
@@ -17,8 +21,49 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     import.meta.url,
 ).toString();
 
+// --- FIELD TEMPLATES ---
+const FIELD_TEMPLATES = {
+    // Category 1: Standard Fields
+    signature: { type: 'signature', required: true, label: 'Signature', readOnly: false, defaultValue: '', fontSize: 'Auto' },
+    initial: { type: 'initial', required: true, label: 'Initial', readOnly: false, defaultValue: '', fontSize: 'Auto' },
+    date_signed: { type: 'date', required: true, readOnly: true, defaultValue: '{{current_date}}', label: 'Date Signed', fontSize: 'Auto' },
+    // Category 2: Signer Info (Auto-mapped)
+    name: { type: 'text', required: true, readOnly: true, defaultValue: '{{full_name}}', label: 'Name', fontSize: 'Auto' },
+    email_field: { type: 'text', required: true, readOnly: true, defaultValue: '{{email}}', label: 'Email', fontSize: 'Auto' },
+    company: { type: 'text', required: false, readOnly: false, defaultValue: '{{company_name}}', label: 'Company', fontSize: 'Auto' },
+    // Category 3: Data Fields
+    text: { type: 'text', required: false, readOnly: false, label: 'Text', defaultValue: '', fontSize: 'Auto' },
+    checkbox: { type: 'checkbox', required: false, label: 'Checkbox', readOnly: false, defaultValue: '', fontSize: 'Auto' },
+};
+
+const FIELD_CATEGORIES = [
+    {
+        title: 'Standard Fields',
+        items: [
+            { templateId: 'signature', label: 'Signature', icon: PenTool, color: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100' },
+            { templateId: 'initial', label: 'Initial', icon: Fingerprint, color: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100' },
+            { templateId: 'date_signed', label: 'Date Signed', icon: Calendar, color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
+        ]
+    },
+    {
+        title: 'Signer Info',
+        items: [
+            { templateId: 'name', label: 'Name', icon: User, color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+            { templateId: 'email_field', label: 'Email', icon: Mail, color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+            { templateId: 'company', label: 'Company', icon: Building2, color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+        ]
+    },
+    {
+        title: 'Data Fields',
+        items: [
+            { templateId: 'text', label: 'Text', icon: Type, color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' },
+            { templateId: 'checkbox', label: 'Checkbox', icon: CheckSquare, color: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
+        ]
+    }
+];
+
 // --- SUB-COMPONENT: Resizable & Draggable Field ---
-const ResizableDraggableField = ({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange }) => {
+const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, onSelect }) => {
     const nodeRef = useRef(null);
     const safePageHeight = pageHeight || 800;
     const wPx = (field.width / 100) * pageWidth;
@@ -71,11 +116,14 @@ const ResizableDraggableField = ({ field, pageNum, pageWidth, pageHeight, onStop
         >
             <div
                 ref={nodeRef}
+                onClick={(e) => { e.stopPropagation(); onSelect(field.id); }}
                 className={`absolute cursor-move pointer-events-auto border-2 rounded flex flex-col shadow-lg transition z-50 group
+                    ${isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
                     ${field.type === 'signature' ? 'bg-yellow-400/80 border-yellow-600' :
-                        field.type === 'text' ? 'bg-blue-100/90 border-blue-500' :
-                            field.type === 'date' ? 'bg-green-100/90 border-green-500' :
-                                'bg-purple-100/90 border-purple-500'}`
+                        field.type === 'initial' ? 'bg-orange-300/80 border-orange-600' :
+                            field.type === 'text' ? 'bg-blue-100/90 border-blue-500' :
+                                field.type === 'date' ? 'bg-green-100/90 border-green-500' :
+                                    'bg-purple-100/90 border-purple-500'}`
                 }
                 style={{ width: size.width, height: size.height }}
             >
@@ -107,14 +155,116 @@ const ResizableDraggableField = ({ field, pageNum, pageWidth, pageHeight, onStop
             </div>
         </Draggable>
     );
-};
+});
 
-export default function EnvelopeCreator({ companyId, onClose, initialMode = 'request' }) {
+// --- SUB-COMPONENT: Field Properties Panel (Right Sidebar) ---
+const FieldPropertiesPanel = React.memo(({ activeField, updateActiveField, getIcon }) => {
+    if (!activeField) return null;
+
+    return (
+        <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="p-4 border-b bg-gray-50">
+                <div className="flex items-center gap-2 mb-3">
+                    <div className="p-1.5 bg-white rounded-lg border shadow-sm">
+                        {getIcon(activeField.type)}
+                    </div>
+                    <div className="text-xs font-bold text-gray-500 uppercase">{activeField.type} Field</div>
+                </div>
+                <input
+                    type="text"
+                    value={activeField.label || ''}
+                    onChange={(e) => updateActiveField('label', e.target.value)}
+                    className="w-full px-3 py-2 text-sm font-semibold border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    placeholder="Field Label"
+                />
+            </div>
+
+            {/* Toggles */}
+            <div className="p-4 border-b space-y-3">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Options</h4>
+                <label className="flex items-center justify-between cursor-pointer group">
+                    <span className="text-sm text-gray-700 font-medium">Required Field</span>
+                    <button
+                        type="button"
+                        onClick={() => updateActiveField('required', !activeField.required)}
+                        className="transition-colors"
+                    >
+                        {activeField.required ?
+                            <ToggleRight size={28} className="text-blue-600" /> :
+                            <ToggleLeft size={28} className="text-gray-300 group-hover:text-gray-400" />
+                        }
+                    </button>
+                </label>
+                <label className="flex items-center justify-between cursor-pointer group">
+                    <span className="text-sm text-gray-700 font-medium flex items-center gap-1.5">
+                        <Lock size={12} className="text-gray-400" /> Read Only
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => updateActiveField('readOnly', !activeField.readOnly)}
+                        className="transition-colors"
+                    >
+                        {activeField.readOnly ?
+                            <ToggleRight size={28} className="text-blue-600" /> :
+                            <ToggleLeft size={28} className="text-gray-300 group-hover:text-gray-400" />
+                        }
+                    </button>
+                </label>
+            </div>
+
+            {/* Default Value */}
+            {activeField.type !== 'signature' && activeField.type !== 'initial' && activeField.type !== 'checkbox' && (
+                <div className="p-4 border-b space-y-2">
+                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Default Value</h4>
+                    <textarea
+                        value={activeField.defaultValue || ''}
+                        onChange={(e) => updateActiveField('defaultValue', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition resize-none"
+                        rows={3}
+                        placeholder="Enter default value..."
+                    />
+                    <p className="text-[10px] text-gray-400 leading-relaxed">
+                        Use <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{full_name}}"}</code> or{' '}
+                        <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{email}}"}</code> to auto-fill data when sending.
+                    </p>
+                </div>
+            )}
+
+            {/* Font Size */}
+            {activeField.type !== 'signature' && activeField.type !== 'initial' && activeField.type !== 'checkbox' && (
+                <div className="p-4 space-y-2">
+                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Formatting</h4>
+                    <label className="block">
+                        <span className="text-xs text-gray-600 font-medium">Font Size</span>
+                        <select
+                            value={activeField.fontSize || 'Auto'}
+                            onChange={(e) => updateActiveField('fontSize', e.target.value)}
+                            className="w-full mt-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                        >
+                            <option value="Auto">Auto (fit to box)</option>
+                            <option value="10">10pt</option>
+                            <option value="12">12pt</option>
+                            <option value="14">14pt</option>
+                            <option value="18">18pt</option>
+                        </select>
+                    </label>
+                </div>
+            )}
+        </div>
+    );
+});
+
+export default function EnvelopeCreator({ companyId, onClose, initialMode = 'request', editRequestId = null }) {
     const { showSuccess, showError } = useToast();
     const [file, setFile] = useState(null);
     const [numPages, setNumPages] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [hydrating, setHydrating] = useState(!!editRequestId);
     const [creatorMode, setCreatorMode] = useState(initialMode); // 'request' or 'template'
+
+    // PHASE 1: Selected field state
+    const [selectedFieldId, setSelectedFieldId] = useState(null);
 
     // FEAT-1: Track the currently visible page for multi-page field placement
     const [activePage, setActivePage] = useState(1);
@@ -130,6 +280,69 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
 
     const [fields, setFields] = useState([]);
     const [pageDimensions, setPageDimensions] = useState({});
+
+    // Derive active field from selection
+    const activeField = useMemo(() => {
+        if (!selectedFieldId) return null;
+        return fields.find(f => f.id === selectedFieldId) || null;
+    }, [selectedFieldId, fields]);
+
+    // PHASE 4: Hydrate from existing document for "Correct" flow
+    useEffect(() => {
+        if (!editRequestId || !companyId) return;
+        (async () => {
+            setHydrating(true);
+            try {
+                const docRef = doc(db, 'companies', companyId, 'signing_requests', editRequestId);
+                const snap = await getDoc(docRef);
+                if (!snap.exists()) {
+                    showError('Document not found.');
+                    setHydrating(false);
+                    return;
+                }
+                const data = snap.data();
+                setRecipientName(data.recipientName || '');
+                setRecipientEmail(data.recipientEmail || '');
+                setRecipientPhone(data.recipientPhone || '');
+                setTitle(data.title || '');
+                setDeliveryMethod(data.deliveryMethod || 'email');
+
+                // Hydrate fields (convert stored format back to editor format)
+                if (data.fields) {
+                    const hydratedFields = data.fields.map(f => ({
+                        id: f.id,
+                        type: f.type,
+                        label: f.label || f.type,
+                        page: f.pageNumber || f.page || 1,
+                        x: f.xPosition ?? f.x ?? 10,
+                        y: f.yPosition ?? f.y ?? 10,
+                        width: f.width || 25,
+                        height: f.height || 5,
+                        required: f.required ?? true,
+                        readOnly: f.readOnly ?? false,
+                        defaultValue: f.defaultValue || '',
+                        fontSize: f.fontSize || 'Auto',
+                    }));
+                    setFields(hydratedFields);
+                }
+
+                // Hydrate PDF file from storage
+                if (data.storagePath) {
+                    const fileRef = ref(storage, data.storagePath);
+                    const url = await getDownloadURL(fileRef);
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+                    const pdfFile = new File([blob], `${data.title || 'document'}.pdf`, { type: 'application/pdf' });
+                    setFile(pdfFile);
+                }
+            } catch (err) {
+                console.error('Hydration error:', err);
+                showError('Failed to load document for editing.');
+            } finally {
+                setHydrating(false);
+            }
+        })();
+    }, [editRequestId, companyId]);
 
     // FEAT-1: IntersectionObserver to track which page is visible
     useEffect(() => {
@@ -166,39 +379,51 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
         }
     };
 
-    const addField = (type) => {
+    // PHASE 2: Updated addField using templates
+    const addField = useCallback((templateId) => {
         if (!file) return;
+        const template = FIELD_TEMPLATES[templateId];
+        if (!template) return;
 
         let w = 25, h = 5;
-        if (type === 'checkbox') { w = 4; h = 3; }
-        if (type === 'text') { w = 30; h = 5; }
-        if (type === 'date') { w = 20; h = 5; }
+        if (template.type === 'checkbox') { w = 4; h = 3; }
+        if (template.type === 'text') { w = 30; h = 5; }
+        if (template.type === 'date') { w = 20; h = 5; }
+        if (template.type === 'initial') { w = 15; h = 4; }
 
         // FEAT-1: Place field on the currently visible page instead of always page 1
         const newField = {
             id: uuidv4(),
-            type,
+            ...template,
             page: activePage,
             x: 10, y: 10,
             width: w, height: h,
-            label: type === 'text' ? 'Label' : type
         };
         setFields(prev => [...prev, newField]);
-    };
+    }, [file, activePage]);
 
-    const removeField = (id) => setFields(prev => prev.filter(f => f.id !== id));
+    const removeField = useCallback((id) => {
+        setFields(prev => prev.filter(f => f.id !== id));
+        if (selectedFieldId === id) setSelectedFieldId(null);
+    }, [selectedFieldId]);
 
-    const updateFieldPosition = (id, pageNum, xPercent, yPercent) => {
+    const updateFieldPosition = useCallback((id, pageNum, xPercent, yPercent) => {
         setFields(prev => prev.map(f => f.id === id ? { ...f, x: xPercent, y: yPercent, page: pageNum } : f));
-    };
+    }, []);
 
-    const updateFieldSize = (id, widthPercent, heightPercent) => {
+    const updateFieldSize = useCallback((id, widthPercent, heightPercent) => {
         setFields(prev => prev.map(f => f.id === id ? { ...f, width: widthPercent, height: heightPercent } : f));
-    };
+    }, []);
 
-    const updateFieldLabel = (id, newLabel) => {
+    const updateFieldLabel = useCallback((id, newLabel) => {
         setFields(prev => prev.map(f => f.id === id ? { ...f, label: newLabel } : f));
-    };
+    }, []);
+
+    // PHASE 3: Update any property on the active field
+    const updateActiveField = useCallback((key, value) => {
+        if (!selectedFieldId) return;
+        setFields(prev => prev.map(f => f.id === selectedFieldId ? { ...f, [key]: value } : f));
+    }, [selectedFieldId]);
 
     const onPageLoadSuccess = (page) => {
         setPageDimensions(prev => ({ ...prev, [page.pageNumber]: { width: page.width, height: page.height } }));
@@ -226,32 +451,31 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
         }
 
         setLoading(true);
+        // BUG FIX: Complete placeholder map — {{current_date}} and {{company_name}} were missing
         const placeholderMap = {
             '{{full_name}}': recipientName,
-            '{{email}}': recipientEmail
+            '{{email}}': recipientEmail,
+            '{{current_date}}': new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+            '{{company_name}}': '' // No company data available here — leave blank for signer to fill
         };
 
         const processedFields = fields.map(f => {
-            if (f.type === 'text' && placeholderMap[f.label]) {
-                return {
-                    ...f,
-                    defaultValue: placeholderMap[f.label],
-                    readOnly: true
-                };
+            // BUG FIX: Match ALL field types (not just 'text') so date_signed {{current_date}} resolves
+            if (f.defaultValue && placeholderMap[f.defaultValue] !== undefined) {
+                const resolved = placeholderMap[f.defaultValue];
+                if (resolved) {
+                    return { ...f, defaultValue: resolved, readOnly: true };
+                }
+                // If placeholder resolves to empty string (e.g. company_name), leave editable
+                return { ...f, defaultValue: '' };
             }
             return f;
         });
 
         try {
-            const folder = creatorMode === 'template' ? 'templates' : 'originals';
-            const storagePath = `secure_documents/${companyId}/${folder}/${Date.now()}_${file.name}`;
-            const fileRef = ref(storage, storagePath);
-            await uploadBytes(fileRef, file);
-
             const commonData = {
                 companyId,
                 title,
-                storagePath,
                 fields: processedFields.map(f => ({
                     id: f.id,
                     type: f.type,
@@ -261,12 +485,35 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     yPosition: f.y,
                     width: f.width,
                     height: f.height,
-                    required: true,
+                    required: f.required ?? true,
                     defaultValue: f.defaultValue || null,
-                    readOnly: f.readOnly || false
+                    readOnly: f.readOnly || false,
+                    fontSize: f.fontSize || 'Auto',
                 })),
                 updatedAt: serverTimestamp()
             };
+
+            // PHASE 4: If editing, update existing doc (no re-upload needed if file unchanged)
+            if (editRequestId) {
+                const docRef = doc(db, 'companies', companyId, 'signing_requests', editRequestId);
+                await updateDoc(docRef, {
+                    ...commonData,
+                    recipientEmail: recipientEmail || null,
+                    recipientName,
+                    recipientPhone: recipientPhone || null,
+                });
+                showSuccess('Document updated successfully!');
+                if (onClose) onClose();
+                return;
+            }
+
+            // --- Original create flow below (unchanged) ---
+            const folder = creatorMode === 'template' ? 'templates' : 'originals';
+            const storagePath = `secure_documents/${companyId}/${folder}/${Date.now()}_${file.name}`;
+            const fileRef = ref(storage, storagePath);
+            await uploadBytes(fileRef, file);
+
+            commonData.storagePath = storagePath;
 
             if (creatorMode === 'template') {
                 await addDoc(collection(db, 'companies', companyId, 'templates'), {
@@ -345,38 +592,52 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
         }
     };
 
-    const getIcon = (type) => {
+    const getIcon = useCallback((type) => {
         switch (type) {
             case 'signature': return <PenTool size={14} />;
+            case 'initial': return <Fingerprint size={14} />;
             case 'text': return <Type size={14} />;
             case 'checkbox': return <CheckSquare size={14} />;
             case 'date': return <Calendar size={14} />;
             default: return <Plus size={14} />;
         }
-    };
+    }, []);
+
+    // Show loading state while hydrating for Correct flow
+    if (hydrating) {
+        return (
+            <div className="flex flex-col h-screen bg-gray-100 items-center justify-center gap-3">
+                <Loader2 className="animate-spin text-blue-600" size={36} />
+                <p className="text-gray-500 font-medium text-sm">Loading document for editing...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col h-screen bg-gray-100 font-sans">
+            {/* TOP BAR */}
             <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm z-20 shrink-0">
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
                         {creatorMode === 'template' ? <FileText className="text-purple-600" /> : <UploadCloud className="text-blue-600" />}
-                        {creatorMode === 'template' ? 'Create Template' : 'New Envelope'}
+                        {editRequestId ? 'Correct Document' : creatorMode === 'template' ? 'Create Template' : 'New Envelope'}
                     </h2>
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
-                        <button
-                            onClick={() => setCreatorMode('request')}
-                            className={`px-3 py-1 text-xs font-bold rounded-md transition ${creatorMode === 'request' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            One-off Send
-                        </button>
-                        <button
-                            onClick={() => setCreatorMode('template')}
-                            className={`px-3 py-1 text-xs font-bold rounded-md transition ${creatorMode === 'template' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            Save Template
-                        </button>
-                    </div>
+                    {!editRequestId && (
+                        <div className="flex bg-gray-100 p-1 rounded-lg">
+                            <button
+                                onClick={() => setCreatorMode('request')}
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition ${creatorMode === 'request' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                One-off Send
+                            </button>
+                            <button
+                                onClick={() => setCreatorMode('template')}
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition ${creatorMode === 'template' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Save Template
+                            </button>
+                        </div>
+                    )}
                 </div>
                 <div className="flex gap-3">
                     <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
@@ -387,45 +648,49 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     ${creatorMode === 'template' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                     >
                         {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />}
-                        {creatorMode === 'template' ? 'Save Template' : 'Send Document'}
+                        {editRequestId ? 'Save Correction' : creatorMode === 'template' ? 'Save Template' : 'Send Document'}
                     </button>
                 </div>
             </div>
 
+            {/* 3-COLUMN LAYOUT */}
             <div className="flex flex-1 overflow-hidden">
-                <div className="w-80 bg-white border-r flex flex-col z-10 shadow-lg shrink-0">
+
+                {/* LEFT SIDEBAR: Recipient + Semantic Field Palette */}
+                <div className="w-64 bg-white border-r flex flex-col z-10 shadow-lg shrink-0 overflow-y-auto">
+                    {/* Recipient Info (only in request mode) */}
                     {creatorMode === 'request' && (
-                        <div className="p-6 border-b animate-in fade-in slide-in-from-top-2">
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">1. Recipient</label>
+                        <div className="p-4 border-b">
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 tracking-wider">Recipient</label>
                             <input
-                                type="text" placeholder="Recipient Name *"
-                                className="w-full mb-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white transition-colors"
+                                type="text" placeholder="Name *"
+                                className="w-full mb-2 p-2 text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors"
                                 value={recipientName} onChange={e => setRecipientName(e.target.value)}
                             />
                             <input
-                                type="email" placeholder="Recipient Email"
-                                className="w-full mb-2 p-2 text-sm border rounded bg-gray-50 focus:bg-white transition-colors"
+                                type="email" placeholder="Email"
+                                className="w-full mb-2 p-2 text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors"
                                 value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)}
                             />
                             <input
-                                type="tel" placeholder="Recipient Phone"
-                                className="w-full mb-3 p-2 text-sm border rounded bg-gray-50 focus:bg-white transition-colors"
+                                type="tel" placeholder="Phone"
+                                className="w-full mb-2 p-2 text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors"
                                 value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)}
                             />
-                            {/* ADV-2 FIX: Delivery method selector */}
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Delivery Method</label>
-                            <div className="grid grid-cols-4 gap-1.5">
+                            {/* Delivery Method */}
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 tracking-wider">Delivery</label>
+                            <div className="grid grid-cols-4 gap-1">
                                 {[
-                                    { key: 'email', icon: <Mail size={12} />, label: 'Email' },
-                                    { key: 'sms', icon: <MessageSquare size={12} />, label: 'SMS' },
-                                    { key: 'both', icon: <Send size={12} />, label: 'Both' },
-                                    { key: 'copy', icon: <Copy size={12} />, label: 'Copy Link' },
+                                    { key: 'email', icon: <Mail size={11} />, label: 'Email' },
+                                    { key: 'sms', icon: <MessageSquare size={11} />, label: 'SMS' },
+                                    { key: 'both', icon: <Send size={11} />, label: 'Both' },
+                                    { key: 'copy', icon: <Copy size={11} />, label: 'Link' },
                                 ].map(opt => (
                                     <button
                                         key={opt.key}
                                         type="button"
                                         onClick={() => setDeliveryMethod(opt.key)}
-                                        className={`flex flex-col items-center gap-0.5 p-2 rounded-lg text-[10px] font-bold border transition-all ${
+                                        className={`flex flex-col items-center gap-0.5 p-1.5 rounded-lg text-[9px] font-bold border transition-all ${
                                             deliveryMethod === opt.key
                                                 ? 'border-blue-600 bg-blue-50 text-blue-700'
                                                 : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
@@ -439,58 +704,62 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                         </div>
                     )}
 
-                    <div className="p-6 flex-1 overflow-y-auto">
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-4">
-                            {creatorMode === 'request' ? '2. Setup Fields' : '1. Setup Fields'}
+                    {/* Semantic Field Palette */}
+                    <div className="p-4 flex-1">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-3 tracking-wider">
+                            {creatorMode === 'request' ? 'Fields' : 'Setup Fields'}
                         </label>
+
                         {!file ? (
-                            <div className="text-center p-6 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:border-blue-400 transition-colors">
-                                <p className="text-sm text-gray-400 mb-2 font-medium">Upload a PDF first</p>
+                            <div className="text-center p-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:border-blue-400 transition-colors">
+                                <p className="text-xs text-gray-400 mb-2 font-medium">Upload a PDF first</p>
                                 <input type="file" accept="application/pdf" onChange={handleFileChange} className="hidden" id="pdf-upload" />
-                                <label htmlFor="pdf-upload" className="px-4 py-2 bg-white border border-gray-300 rounded shadow-sm text-sm font-bold cursor-pointer hover:bg-gray-50 active:scale-95 transition-transform inline-block">Choose File</label>
+                                <label htmlFor="pdf-upload" className="px-3 py-1.5 bg-white border border-gray-300 rounded shadow-sm text-xs font-bold cursor-pointer hover:bg-gray-50 active:scale-95 transition-transform inline-block">Choose File</label>
                             </div>
                         ) : (
-                            <>
-                                <div className="grid grid-cols-2 gap-3 mb-6">
-                                    {[
-                                        { id: 'signature', label: 'Signature', icon: <PenTool size={18} />, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-                                        { id: 'text', label: 'Text/Placeholder', icon: <Type size={18} />, color: 'bg-blue-50 text-blue-700 border-blue-200' },
-                                        { id: 'date', label: 'Date', icon: <Calendar size={18} />, color: 'bg-green-50 text-green-700 border-green-200' },
-                                        { id: 'checkbox', label: 'Checkbox', icon: <CheckSquare size={18} />, color: 'bg-purple-50 text-purple-700 border-purple-200' },
-                                    ].map((tool) => (
-                                        <button
-                                            key={tool.id}
-                                            onClick={() => addField(tool.id)}
-                                            className={`flex flex-col items-center justify-center p-3 border rounded-xl transition hover:shadow-md active:scale-95 ${tool.color}`}
-                                        >
-                                            <div className="mb-1">{tool.icon}</div>
-                                            <span className="text-[10px] font-bold uppercase">{tool.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {fields.some(f => f.type === 'text') && (
-                                    <div className="mb-6 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                                        <p className="text-[10px] text-blue-700 leading-relaxed font-medium">
-                                            <strong>Tip:</strong> Use labels like <code className="bg-blue-100 px-1 rounded">{"{{full_name}}"}</code> to auto-fill driver data when sending.
-                                        </p>
+                            <div className="space-y-4">
+                                {FIELD_CATEGORIES.map((category) => (
+                                    <div key={category.title}>
+                                        <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{category.title}</h4>
+                                        <div className="space-y-1">
+                                            {category.items.map((item) => {
+                                                const IconComp = item.icon;
+                                                return (
+                                                    <button
+                                                        key={item.templateId}
+                                                        onClick={() => addField(item.templateId)}
+                                                        className={`w-full flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all text-left active:scale-[0.98] ${item.color}`}
+                                                    >
+                                                        <IconComp size={15} />
+                                                        <span className="text-xs font-semibold">{item.label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                )}
-                            </>
+                                ))}
+                            </div>
                         )}
 
+                        {/* Placed Fields List */}
                         {fields.length > 0 && (
                             <div className="mt-4">
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Placed Fields ({fields.length})</label>
-                                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 tracking-wider">Placed ({fields.length})</label>
+                                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
                                     {fields.map((f) => (
-                                        <div key={f.id} className="flex justify-between items-center p-2 bg-gray-50 border rounded-lg text-xs group">
+                                        <div
+                                            key={f.id}
+                                            onClick={() => setSelectedFieldId(f.id)}
+                                            className={`flex justify-between items-center p-2 border rounded-lg text-xs cursor-pointer transition-all ${
+                                                selectedFieldId === f.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                        >
                                             <div className="flex items-center gap-2 truncate">
                                                 <div className="text-gray-400 shrink-0">{getIcon(f.type)}</div>
                                                 <span className="font-bold truncate">{f.label}</span>
                                                 <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full shrink-0">P{f.page}</span>
                                             </div>
-                                            <button onClick={() => removeField(f.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"><X size={14} /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); removeField(f.id); }} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"><X size={12} /></button>
                                         </div>
                                     ))}
                                 </div>
@@ -499,7 +768,11 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto bg-gray-200 p-8 flex justify-center relative scroll-smooth">
+                {/* CENTER: PDF Viewer & Draggable Fields */}
+                <div
+                    className="flex-1 overflow-y-auto bg-gray-200 p-8 flex justify-center relative scroll-smooth"
+                    onClick={() => setSelectedFieldId(null)}
+                >
                     {file && (
                         <Document
                             file={file}
@@ -536,6 +809,8 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                                                     onRemove={removeField}
                                                     getIcon={getIcon}
                                                     onLabelChange={updateFieldLabel}
+                                                    isSelected={selectedFieldId === field.id}
+                                                    onSelect={setSelectedFieldId}
                                                 />
                                             ))}
                                         </div>
@@ -543,6 +818,17 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                                 );
                             })}
                         </Document>
+                    )}
+                </div>
+
+                {/* RIGHT SIDEBAR: Field Properties Editor */}
+                <div className={`bg-white border-l shadow-lg shrink-0 overflow-y-auto transition-all duration-200 ${selectedFieldId ? 'w-80' : 'w-0 border-l-0'}`}>
+                    {selectedFieldId && (
+                        <FieldPropertiesPanel
+                            activeField={activeField}
+                            updateActiveField={updateActiveField}
+                            getIcon={getIcon}
+                        />
                     )}
                 </div>
             </div>

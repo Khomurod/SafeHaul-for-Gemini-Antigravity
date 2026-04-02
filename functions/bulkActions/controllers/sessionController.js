@@ -496,8 +496,12 @@ exports.retryFailedAttempts = onCall({ cors: true }, async (request) => {
     const newSessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc();
     const newSessionId = newSessionRef.id;
 
+    // BUG-11 FIX: Exclude targetIds, id, and progress from spread to avoid
+    // copying the full original array (up to 10k IDs) into the retry doc.
+    const { targetIds: _origIds, id: _origId, progress: _origProgress, ...sessionConfig } = data;
+
     await newSessionRef.set({
-        ...data, // Copy config/filters
+        ...sessionConfig, // Copy config/filters without the heavy fields
         id: newSessionId,
         name: `${data.name} (Retry)`,
         status: 'active',

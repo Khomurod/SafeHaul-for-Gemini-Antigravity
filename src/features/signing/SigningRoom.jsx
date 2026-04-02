@@ -4,7 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { Loader2, CheckCircle, PenTool, X, ChevronRight, AlertTriangle, ShieldCheck, FileText } from 'lucide-react';
+import { Loader2, CheckCircle, PenTool, X, ChevronRight, AlertTriangle, ShieldCheck, FileText, Ban, Fingerprint } from 'lucide-react';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -101,7 +101,9 @@ export default function SigningRoom() {
 
     const handleFinishSigning = async () => {
         // Validate
-        const missing = request.fields?.filter(f => f.required && !fieldValues[f.id]) || [];
+        // BUG FIX: Exclude readOnly fields from validation — they are pre-filled via defaultValue
+        // and rendered as non-editable divs, so fieldValues[f.id] will always be '' for them.
+        const missing = request.fields?.filter(f => f.required && !f.readOnly && !fieldValues[f.id]) || [];
         if (missing.length > 0) {
             alert(`Please complete all required fields. (${missing.length} remaining)`);
             return;
@@ -152,6 +154,24 @@ export default function SigningRoom() {
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h3>
                 <p className="text-gray-600">{error}</p>
+            </div>
+        </div>
+    );
+
+    // PHASE 4: Voided document hard-stop
+    if (request?.status === 'voided') return (
+        <div className="h-screen flex items-center justify-center bg-gray-50 p-4">
+            <div className="bg-white p-10 rounded-2xl shadow-xl border border-red-100 text-center max-w-md">
+                <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Ban size={48} />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Document Voided</h2>
+                <p className="text-gray-600 mb-6">
+                    This document has been voided by the sender and is no longer accessible.
+                </p>
+                <button onClick={() => window.close()} className="text-gray-500 font-semibold hover:underline">
+                    Close Window
+                </button>
             </div>
         </div>
     );
@@ -250,15 +270,37 @@ export default function SigningRoom() {
         if (request.status === 'signed') return null;
 
         switch (field.type) {
-            case 'text': return (
-                <input style={style}
-                    className="border-2 border-blue-400 bg-blue-50/90 px-2 text-sm rounded"
-                    placeholder="Type here..." value={fieldValues[field.id] || ''}
-                    onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
-            case 'date': return (
-                <input type="date" style={style}
-                    className="border-2 border-green-400 bg-green-50/90 px-2 text-sm rounded"
-                    value={fieldValues[field.id] || ''} onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
+            case 'text': {
+                // PHASE 5: Read-only text fields render as styled divs
+                if (field.readOnly) {
+                    return (
+                        <div style={style}
+                            className="border-2 border-blue-300 bg-blue-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium">
+                            {field.defaultValue || ''}
+                        </div>
+                    );
+                }
+                return (
+                    <input style={style}
+                        className="border-2 border-blue-400 bg-blue-50/90 px-2 text-sm rounded"
+                        placeholder="Type here..." value={fieldValues[field.id] || ''}
+                        onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
+            }
+            case 'date': {
+                // PHASE 5: Read-only date fields render as styled divs
+                if (field.readOnly) {
+                    return (
+                        <div style={style}
+                            className="border-2 border-green-300 bg-green-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium">
+                            {field.defaultValue || ''}
+                        </div>
+                    );
+                }
+                return (
+                    <input type="date" style={style}
+                        className="border-2 border-green-400 bg-green-50/90 px-2 text-sm rounded"
+                        value={fieldValues[field.id] || ''} onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
+            }
             case 'checkbox': return (
                 <input type="checkbox" style={style}
                     className="accent-purple-600 cursor-pointer" checked={!!fieldValues[field.id]}
@@ -270,6 +312,16 @@ export default function SigningRoom() {
                         onClick={() => setActiveSignatureField(field.id)}
                         className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-2 shadow-sm transition ${isSigned ? 'bg-yellow-100 border-yellow-600' : 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100'}`}>
                         {isSigned ? <div className="text-yellow-800 font-bold text-xs flex items-center gap-1"><CheckCircle size={14} /> Signed</div> : <div className="text-yellow-700 font-medium text-xs flex items-center gap-1"><PenTool size={14} /> Sign</div>}
+                    </div>);
+            }
+            // PHASE 5: Initial type — same as signature but visually smaller
+            case 'initial': {
+                const isInitialed = !!fieldValues[field.id];
+                return (
+                    <div style={style}
+                        onClick={() => setActiveSignatureField(field.id)}
+                        className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-1 shadow-sm transition ${isInitialed ? 'bg-orange-100 border-orange-600' : 'bg-orange-50/90 border-orange-400 hover:bg-orange-100'}`}>
+                        {isInitialed ? <div className="text-orange-800 font-bold text-[10px] flex items-center gap-1"><CheckCircle size={12} /> Initialed</div> : <div className="text-orange-700 font-medium text-[10px] flex items-center gap-1"><Fingerprint size={12} /> Initial</div>}
                     </div>);
             }
             default: return null;

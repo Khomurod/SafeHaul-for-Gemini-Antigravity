@@ -19,6 +19,7 @@ const STORE_NAME = 'pending_submissions';
 const MAX_RETRIES = 10;
 const INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 60000; // 1 minute max
+const ORPHAN_TIMEOUT_MS = 5 * 60 * 1000; // BUG-4 FIX: 5 minutes before recovering 'processing' entries
 
 /** @type {IDBDatabase | null} */
 let db = null;
@@ -302,11 +303,58 @@ export async function processEntry(entry, submitFn) {
 }
 
 /**
+ * BUG-4 FIX: Recover entries stuck in 'processing' state.
+ * If a browser tab closes mid-submission, entries get orphaned.
+ * This resets them to 'pending' so they can be retried.
+ * @returns {Promise<number>} Number of recovered entries
+ */
+export async function recoverOrphanedEntries() {
+    await ensureDb();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const index = store.index('status');
+        const request = index.getAll('processing');
+
+        request.onsuccess = () => {
+            const orphaned = request.result || [];
+            let recovered = 0;
+            const now = Date.now();
+
+            orphaned.forEach(entry => {
+                // Only recover if it's been stuck for longer than the timeout
+                if (entry.lastAttemptAt && (now - entry.lastAttemptAt) > ORPHAN_TIMEOUT_MS) {
+                    entry.status = 'pending';
+                    entry.lastError = 'Recovered from orphaned processing state';
+                    entry.nextRetryAt = now; // Retry immediately
+                    store.put(entry);
+                    recovered++;
+                }
+            });
+
+            resolve(recovered);
+        };
+
+        request.onerror = () => {
+            console.error('[SubmissionQueue] Failed to recover orphaned entries:', request.error);
+            resolve(0); // Non-fatal — continue processing
+        };
+    });
+}
+
+/**
  * Process all pending submissions in the queue
  * @param {Function} submitFn - Async function that performs the actual submission
  * @returns {Promise<{processed: number, succeeded: number, failed: number}>}
  */
 export async function processQueue(submitFn) {
+    // BUG-4 FIX: Recover any orphaned 'processing' entries first
+    const recovered = await recoverOrphanedEntries();
+    if (recovered > 0) {
+        console.log(`[SubmissionQueue] Recovered ${recovered} orphaned entries`);
+    }
+
     const pending = await getAllPending();
     // Processing pending submissions
 

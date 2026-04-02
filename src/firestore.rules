@@ -321,16 +321,22 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow create: if isSignedIn();
       allow read: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid || isEmailOwner(resource.data.email);
-      // #18 FIX: Scoped update — staff can only update leads belonging to their company (was: isStaff() — too permissive)
+      // BUG-3 FIX: Scoped update — staff can only update OPERATIONAL fields on leads belonging to their company.
+      // Previously, company team could modify any field including companyId, userId, and email.
       allow update: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid ||
-                    (isSignedIn() && resource.data.companyId is string && isCompanyTeam(resource.data.companyId));
+                    (isSignedIn() && resource.data.companyId is string && isCompanyTeam(resource.data.companyId) &&
+                     !request.resource.data.diff(resource.data).affectedKeys().hasAny(['companyId', 'userId', 'email']));
       allow delete: if isSuperAdmin();
     }
 
     // --- DRIVERS (User Profiles) ---
     match /drivers/{driverId} {
-      // Owner has full control over their profile
-      allow read: if isOwner(driverId) || isSuperAdmin() || isStaff();
+      // BUG-2 FIX: Removed isStaff() from list queries. 
+      // Previously ANY dashboard user from ANY company could list ALL driver profiles (cross-tenant leak).
+      // Now: list (query) restricted to owner + super admin.
+      // get (single doc) still allowed for staff — needed for application detail views.
+      allow get: if isOwner(driverId) || isSuperAdmin() || isStaff();
+      allow list: if isOwner(driverId) || isSuperAdmin();
       allow create, update: if (isSignedIn() && request.auth.uid == driverId) || isSuperAdmin();
       allow delete: if isSuperAdmin();
       

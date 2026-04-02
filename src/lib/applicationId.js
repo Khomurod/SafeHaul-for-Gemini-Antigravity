@@ -113,19 +113,24 @@ export function generateApplicationIdSync(companyId, email, phone) {
 
     const canonicalInput = `${companyId}:${normalizedEmail}:${normalizedPhone}`;
 
-    // Simple hash (djb2 algorithm) - fast and deterministic
-    let hash = 5381;
+    // BUG-5 FIX: Use TWO independent djb2 hashes to produce a 20-char deterministic ID.
+    // Previously used Date.now() in the output, making it non-deterministic.
+    let hash1 = 5381;
     for (let i = 0; i < canonicalInput.length; i++) {
-        hash = ((hash << 5) + hash) + canonicalInput.charCodeAt(i);
-        hash = hash & hash; // Convert to 32-bit integer
+        hash1 = ((hash1 << 5) + hash1) + canonicalInput.charCodeAt(i);
+        hash1 = hash1 & hash1;
+    }
+    // Second hash with different seed for more entropy
+    let hash2 = 7919;
+    for (let i = 0; i < canonicalInput.length; i++) {
+        hash2 = ((hash2 << 5) + hash2) ^ canonicalInput.charCodeAt(i);
+        hash2 = hash2 & hash2;
     }
 
-    // Convert to base36 and pad to ensure consistent length
-    const base36 = Math.abs(hash).toString(36);
-    const timestamp = Date.now().toString(36).slice(-6);
-
-    // Combine hash with truncated timestamp for additional uniqueness
-    return `${base36.padStart(7, '0')}_${normalizedPhone.slice(-4) || normalizedEmail.slice(0, 4)}_${timestamp}`;
+    const part1 = Math.abs(hash1).toString(36).padStart(7, '0');
+    const part2 = Math.abs(hash2).toString(36).padStart(7, '0');
+    // Combine and truncate to exactly 20 characters for consistency with async version
+    return `${part1}${part2}`.substring(0, 20).padEnd(20, '0');
 }
 
 /**
@@ -164,10 +169,13 @@ export function isValidApplicationId(id) {
         return /^anon_[a-z0-9]+_[a-z0-9]+$/.test(id);
     }
 
-    // Hash format: 20 hex characters
+    // Hash format: 20 hex characters (async SHA-256 version)
     if (/^[a-f0-9]{20}$/.test(id)) return true;
 
-    // Sync format: hash_identifier_timestamp
+    // BUG-5 FIX: New sync format: 20-char base36 string (may include 0-9, a-z)
+    if (/^[a-z0-9]{20}$/.test(id)) return true;
+
+    // Legacy sync format: hash_identifier_timestamp (kept for backwards compatibility)
     if (/^[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/.test(id)) return true;
 
     return false;

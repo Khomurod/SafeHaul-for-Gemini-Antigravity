@@ -61,6 +61,11 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
             return { status: 'signed' };
         }
 
+        // PHASE 4 FIX: Block voided documents server-side (not just client-side)
+        if (data.status === 'voided') {
+            return { status: 'voided' };
+        }
+
         // Reject if the signing link has expired
         if (data.expiresAt && data.expiresAt.toMillis() < Date.now()) {
             throw new HttpsError('deadline-exceeded', 'This signing link has expired. Please request a new one.');

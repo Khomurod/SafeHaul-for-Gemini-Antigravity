@@ -7,12 +7,12 @@ service firebase.storage {
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
     
     // ROBUST SUPER ADMIN CHECK (Aligned with Firestore)
+    // BUG-1 FIX: Removed email-domain backdoor (@safehaul.io). 
+    // Only custom claims determine Super Admin status.
     function isSuperAdmin() {
-      return isSignedIn() && 
-             (request.auth.token.email_verified == true) && (
-         request.auth.token.email.matches('.*@safehaul\\.io$') || 
-         (request.auth.token.keys().hasAny(['roles']) && request.auth.token.roles.keys().hasAny(['globalRole']) && request.auth.token.roles.globalRole == 'super_admin') ||
-         (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin')
+      return isSignedIn() && (
+         (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin') ||
+         (request.auth.token.keys().hasAny(['roles']) && request.auth.token.roles.keys().hasAny(['globalRole']) && request.auth.token.roles.globalRole == 'super_admin')
       );
     }
 
