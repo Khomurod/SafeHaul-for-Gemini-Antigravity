@@ -314,7 +314,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                         id: f.id,
                         type: f.type,
                         label: f.label || f.type,
-                        page: f.pageNumber || f.page || 1,
+                        page: f?.pageNumber || f?.page || 1,
                         x: f.xPosition ?? f.x ?? 10,
                         y: f.yPosition ?? f.y ?? 10,
                         width: f.width || 25,
@@ -329,6 +329,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
 
                 // Hydrate PDF file from storage
                 if (data.storagePath) {
+                    setNumPages(null); // RACE FIX: Reset before fetching new blob
                     const fileRef = ref(storage, data.storagePath);
                     const url = await getDownloadURL(fileRef);
                     const response = await fetch(url);
@@ -374,6 +375,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 return;
             }
             setFile(selected);
+            setNumPages(null); // RACE FIX: Wipe stale page count before new document loads
             setTitle(selected.name.replace('.pdf', ''));
         } else {
             showError('Please upload a valid PDF file.');
@@ -547,7 +549,8 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     senderName,
                     sendEmail,
                     sendSms: false, // SMS sent directly by frontend callable
-                    deliveryMethod // Audit trail
+                    deliveryMethod, // Audit trail
+                    appBaseUrl: window.location.origin // DOMAIN FIX: Store sender's domain for backend link generation
                 });
                 batch.set(doc(signingRef, 'secrets', 'token'), { accessToken });
                 await batch.commit();

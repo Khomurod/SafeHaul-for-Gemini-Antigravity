@@ -45,6 +45,11 @@ export default function SigningRoom() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    // RACE FIX: Reset numPages when pdfUrl changes to prevent stale page rendering
+    useEffect(() => {
+        setNumPages(null);
+    }, [request?.pdfUrl]);
+
     // 1. Load Document via Public API
     useEffect(() => {
         async function load() {
