@@ -147,6 +147,7 @@ export default function DocumentsManager() {
                 sendEmail,
                 sendSms: false, // SMS is sent directly by frontend callable — do NOT trigger async function
                 deliveryMethod, // Record what user chose for audit trail
+                appBaseUrl: window.location.origin, // DOMAIN FIX: Store sender's domain for backend link generation
                 fields: autoFilledFields,
                 templateId: selectedTemplate.id,
                 fieldValues: autoFilledFields.reduce((acc, f) => {

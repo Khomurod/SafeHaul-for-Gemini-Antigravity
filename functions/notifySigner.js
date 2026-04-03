@@ -33,8 +33,9 @@ exports.notifySigner = functions.firestore
         }
 
         // 2. Build signing link
-        // ESIGN-11 FIX: Read base URL from environment variable rather than hardcoding.
-        const baseUrl = process.env.APP_BASE_URL || 'https://app.safehaul.io';
+        // DOMAIN FIX: Use the sender's origin domain stored at creation time,
+        // falling back to env var, then hardcoded default for pre-migration docs.
+        const baseUrl = data.appBaseUrl || process.env.APP_BASE_URL || 'https://app.safehaul.io';
         const signingLink = `${baseUrl}/sign/${companyId}/${requestId}?token=${accessToken}`;
 
         // 3. Build professional HTML email body (kept from original)

@@ -40,8 +40,8 @@ exports.notifySignerSMS = onDocumentCreated(
                 return null;
             }
 
-            // Build signing link
-            const baseUrl = process.env.APP_BASE_URL || 'https://app.safehaul.io';
+            // DOMAIN FIX: Use the sender's origin domain stored at creation time
+            const baseUrl = data.appBaseUrl || process.env.APP_BASE_URL || 'https://app.safehaul.io';
             const signingLink = `${baseUrl}/sign/${companyId}/${requestId}?token=${accessToken}`;
 
             // Compose SMS message
