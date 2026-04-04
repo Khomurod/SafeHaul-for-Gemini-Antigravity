@@ -89,8 +89,14 @@ exports.getSignedUploadUrl = require('./storageSecure').getSignedUploadUrl;
 // NEW: Email Testing
 exports.testEmailConnection = require('./testEmailConnection').testEmailConnection;
 
-// CONN-1/CONN-4 FIX: Server-side save with encrypted password (replaces direct Firestore writes)
+// CONN-1/CONN-4 FIX: Server-side save with password stored in admin-only subcollection
 exports.saveEmailSettings = require('./saveEmailSettings').saveEmailSettings;
+
+// REFACTOR: Sanitized callable for Email Settings UI — never returns smtpPass
+exports.getEmailSettingsMeta = require('./getEmailSettingsMeta').getEmailSettingsMeta;
+
+// MIGRATION: One-time migration of email settings from root doc to admin-only subcollection
+exports.migrateEmailSettings = require('./migrateEmailSettings').migrateEmailSettings;
 
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;

@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { Loader2, CheckCircle, PenTool, X, ChevronRight, AlertTriangle, ShieldCheck, FileText, Ban, Fingerprint } from 'lucide-react';
+import { Loader2, CheckCircle, PenTool, X, ChevronRight, ChevronDown, AlertTriangle, ShieldCheck, FileText, Ban, Fingerprint } from 'lucide-react';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -37,6 +37,9 @@ export default function SigningRoom() {
     const [submitting, setSubmitting] = useState(false);
     const [success, setSuccess] = useState(false);
 
+    // PROD-FIX: Refs for each page container, used for scroll-to-field navigation
+    const pageRefs = useRef({});
+
     // MED-4 FIX: Track window width for responsive PDF rendering
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
     useEffect(() => {
@@ -68,12 +71,23 @@ export default function SigningRoom() {
                 });
 
                 const data = result.data;
+
+                // PROD-FIX: Normalize pageNumber to a number to prevent type-mismatch rendering bugs.
+                // Firestore sometimes stores numbers as strings, causing strict === to fail
+                // in the per-page field filter and making fields invisible.
+                if (data.fields) {
+                    data.fields = data.fields.filter(f => f != null).map(f => ({
+                        ...f,
+                        pageNumber: Number(f.pageNumber) || 1,
+                    }));
+                }
+
                 setRequest(data);
 
                 // Initialize Fields — filter out null/undefined entries
                 if (data.fields) {
                     const initial = {};
-                    (data.fields || []).filter(f => f != null).forEach(f => {
+                    data.fields.forEach(f => {
                         initial[f.id] = (f.type === 'checkbox' ? false : '');
                     });
                     setFieldValues(initial);
@@ -104,6 +118,38 @@ export default function SigningRoom() {
         setActiveSignatureField(null);
     };
 
+    // PROD-FIX: Compute remaining required fields for the progress indicator
+    const requiredFields = useMemo(() => {
+        if (!request?.fields) return [];
+        return request.fields.filter(f => f && f.required && !f.readOnly);
+    }, [request?.fields]);
+
+    const completedCount = useMemo(() => {
+        return requiredFields.filter(f => !!fieldValues[f.id]).length;
+    }, [requiredFields, fieldValues]);
+
+    const remainingCount = requiredFields.length - completedCount;
+
+    // PROD-FIX: Find the first incomplete required field for "Jump to" navigation
+    const firstIncompleteField = useMemo(() => {
+        return requiredFields.find(f => !fieldValues[f.id]) || null;
+    }, [requiredFields, fieldValues]);
+
+    // PROD-FIX: Scroll to the page containing a specific field
+    const scrollToField = useCallback((field) => {
+        if (!field) return;
+        const pageNum = Number(field.pageNumber) || 1;
+        const pageEl = pageRefs.current[pageNum];
+        if (pageEl) {
+            pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Briefly flash the field's border via CSS class
+            pageEl.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+            setTimeout(() => {
+                pageEl.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+            }, 2000);
+        }
+    }, []);
+
     const handleFinishSigning = async () => {
         // Validate
         // BUG FIX: Exclude readOnly fields from validation — they are pre-filled via defaultValue
@@ -112,6 +158,8 @@ export default function SigningRoom() {
         const missing = (request?.fields || []).filter(f => f && f.required && !f.readOnly && !fieldValues[f.id]);
         if (missing.length > 0) {
             alert(`Please complete all required fields. (${missing.length} remaining)`);
+            // PROD-FIX: Auto-scroll to the first missing field so the signer can find it
+            scrollToField(missing[0]);
             return;
         }
 
@@ -316,7 +364,7 @@ export default function SigningRoom() {
                 return (
                     <div style={style}
                         onClick={() => setActiveSignatureField(field.id)}
-                        className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-2 shadow-sm transition ${isSigned ? 'bg-yellow-100 border-yellow-600' : 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100'}`}>
+                        className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-2 shadow-sm transition ${isSigned ? 'bg-yellow-100 border-yellow-600' : 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse'}`}>
                         {isSigned ? <div className="text-yellow-800 font-bold text-xs flex items-center gap-1"><CheckCircle size={14} /> Signed</div> : <div className="text-yellow-700 font-medium text-xs flex items-center gap-1"><PenTool size={14} /> Sign</div>}
                     </div>);
             }
@@ -326,7 +374,7 @@ export default function SigningRoom() {
                 return (
                     <div style={style}
                         onClick={() => setActiveSignatureField(field.id)}
-                        className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-1 shadow-sm transition ${isInitialed ? 'bg-orange-100 border-orange-600' : 'bg-orange-50/90 border-orange-400 hover:bg-orange-100'}`}>
+                        className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-1 shadow-sm transition ${isInitialed ? 'bg-orange-100 border-orange-600' : 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse'}`}>
                         {isInitialed ? <div className="text-orange-800 font-bold text-[10px] flex items-center gap-1"><CheckCircle size={12} /> Initialed</div> : <div className="text-orange-700 font-medium text-[10px] flex items-center gap-1"><Fingerprint size={12} /> Initial</div>}
                     </div>);
             }
@@ -342,10 +390,23 @@ export default function SigningRoom() {
                     <p className="text-xs text-gray-500">Signing as: {request?.recipientName}</p>
                 </div>
 
-                <button onClick={handleFinishSigning} disabled={submitting} className="px-6 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 transition flex items-center gap-2 disabled:opacity-50">
-                    {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                    Finish & Submit
-                </button>
+                {/* PROD-FIX: Progress counter showing remaining fields */}
+                <div className="flex items-center gap-3">
+                    {requiredFields.length > 0 && (
+                        <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${remainingCount === 0 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {remainingCount === 0 ? (
+                                <><CheckCircle size={14} /> All fields complete</>
+                            ) : (
+                                <><AlertTriangle size={14} /> {remainingCount} field{remainingCount > 1 ? 's' : ''} remaining</>
+                            )}
+                        </div>
+                    )}
+
+                    <button onClick={handleFinishSigning} disabled={submitting} className="px-6 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 transition flex items-center gap-2 disabled:opacity-50">
+                        {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
+                        Finish & Submit
+                    </button>
+                </div>
             </header>
 
             <main className="flex-1 overflow-y-auto p-8 flex justify-center bg-gray-200/50">
@@ -353,7 +414,11 @@ export default function SigningRoom() {
                     {numPages > 0 && Array.from(new Array(numPages), (el, index) => (
                         // FIX: 'inline-block' is CRITICAL here. 
                         // It forces the div to shrink to the PDF image size, making the coordinate system accurate.
-                        <div key={index} className="relative shadow-xl border border-gray-300 bg-white inline-block">
+                        <div
+                            key={index}
+                            ref={(el) => { pageRefs.current[index + 1] = el; }}
+                            className="relative shadow-xl border border-gray-300 bg-white inline-block transition-all duration-300"
+                        >
                             <Page
                                 pageNumber={index + 1}
                                 // Responsive width but max 800px
@@ -361,11 +426,25 @@ export default function SigningRoom() {
                                 renderAnnotationLayer={false}
                                 renderTextLayer={false}
                             />
-                            {(request?.fields || []).filter(f => f?.pageNumber === index + 1).map(field => <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>)}
+                            {/* PROD-FIX: Use Number() cast for type-safe comparison — prevents string/number mismatch */}
+                            {(request?.fields || []).filter(f => Number(f?.pageNumber) === index + 1).map(field => <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>)}
                         </div>
                     ))}
                 </Document>
             </main>
+
+            {/* PROD-FIX: Floating "Jump to next field" button — only shows when there are incomplete required fields */}
+            {firstIncompleteField && (
+                <div className="fixed bottom-6 right-6 z-40">
+                    <button
+                        onClick={() => scrollToField(firstIncompleteField)}
+                        className="bg-blue-600 text-white px-4 py-3 rounded-xl shadow-2xl font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition-all animate-bounce"
+                    >
+                        <ChevronDown size={18} />
+                        Jump to next field (Page {Number(firstIncompleteField.pageNumber) || 1})
+                    </button>
+                </div>
+            )}
 
             {activeSignatureField && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">

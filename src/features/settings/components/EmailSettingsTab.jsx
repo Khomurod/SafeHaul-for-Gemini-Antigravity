@@ -10,26 +10,66 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
         smtpHost: '',
         smtpPort: 587,
         smtpUser: '',
-        smtpPass: '',
-        email: '',
+        // NOTE: smtpPass is intentionally NOT stored in this state object.
+        // The password lives only in the admin-only subcollection on the server.
         signature: '',
         isVerified: false
     });
+    // Password input state — NEVER hydrated from any source, always starts empty.
+    const [smtpPassInput, setSmtpPassInput] = useState('');
+    // Tracks whether the company already has an SMTP password saved (from callable)
+    const [hasExistingPassword, setHasExistingPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [testing, setTesting] = useState(false);
     const [testResult, setTestResult] = useState(null);
     const [showGuide, setShowGuide] = useState(false);
+    const [settingsLoading, setSettingsLoading] = useState(true);
 
+    // REFACTOR: Load settings via callable — never read smtpPass from Firestore directly.
+    // The getEmailSettingsMeta callable returns sanitized data (hasPassword flag, no actual password).
     useEffect(() => {
-        if (currentCompanyProfile?.emailSettings) {
-            setEmailSettings(prev => ({
-                ...prev,
-                ...currentCompanyProfile.emailSettings,
-            }));
+        if (!currentCompanyProfile?.id) {
+            setSettingsLoading(false);
+            return;
         }
-    }, [currentCompanyProfile]);
+
+        const loadSettings = async () => {
+            setSettingsLoading(true);
+            try {
+                const getMetaFn = httpsCallable(functions, 'getEmailSettingsMeta');
+                const result = await getMetaFn({ companyId: currentCompanyProfile.id });
+
+                if (result.data?.success && result.data.settings) {
+                    const meta = result.data.settings;
+                    setEmailSettings(prev => ({
+                        ...prev,
+                        smtpHost: meta.smtpHost || '',
+                        smtpPort: meta.smtpPort || 587,
+                        smtpUser: meta.smtpUser || '',
+                        signature: meta.signature || '',
+                        isVerified: meta.isVerified || false,
+                    }));
+                    setHasExistingPassword(meta.hasPassword || false);
+                    // IMPORTANT: smtpPassInput stays empty — never hydrated
+                }
+            } catch (err) {
+                console.warn('[EmailSettingsTab] Failed to load settings meta:', err.message);
+                // Gracefully degrade — settings form still usable for first-time setup
+            } finally {
+                setSettingsLoading(false);
+            }
+        };
+
+        loadSettings();
+    }, [currentCompanyProfile?.id]);
 
     const handleTestConnection = async () => {
+        // Test connection always requires a plaintext password from user input.
+        if (!smtpPassInput) {
+            showError('Please enter your SMTP password to test the connection.');
+            return;
+        }
+
         setTesting(true);
         setTestResult(null);
 
@@ -39,15 +79,14 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                 smtpHost: emailSettings.smtpHost,
                 smtpPort: emailSettings.smtpPort,
                 smtpUser: emailSettings.smtpUser,
-                smtpPass: emailSettings.smtpPass,
+                smtpPass: smtpPassInput, // Always plaintext from user input
             });
 
             if (result.data.success) {
                 const verifiedSettings = { ...emailSettings, isVerified: true };
                 setEmailSettings(verifiedSettings);
 
-                // CONN-1/CONN-4 FIX: Auto-save via Cloud Function (encrypts password server-side)
-                // instead of direct Firestore write with plain-text password.
+                // Auto-save on successful test
                 try {
                     const saveSettingsFn = httpsCallable(functions, 'saveEmailSettings');
                     await saveSettingsFn({
@@ -55,9 +94,10 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                         smtpHost: emailSettings.smtpHost,
                         smtpPort: emailSettings.smtpPort,
                         smtpUser: emailSettings.smtpUser,
-                        smtpPass: emailSettings.smtpPass,
+                        smtpPass: smtpPassInput, // Always plaintext from user input
                         signature: emailSettings.signature,
                     });
+                    setHasExistingPassword(true); // Password now saved
                     setTestResult({ success: true, message: 'Settings verified and saved securely!' });
                     showSuccess('✅ Connection successful and settings saved!');
                 } catch (saveError) {
@@ -83,26 +123,34 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
 
     const handleSaveEmailSettings = async () => {
         // Validate required fields
-        if (!emailSettings.smtpHost || !emailSettings.smtpUser || !emailSettings.smtpPass) {
-            showError('Please fill in all SMTP fields (Host, User, Password)');
+        if (!emailSettings.smtpHost || !emailSettings.smtpUser) {
+            showError('Please fill in SMTP Host and Username.');
+            return;
+        }
+        if (!smtpPassInput && !hasExistingPassword) {
+            showError('Please enter your SMTP password.');
             return;
         }
 
         setLoading(true);
         try {
-            // CONN-1/CONN-4 FIX: Save via Cloud Function so the password is encrypted at rest.
-            // The saveEmailSettings function uses AES-256 (SMS_ENCRYPTION_KEY) before writing.
             const saveSettingsFn = httpsCallable(functions, 'saveEmailSettings');
-            await saveSettingsFn({
+            // PARTIAL UPDATE: Only include smtpPass if user entered a new one.
+            // If empty, the backend will preserve the existing password in the subcollection.
+            const payload = {
                 companyId: currentCompanyProfile.id,
                 smtpHost: emailSettings.smtpHost,
                 smtpPort: emailSettings.smtpPort,
                 smtpUser: emailSettings.smtpUser,
-                smtpPass: emailSettings.smtpPass,
                 signature: emailSettings.signature,
-            });
+            };
+            if (smtpPassInput) {
+                payload.smtpPass = smtpPassInput; // Only send plaintext if user typed a new password
+            }
+            await saveSettingsFn(payload);
+            if (smtpPassInput) setHasExistingPassword(true);
             showSuccess('Email settings saved securely!');
-            setTestResult(null); // Clear test result after save
+            setTestResult(null);
         } catch (error) {
             console.error("Error saving email settings:", error);
             showError("Failed to save email settings.");
@@ -110,6 +158,21 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
             setLoading(false);
         }
     };
+
+    // Show loading skeleton while callable fetches settings
+    if (settingsLoading) {
+        return (
+            <div className="space-y-8 max-w-4xl animate-in fade-in">
+                <div className="border-b border-gray-200 pb-4 mb-6">
+                    <h2 className="text-xl font-bold text-gray-900">Email Integration</h2>
+                    <p className="text-sm text-gray-500 mt-1">Loading email settings...</p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-center h-48">
+                    <Loader2 className="animate-spin text-blue-500" size={32} />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 max-w-4xl animate-in fade-in">
@@ -197,18 +260,24 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                             <Lock size={14} />
-                            SMTP Password <span className="text-red-500">*</span>
+                            SMTP Password {!hasExistingPassword && <span className="text-red-500">*</span>}
                         </label>
                         <input
                             type="password"
                             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={emailSettings.smtpPass || ''}
-                            onChange={e => setEmailSettings({ ...emailSettings, smtpPass: e.target.value, isVerified: false })}
-                            placeholder="••••••••••••"
+                            value={smtpPassInput}
+                            onChange={e => { setSmtpPassInput(e.target.value); setEmailSettings(prev => ({ ...prev, isVerified: false })); }}
+                            placeholder={hasExistingPassword ? 'Password is saved but hidden. Enter new to rotate.' : '••••••••••••'}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
-                            For Gmail, use an <strong>App Password</strong>, not your regular password.
-                        </p>
+                        {hasExistingPassword ? (
+                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                <CheckCircle size={12} /> Password already saved. Enter a new password only if you want to change it.
+                            </p>
+                        ) : (
+                            <p className="text-xs text-gray-500 mt-1">
+                                For Gmail, use an <strong>App Password</strong>, not your regular password.
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -217,7 +286,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                     <button
                         type="button"
                         onClick={handleTestConnection}
-                        disabled={testing || !emailSettings.smtpHost || !emailSettings.smtpUser || !emailSettings.smtpPass}
+                        disabled={testing || !emailSettings.smtpHost || !emailSettings.smtpUser || !smtpPassInput}
                         className="px-6 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all"
                     >
                         {testing ? (
@@ -264,7 +333,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                         className="w-full p-3 border border-gray-300 rounded-lg h-24 focus:ring-2 focus:ring-blue-500 outline-none"
                         value={emailSettings.signature || ''}
                         onChange={e => setEmailSettings({ ...emailSettings, signature: e.target.value })}
-                        placeholder="Best regards,&#10;[Your Name]&#10;[Your Company]"
+                        placeholder={"Best regards,\n[Your Name]\n[Your Company]"}
                     />
                     <p className="text-xs text-gray-500 mt-1">This signature will be automatically appended to all outgoing emails.</p>
                 </div>
@@ -369,7 +438,7 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
             <div className="pt-4 flex justify-end gap-3">
                 <button
                     onClick={handleSaveEmailSettings}
-                    disabled={loading || !emailSettings.smtpHost || !emailSettings.smtpUser || !emailSettings.smtpPass}
+                    disabled={loading || !emailSettings.smtpHost || !emailSettings.smtpUser || (!smtpPassInput && !hasExistingPassword)}
                     className="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all"
                 >
                     {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />}

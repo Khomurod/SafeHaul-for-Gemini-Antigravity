@@ -33,6 +33,17 @@ exports.testEmailConnection = onCall({
         );
     }
 
+    // DOUBLE-ENCRYPTION GUARD: Reject passwords that look like stored ciphertext.
+    // Strategy A: testEmailConnection only accepts plaintext credentials.
+    // If the frontend accidentally sends an encrypted value, we catch it here
+    // instead of silently failing during SMTP auth.
+    if (smtpPass.startsWith('enc:v1:')) {
+        throw new HttpsError(
+            'invalid-argument',
+            'Invalid password format. Please enter your actual SMTP password to test the connection.'
+        );
+    }
+
     console.log(`[testEmailConnection] Testing connection for user: ${smtpUser}`);
 
     try {

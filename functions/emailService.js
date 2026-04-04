@@ -42,7 +42,8 @@ function getCachedTransporter(companyId, smtpConfig) {
 
 /**
  * Shared helper: Fetch email settings for a company.
- * Checks legacy 'emailSettings' field first, then the 'system_settings/email_config' subcollection.
+ * REFACTOR: Prefers admin-only subcollection 'system_settings/email_config' (new).
+ * Falls back to legacy root 'emailSettings' field for pre-migration companies.
  * @param {string} companyId
  * @returns {Promise<{settings: object, companyName: string}>}
  */
@@ -55,16 +56,23 @@ async function getEmailSettings(companyId) {
     }
 
     const companyData = companyDoc.data();
-    // Check legacy field first, fall back to subcollection (C1/C2 FIX)
-    let emailSettings = companyData.emailSettings;
 
-    if (!emailSettings) {
-        const settingsDoc = await db.collection('companies').doc(companyId)
-            .collection('system_settings').doc('email_config').get();
-        emailSettings = settingsDoc.data() || null;
+    // PRIMARY: Read from admin-only subcollection (new location)
+    const settingsDoc = await db.collection('companies').doc(companyId)
+        .collection('system_settings').doc('email_config').get();
+
+    if (settingsDoc.exists && settingsDoc.data().smtpPass) {
+        return { settings: settingsDoc.data(), companyName: companyData.companyName || 'SafeHaul' };
     }
 
-    return { settings: emailSettings, companyName: companyData.companyName || 'SafeHaul' };
+    // LEGACY FALLBACK: Read from root emailSettings (pre-migration companies)
+    // This path handles both encrypted (enc:v1:) and legacy plaintext passwords.
+    const legacySettings = companyData.emailSettings;
+    if (legacySettings) {
+        return { settings: legacySettings, companyName: companyData.companyName || 'SafeHaul' };
+    }
+
+    return { settings: null, companyName: companyData.companyName || 'SafeHaul' };
 }
 
 /**

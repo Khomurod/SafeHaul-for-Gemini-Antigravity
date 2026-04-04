@@ -90,12 +90,18 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
 
     const getStatusBadge = (doc) => {
         if (doc.emailStatus === 'failed') {
+            // Truncate error for operator debugging without exposing sensitive internals
+            const errorDetail = doc.emailError
+                ? (doc.emailError.length > 80 ? doc.emailError.substring(0, 80) + '…' : doc.emailError)
+                : 'Email delivery failed';
             return (
                 <div className="flex flex-col gap-1">
                     <span className="inline-flex items-center w-fit gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200" title={doc.emailError || "Email Delivery Failed"}>
                         <AlertCircle size={12} /> Delivery Failed
                     </span>
-                    <span className="text-[10px] text-red-500">Check Email Settings</span>
+                    <span className="text-[10px] text-red-500 max-w-[200px] truncate" title={doc.emailError || ''}>
+                        {errorDetail}
+                    </span>
                 </div>
             );
         }

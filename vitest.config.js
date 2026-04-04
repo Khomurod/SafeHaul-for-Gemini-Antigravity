@@ -13,6 +13,13 @@ export default defineConfig({
         environment: 'happy-dom',
         setupFiles: './src/tests/setup.js',
         css: true,
+        // Exclude Jest-only backend tests — those run via `cd functions && npm test`
+        exclude: [
+            '**/node_modules/**',
+            'functions/test/bulkActions.test.js',
+            'functions/test/integration/**',
+            'functions/test/unit/rateLimiter.test.js',
+        ],
     },
     resolve: {
         alias: {

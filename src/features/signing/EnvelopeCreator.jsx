@@ -548,7 +548,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     senderId: auth.currentUser.uid,
                     senderName,
                     sendEmail,
-                    sendSms: false, // SMS sent directly by frontend callable
+                    sendSms, // Use computed value — true for 'sms' and 'both' delivery methods
                     deliveryMethod, // Audit trail
                     appBaseUrl: window.location.origin // DOMAIN FIX: Store sender's domain for backend link generation
                 });
