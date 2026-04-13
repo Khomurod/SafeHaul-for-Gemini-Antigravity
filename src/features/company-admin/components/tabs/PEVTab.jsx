@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Section } from '../application/ApplicationUI';
 import {
     Briefcase, ChevronRight, FileText, CheckCircle, AlertCircle,
@@ -46,8 +46,45 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
     const fileRef = React.useRef(null);
     const [uploadTargetIndex, setUploadTargetIndex] = useState(null);
     const [historyTargetIndex, setHistoryTargetIndex] = useState(null);
+    const [loadingResultUrl, setLoadingResultUrl] = useState(null); // Track which index is loading a signed URL
 
     const employers = useMemo(() => appData?.employers || [], [appData]);
+
+    /**
+     * Opens a PEV result file. Handles both:
+     *  - Cloud Storage paths (from portal submissions) → calls getSignedPevUrl for a fresh signed URL
+     *  - Full URLs (from manual uploads via getDownloadURL) → opens directly
+     */
+    const handleViewResult = useCallback(async (urlOrPath, index = null) => {
+        if (!urlOrPath) return;
+
+        // If it's already a full URL (https://...), open directly (manual upload case)
+        if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) {
+            window.open(urlOrPath, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        // Otherwise it's a Cloud Storage path — need to get a signed URL
+        setLoadingResultUrl(index);
+        try {
+            const getSignedUrl = httpsCallable(functions, 'getSignedPevUrl');
+            const result = await getSignedUrl({ storagePath: urlOrPath });
+            if (result.data?.url) {
+                window.open(result.data.url, '_blank', 'noopener,noreferrer');
+            } else {
+                showError('Could not retrieve the document URL.');
+            }
+        } catch (error) {
+            console.error('Error fetching signed URL:', error);
+            if (error?.code === 'functions/not-found') {
+                showError('The result file was not found in storage. It may have been deleted.');
+            } else {
+                showError('Failed to open the verification result.');
+            }
+        } finally {
+            setLoadingResultUrl(null);
+        }
+    }, [showError]);
 
     const stats = useMemo(() => {
         const total = employers.length;
@@ -318,14 +355,13 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
                                                 ) : (
                                                     <>
                                                         {vStatus.resultUrl && (
-                                                            <a
-                                                                href={vStatus.resultUrl}
-                                                                target="_blank"
-                                                                rel="noreferrer"
-                                                                className="px-4 py-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2"
+                                                            <button
+                                                                onClick={() => handleViewResult(vStatus.resultUrl, index)}
+                                                                disabled={loadingResultUrl === index}
+                                                                className="px-4 py-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2 disabled:opacity-50"
                                                             >
-                                                                <FileText size={14} /> View Result
-                                                            </a>
+                                                                {loadingResultUrl === index ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} View Result
+                                                            </button>
                                                         )}
                                                         {vStatus.verificationUrl && vStatus.status !== 'Completed' && (
                                                             <button
@@ -434,7 +470,7 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
                                                     {new Date(log.timestamp).toLocaleString()}
                                                 </p>
                                                 {log.recipient && <p className="text-slate-600 text-xs mt-1">Sent to: {log.recipient} ({log.method})</p>}
-                                                {log.url && <a href={log.url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs mt-1 hover:underline">View Uploaded Document</a>}
+                                                {log.url && <button onClick={() => handleViewResult(log.url, `history-${i}`)} disabled={loadingResultUrl === `history-${i}`} className="text-blue-600 text-xs mt-1 hover:underline flex items-center gap-1 bg-transparent border-none cursor-pointer p-0">{loadingResultUrl === `history-${i}` ? <Loader2 size={10} className="animate-spin" /> : null}View Uploaded Document</button>}
                                             </div>
                                         </div>
                                     ))
