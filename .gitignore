@@ -135,6 +135,7 @@ missing_functions.txt
 serviceAccountKey.json
 *-key.json
 functions/serviceAccountKey.json
+gha-creds-*.json
 cloud_functions.txt
 .gemini/
 .vercel/

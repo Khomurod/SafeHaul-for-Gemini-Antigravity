@@ -363,6 +363,8 @@ Custom Claims Structure:
 
 The app is deployed to **Firebase Hosting** at [truckerapp-system.web.app](https://truckerapp-system.web.app/).
 
+Pushes to `main` now deploy Hosting automatically from GitHub Actions after the existing Functions checks and frontend build pass.
+
 ```bash
 # Full deployment (frontend + functions + rules)
 firebase deploy
@@ -376,6 +378,20 @@ firebase deploy --only firestore:rules
 # Storage rules only
 firebase deploy --only storage
 ```
+
+### Automatic GitHub Hosting Deploys
+
+The workflow in `.github/workflows/main.yml` deploys Hosting only and runs this command on successful pushes to `main`:
+
+```bash
+npx firebase-tools deploy --only hosting --project truckerapp-system --non-interactive
+```
+
+One-time GitHub setup is still required:
+
+1. Create a GitHub Actions secret named `FIREBASE_SERVICE_ACCOUNT_TRUCKERAPP_SYSTEM`.
+2. Store the JSON for a Google service account that can deploy to the `truckerapp-system` Firebase project.
+3. Push or merge changes into `main`.
 
 > **Important**: When deploying Cloud Functions, deploy them **one at a time** if you have limited CPU to avoid OOM issues during build.
 
