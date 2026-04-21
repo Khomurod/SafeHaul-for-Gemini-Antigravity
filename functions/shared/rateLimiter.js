@@ -17,7 +17,7 @@ const checkRateLimit = async (key, limit, windowSeconds, failBehavior = 'open') 
     try {
         await db.runTransaction(async (t) => {
             const doc = await t.get(docRef);
-            let data = doc.data();
+            const data = doc.data();
 
             if (!doc.exists) {
                 // First request
