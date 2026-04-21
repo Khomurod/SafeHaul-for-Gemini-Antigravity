@@ -134,7 +134,7 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         // Setup Sender (SMS or Email)
         let adapter = null;
         let emailTransporter = null;
-        let senderId = sessionData.createdBy;
+        const senderId = sessionData.createdBy;
 
         if (config.method === 'sms') {
             try {
