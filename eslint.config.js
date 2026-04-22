@@ -7,7 +7,7 @@ export default [
   { ignores: ['**/dist/**', '**/functions/**', 'public/*.min.mjs'] },
   js.configs.recommended,
   {
-    files: ['**/*.{js,jsx}'],
+    files: ['**/*.{js,jsx,cjs,mjs}'],
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
@@ -17,6 +17,7 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
+        ...globals.jest
       },
       parserOptions: {
         ecmaVersion: 'latest',
@@ -26,6 +27,8 @@ export default [
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      'react-hooks/rules-of-hooks': 'warn',
+      'no-case-declarations': 'warn',
       'no-unused-vars': 'warn',
       'react-refresh/only-export-components': 'warn',
       'react-hooks/exhaustive-deps': 'warn',

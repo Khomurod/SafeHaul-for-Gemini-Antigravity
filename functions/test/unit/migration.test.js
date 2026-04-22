@@ -9,7 +9,8 @@
 const VALID_KEY = '12345678901234567890123456789012'; // 32 chars for AES-256
 
 describe('migrateEmailSettings — Decryption Logic', () => {
-    let encrypt, decrypt;
+    let encrypt;
+    let decrypt;
 
     beforeEach(() => {
         process.env.SMS_ENCRYPTION_KEY = VALID_KEY;
