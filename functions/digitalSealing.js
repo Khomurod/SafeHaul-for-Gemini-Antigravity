@@ -1,5 +1,5 @@
 // functions/digitalSealing.js
-const functions = require('firebase-functions/v1');
+const { onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const { admin, db, storage } = require('./firebaseAdmin');
 const path = require('path');
 const os = require('os');
@@ -9,14 +9,15 @@ const crypto = require('crypto'); // M2 FIX
 // Fail-fast: If pdf-lib is missing, crash immediately at cold start
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
-exports.sealDocument = functions.runWith({
-    memory: '1GB',
-    timeoutSeconds: 300
-}).firestore
-    .document('companies/{companyId}/signing_requests/{requestId}')
-    .onUpdate(async (change, context) => {
-        const newData = change.after.data();
-        const previousData = change.before.data();
+exports.sealDocument = onDocumentUpdated(
+    {
+        document: 'companies/{companyId}/signing_requests/{requestId}',
+        memory: '1GiB',
+        timeoutSeconds: 300
+    },
+    async (event) => {
+        const newData = event.data.after.data();
+        const previousData = event.data.before.data();
 
         // 1. Only run if status changed to 'pending_seal'
         if (newData.status !== 'pending_seal' || previousData.status === 'pending_seal') {
@@ -25,7 +26,7 @@ exports.sealDocument = functions.runWith({
 
         // pdf-lib is guaranteed to exist (fail-fast at cold start)
 
-        const { companyId, requestId } = context.params;
+        const { companyId, requestId } = event.params;
         const tempPdfPath = path.join(os.tmpdir(), `orig_${requestId}.pdf`);
         const outputPdfPath = path.join(os.tmpdir(), `final_${requestId}.pdf`);
         const tempSigPaths = [];
@@ -175,7 +176,7 @@ exports.sealDocument = functions.runWith({
             // and mark it 'signed', creating a legally void document.
             if (missingRequiredFields.length > 0) {
                 console.error(`[Seal] Required fields missing: ${missingRequiredFields.join(', ')}`);
-                await change.after.ref.update({
+                await event.data.after.ref.update({
                     status: 'error_sealing',
                     errorLog: `Required fields not completed: ${missingRequiredFields.join(', ')}`,
                     missingFields: missingRequiredFields,
@@ -226,7 +227,7 @@ exports.sealDocument = functions.runWith({
             const sha256 = crypto.createHash('sha256').update(Buffer.from(finalPdfBytes)).digest('hex');
 
             // 7. Update Firestore
-            await change.after.ref.update({
+            await event.data.after.ref.update({
                 status: 'signed',
                 signedPdfUrl: finalStoragePath,
                 sha256Checksum: sha256,
@@ -263,7 +264,7 @@ exports.sealDocument = functions.runWith({
 
         } catch (err) {
             console.error("Sealing Failed:", err);
-            await change.after.ref.update({ status: 'error_sealing', errorLog: err.message });
+            await event.data.after.ref.update({ status: 'error_sealing', errorLog: err.message });
         } finally {
             try {
                 if (fs.existsSync(tempPdfPath)) fs.unlinkSync(tempPdfPath);

@@ -285,7 +285,21 @@ exports.sendVerificationRequest = onCall({ cors: true }, async (request) => {
         const deadlineDate = new Date(expiresAt.toMillis()).toISOString().split('T')[0];
 
         // Determine base URL
-        const baseUrl = companyData.appUrl || 'https://app.safehaul.io';
+        let baseUrl = 'https://app.safehaul.io';
+        if (companyData.appUrl) {
+            try {
+                // Ensure the provided appUrl is actually a valid URL
+                const parsedUrl = new URL(companyData.appUrl);
+                // Basic check to ensure it uses https or is localhost for dev
+                if (parsedUrl.protocol === 'https:' || parsedUrl.hostname === 'localhost') {
+                    baseUrl = companyData.appUrl;
+                } else {
+                    logger.warn(`[PEV] Invalid protocol in company appUrl: ${companyData.appUrl}, falling back to default.`);
+                }
+            } catch (e) {
+                logger.warn(`[PEV] Invalid company appUrl format: ${companyData.appUrl}, falling back to default.`);
+            }
+        }
 
         // Create verification request document
         const verificationData = {
