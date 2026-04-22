@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   test-functions:
@@ -82,5 +83,5 @@ jobs:
       - name: Build Frontend
         run: npm run build
 
-      - name: Deploy Hosting
-        run: npx firebase-tools deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
+      - name: Deploy Firebase Hosting and Rules
+        run: npx firebase-tools deploy --only hosting,firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --non-interactive

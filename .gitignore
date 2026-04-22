@@ -136,6 +136,9 @@ serviceAccountKey.json
 *-key.json
 functions/serviceAccountKey.json
 gha-creds-*.json
+credentials.txt
+credentials-*.txt
+*credentials*.txt
 cloud_functions.txt
 .gemini/
 .vercel/
