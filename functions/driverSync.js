@@ -146,8 +146,11 @@ exports.onApplicationSubmitted = onDocumentCreated({
       }
 
       // BUG-6 FIX: Single atomic write — no intermediate "started but not completed" state
+      // TTL logic: Add an explicit expireAt field for 30 days in the future
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
       transaction.create(statusRef, {
         processedAt: admin.firestore.FieldValue.serverTimestamp(), // DEBT-4: For TTL cleanup
+        expireAt: new Date(Date.now() + thirtyDaysMs), // Firestore TTL config should target this field
         companyId,
         applicationId: appId,
       });
@@ -208,6 +211,7 @@ exports.onApplicationSubmitted = onDocumentCreated({
   await processDriverData(data, appId);
 
   // --- FAN-OUT FILES TO DQ_FILES (Fix for Recruiter Dashboard) ---
+  // Configuration-driven mapping making it trivial to add new document types
   const fileMappings = [
     { field: 'cdl-front', type: 'license_front', label: 'CDL Front' },
     { field: 'cdl-back', type: 'license_back', label: 'CDL Back' },
@@ -216,7 +220,8 @@ exports.onApplicationSubmitted = onDocumentCreated({
     { field: 'mvr-upload', type: 'mvr', label: 'MVR' },
     { field: 'mvr-consent-upload', type: 'mvr_consent', label: 'MVR Consent' },
     { field: 'drug-test-consent-upload', type: 'drug_test_consent', label: 'Drug Test Consent' },
-    { field: 'ssc-upload', type: 'ssn_card', label: 'SSN Card' }
+    { field: 'ssc-upload', type: 'ssn_card', label: 'SSN Card' },
+    { field: 'w4-upload', type: 'w4_form', label: 'W-4 Form' } // Example of how easy it is to add a new type
   ];
 
   const dqRef = appRef.collection('dq_files');
@@ -286,7 +291,8 @@ exports.onApplicationUpdated = onDocumentUpdated({
     { field: 'mvr-upload', type: 'mvr', label: 'MVR' },
     { field: 'mvr-consent-upload', type: 'mvr_consent', label: 'MVR Consent' },
     { field: 'drug-test-consent-upload', type: 'drug_test_consent', label: 'Drug Test Consent' },
-    { field: 'ssc-upload', type: 'ssn_card', label: 'SSN Card' }
+    { field: 'ssc-upload', type: 'ssn_card', label: 'SSN Card' },
+    { field: 'w4-upload', type: 'w4_form', label: 'W-4 Form' }
   ];
 
   const appRef = db.collection("companies").doc(companyId).collection("applications").doc(appId);

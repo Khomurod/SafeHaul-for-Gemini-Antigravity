@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import Step1_Contact from '../../../features/driver-app/components/application/steps/Step1_Contact';
 import Step2_Qualifications from '../../../features/driver-app/components/application/steps/Step2_Qualifications';
 import Step3_License from '../../../features/driver-app/components/application/steps/Step3_License';
@@ -10,6 +10,7 @@ import Step8_Review from '../../../features/driver-app/components/application/st
 import Step9_Consent from '../../../features/driver-app/components/application/steps/Step9_Consent';
 import { DynamicQuestionsStep } from '../../../features/driver-app/components/application/steps/DynamicQuestionsStep';
 import { initializeSignatureCanvas, clearCanvas } from '@/lib/signature';
+import { WizardProvider, useWizard } from '../../../features/driver-app/hooks/useWizardLogic';
 
 // Base page config (without custom questions)
 const basePageConfig = [
@@ -24,75 +25,21 @@ const basePageConfig = [
     { title: "Step 9: Agreements & Signature", component: Step9_Consent },
 ];
 
-const Stepper = ({
-    step, formData, updateFormData, onNavigate,
+const StepperUI = ({
+    formData, updateFormData, onNavigate,
     onPartialSubmit, onFinalSubmit, submissionStatus,
-    handleFileUpload, isUploading,
-    customQuestions = [] // NEW: Custom questions from schema
+    handleFileUpload, isUploading
 }) => {
+    const { currentConfig, currentStepIndex, progressPercent, isLastStep } = useWizard();
 
-    // Build dynamic page config with custom questions inserted
-    const pageConfig = useMemo(() => {
-        if (!customQuestions || customQuestions.length === 0) {
-            return basePageConfig.map((config, idx) => ({
-                ...config,
-                title: `Step ${idx + 1} of ${basePageConfig.length}: ${config.title.split(': ')[1]}`
-            }));
-        }
-
-        // Insert custom questions step after Step 7 (General) but before Review
-        const totalSteps = basePageConfig.length + 1;
-        const config = [];
-
-        for (let i = 0; i < basePageConfig.length; i++) {
-            const baseTitle = basePageConfig[i].title.split(': ')[1];
-
-            if (i < 7) {
-                // Steps 1-7 unchanged
-                config.push({
-                    ...basePageConfig[i],
-                    title: `Step ${i + 1} of ${totalSteps}: ${baseTitle}`
-                });
-            } else if (i === 7) {
-                // Insert Custom Questions step (Step 8)
-                config.push({
-                    title: `Step 8 of ${totalSteps}: Additional Questions`,
-                    component: DynamicQuestionsStep,
-                    isCustomStep: true,
-                    customQuestions: customQuestions
-                });
-                // Then Review becomes Step 9
-                config.push({
-                    ...basePageConfig[i],
-                    title: `Step 9 of ${totalSteps}: ${baseTitle}`
-                });
-            } else if (i === 8) {
-                // Consent becomes Step 10
-                config.push({
-                    ...basePageConfig[i],
-                    title: `Step 10 of ${totalSteps}: ${baseTitle}`
-                });
-            }
-        }
-
-        return config;
-    }, [customQuestions]);
-
-    const progressPercent = useMemo(() => {
-        return ((step + 1) / pageConfig.length) * 100;
-    }, [step, pageConfig.length]);
-
-    const currentConfig = pageConfig[step];
     const currentTitle = currentConfig?.title || "Application Step";
-    const CurrentStepComponent = currentConfig?.component;
-
-    // Check if this is the consent/signature step (last step)
-    const isSignatureStep = step === pageConfig.length - 1;
+    // For custom step, we use the imported DynamicQuestionsStep instead of defining it in config
+    const CurrentStepComponent = currentConfig?.isCustomStep ? DynamicQuestionsStep : currentConfig?.component;
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         // Initialize canvas only on the signature step
-        if (isSignatureStep) {
+        if (isLastStep) {
             setTimeout(() => {
                 initializeSignatureCanvas();
                 // Only clear canvas if there is no saved signature already
@@ -101,7 +48,7 @@ const Stepper = ({
                 }
             }, 100);
         }
-    }, [step, isSignatureStep]);
+    }, [currentStepIndex, isLastStep, formData.signature]);
 
     const barColor = submissionStatus === 'success' ? 'bg-green-600' :
         submissionStatus === 'error' ? 'bg-red-600' :
@@ -110,7 +57,7 @@ const Stepper = ({
     const barWidth = submissionStatus === 'success' ? '100%' : `${progressPercent}%`;
 
     if (!CurrentStepComponent) {
-        return <div className="p-6 text-center text-red-500">Error: Step {step + 1} not found.</div>;
+        return <div className="p-6 text-center text-red-500">Error: Step {currentStepIndex + 1} not found.</div>;
     }
 
     return (
@@ -151,6 +98,33 @@ const Stepper = ({
                 </form>
             </div>
         </>
+    );
+};
+
+const Stepper = ({
+    step, formData, updateFormData, onNavigate,
+    onPartialSubmit, onFinalSubmit, submissionStatus,
+    handleFileUpload, isUploading,
+    customQuestions = []
+}) => {
+    return (
+        <WizardProvider
+            step={step}
+            basePageConfig={basePageConfig}
+            customQuestions={customQuestions}
+            insertCustomStepAt={7}
+        >
+            <StepperUI
+                formData={formData}
+                updateFormData={updateFormData}
+                onNavigate={onNavigate}
+                onPartialSubmit={onPartialSubmit}
+                onFinalSubmit={onFinalSubmit}
+                submissionStatus={submissionStatus}
+                handleFileUpload={handleFileUpload}
+                isUploading={isUploading}
+            />
+        </WizardProvider>
     );
 };
 
