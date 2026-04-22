@@ -145,7 +145,7 @@ service cloud.firestore {
 
       // WRITE: Super Admin or Company Admin
       allow create, delete: if isSuperAdmin();
-      allow update: if isCompanyAdmin(companyId);
+      allow update: if isCompanyAdmin(companyId) || isSuperAdmin();
 
       // --- SUBCOLLECTIONS ---
 
@@ -208,6 +208,11 @@ service cloud.firestore {
         allow update: if isCompanyTeam(companyId)
           && request.resource.data.hiringStage in ['in_process', 'on_hold', 'hired', 'rejected'];
         allow delete: if isCompanyAdmin(companyId);
+      }
+
+      // FEATURE ALERTS: Tracking user interactions with scheduled deactivation warnings
+      match /feature_alerts/{alertId} {
+        allow read, write: if isCompanyTeam(companyId) || isSuperAdmin();
       }
 
       // SECURE SETTINGS: Email Config & System Keys

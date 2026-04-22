@@ -2,10 +2,12 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { CompanySidebar } from './CompanySidebar';
 import { CompanyTopbar } from './CompanyTopbar';
+import { FeatureDeactivationWarning } from '../components/FeatureDeactivationWarning';
 
 export const CompanyAppShell = () => {
     return (
         <div className="flex h-screen bg-gray-100 overflow-hidden">
+            <FeatureDeactivationWarning />
             {/* Sidebar */}
             <CompanySidebar />
 

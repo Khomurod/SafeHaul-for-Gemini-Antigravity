@@ -15,12 +15,12 @@ export function PaywallMessage({ title, message }) {
             <p className="text-gray-600 max-w-md mb-6 leading-relaxed">
                 {message || 'This feature is only available to premium subscribers.'}
             </p>
-            <a
-                href="mailto:info@safehaul.io"
+            <button
+                onClick={() => window.open('https://t.me/tomr_robins0n', '_blank')}
                 className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-lg"
             >
-                <Mail size={18} /> Contact info@safehaul.io
-            </a>
+                <Mail size={18} /> Contact Sales
+            </button>
         </div>
     );
 }

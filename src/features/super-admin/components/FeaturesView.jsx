@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { db } from '@lib/firebase';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
-import { Search, Zap, Lock, Unlock, Layers, Loader2, CheckCircle } from 'lucide-react';
+import { Search, Zap, Lock, Unlock, Layers, Loader2, CheckCircle, Calendar, X, Clock, BarChart2 } from 'lucide-react';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { collection, getDocs, query } from 'firebase/firestore';
 
 function Card({ title, icon, children, className = '' }) {
     return (
@@ -30,17 +31,120 @@ export function FeaturesView({ companyList, onDataUpdate }) {
         return companyList.filter(c => c.companyName?.toLowerCase().includes(term));
     }, [companyList, search]);
 
+    const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+    const [selectedScheduleInfo, setSelectedScheduleInfo] = useState(null);
+    const [scheduleDate, setScheduleDate] = useState('');
+    const [scheduleTime, setScheduleTime] = useState('');
+
+    const [statsModalOpen, setStatsModalOpen] = useState(false);
+    const [selectedStatsInfo, setSelectedStatsInfo] = useState(null);
+    const [alertStats, setAlertStats] = useState([]);
+    const [statsLoading, setStatsLoading] = useState(false);
+
     const toggleFeature = async (company, featureKey, currentValue) => {
         try {
             const docRef = doc(db, "companies", company.id);
             await updateDoc(docRef, {
-                [`features.${featureKey}`]: !currentValue
+                [`features.${featureKey}`]: !currentValue,
+                [`featureSchedules.${featureKey}`]: null // clear schedule if manually toggled
             });
             showSuccess(`Updated ${company.companyName}`);
             onDataUpdate();
         } catch (e) {
             console.error("Update failed:", e);
             showError("Failed to toggle feature.");
+        }
+    };
+
+    const openScheduleModal = (company, featureKey) => {
+        setSelectedScheduleInfo({ company, featureKey });
+        setScheduleDate('');
+        setScheduleTime('');
+        setScheduleModalOpen(true);
+    };
+
+    const handleScheduleDeactivation = async () => {
+        if (!scheduleDate || !scheduleTime) {
+            showError("Please select both date and time.");
+            return;
+        }
+
+        const { company, featureKey } = selectedScheduleInfo;
+        const dtStr = `${scheduleDate}T${scheduleTime}:00`;
+        const dt = new Date(dtStr);
+        if (isNaN(dt.getTime())) {
+            showError("Invalid date/time.");
+            return;
+        }
+
+        if (dt.getTime() < Date.now()) {
+            showError("Cannot schedule in the past.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const docRef = doc(db, "companies", company.id);
+            await updateDoc(docRef, {
+                [`featureSchedules.${featureKey}`]: dt.toISOString()
+            });
+            showSuccess(`Scheduled deactivation for ${company.companyName}`);
+            setScheduleModalOpen(false);
+            onDataUpdate();
+        } catch (e) {
+            console.error("Schedule failed:", e);
+            showError("Failed to schedule deactivation.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const cancelSchedule = async (company, featureKey) => {
+        try {
+            const docRef = doc(db, "companies", company.id);
+            await updateDoc(docRef, {
+                [`featureSchedules.${featureKey}`]: null
+            });
+            showSuccess(`Cancelled schedule for ${company.companyName}`);
+            onDataUpdate();
+        } catch (e) {
+            console.error("Cancel schedule failed:", e);
+            showError("Failed to cancel schedule.");
+        }
+    };
+
+    const openStatsModal = async (company, featureKey) => {
+        setSelectedStatsInfo({ company, featureKey });
+        setAlertStats([]);
+        setStatsModalOpen(true);
+        setStatsLoading(true);
+
+        try {
+            const alertsRef = collection(db, "companies", company.id, "feature_alerts");
+            const snapshot = await getDocs(alertsRef);
+
+            const statsMap = new Map();
+
+            snapshot.docs.forEach(docSnap => {
+                const data = docSnap.data();
+                if (data.featureKey === featureKey) {
+                    const email = data.userEmail || data.userId || 'Unknown';
+                    if (!statsMap.has(email)) {
+                        statsMap.set(email, { email, views: 0, dismisses: 0, salesClicks: 0 });
+                    }
+                    const userStats = statsMap.get(email);
+                    userStats.views += data.views || 0;
+                    userStats.dismisses += data.dismisses || 0;
+                    userStats.salesClicks += data.salesClicks || 0;
+                }
+            });
+
+            setAlertStats(Array.from(statsMap.values()));
+        } catch (error) {
+            console.error("Error loading stats:", error);
+            showError("Failed to load alert stats.");
+        } finally {
+            setStatsLoading(false);
         }
     };
 
@@ -77,6 +181,7 @@ export function FeaturesView({ companyList, onDataUpdate }) {
     };
 
     return (
+        <>
         <div className="space-y-6 h-full flex flex-col">
 
             <Card title="Global Feature Controls" icon={<Layers size={20} className="text-blue-600" />} className="shrink-0">
@@ -171,34 +276,83 @@ export function FeaturesView({ companyList, onDataUpdate }) {
                                 const isSearchEnabled = company.features?.searchDB === true;
                                 const isCampaignsEnabled = company.features?.campaignsEnabled === true;
 
+                                const searchSchedule = company.featureSchedules?.searchDB;
+                                const campaignsSchedule = company.featureSchedules?.campaignsEnabled;
+
                                 return (
                                     <tr key={company.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4 font-medium text-gray-900">
                                             {company.companyName}
                                         </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <button
-                                                onClick={() => toggleFeature(company, 'searchDB', isSearchEnabled)}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${isSearchEnabled ? 'bg-green-500' : 'bg-gray-200'
-                                                    }`}
-                                            >
-                                                <span
-                                                    className={`${isSearchEnabled ? 'translate-x-6' : 'translate-x-1'
-                                                        } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                                />
-                                            </button>
+                                        <td className="px-6 py-4 text-center space-y-2">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                    onClick={() => toggleFeature(company, 'searchDB', isSearchEnabled)}
+                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${isSearchEnabled ? 'bg-green-500' : 'bg-gray-200'
+                                                        }`}
+                                                >
+                                                    <span
+                                                        className={`${isSearchEnabled ? 'translate-x-6' : 'translate-x-1'
+                                                            } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                                    />
+                                                </button>
+                                                {isSearchEnabled && (
+                                                    <button
+                                                        onClick={() => openScheduleModal(company, 'searchDB')}
+                                                        className="text-gray-400 hover:text-blue-600 transition"
+                                                        title="Schedule Deactivation"
+                                                    >
+                                                        <Calendar size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {searchSchedule && (
+                                                <div className="text-xs text-orange-600 bg-orange-50 rounded px-2 py-1 flex flex-col items-center justify-center gap-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock size={12} />
+                                                        {new Date(searchSchedule).toLocaleString()}
+                                                        <button onClick={() => cancelSchedule(company, 'searchDB')} className="ml-1 hover:text-red-600"><X size={12}/></button>
+                                                    </div>
+                                                    <button onClick={() => openStatsModal(company, 'searchDB')} className="flex items-center gap-1 text-blue-600 hover:underline">
+                                                        <BarChart2 size={12} /> View Alerts
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <button
-                                                onClick={() => toggleFeature(company, 'campaignsEnabled', isCampaignsEnabled)}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${isCampaignsEnabled ? 'bg-purple-500' : 'bg-gray-200'
-                                                    }`}
-                                            >
-                                                <span
-                                                    className={`${isCampaignsEnabled ? 'translate-x-6' : 'translate-x-1'
-                                                        } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                                />
-                                            </button>
+                                        <td className="px-6 py-4 text-center space-y-2">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                    onClick={() => toggleFeature(company, 'campaignsEnabled', isCampaignsEnabled)}
+                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${isCampaignsEnabled ? 'bg-purple-500' : 'bg-gray-200'
+                                                        }`}
+                                                >
+                                                    <span
+                                                        className={`${isCampaignsEnabled ? 'translate-x-6' : 'translate-x-1'
+                                                            } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                                    />
+                                                </button>
+                                                {isCampaignsEnabled && (
+                                                    <button
+                                                        onClick={() => openScheduleModal(company, 'campaignsEnabled')}
+                                                        className="text-gray-400 hover:text-purple-600 transition"
+                                                        title="Schedule Deactivation"
+                                                    >
+                                                        <Calendar size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {campaignsSchedule && (
+                                                <div className="text-xs text-orange-600 bg-orange-50 rounded px-2 py-1 flex flex-col items-center justify-center gap-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock size={12} />
+                                                        {new Date(campaignsSchedule).toLocaleString()}
+                                                        <button onClick={() => cancelSchedule(company, 'campaignsEnabled')} className="ml-1 hover:text-red-600"><X size={12}/></button>
+                                                    </div>
+                                                    <button onClick={() => openStatsModal(company, 'campaignsEnabled')} className="flex items-center gap-1 text-blue-600 hover:underline">
+                                                        <BarChart2 size={12} /> View Alerts
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
                                     </tr>
                                 );
@@ -208,5 +362,104 @@ export function FeaturesView({ companyList, onDataUpdate }) {
                 </div>
             </Card>
         </div>
+            {scheduleModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm" onClick={() => setScheduleModalOpen(false)}>
+                    <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl border border-gray-200 flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-gray-200 flex justify-between items-center bg-orange-600 rounded-t-xl text-white">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <Clock size={24} /> Schedule Deactivation
+                            </h2>
+                            <button onClick={() => setScheduleModalOpen(false)} className="p-1 hover:bg-orange-700 rounded-full transition"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Select when you want the feature <strong>{selectedScheduleInfo?.featureKey}</strong> to be deactivated automatically for <strong>{selectedScheduleInfo?.company?.companyName}</strong>.
+                            </p>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-gray-700">Date</label>
+                                <input
+                                    type="date"
+                                    value={scheduleDate}
+                                    onChange={(e) => setScheduleDate(e.target.value)}
+                                    className="p-2 border rounded"
+                                    min={new Date().toISOString().split('T')[0]}
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-medium text-gray-700">Time</label>
+                                <input
+                                    type="time"
+                                    value={scheduleTime}
+                                    onChange={(e) => setScheduleTime(e.target.value)}
+                                    className="p-2 border rounded"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2 mt-6">
+                                <button
+                                    onClick={() => setScheduleModalOpen(false)}
+                                    className="px-4 py-2 border rounded hover:bg-gray-50 text-black"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleScheduleDeactivation}
+                                    disabled={loading || !scheduleDate || !scheduleTime}
+                                    className="px-4 py-2 bg-orange-600 text-white font-bold rounded hover:bg-orange-700 disabled:opacity-50"
+                                >
+                                    {loading ? "Scheduling..." : "Schedule"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {statsModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm" onClick={() => setStatsModalOpen(false)}>
+                    <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl border border-gray-200 flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-gray-200 flex justify-between items-center bg-blue-600 rounded-t-xl text-white shrink-0">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <BarChart2 size={24} /> Alert Interactions
+                            </h2>
+                            <button onClick={() => setStatsModalOpen(false)} className="p-1 hover:bg-blue-700 rounded-full transition"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 overflow-auto">
+                            <p className="text-sm text-gray-600 mb-4">
+                                Stats for <strong>{selectedStatsInfo?.featureKey}</strong> at <strong>{selectedStatsInfo?.company?.companyName}</strong>.
+                            </p>
+
+                            {statsLoading ? (
+                                <div className="flex justify-center p-8"><Loader2 className="animate-spin text-blue-600" size={32} /></div>
+                            ) : alertStats.length === 0 ? (
+                                <p className="text-gray-500 text-center p-8 bg-gray-50 rounded-lg">No alert interactions recorded yet.</p>
+                            ) : (
+                                <table className="w-full text-left border-collapse bg-white border border-gray-200 rounded-lg overflow-hidden">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700">User Email</th>
+                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700 text-center">Views</th>
+                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700 text-center">Dismisses (X)</th>
+                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700 text-center">Contact Sales Clicks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {alertStats.map((stat, idx) => (
+                                            <tr key={idx} className="hover:bg-gray-50">
+                                                <td className="px-4 py-2 text-sm">{stat.email}</td>
+                                                <td className="px-4 py-2 text-sm text-center">{stat.views}</td>
+                                                <td className="px-4 py-2 text-sm text-center">{stat.dismisses}</td>
+                                                <td className="px-4 py-2 text-sm text-center text-blue-600 font-bold">{stat.salesClicks}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                        <div className="p-4 border-t bg-gray-50 flex justify-end shrink-0 rounded-b-xl">
+                            <button onClick={() => setStatsModalOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
