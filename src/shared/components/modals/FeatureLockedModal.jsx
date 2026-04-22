@@ -43,32 +43,16 @@ export function FeatureLockedModal({ onClose, onGoToLeads, featureName = "Search
                             </span>
                         </div>
 
-                        <div className="w-full max-w-xs mx-auto mb-8">
-                            <div className="flex justify-between text-xs font-bold text-gray-500 uppercase mb-2">
-                                <span>Development Progress</span>
-                                <span>92%</span>
-                            </div>
-                            <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-                                <div className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 w-[92%] rounded-full relative">
-                                    <div className="absolute inset-0 bg-white/30 w-full h-full animate-[shimmer_2s_infinite]"></div>
-                                </div>
-                            </div>
-                        </div>
-
                         <p className="text-gray-600 text-lg max-w-md mx-auto mb-8 leading-relaxed">
-                            We are finalizing the global driver search engine.
-                            <br />
-                            In the meantime, you can still access high-intent drivers through our distribution system.
+                            This feature is currently turned off for your company. Please contact our Sales Team to enable it.
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center">
                             <button
-                                onClick={onGoToLeads}
-                                className="hidden flex-1 px-6 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-200 hover:-translate-y-0.5 flex items-center justify-center gap-2 group"
+                                onClick={() => window.open('https://t.me/tomr_robins0n', '_blank')}
+                                className="flex-1 px-6 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-200 hover:-translate-y-0.5 flex items-center justify-center gap-2 group"
                             >
-                                <Zap size={18} className="fill-blue-200 text-blue-100" />
-                                Go to SafeHaul Leads
-                                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                Contact Sales
                             </button>
 
                             <button

@@ -24,17 +24,25 @@ export const SearchDriversPage = () => {
                     <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Lock size={32} className="text-amber-600" />
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900 mb-2">Feature Locked</h2>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Feature Unavailable</h2>
                     <p className="text-gray-600 mb-6">
-                        The "Search for Drivers" feature is not enabled for your company.
-                        Please contact your account representative to unlock this feature.
+                        The "Search for Drivers" feature is currently turned off for your company.
+                        Please contact our Sales Team to unlock this feature.
                     </p>
-                    <button
-                        onClick={() => navigate('/company/dashboard')}
-                        className="w-full py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
-                    >
-                        Back to Dashboard
-                    </button>
+                    <div className="flex flex-col gap-3">
+                        <button
+                            onClick={() => window.open('https://t.me/tomr_robins0n', '_blank')}
+                            className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition"
+                        >
+                            Contact Sales
+                        </button>
+                        <button
+                            onClick={() => navigate('/company/dashboard')}
+                            className="w-full py-3 bg-white text-gray-700 border border-gray-300 font-semibold rounded-lg hover:bg-gray-50 transition"
+                        >
+                            Back to Dashboard
+                        </button>
+                    </div>
                 </div>
             </div>
         );

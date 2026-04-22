@@ -11,10 +11,17 @@ export function UnderDevelopmentAnimation() {
                 </div>
             </div>
             
-            <h3 className="text-2xl font-bold text-gray-800 mb-3">Under Development</h3>
+            <h3 className="text-2xl font-bold text-gray-800 mb-3">Feature Unavailable</h3>
             <p className="text-gray-500 text-center max-w-md mb-6">
-                We're working hard to bring you this feature. Check back soon!
+                This feature is currently turned off for your company. Please contact our Sales Team if you wish to enable it.
             </p>
+
+            <button
+                onClick={() => window.open('https://t.me/tomr_robins0n', '_blank')}
+                className="mb-8 px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition"
+            >
+                Contact Sales
+            </button>
             
             <div className="flex items-center gap-4 text-gray-400">
                 <div className="flex items-center gap-1 animate-bounce" style={{ animationDelay: '0ms' }}>
