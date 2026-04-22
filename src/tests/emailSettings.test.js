@@ -165,21 +165,27 @@ describe('EmailSettingsTab — Validation', () => {
     it('should allow save when password exists but input is empty (partial update)', () => {
         const smtpPassInput = '';
         const hasExistingPassword = true;
-        const isValid = 'smtp.gmail.com' && 'user@gmail.com' && (smtpPassInput || hasExistingPassword);
+        const hostValid = true;
+        const userValid = true;
+        const isValid = hostValid && userValid && (Boolean(smtpPassInput) || hasExistingPassword);
         expect(isValid).toBeTruthy();
     });
 
     it('should block save when no password exists AND input is empty', () => {
         const smtpPassInput = '';
         const hasExistingPassword = false;
-        const isValid = 'smtp.gmail.com' && 'user@gmail.com' && (smtpPassInput || hasExistingPassword);
+        const hostValid = true;
+        const userValid = true;
+        const isValid = hostValid && userValid && (Boolean(smtpPassInput) || hasExistingPassword);
         expect(isValid).toBeFalsy();
     });
 
     it('should allow save when new password is provided (first setup)', () => {
         const smtpPassInput = 'new-password';
         const hasExistingPassword = false;
-        const isValid = 'smtp.gmail.com' && 'user@gmail.com' && (smtpPassInput || hasExistingPassword);
+        const hostValid = true;
+        const userValid = true;
+        const isValid = hostValid && userValid && (Boolean(smtpPassInput) || hasExistingPassword);
         expect(isValid).toBeTruthy();
     });
 });
