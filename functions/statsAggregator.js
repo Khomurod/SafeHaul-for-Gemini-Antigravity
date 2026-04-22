@@ -73,7 +73,7 @@ async function processStatsUpdate(db, companyId, data, logId, triggerName) {
 
         const statsDoc = await transaction.get(statsRef);
 
-        const stats = statsDoc.exists ? statsDoc.data() : {
+        let stats = statsDoc.exists ? statsDoc.data() : {
             totalDials: 0,
             connected: 0,
             interested: 0,
