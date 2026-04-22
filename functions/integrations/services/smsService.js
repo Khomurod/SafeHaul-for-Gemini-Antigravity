@@ -144,7 +144,7 @@ exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) 
 
                 // 3. Send SMS
                 // Inject variables if needed (simple replacement)
-                const finalMsg = messageText.replace('[Driver Name]', leadData.firstName || 'Driver');
+                let finalMsg = messageText.replace('[Driver Name]', leadData.firstName || 'Driver');
 
                 await adapter.sendSMS(phone, finalMsg, request.auth.uid);
 

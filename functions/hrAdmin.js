@@ -93,7 +93,7 @@ exports.onMembershipWrite = onDocumentWritten({
     const userId = after ? after.userId : before?.userId;
     if (!userId) return;
 
-    const newClaims = { roles: {} };
+    let newClaims = { roles: {} };
     let isGlobalAdmin = false;
 
     try {

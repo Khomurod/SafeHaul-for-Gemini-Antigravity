@@ -186,7 +186,7 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
         const fetchLimit = limit * 3;
         const snap = await mainQuery.limit(fetchLimit).get();
 
-        const leads = [];
+        let leads = [];
 
         let excludeThreshold = null;
         let excludeForever = false;

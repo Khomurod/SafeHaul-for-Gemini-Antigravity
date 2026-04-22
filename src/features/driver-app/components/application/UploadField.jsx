@@ -50,33 +50,10 @@ const UploadField = ({
             });
         }, 200);
 
-        let attempts = 0;
-        const maxAttempts = 3;
-        let success = false;
-        let result = null;
+        try {
+            // Perform Upload
+            const result = await onUpload(name, file);
 
-        while (attempts < maxAttempts && !success) {
-            try {
-                attempts++;
-                // Perform Upload
-                result = await onUpload(name, file);
-                success = true;
-            } catch (err) {
-                console.warn(`Upload attempt ${attempts} failed:`, err);
-                if (attempts >= maxAttempts) {
-                    clearInterval(progressInterval);
-                    console.error("Upload failed in component after max attempts:", err);
-                    setStatus('error');
-                    setErrorMsg("Upload failed. Please check your connection and try again.");
-                    setProgress(0);
-                    return; // Exit the function if we hit max attempts
-                }
-                // Wait briefly before retrying
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
-            }
-        }
-
-        if (success) {
             clearInterval(progressInterval);
             setProgress(100);
             setStatus('success');
@@ -88,6 +65,13 @@ const UploadField = ({
             setTimeout(() => {
                 setStatus('idle');
             }, 1000);
+
+        } catch (err) {
+            clearInterval(progressInterval);
+            console.error("Upload failed in component:", err);
+            setStatus('error');
+            setErrorMsg("Upload failed. Please try again.");
+            setProgress(0);
         }
     };
 
