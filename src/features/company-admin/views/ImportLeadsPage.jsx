@@ -4,6 +4,8 @@ import { useData } from '@/context/DataContext';
 import { CompanyBulkUpload } from '@features/company-admin/components/CompanyBulkUpload';
 import { Upload, ShieldAlert } from 'lucide-react';
 
+import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
+
 export const ImportLeadsPage = () => {
     const { currentCompanyProfile, currentUserClaims } = useData();
     const navigate = useNavigate();
@@ -15,6 +17,10 @@ export const ImportLeadsPage = () => {
     const handleUploadComplete = () => {
         navigate('/company/drivers/leads/company');
     };
+
+    if (currentCompanyProfile?.features?.importLeads === false) {
+        return <FeatureLockedModal featureName="Import Leads" onClose={() => navigate('/company/dashboard')} />;
+    }
 
     if (!isCompanyAdmin) {
         return (

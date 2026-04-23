@@ -10,8 +10,11 @@ import { CampaignEditor } from './CampaignEditor';
 import { CampaignDetails } from './components/CampaignDetails';
 import DetailedReportModal from '../company-admin/components/DetailedReportModal';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { useData } from '@/context/DataContext';
+import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
 
 export function CampaignsDashboard({ companyId }) {
+    const { currentCompanyProfile } = useData();
     const [campaigns, setCampaigns] = useState([]);
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -20,6 +23,17 @@ export function CampaignsDashboard({ companyId }) {
     const [viewingSession, setViewingSession] = useState(null);
     const [selectedReportSessionId, setSelectedReportSessionId] = useState(null);
     const { showSuccess, showError } = useToast();
+
+    if (currentCompanyProfile?.features?.campaignsEnabled === false) {
+        return (
+            <div className="p-8">
+                <PaywallMessage
+                    title="Campaigns Module Unavailable"
+                    message="Bulk Actions and SMS Campaigns are currently turned off for your company. Please contact our Sales Team to enable this feature."
+                />
+            </div>
+        );
+    }
 
     // 1. Fetch Drafts
     useEffect(() => {

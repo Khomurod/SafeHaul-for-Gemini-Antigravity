@@ -120,18 +120,7 @@ export function CompanySettings() {
                     </div>
                 );
             case 'bulk-actions':
-                // REPLACED OLD VIEW WITH NEW CAMPAIGN DASHBOARD
-                return currentCompanyProfile?.features?.campaignsEnabled ? (
-                    <CampaignsDashboard companyId={currentCompanyProfile?.id} />
-                ) : (
-                    <div className="space-y-8 max-w-4xl animate-in fade-in">
-                        <SectionHeader title="Bulk Actions" subtitle="Manage reactivation campaigns and mass messaging." />
-                        <PaywallMessage
-                            title="Bulk Actions - Paid Feature"
-                            message="This is a paid feature. Please contact your account manager or reach out to SafeHaul at info@safehaul.io to get more information."
-                        />
-                    </div>
-                );
+                return <CampaignsDashboard companyId={currentCompanyProfile?.id} />;
             default:
                 return <div className="p-10 text-center text-gray-500">Select a tab to view settings.</div>;
         }
@@ -181,8 +170,12 @@ export function CompanySettings() {
                             <SidebarItem id="sms" label="SMS Settings" icon={MessageSquare} activeTab={activeTab} onClick={setActiveTab} />
 
                             <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Revenue & Reach</h3>
-                            <SidebarItem id="integrations" label="Integrations" icon={Blocks} activeTab={activeTab} onClick={setActiveTab} />
-                            <SidebarItem id="bulk-actions" label="Bulk Actions" icon={Megaphone} activeTab={activeTab} onClick={setActiveTab} />
+                            {currentCompanyProfile?.features?.callTracking !== false && (
+                                <SidebarItem id="integrations" label="Integrations" icon={Blocks} activeTab={activeTab} onClick={setActiveTab} />
+                            )}
+                            {currentCompanyProfile?.features?.campaignsEnabled !== false && (
+                                <SidebarItem id="bulk-actions" label="Bulk Actions" icon={Megaphone} activeTab={activeTab} onClick={setActiveTab} />
+                            )}
 
                             <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Account Control</h3>
                             <SidebarItem id="billing" label="Billing & Plan" icon={CreditCard} activeTab={activeTab} onClick={setActiveTab} />

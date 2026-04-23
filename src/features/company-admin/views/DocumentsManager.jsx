@@ -11,6 +11,8 @@ import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Sea
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
 
+import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
+
 export default function DocumentsManager() {
     const { currentCompanyProfile, loading } = useData();
     const navigate = useNavigate();
@@ -38,6 +40,10 @@ export default function DocumentsManager() {
     const [deliveryMethod, setDeliveryMethod] = useState('email'); // 'email' | 'sms' | 'both' | 'copy'
     // Template pre-fill: user can edit field values before sending
     const [prefillValues, setPrefillValues] = useState({});
+
+    if (currentCompanyProfile?.features?.eDocs === false) {
+        return <FeatureLockedModal featureName="E-Docs" onClose={() => navigate('/company/dashboard')} />;
+    }
 
     // Fetch Templates
     useEffect(() => {
