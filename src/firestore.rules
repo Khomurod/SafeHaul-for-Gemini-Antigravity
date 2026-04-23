@@ -213,7 +213,7 @@ service cloud.firestore {
 
       // FEATURE ALERTS: Tracking user interactions with scheduled deactivation warnings
       match /feature_alerts/{alertId} {
-        allow read, write: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow read, write: if isSuperAdmin() || isCompanyTeam(companyId);
       }
 
       // SECURE SETTINGS: Email Config & System Keys
