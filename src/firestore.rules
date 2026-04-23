@@ -50,6 +50,7 @@ service cloud.firestore {
     // COMPANY TEAM: HR/Recruiters (Read access + Operational Write)
     function isCompanyTeam(companyId) {
       return isSignedIn() && (
+        isSuperAdmin() ||
         isCompanyAdmin(companyId) || 
         (
           request.auth.token.keys().hasAny(['roles']) &&
