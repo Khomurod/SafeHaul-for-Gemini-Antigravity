@@ -16,6 +16,7 @@ import { db, storage, functions } from '@lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
+import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
 
 export function PEVTab({ companyId, applicationId, appData, collectionName = 'applications' }) {
     const { showSuccess, showError } = useToast();
@@ -41,6 +42,17 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
         ...baseStatuses,
         ...localOverrides
     }), [baseStatuses, localOverrides]);
+
+    if (currentCompanyProfile?.features?.pev === false) {
+        return (
+            <div className="p-8">
+                <PaywallMessage
+                    title="PEV Module Unavailable"
+                    message="The Previous Employment Verification module is currently turned off for your company. Please contact our Sales Team to enable automated VOE."
+                />
+            </div>
+        );
+    }
 
     const [uploadingResult, setUploadingResult] = useState(false);
     const fileRef = React.useRef(null);

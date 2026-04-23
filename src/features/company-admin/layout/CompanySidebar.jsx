@@ -55,7 +55,9 @@ export const CompanySidebar = () => {
     currentUserClaims?.roles?.globalRole === 'super_admin'
   );
 
-  const menuItems = [
+  const f = currentCompanyProfile?.features || {};
+
+  const rawMenuItems = [
     {
       type: 'item',
       label: 'Dashboard',
@@ -68,20 +70,22 @@ export const CompanySidebar = () => {
       id: 'applications',
       icon: Users,
       children: [
-        { label: 'Applications', path: '/company/drivers/applications', icon: FileText },
-
+        // Hide entire group? The requirement says "Driver Application" so maybe just the applications link, but it's central.
+        // We'll hide the applications link if driverApp is explicitly false.
+        // The default assumption is true if undefined, but explicit false means disabled.
+        ...(f.driverApp !== false ? [{ label: 'Applications', path: '/company/drivers/applications', icon: FileText }] : []),
         { label: 'Company Leads', path: '/company/drivers/leads/company', icon: Building2 },
         { label: 'My Leads', path: '/company/drivers/leads/my', icon: User },
         { label: 'Pipeline', path: '/company/drivers/pipeline', icon: GitBranch },
       ]
     },
     { type: 'element', element: <div className="my-2 border-t border-gray-200" /> },
-    { type: 'item', label: 'Search For Drivers', icon: Search, path: '/company/search' },
-    { type: 'item', label: 'E-Docs', icon: FileText, path: '/company/e-docs' },
+    ...(f.searchDB !== false ? [{ type: 'item', label: 'Search For Drivers', icon: Search, path: '/company/search' }] : []),
+    ...(f.eDocs !== false ? [{ type: 'item', label: 'E-Docs', icon: FileText, path: '/company/e-docs' }] : []),
 
     // Admin Only Items
     ...(isCompanyAdmin ? [
-      { type: 'item', label: 'Import Leads', icon: Upload, path: '/company/import-leads' },
+      ...(f.importLeads !== false ? [{ type: 'item', label: 'Import Leads', icon: Upload, path: '/company/import-leads' }] : []),
       { type: 'item', label: 'Quick Add Leads', icon: PlusCircle, path: '/company/quick-add-lead' },
     ] : []),
 
@@ -91,6 +95,12 @@ export const CompanySidebar = () => {
       { type: 'item', label: 'Settings', icon: Settings, path: '/company/settings' },
     ] : []),
   ];
+
+  // Clean up empty groups or consecutive dividers
+  const menuItems = rawMenuItems.filter(item => {
+      if (item.type === 'group') return item.children.length > 0;
+      return true;
+  });
 
   const NavItem = ({ item, isChild = false }) => {
     return (

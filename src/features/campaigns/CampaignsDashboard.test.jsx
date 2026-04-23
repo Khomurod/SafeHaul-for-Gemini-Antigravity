@@ -10,6 +10,12 @@ vi.mock('@shared/components/feedback/ToastProvider', () => ({
     useToast: vi.fn(() => ({ showSuccess: vi.fn(), showError: vi.fn() }))
 }));
 
+vi.mock('@/context/DataContext', () => ({
+    useData: vi.fn(() => ({
+        currentCompanyProfile: { features: { campaignsEnabled: true } }
+    }))
+}));
+
 // Mock Firestore
 const mockOnSnapshot = vi.fn();
 vi.mock('firebase/firestore', () => ({
