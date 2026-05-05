@@ -1,5 +1,3 @@
-const assert = require('assert');
-
 function checkAuth(headers, method) {
     const hasQueueHeader = headers["x-appengine-queuename"] || headers["x-cloudtasks-queuename"];
 

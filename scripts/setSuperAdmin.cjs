@@ -1,17 +1,15 @@
-const admin = require('firebase-admin');
-
 // Robust dependency loading
 let auth;
 try {
     const pkg = require('firebase-admin');
     if (!pkg.apps.length) pkg.initializeApp();
     auth = pkg.auth();
-} catch (e) {
+} catch {
     try {
         const pkg = require('../functions/node_modules/firebase-admin');
         if (!pkg.apps.length) pkg.initializeApp();
         auth = pkg.auth();
-    } catch (e2) {
+    } catch {
         console.error("Could not find firebase-admin.");
         process.exit(1);
     }

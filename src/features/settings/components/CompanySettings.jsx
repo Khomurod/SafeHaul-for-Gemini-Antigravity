@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
 import {
     Building, User, CreditCard, CheckCircle,
-    FileSignature, Blocks, ArrowLeft, Users, Mail, Facebook, Briefcase, MessageSquare, Megaphone
+    Blocks, ArrowLeft, Users, Mail, Briefcase, MessageSquare, Megaphone
 } from 'lucide-react';
 
 import { NumberAssignmentManager } from './NumberAssignmentManager';
@@ -15,8 +15,6 @@ import { PersonalProfileTab } from './PersonalProfileTab';
 import { IntegrationsTab } from './IntegrationsTab';
 import { JobPostingManager } from './hiring/JobPostingManager';
 import { ManageTeamModal } from '@shared/components/modals';
-import { UnderDevelopmentAnimation } from '@shared/components/admin/UnderDevelopmentAnimation';
-import { ESignatureAnimation } from '@shared/components/admin/ESignatureAnimation';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
 import { CampaignsDashboard } from '@features/campaigns';
 

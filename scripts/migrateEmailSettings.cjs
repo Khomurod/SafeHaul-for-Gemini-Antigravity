@@ -1,13 +1,12 @@
-const path = require('path');
 let admin;
 
 // Robust dependency loading: Try root, then functions folder
 try {
     admin = require('firebase-admin');
-} catch (e) {
+} catch {
     try {
         admin = require('../functions/node_modules/firebase-admin');
-    } catch (e2) {
+    } catch {
         console.error("Could not find firebase-admin module. Please install it or run from functions directory.");
         process.exit(1);
     }

@@ -22,7 +22,7 @@ try {
         credential: admin.credential.cert(serviceAccount),
         storageBucket
     });
-} catch (e) {
+} catch {
     // Try default if service account not found
     admin.initializeApp({ storageBucket });
 }

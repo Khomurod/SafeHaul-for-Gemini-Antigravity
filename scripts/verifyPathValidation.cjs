@@ -1,5 +1,3 @@
-const assert = require('assert');
-
 function validatePath(companyId, srcPath) {
     // Logic mirrored from functions/digitalSealing.js
     if (srcPath.startsWith('gs://')) {

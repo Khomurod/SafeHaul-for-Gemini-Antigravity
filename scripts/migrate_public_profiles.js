@@ -11,7 +11,7 @@ const serviceAccountPath = path.join(__dirname, "service-account-key.json");
 try {
     const serviceAccount = require(serviceAccountPath);
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-} catch (err) {
+} catch {
     console.error("ERROR: Could not find service-account-key.json in scripts/ directory.");
     console.error("Place your Firebase Admin SDK service account key there and try again.");
     process.exit(1);
