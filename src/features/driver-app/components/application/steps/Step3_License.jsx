@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import InputField from '@shared/components/form/InputField';
 import UploadField from '../UploadField';
 import RadioGroup from '@shared/components/form/RadioGroup';
@@ -24,6 +24,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
     const cdlUploadConfig = getConfig('cdlUpload', true);
     // Keep default in sync with applicationSchema where medical card upload is required.
     const medCardConfig = getConfig('medCardUpload', true);
+    const [validationError, setValidationError] = useState('');
 
     const licenseClassOptions = LICENSE_CLASS_OPTIONS;
     const endorsementOptions = ENDORSEMENT_OPTIONS;
@@ -41,19 +42,40 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
         updateFormData('endorsements', newEndorsements.join(','));
     };
 
-    const safeFileChange = (fieldName, file) => {
-        if (!handleFileUpload) {
-            console.error("[Step3_License] Missing handleFileUpload prop");
-            return;
+    const hasUploadedFile = (value) => {
+        if (!value) return false;
+        if (typeof value === 'string') return value.trim().length > 0;
+        if (typeof value === 'object') {
+            return Boolean(value.url || value.storagePath || value.name);
         }
-        handleFileUpload(fieldName, file);
+        return false;
+    };
+
+    const updateUploadedFile = (name, fileData) => {
+        setValidationError('');
+        updateFormData(name, fileData);
     };
 
     const handleStateChange = (name, value) => {
+        setValidationError('');
         updateFormData(name, value);
     };
 
     const handleContinue = () => {
+        setValidationError('');
+        const missingUploads = [];
+        if (!cdlUploadConfig.hidden && cdlUploadConfig.required) {
+            if (!hasUploadedFile(formData['cdl-front'])) missingUploads.push('CDL Front');
+            if (!hasUploadedFile(formData['cdl-back'])) missingUploads.push('CDL Back');
+        }
+        if (!medCardConfig.hidden && medCardConfig.required && !hasUploadedFile(formData['medical-card-upload'])) {
+            missingUploads.push('Medical Card');
+        }
+        if (missingUploads.length > 0) {
+            setValidationError(`Please upload required documents: ${missingUploads.join(', ')}.`);
+            return;
+        }
+
         const form = document.getElementById('driver-form');
         if (form) {
             if (!form.checkValidity()) {
@@ -61,6 +83,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                 return;
             }
         }
+
         onNavigate('next');
     };
 
@@ -69,6 +92,11 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
     return (
         <div id="page-3" className="form-step space-y-6">
             <h3 className="text-xl font-semibold text-gray-800">Step 3 of 9: License Information</h3>
+            {validationError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {validationError}
+                </div>
+            )}
 
             <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4">
                 <legend className="text-lg font-semibold text-gray-800 px-2">Current License Information</legend>
@@ -208,7 +236,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                             name="cdl-front"
                             value={formData['cdl-front']}
                             onUpload={handleFileUpload}
-                            onChange={(name, fileData) => updateFormData(name, fileData)}
+                            onChange={updateUploadedFile}
                             required={cdlUploadConfig.required && !formData['cdl-front']}
                         />
                         <UploadField
@@ -216,7 +244,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                             name="cdl-back"
                             value={formData['cdl-back']}
                             onUpload={handleFileUpload}
-                            onChange={(name, fileData) => updateFormData(name, fileData)}
+                            onChange={updateUploadedFile}
                             required={cdlUploadConfig.required && !formData['cdl-back']}
                         />
                     </div>
@@ -230,7 +258,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                             name="medical-card-upload"
                             value={formData['medical-card-upload']}
                             onUpload={handleFileUpload}
-                            onChange={(name, fileData) => updateFormData(name, fileData)}
+                            onChange={updateUploadedFile}
                             required={medCardConfig.required && !formData['medical-card-upload']}
                         />
                         <InputField
@@ -264,7 +292,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                             name="twic-card-upload"
                             value={formData['twic-card-upload']}
                             onUpload={handleFileUpload}
-                            onChange={(name, fileData) => updateFormData(name, fileData)}
+                            onChange={updateUploadedFile}
                         />
                     </div>
                 )}

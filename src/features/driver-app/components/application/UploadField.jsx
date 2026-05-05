@@ -53,10 +53,14 @@ const UploadField = ({
         try {
             // Perform Upload
             const result = await onUpload(name, file);
+            if (!result) {
+                throw new Error('Upload completed but no file metadata was returned.');
+            }
 
             clearInterval(progressInterval);
             setProgress(100);
             setStatus('success');
+            setErrorMsg(null);
 
             // Notify Parent
             onChange(name, result);
@@ -70,7 +74,7 @@ const UploadField = ({
             clearInterval(progressInterval);
             console.error("Upload failed in component:", err);
             setStatus('error');
-            setErrorMsg("Upload failed. Please try again.");
+            setErrorMsg(err?.message || "Upload failed. Please try again.");
             setProgress(0);
         }
     };
@@ -195,6 +199,7 @@ const UploadField = ({
                 name={name}
                 className="hidden"
                 accept={accept}
+                required={required && !hasValue}
                 onChange={handleFileSelect}
             />
         </div>

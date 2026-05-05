@@ -9,7 +9,6 @@ import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
-// ... Configuration remains the same ...
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -22,35 +21,42 @@ const firebaseConfig = {
 // Initialize Firebase with HMR safety
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// --- APP CHECK: Bot Mitigation (reCAPTCHA Enterprise) ---
-// Only initialized in PRODUCTION. On localhost, App Check is skipped entirely
-// to avoid 403 errors from unregistered debug tokens.
+// App Check bootstrapping
+// Production: initialize whenever site key is present.
+// Localhost: initialize only when debug token is explicitly provided.
 const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY;
+const appCheckDebugToken = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN;
 const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const useDebugAppCheck = Boolean(isLocalhost && appCheckDebugToken);
 
-if (recaptchaSiteKey && !isLocalhost) {
+if (useDebugAppCheck && typeof self !== 'undefined') {
+  self.FIREBASE_APPCHECK_DEBUG_TOKEN = appCheckDebugToken === 'true' ? true : appCheckDebugToken;
+}
+
+if (recaptchaSiteKey && (!isLocalhost || useDebugAppCheck)) {
   initializeAppCheck(app, {
     provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
     isTokenAutoRefreshEnabled: true
   });
-  // App Check initialized
+
+  if (useDebugAppCheck) {
+    console.info('[firebase] App Check initialized in localhost debug mode.');
+  }
 } else if (isLocalhost) {
-  // App Check skipped on localhost (production only)
+  console.info('[firebase] App Check skipped on localhost. Set VITE_FIREBASE_APPCHECK_DEBUG_TOKEN to test protected uploads.');
 } else {
-  console.warn("⚠️ App Check NOT initialized: VITE_RECAPTCHA_ENTERPRISE_SITE_KEY not set");
+  console.warn('[firebase] App Check not initialized: VITE_RECAPTCHA_ENTERPRISE_SITE_KEY is missing.');
 }
 
 export const auth = getAuth(app);
 
 // Use memory-only cache to prevent IndexedDB assertion failures.
-// P4 FIX: Removed IndexedDB deletion ("Nuclear Option") and experimentalForceLongPolling.
-// Memory cache is sufficient — data freshness is guaranteed via real-time listeners.
 let firestore;
 try {
   firestore = initializeFirestore(app, {
     localCache: memoryLocalCache(),
   });
-} catch (e) {
+} catch {
   // If already initialized (HMR), use existing instance
   firestore = getFirestore(app);
 }
@@ -58,4 +64,3 @@ try {
 export const db = firestore;
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
-

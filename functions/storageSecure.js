@@ -1,6 +1,5 @@
 const functions = require("firebase-functions/v1");
 const { getStorage } = require("firebase-admin/storage");
-const { admin, db } = require("./firebaseAdmin"); // Reuse shared instance
 const { checkRateLimit } = require("./shared/rateLimiter"); // C3 FIX
 
 // --- HELPER: Validate File Type ---
@@ -22,7 +21,7 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
         console.error('[getSignedUploadUrl] App Check token missing.');
         throw new functions.https.HttpsError(
             'failed-precondition',
-            'The function must be called from an App Check verified app.'
+            'The function must be called from an App Check verified app. For localhost testing, use a registered App Check debug token.'
         );
     }
 

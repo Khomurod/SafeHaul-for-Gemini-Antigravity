@@ -1,11 +1,10 @@
 // src/features/driver-app/components/application/PublicApplyHandler.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc, setDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, functions } from '@lib/firebase';
-import { Loader2, AlertCircle, Building2, WifiOff, RefreshCw } from 'lucide-react';
+import { db, functions } from '@lib/firebase';
+import { Loader2, AlertCircle, Building2 } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
@@ -23,6 +22,23 @@ import {
   generateApplicationId,
   generateConfirmationNumber
 } from '@lib/applicationId';
+
+const getFieldConfig = (applicationConfig, fieldId, defaultRequired = true) => {
+  const config = applicationConfig?.[fieldId];
+  return {
+    hidden: Boolean(config?.hidden),
+    required: config !== undefined ? Boolean(config.required) : defaultRequired
+  };
+};
+
+const hasUploadedFile = (value) => {
+  if (!value) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'object') {
+    return Boolean(value.url || value.storagePath || value.name);
+  }
+  return false;
+};
 
 export function PublicApplyHandler() {
   const { slug } = useParams();
@@ -44,6 +60,8 @@ export function PublicApplyHandler() {
   const customQuestions = company?.customQuestions || [];
   // #8 FIX: Dynamic consent step index based on whether custom questions exist
   const consentStepIndex = customQuestions.length > 0 ? 9 : 8;
+  const cdlUploadConfig = getFieldConfig(company?.applicationConfig, 'cdlUpload', true);
+  const medCardConfig = getFieldConfig(company?.applicationConfig, 'medCardUpload', true);
 
   // 1. Load Company Info from Slug
   useEffect(() => {
@@ -133,9 +151,13 @@ export function PublicApplyHandler() {
   };
 
   const handleFileUpload = async (fieldName, file) => {
-    if (!file) return;
+    if (!file) return null;
     setIsUploading(true);
     try {
+      if (!company?.id) {
+        throw new Error('Company context is missing.');
+      }
+
       // SECURE UPLOAD: Use Signed URL for Guests
       // 1. Get Signed URL from Backend
       const getSignedUrlFn = httpsCallable(functions, 'getSignedUploadUrl');
@@ -162,12 +184,20 @@ export function PublicApplyHandler() {
 
       if (!uploadRes.ok) throw new Error('Upload request failed');
 
-      // 3. Update Form Data
-      handleUpdateFormData(fieldName, { name: file.name, url: publicUrl, storagePath });
+      // 3. Return metadata for UploadField to persist in form state
+      const fileData = { name: file.name, url: publicUrl, storagePath };
       showSuccess("File uploaded successfully.");
+      return fileData;
     } catch (error) {
       console.error("Upload Error:", error);
-      showError("Upload failed. Please try again.");
+      if (error?.code === 'functions/failed-precondition') {
+        showError("Upload is blocked by App Check. For localhost testing, set VITE_FIREBASE_APPCHECK_DEBUG_TOKEN and register that token in Firebase App Check.");
+      } else if (error?.code === 'functions/resource-exhausted') {
+        showError("Too many upload attempts. Please wait a moment and try again.");
+      } else {
+        showError("Upload failed. Please try again.");
+      }
+      throw error;
     } finally {
       setIsUploading(false);
     }
@@ -188,6 +218,20 @@ export function PublicApplyHandler() {
   };
 
   const handleFinalSubmit = async () => {
+    const requiredUploadErrors = [];
+    if (!cdlUploadConfig.hidden && cdlUploadConfig.required) {
+      if (!hasUploadedFile(formData['cdl-front'])) requiredUploadErrors.push('CDL Front');
+      if (!hasUploadedFile(formData['cdl-back'])) requiredUploadErrors.push('CDL Back');
+    }
+    if (!medCardConfig.hidden && medCardConfig.required && !hasUploadedFile(formData['medical-card-upload'])) {
+      requiredUploadErrors.push('Medical Card');
+    }
+    if (requiredUploadErrors.length > 0) {
+      showError(`Please upload required documents before submitting: ${requiredUploadErrors.join(', ')}.`);
+      setCurrentStep(2);
+      return;
+    }
+
     // Validate signature and certification
     if (!formData.signature || !formData['final-certification']) {
       showError("Please complete the electronic signature.");
