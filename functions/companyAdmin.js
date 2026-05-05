@@ -151,7 +151,9 @@ const migrationLogic = onCall({
 }, async (request) => {
     // P1-5 FIX: Require super_admin role, not just authentication
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
-    if (!request.auth.token?.super_admin) {
+    const roles = request.auth.token?.roles || {};
+    const globalRole = request.auth.token?.globalRole || roles.globalRole;
+    if (globalRole !== 'super_admin') {
         throw new HttpsError('permission-denied', 'Super admin access required for migrations.');
     }
 

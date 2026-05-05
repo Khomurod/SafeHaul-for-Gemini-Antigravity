@@ -320,6 +320,7 @@ exports.checkImportPhones = onCall({ cors: true, memory: '256MiB' }, async (requ
 
     const { companyId, phones, excludeRecentDays } = request.data;
     if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+    await assertCompanyAdmin(request.auth.uid, companyId);
     if (!Array.isArray(phones) || phones.length === 0) return { excludedPhones: [] };
     if (!excludeRecentDays || excludeRecentDays === 'off') return { excludedPhones: [] };
 

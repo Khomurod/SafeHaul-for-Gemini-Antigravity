@@ -4,14 +4,13 @@ import { Handle, Position } from 'reactflow';
 import { Users, ChevronDown, Search, Check, X } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, limit, getCountFromServer } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
-import { APPLICATION_STATUSES, getDbValue } from '@/features/campaigns/constants/campaignConstants';
+import { APPLICATION_STATUSES, getDbValue, VirtualLeadList } from '@features/campaigns';
 
 /**
  * AudienceNode - ReactFlow node for selecting campaign targets
  */
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase/config';
-import VirtualLeadList from '@/features/campaigns/components/VirtualLeadList';
 import { createPortal } from 'react-dom';
 
 /**

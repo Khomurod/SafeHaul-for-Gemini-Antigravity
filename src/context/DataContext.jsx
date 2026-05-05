@@ -1,18 +1,20 @@
 // src/context/DataContext.jsx
 import React, { useState, useEffect, useContext, createContext, useCallback, useRef } from 'react';
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '@lib/firebase';
 import { doc, getDoc, collection, getCountFromServer } from 'firebase/firestore';
 import { SafeHaulLoader } from '@shared/components/SafeHaulLoader';
 import { CompanyChooserModal } from '@shared/components/modals';
 import { RoleSelectionModal } from '@shared/components/modals/RoleSelectionModal';
+import { SESSION_KEYS } from './dataContext/sessionKeys';
+import { extractRoleContext, getPrimaryCompanyRole } from './dataContext/claims';
 
 export const DataContext = createContext();
 
 export const useData = () => {
   const context = useContext(DataContext);
   if (!context) {
-    throw new Error("useData must be used within a DataProvider");
+    throw new Error('useData must be used within a DataProvider');
   }
   return context;
 };
@@ -31,26 +33,26 @@ export function DataProvider({ children }) {
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [selectedPortal, setSelectedPortal] = useState(null);
 
-  // P0 FIX: Auth version counter prevents stale async callbacks from overwriting logout state
+  // Prevent stale async auth callbacks from overriding state.
   const authVersionRef = useRef(0);
 
-  const loginToCompany = useCallback(async (companyId, role, isAutoLogin = false) => {
+  const loginToCompany = useCallback(async (companyId, _role, isAutoLogin = false) => {
     if (!isAutoLogin) setLoading(true);
     try {
-      const companyDoc = await getDoc(doc(db, "companies", companyId));
+      const companyDoc = await getDoc(doc(db, 'companies', companyId));
       if (companyDoc.exists()) {
         const companyData = { id: companyDoc.id, ...companyDoc.data() };
         setCurrentCompanyProfile(companyData);
-        localStorage.setItem('selectedCompanyId', companyId);
+        localStorage.setItem(SESSION_KEYS.SELECTED_COMPANY_ID, companyId);
         setShowCompanyChooser(false);
       } else {
-        console.warn("Saved company ID no longer exists.");
-        localStorage.removeItem('selectedCompanyId');
+        console.warn('Saved company ID no longer exists.');
+        localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
         if (isAutoLogin) setShowCompanyChooser(true);
       }
     } catch (error) {
-      console.error("Error logging into company:", error);
-      localStorage.removeItem('selectedCompanyId');
+      console.error('Error logging into company:', error);
+      localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
     } finally {
       if (!isAutoLogin) setLoading(false);
     }
@@ -58,116 +60,10 @@ export function DataProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // P0 FIX: Increment version on every auth state change. If another callback fires
-      // while we're awaiting, the old callback will detect version mismatch and bail.
       const thisVersion = ++authVersionRef.current;
 
       try {
-        if (user) {
-          // P0 FIX: Set loading true on subsequent auth changes to prevent stale renders
-          setLoading(true);
-
-          // 1. Get Claims
-          const idTokenResult = await user.getIdTokenResult();
-          if (authVersionRef.current !== thisVersion) return; // Stale — bail
-
-          const claims = idTokenResult.claims;
-
-          const roles = claims.roles || {};
-          const companyRoleKeys = Object.keys(roles).filter(k => k !== 'globalRole');
-
-          // P1 FIX: Removed client-side super admin email fallback — only trust Firebase Custom Claims
-          const isSuperAdmin = claims.globalRole === 'super_admin' || roles.globalRole === 'super_admin';
-
-          const hasCompanyRoles = companyRoleKeys.length > 0;
-
-          // 2. Check Driver Profile
-          const driverDoc = await getDoc(doc(db, "drivers", user.uid));
-          if (authVersionRef.current !== thisVersion) return; // Stale — bail
-
-          const isDriver = driverDoc.exists();
-
-          // Only set state if this is still the current auth version
-          setCurrentUser(user);
-          setCurrentUserClaims(claims);
-          setHasDriverProfile(isDriver);
-          setHasEmployerProfile(isSuperAdmin || hasCompanyRoles);
-
-          // 3. Cache Platform Stats (Super Admin Only)
-          if (isSuperAdmin) {
-            try {
-              const [companiesSnap, driversSnap] = await Promise.all([
-                getCountFromServer(collection(db, "companies")),
-                getCountFromServer(collection(db, "drivers"))
-              ]);
-              if (authVersionRef.current !== thisVersion) return;
-              const platformStats = {
-                companies: companiesSnap.data().count || 0,
-                drivers: driversSnap.data().count || 0,
-                updatedAt: Date.now()
-              };
-              localStorage.setItem('platformStats', JSON.stringify(platformStats));
-            } catch (statsErr) {
-              console.warn("Could not cache platform stats:", statsErr);
-            }
-          }
-
-          // 4. Determine Initial State / Redirection
-          const savedPortal = localStorage.getItem('selectedPortal');
-
-          if (isSuperAdmin) {
-            setUserRole('super_admin');
-            setSelectedPortal('employer');
-
-            const savedCompanyId = localStorage.getItem('selectedCompanyId');
-            if (savedCompanyId) {
-              await loginToCompany(savedCompanyId, null, true);
-            }
-          } else if (isDriver && hasCompanyRoles) {
-            if (savedPortal === 'driver') {
-              setUserRole('driver');
-              setSelectedPortal('driver');
-            } else if (savedPortal === 'employer') {
-              // P2 FIX: Surface the actual granular role instead of always 'company_admin'
-              const firstCompanyKey = companyRoleKeys[0];
-              const actualRole = roles[firstCompanyKey] || 'company_admin';
-              setUserRole(actualRole);
-              setSelectedPortal('employer');
-
-              const savedCompanyId = localStorage.getItem('selectedCompanyId');
-              if (savedCompanyId) {
-                await loginToCompany(savedCompanyId, null, true);
-              } else {
-                setShowCompanyChooser(true);
-              }
-            } else {
-              setShowRoleSelection(true);
-              setUserRole(null);
-            }
-          } else if (hasCompanyRoles) {
-            // P2 FIX: Surface the actual granular role
-            const firstCompanyKey = companyRoleKeys[0];
-            const actualRole = roles[firstCompanyKey] || 'company_admin';
-            setUserRole(actualRole);
-            setSelectedPortal('employer');
-
-            const savedCompanyId = localStorage.getItem('selectedCompanyId');
-            if (savedCompanyId) {
-              await loginToCompany(savedCompanyId, null, true);
-            } else {
-              setShowCompanyChooser(true);
-            }
-          } else if (isDriver) {
-            setUserRole('driver');
-            setSelectedPortal('driver');
-          } else {
-            // Fallback for users with no clear role yet
-            setUserRole('driver');
-            setSelectedPortal('driver');
-          }
-
-        } else {
-          // No User — clean up all state
+        if (!user) {
           setCurrentUser(null);
           setCurrentUserClaims(null);
           setCurrentCompanyProfile(null);
@@ -177,12 +73,106 @@ export function DataProvider({ children }) {
           setHasEmployerProfile(false);
           setShowRoleSelection(false);
           setSelectedPortal(null);
-          localStorage.removeItem('selectedCompanyId');
-          localStorage.removeItem('selectedPortal');
-          localStorage.removeItem('platformStats');
+          localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
+          localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
+          localStorage.removeItem(SESSION_KEYS.PLATFORM_STATS);
+          return;
         }
+
+        setLoading(true);
+
+        const idTokenResult = await user.getIdTokenResult();
+        if (authVersionRef.current !== thisVersion) return;
+
+        const claims = idTokenResult.claims;
+        const { roles, hasCompanyRoles, isSuperAdmin } = extractRoleContext(claims);
+
+        const driverDoc = await getDoc(doc(db, 'drivers', user.uid));
+        if (authVersionRef.current !== thisVersion) return;
+        const isDriver = driverDoc.exists();
+
+        setCurrentUser(user);
+        setCurrentUserClaims(claims);
+        setHasDriverProfile(isDriver);
+        setHasEmployerProfile(isSuperAdmin || hasCompanyRoles);
+
+        if (isSuperAdmin) {
+          try {
+            const [companiesSnap, driversSnap] = await Promise.all([
+              getCountFromServer(collection(db, 'companies')),
+              getCountFromServer(collection(db, 'drivers')),
+            ]);
+            if (authVersionRef.current !== thisVersion) return;
+            const platformStats = {
+              companies: companiesSnap.data().count || 0,
+              drivers: driversSnap.data().count || 0,
+              updatedAt: Date.now(),
+            };
+            localStorage.setItem(SESSION_KEYS.PLATFORM_STATS, JSON.stringify(platformStats));
+          } catch (statsErr) {
+            console.warn('Could not cache platform stats:', statsErr);
+          }
+        }
+
+        const savedPortal = localStorage.getItem(SESSION_KEYS.SELECTED_PORTAL);
+
+        if (isSuperAdmin) {
+          setUserRole('super_admin');
+          setSelectedPortal('employer');
+          const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
+          if (savedCompanyId) {
+            await loginToCompany(savedCompanyId, null, true);
+          }
+          return;
+        }
+
+        if (isDriver && hasCompanyRoles) {
+          if (savedPortal === 'driver') {
+            setUserRole('driver');
+            setSelectedPortal('driver');
+            return;
+          }
+
+          if (savedPortal === 'employer') {
+            setUserRole(getPrimaryCompanyRole(claims));
+            setSelectedPortal('employer');
+            const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
+            if (savedCompanyId) {
+              await loginToCompany(savedCompanyId, null, true);
+            } else {
+              setShowCompanyChooser(true);
+            }
+            return;
+          }
+
+          setShowRoleSelection(true);
+          setUserRole(null);
+          return;
+        }
+
+        if (hasCompanyRoles) {
+          setUserRole(getPrimaryCompanyRole(claims));
+          setSelectedPortal('employer');
+          const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
+          if (savedCompanyId) {
+            await loginToCompany(savedCompanyId, null, true);
+          } else {
+            setShowCompanyChooser(true);
+          }
+          return;
+        }
+
+        if (isDriver) {
+          setUserRole('driver');
+          setSelectedPortal('driver');
+          return;
+        }
+
+        // Fallback for users with no explicit claim mapping yet.
+        setUserRole(roles.globalRole || 'driver');
+        setSelectedPortal('driver');
       } catch (error) {
-        console.error("Error initializing user data:", error);
+        console.error('Error initializing user data:', error);
       } finally {
         if (authVersionRef.current === thisVersion) {
           setLoading(false);
@@ -197,31 +187,29 @@ export function DataProvider({ children }) {
 
   const handlePortalSelection = async (portal) => {
     setSelectedPortal(portal);
-    localStorage.setItem('selectedPortal', portal);
+    localStorage.setItem(SESSION_KEYS.SELECTED_PORTAL, portal);
     setShowRoleSelection(false);
 
     if (portal === 'driver') {
       setUserRole('driver');
       window.location.href = '/driver/dashboard';
+      return;
+    }
+
+    const actualRole = getPrimaryCompanyRole(currentUserClaims || {});
+    setUserRole(actualRole);
+
+    const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
+    if (savedCompanyId) {
+      await loginToCompany(savedCompanyId, null, true);
+      window.location.href = '/company/dashboard';
     } else {
-      // P2 FIX: Use the actual role from claims instead of always 'company_admin'
-      const roles = currentUserClaims?.roles || {};
-      const companyRoleKeys = Object.keys(roles).filter(k => k !== 'globalRole');
-      const firstCompanyKey = companyRoleKeys[0];
-      const actualRole = roles[firstCompanyKey] || 'company_admin';
-      setUserRole(actualRole);
-      const savedCompanyId = localStorage.getItem('selectedCompanyId');
-      if (savedCompanyId) {
-        await loginToCompany(savedCompanyId, null, true);
-        window.location.href = '/company/dashboard';
-      } else {
-        setShowCompanyChooser(true);
-      }
+      setShowCompanyChooser(true);
     }
   };
 
   const switchPortal = () => {
-    localStorage.removeItem('selectedPortal');
+    localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
     setSelectedPortal(null);
     setUserRole(null);
     setShowRoleSelection(true);
@@ -230,17 +218,17 @@ export function DataProvider({ children }) {
   const handleLogout = async () => {
     try {
       await auth.signOut();
-      localStorage.removeItem('selectedCompanyId');
-      localStorage.removeItem('selectedPortal');
+      localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
+      localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
       window.location.href = '/login';
     } catch (e) {
-      console.error("Logout failed", e);
+      console.error('Logout failed', e);
     }
   };
 
   const returnToCompanyChooser = () => {
     setCurrentCompanyProfile(null);
-    localStorage.removeItem('selectedCompanyId');
+    localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
     setShowCompanyChooser(true);
   };
 
@@ -263,6 +251,7 @@ export function DataProvider({ children }) {
     setCurrentCompanyProfile,
     loginToCompany,
     handleLogout,
+    logout: handleLogout,
     returnToCompanyChooser,
     setShowCompanyChooser,
     loading,
@@ -270,7 +259,7 @@ export function DataProvider({ children }) {
     hasEmployerProfile,
     selectedPortal,
     switchPortal,
-    canSwitchPortals: hasDriverProfile && hasEmployerProfile
+    canSwitchPortals: hasDriverProfile && hasEmployerProfile,
   };
 
   return (

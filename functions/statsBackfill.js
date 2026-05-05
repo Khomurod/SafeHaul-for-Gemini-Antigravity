@@ -13,6 +13,11 @@ const { checkRateLimit } = require("./shared/rateLimiter");
 const CONTACT_OUTCOMES = new Set(['interested', 'callback', 'not_qualified', 'not_interested', 'hired_elsewhere']);
 const MAX_DAYS_BACK = 730; // 2 years
 
+function hasSuperAdminRole(claims = {}) {
+    const globalRole = claims.globalRole || claims.roles?.globalRole;
+    return globalRole === 'super_admin';
+}
+
 /**
  * Build stats for a single day's activities.
  */
@@ -182,7 +187,7 @@ exports.backfillCompanyStats = onCall(
         // Only super admins can run backfills
         const userRecord = await admin.auth().getUser(request.auth.uid);
         const claims = userRecord.customClaims || {};
-        if (claims.globalRole !== 'super_admin') {
+        if (!hasSuperAdminRole(claims)) {
             throw new HttpsError('permission-denied', 'Super admin access required.');
         }
 
@@ -211,7 +216,7 @@ exports.backfillAllStats = onCall(
         // Only super admins can run bulk backfills
         const userRecord = await admin.auth().getUser(request.auth.uid);
         const claims = userRecord.customClaims || {};
-        if (claims.globalRole !== 'super_admin') {
+        if (!hasSuperAdminRole(claims)) {
             throw new HttpsError('permission-denied', 'Super admin access required.');
         }
 

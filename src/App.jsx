@@ -2,39 +2,26 @@
 import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { DataProvider, useData } from '@/context/DataContext';
-import { ToastProvider, ErrorBoundary, GlobalLoadingState } from '@shared/components/feedback';
+import {
+  ToastProvider,
+  ErrorBoundary,
+  FeatureErrorBoundary,
+  GlobalLoadingState,
+} from '@shared/components/feedback';
 import { QueueStatusIndicator } from '@shared/components/feedback/QueueStatusIndicator';
 import { DiscontinuedLeadsPopup } from '@shared/components/modals/DiscontinuedLeadsPopup';
+import { featureScreens, companyChildRouteDefs } from '@app/routes/featureRegistry';
 
 // Keep Auth screens eager-loaded as they are the entry point
 import { LoginScreen, TeamMemberSignup } from '@features/auth';
 
-// --- LAZY LOADED FEATURES (Performance Optimization) ---
-const SuperAdminDashboard = React.lazy(() => import('@features/super-admin/components/SuperAdminDashboard').then(m => ({ default: m.SuperAdminDashboard })));
-const CompanyAdminDashboard = React.lazy(() => import('@features/company-admin/components/CompanyAdminDashboard').then(m => ({ default: m.CompanyAdminDashboard })));
-const CompanyAppShell = React.lazy(() => import('@features/company-admin/layout/CompanyAppShell').then(m => ({ default: m.CompanyAppShell })));
-const CompanyCandidatesListPage = React.lazy(() => import('@features/company-admin/views/CompanyCandidatesListPage').then(m => ({ default: m.CompanyCandidatesListPage })));
-const SearchDriversPage = React.lazy(() => import('@features/company-admin/views/SearchDriversPage').then(m => ({ default: m.SearchDriversPage })));
-const ImportLeadsPage = React.lazy(() => import('@features/company-admin/views/ImportLeadsPage').then(m => ({ default: m.ImportLeadsPage })));
-const QuickAddLeadPage = React.lazy(() => import('@features/company-admin/views/QuickAddLeadPage').then(m => ({ default: m.QuickAddLeadPage })));
-const PipelineSheetPage = React.lazy(() => import('@features/company-admin/views/PipelineSheetPage').then(m => ({ default: m.PipelineSheetPage })));
-const UserProfilePage = React.lazy(() => import('@features/company-admin/views/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
-const CompanySettings = React.lazy(() => import('@features/settings/components/CompanySettings').then(m => ({ default: m.CompanySettings })));
-const DriverDashboard = React.lazy(() => import('@features/driver-app/components/DriverDashboard').then(m => ({ default: m.DriverDashboard })));
-const DriverApplicationWizard = React.lazy(() => import('@features/driver-app/components/application/DriverApplicationWizard').then(m => ({ default: m.DriverApplicationWizard })));
-const PublicApplyHandler = React.lazy(() => import('@features/driver-app/components/application/PublicApplyHandler').then(m => ({ default: m.PublicApplyHandler })));
-
-// --- NEW: INTEREST PAGE (DriverReach/Tenstreet Feature) ---
-const InterestPage = React.lazy(() => import('@features/driver-app/components/InterestPage').then(m => ({ default: m.InterestPage })));
-
-// --- DIGITAL SIGNATURE FEATURES ---
-const SigningRoom = React.lazy(() => import('@features/signing/SigningRoom'));
-
-// --- EMPLOYMENT VERIFICATION PORTAL (Public) ---
-const VerificationPortal = React.lazy(() => import('@features/verification/VerificationPortal'));
-
-// NEW: The Documents Dashboard (Replaces CreateEnvelopePage)
-const DocumentsManager = React.lazy(() => import('@features/company-admin/views/DocumentsManager'));
+function withFeatureBoundary(featureName, element) {
+  return (
+    <FeatureErrorBoundary featureName={featureName}>
+      {element}
+    </FeatureErrorBoundary>
+  );
+}
 
 // --- ROUTE GUARDS ---
 function RootRedirect() {
@@ -72,6 +59,26 @@ function ProtectedRoute({ children, allowedRoles }) {
 // --- MAIN ROUTER ---
 function AppRoutes() {
   const { currentCompanyProfile } = useData();
+  const {
+    superAdminDashboard: SuperAdminDashboardScreen,
+    companyAppShell: CompanyAppShellScreen,
+    publicApplyHandler: PublicApplyHandlerScreen,
+    interestPage: InterestPageScreen,
+    signingRoom: SigningRoomScreen,
+    verificationPortal: VerificationPortalScreen,
+    driverDashboard: DriverDashboardScreen,
+    driverApplicationWizard: DriverApplicationWizardScreen,
+  } = featureScreens;
+
+  const superAdminElement = withFeatureBoundary(
+    'Super Admin',
+    <SuperAdminDashboardScreen />,
+  );
+
+  const companyLayoutElement = withFeatureBoundary(
+    'Company Workspace',
+    <CompanyAppShellScreen />,
+  );
 
   return (
     <Suspense fallback={<GlobalLoadingState />}>
@@ -82,23 +89,35 @@ function AppRoutes() {
         <Route path="/join/:companyId" element={<TeamMemberSignup />} />
 
         {/* Public Driver Routes */}
-        <Route path="/apply/:slug" element={<PublicApplyHandler />} />
+        <Route
+          path="/apply/:slug"
+          element={withFeatureBoundary('Driver Application', <PublicApplyHandlerScreen />)}
+        />
 
         {/* FIX: New route for personalized recruiter invites */}
-        <Route path="/interest/:slug" element={<InterestPage />} />
+        <Route
+          path="/interest/:slug"
+          element={withFeatureBoundary('Interest Page', <InterestPageScreen />)}
+        />
 
         {/* Signing Room (Publicly Accessible via Token) */}
-        <Route path="/sign/:companyId/:requestId" element={<SigningRoom />} />
+        <Route
+          path="/sign/:companyId/:requestId"
+          element={withFeatureBoundary('E-Signature Room', <SigningRoomScreen />)}
+        />
 
         {/* Employment Verification Portal (Publicly Accessible via Token) */}
-        <Route path="/verify/:token" element={<VerificationPortal />} />
+        <Route
+          path="/verify/:token"
+          element={withFeatureBoundary('Verification Portal', <VerificationPortalScreen />)}
+        />
 
         {/* --- PROTECTED ROUTES (Login Required) --- */}
 
         {/* Super Admin */}
         <Route path="/super-admin/*" element={
           <ProtectedRoute allowedRoles={['super_admin']}>
-            <SuperAdminDashboard />
+            {superAdminElement}
           </ProtectedRoute>
         } />
 
@@ -106,45 +125,58 @@ function AppRoutes() {
         {/* Company Admin / HR */}
         <Route path="/company" element={
           <ProtectedRoute allowedRoles={['company_admin', 'super_admin', 'hr_user', 'recruiter']}>
-            <CompanyAppShell />
+            {companyLayoutElement}
           </ProtectedRoute>
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={
-            currentCompanyProfile ? <CompanyAdminDashboard /> : <div className="min-h-screen flex items-center justify-center text-white">Please select a company.</div>
-          } />
+          {companyChildRouteDefs.map((routeDef) => {
+            const Screen = featureScreens[routeDef.screen];
+            if (!Screen) return null;
 
-          {/* Placeholder Routes for New Structure */}
-          <Route path="drivers/applications" element={<CompanyCandidatesListPage scope="applications" />} />
-          <Route path="drivers/leads/safehaul" element={<CompanyCandidatesListPage scope="find_driver" />} />
-          <Route path="drivers/leads/company" element={<CompanyCandidatesListPage scope="company_leads" />} />
-          <Route path="drivers/leads/my" element={<CompanyCandidatesListPage scope="my_leads" />} />
-          <Route path="drivers/pipeline" element={<PipelineSheetPage />} />
+            if (routeDef.path === 'settings' && !currentCompanyProfile) {
+              return (
+                <Route
+                  key={routeDef.path}
+                  path={routeDef.path}
+                  element={<Navigate to="/company/dashboard" />}
+                />
+              );
+            }
 
-          <Route path="search" element={<SearchDriversPage />} />
-          <Route path="e-docs" element={<DocumentsManager />} />
-          <Route path="import-leads" element={<ImportLeadsPage />} />
-          <Route path="quick-add-lead" element={<QuickAddLeadPage />} />
-          <Route path="profile" element={<UserProfilePage />} />
-          <Route path="settings" element={currentCompanyProfile ? <CompanySettings /> : <Navigate to="/company/dashboard" />} />
+            const content = routeDef.requiresCompanyProfile && !currentCompanyProfile
+              ? (
+                <div className="min-h-screen flex items-center justify-center text-gray-700">
+                  Please select a company.
+                </div>
+                )
+              : <Screen {...(routeDef.props || {})} />;
+
+            return (
+              <Route
+                key={routeDef.path}
+                path={routeDef.path}
+                element={withFeatureBoundary(routeDef.featureName, content)}
+              />
+            );
+          })}
         </Route>
 
         {/* Driver App */}
         <Route path="/driver/dashboard" element={
           <ProtectedRoute allowedRoles={['driver']}>
-            <DriverDashboard />
+            {withFeatureBoundary('Driver Dashboard', <DriverDashboardScreen />)}
           </ProtectedRoute>
         } />
 
         <Route path="/driver/apply" element={
           <ProtectedRoute allowedRoles={['driver']}>
-            <DriverApplicationWizard />
+            {withFeatureBoundary('Driver Application', <DriverApplicationWizardScreen />)}
           </ProtectedRoute>
         } />
 
         <Route path="/driver/apply/:companyId" element={
           <ProtectedRoute allowedRoles={['driver']}>
-            <DriverApplicationWizard />
+            {withFeatureBoundary('Driver Application', <DriverApplicationWizardScreen />)}
           </ProtectedRoute>
         } />
 

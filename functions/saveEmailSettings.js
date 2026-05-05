@@ -43,7 +43,8 @@ exports.saveEmailSettings = onCall(
             const userRecord = await admin.auth().getUser(request.auth.uid);
             const claims = userRecord.customClaims || {};
             const hasCompanyRole = claims.roles && claims.roles[companyId];
-            const isSuperAdmin = claims.globalRole === 'super_admin';
+            const globalRole = claims.globalRole || claims.roles?.globalRole;
+            const isSuperAdmin = globalRole === 'super_admin';
 
             if (!hasCompanyRole && !isSuperAdmin) {
                 const memberSnap = await db.collection('companies').doc(companyId)
@@ -57,8 +58,9 @@ exports.saveEmailSettings = onCall(
                 }
             }
         } catch (authErr) {
-            if (authErr.code === 'functions/permission-denied') throw authErr;
-            console.warn('[saveEmailSettings] Auth check error:', authErr.message);
+            if (authErr?.code === 'permission-denied' || authErr?.code === 'functions/permission-denied') throw authErr;
+            console.warn('[saveEmailSettings] Auth check failed:', authErr?.message || authErr);
+            throw new HttpsError('internal', 'Unable to verify company access.');
         }
 
         // Reference to the admin-only subcollection document

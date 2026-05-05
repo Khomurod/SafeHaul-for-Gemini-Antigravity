@@ -15,6 +15,7 @@ import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
 
 export function CampaignsDashboard({ companyId }) {
     const { currentCompanyProfile } = useData();
+    const isCampaignsEnabled = currentCompanyProfile?.features?.campaignsEnabled !== false;
     const [campaigns, setCampaigns] = useState([]);
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -24,20 +25,9 @@ export function CampaignsDashboard({ companyId }) {
     const [selectedReportSessionId, setSelectedReportSessionId] = useState(null);
     const { showSuccess, showError } = useToast();
 
-    if (currentCompanyProfile?.features?.campaignsEnabled === false) {
-        return (
-            <div className="p-8">
-                <PaywallMessage
-                    title="Campaigns Module Unavailable"
-                    message="Bulk Actions and SMS Campaigns are currently turned off for your company. Please contact our Sales Team to enable this feature."
-                />
-            </div>
-        );
-    }
-
     // 1. Fetch Drafts
     useEffect(() => {
-        if (!companyId) return;
+        if (!companyId || !isCampaignsEnabled) return;
         const q = query(
             collection(db, 'companies', companyId, 'campaign_drafts'),
             orderBy('updatedAt', 'desc')
@@ -47,11 +37,11 @@ export function CampaignsDashboard({ companyId }) {
             setLoading(false);
         });
         return () => unsub();
-    }, [companyId]);
+    }, [companyId, isCampaignsEnabled]);
 
     // 1b. Fetch Live/Past Sessions
     useEffect(() => {
-        if (!companyId) return;
+        if (!companyId || !isCampaignsEnabled) return;
         const q = query(
             collection(db, 'companies', companyId, 'bulk_sessions'),
             orderBy('createdAt', 'desc')
@@ -73,7 +63,18 @@ export function CampaignsDashboard({ companyId }) {
             }));
         });
         return () => unsub();
-    }, [companyId]);
+    }, [companyId, isCampaignsEnabled]);
+
+    if (!isCampaignsEnabled) {
+        return (
+            <div className="p-8">
+                <PaywallMessage
+                    title="Campaigns Module Unavailable"
+                    message="Bulk Actions and SMS Campaigns are currently turned off for your company. Please contact our Sales Team to enable this feature."
+                />
+            </div>
+        );
+    }
 
     // Stats Calculation
     const liveCount = sessions.filter(s => ['active', 'queued', 'scheduled'].includes(s.status)).length;

@@ -48,7 +48,9 @@ const assertCompanyAdmin = async (userId, companyId) => {
 
         try {
             const userRecord = await admin.auth().getUser(userId);
-            if (userRecord.customClaims && userRecord.customClaims.globalRole === 'super_admin') return;
+            const claims = userRecord.customClaims || {};
+            const globalRole = claims.globalRole || claims.roles?.globalRole;
+            if (globalRole === 'super_admin') return;
         } catch (e) { /* ignore and fall through */ }
         if (userData.role === 'admin') return;
         if (userData.companyId === companyId) return;

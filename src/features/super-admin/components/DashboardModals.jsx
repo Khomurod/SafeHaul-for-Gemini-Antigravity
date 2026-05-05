@@ -6,7 +6,7 @@ import {
     DeleteCompanyModal,
     DeleteUserModal
 } from './modals';
-import { DriverProfileModal } from '@features/company-admin/components/modals/driver-dossier/DriverProfileModal';
+import { DriverProfileModal } from '@features/company-admin';
 
 export function DashboardModals({
     // Modal States

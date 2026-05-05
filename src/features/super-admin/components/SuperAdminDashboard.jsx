@@ -9,11 +9,12 @@ import { SuperAdminSidebar } from './SuperAdminSidebar.jsx';
 import { DashboardHeader } from './DashboardHeader';
 import { ViewRouter } from './ViewRouter';
 import { DashboardModals } from './DashboardModals';
+import { SUPER_ADMIN_VIEWS } from '../config/views';
 
 export function SuperAdminDashboard() {
   const { handleLogout } = useData();
   const { showSuccess, showError, showInfo } = useToast();
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(SUPER_ADMIN_VIEWS.DASHBOARD);
 
   const {
     searchResults,
@@ -205,11 +206,11 @@ export function SuperAdminDashboard() {
               selectedIntegrationCompany={selectedIntegrationCompany}
               onSelectIntegrationCompany={(company) => {
                 setSelectedIntegrationCompany(company);
-                setActiveView('integration-setup');
+                setActiveView(SUPER_ADMIN_VIEWS.INTEGRATION_SETUP);
               }}
               onBackToIntegrations={() => {
                 setSelectedIntegrationCompany(null);
-                setActiveView('integrations');
+                setActiveView(SUPER_ADMIN_VIEWS.INTEGRATIONS);
               }}
               stats={stats}
               statsError={statsError}

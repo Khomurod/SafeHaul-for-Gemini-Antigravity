@@ -3,6 +3,7 @@ import { createNewCompany, loadCompanies } from '@features/companies/services/co
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { Plus, UserPlus, Save, Loader2, Shield, Crown, Truck, Briefcase, User, X } from 'lucide-react';
+import { SUPER_ADMIN_VIEWS } from '../config/views';
 
 // --- UI COMPONENTS ---
 function Card({ title, icon, children, className = '' }) {
@@ -158,7 +159,7 @@ export function CreateView({ onDataUpdate, setActiveView }) {
                         <p className="text-gray-500 mt-1">Add new companies or team members to the system.</p>
                     </div>
                     {setActiveView && (
-                        <button onClick={() => setActiveView('companies')} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg flex items-center gap-2">
+                        <button onClick={() => setActiveView(SUPER_ADMIN_VIEWS.COMPANIES)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg flex items-center gap-2">
                             <X size={20} /> Close
                         </button>
                     )}

@@ -14,6 +14,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
 // -------------------------------
 
 // --- INITIALIZE SENTRY ---
+const sentryTraceSampleRate = import.meta.env.PROD
+  ? Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0.2)
+  : 1.0;
+
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
   integrations: [
@@ -21,7 +25,7 @@ Sentry.init({
     Sentry.replayIntegration(),
   ],
   // Performance Monitoring
-  tracesSampleRate: 1.0, // Capture 100% of transactions (lower this in production if needed)
+  tracesSampleRate: Number.isFinite(sentryTraceSampleRate) ? sentryTraceSampleRate : 0.2,
   // Session Replay
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,

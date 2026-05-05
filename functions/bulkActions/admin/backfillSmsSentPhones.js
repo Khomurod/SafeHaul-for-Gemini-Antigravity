@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
+const { assertCompanyAdmin } = require("../helpers/auth");
 const { normalizePhone } = require("../../utils/phoneUtils");
 
 /**
@@ -22,6 +23,7 @@ exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory
     if (!companyId) {
         throw new HttpsError('invalid-argument', 'companyId is required.');
     }
+    await assertCompanyAdmin(request.auth.uid, companyId);
 
     console.log(`[Backfill] Starting SMS phone backfill for company: ${companyId}`);
 

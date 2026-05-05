@@ -49,7 +49,8 @@ exports.getSignedPevUrl = onCall({ cors: true }, async (request) => {
         const userRecord = await admin.auth().getUser(request.auth.uid);
         const claims = userRecord.customClaims || {};
         const hasCompanyRole = claims.roles && claims.roles[companyId];
-        const isSuperAdmin = claims.globalRole === 'super_admin';
+        const globalRole = claims.globalRole || claims.roles?.globalRole;
+        const isSuperAdmin = globalRole === 'super_admin';
 
         if (!hasCompanyRole && !isSuperAdmin) {
             // Fallback: check team subcollection
@@ -64,8 +65,9 @@ exports.getSignedPevUrl = onCall({ cors: true }, async (request) => {
             }
         }
     } catch (authErr) {
-        if (authErr.code === 'functions/permission-denied') throw authErr;
-        logger.warn('[getSignedPevUrl] Auth check error:', authErr.message);
+        if (authErr?.code === 'permission-denied' || authErr?.code === 'functions/permission-denied') throw authErr;
+        logger.warn('[getSignedPevUrl] Auth check failed:', authErr?.message || authErr);
+        throw new HttpsError('internal', 'Unable to verify company access.');
     }
 
     // 4. Generate signed URL (1 hour expiry — enough time to view/download)

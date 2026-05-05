@@ -20,6 +20,7 @@ import { UnifiedDriverList } from '../views/UnifiedDriverList.jsx';
 
 // --- Form Builder (Super Admin) ---
 import { GlobalQuestionsManager } from './GlobalQuestionsManager';
+import { SUPER_ADMIN_VIEWS } from '../config/views';
 
 export function ViewRouter({
     isSearching,
@@ -67,7 +68,7 @@ export function ViewRouter({
     }
 
     switch (activeView) {
-        case 'dashboard':
+        case SUPER_ADMIN_VIEWS.DASHBOARD:
             return (
                 <DashboardView
                     stats={stats}
@@ -75,12 +76,12 @@ export function ViewRouter({
                     statsError={statsError}
                 />
             );
-        case 'analytics':
+        case SUPER_ADMIN_VIEWS.ANALYTICS:
             return (
                 <AnalyticsView />
             );
 
-        case 'companies':
+        case SUPER_ADMIN_VIEWS.COMPANIES:
             return (
                 <CompaniesView
                     listLoading={listLoading}
@@ -93,7 +94,7 @@ export function ViewRouter({
                     hasMore={hasMoreCompanies}
                 />
             );
-        case 'users':
+        case SUPER_ADMIN_VIEWS.USERS:
             return (
                 <UsersView
                     listLoading={listLoading}
@@ -104,7 +105,7 @@ export function ViewRouter({
                     onDelete={onDeleteUser}
                 />
             );
-        case 'applications':
+        case SUPER_ADMIN_VIEWS.APPLICATIONS:
             return (
                 <UnifiedDriverList
                     allApplications={allApplications}
@@ -115,26 +116,27 @@ export function ViewRouter({
                     hasMore={hasMoreApps}
                 />
             );
-        case 'features':
+        case SUPER_ADMIN_VIEWS.FEATURES:
             return (
                 <FeaturesView
                     companyList={companyList}
                     onDataUpdate={onDataUpdate}
                 />
             );
-        case 'system-health':
+        case SUPER_ADMIN_VIEWS.SYSTEM_HEALTH:
             return (
                 <SystemHealthView />
             );
 
-        case 'create':
+        case SUPER_ADMIN_VIEWS.CREATE:
             return (
                 <CreateView
                     allCompaniesMap={allCompaniesMap}
                     onDataUpdate={onDataUpdate}
+                    setActiveView={setActiveView}
                 />
             );
-        case 'integrations':
+        case SUPER_ADMIN_VIEWS.INTEGRATIONS:
             return (
                 <CompaniesView
                     listLoading={listLoading}
@@ -148,7 +150,7 @@ export function ViewRouter({
                     isIntegrationMode={true} // Add flag for special UI if needed
                 />
             );
-        case 'integration-setup':
+        case SUPER_ADMIN_VIEWS.INTEGRATION_SETUP:
             return (
                 <IntegrationManager
                     companyId={selectedIntegrationCompany?.id}
@@ -156,9 +158,9 @@ export function ViewRouter({
                     onBack={onBackToIntegrations}
                 />
             );
-        case 'stats-backfill':
+        case SUPER_ADMIN_VIEWS.STATS_BACKFILL:
             return <StatsBackfillPanel />;
-        case 'questions':
+        case SUPER_ADMIN_VIEWS.QUESTIONS:
             return <GlobalQuestionsManager />;
         default:
             return null;

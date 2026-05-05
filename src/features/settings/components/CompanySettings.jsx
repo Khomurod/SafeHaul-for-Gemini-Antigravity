@@ -18,8 +18,7 @@ import { ManageTeamModal } from '@shared/components/modals';
 import { UnderDevelopmentAnimation } from '@shared/components/admin/UnderDevelopmentAnimation';
 import { ESignatureAnimation } from '@shared/components/admin/ESignatureAnimation';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
-// NEW IMPORT
-import { CampaignsDashboard } from '@features/campaigns/CampaignsDashboard';
+import { CampaignsDashboard } from '@features/campaigns';
 
 const SidebarItem = ({ id, label, icon: Icon, activeTab, onClick }) => (
     <button

@@ -35,6 +35,18 @@ export default [
       'no-prototype-builtins': 'warn',
       'no-constant-condition': 'warn',
       'no-empty': 'warn',
+      'no-restricted-imports': ['warn', {
+        patterns: [
+          {
+            group: ['@features/company-admin/components/modals/driver-dossier/*'],
+            message: 'Import cross-feature UI from a feature public API (for example @features/company-admin).',
+          },
+          {
+            group: ['@features/campaigns/CampaignsDashboard'],
+            message: 'Import from @features/campaigns public API instead of deep implementation paths.',
+          },
+        ],
+      }],
     },
   },
 ]
