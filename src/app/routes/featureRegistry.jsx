@@ -1,4 +1,5 @@
 import React from 'react';
+import { COMPANY_ROUTE_MANIFEST } from './companyRouteManifest';
 
 const lazyNamed = (loader, exportName) =>
   React.lazy(() => loader().then((module) => ({ default: module[exportName] })));
@@ -29,6 +30,10 @@ export const featureScreens = Object.freeze({
   searchDriversPage: lazyNamed(
     () => import('@features/company-admin/views/SearchDriversPage'),
     'SearchDriversPage',
+  ),
+  companyCampaignsPage: lazyNamed(
+    () => import('@features/campaigns/pages/CompanyCampaignsPage'),
+    'CompanyCampaignsPage',
   ),
   importLeadsPage: lazyNamed(
     () => import('@features/company-admin/views/ImportLeadsPage'),
@@ -74,71 +79,13 @@ export const featureScreens = Object.freeze({
   documentsManager: lazyDefault(() => import('@features/company-admin/views/DocumentsManager')),
 });
 
-export const companyChildRouteDefs = Object.freeze([
-  {
-    path: 'dashboard',
-    screen: 'companyAdminDashboard',
-    featureName: 'Company Dashboard',
-    requiresCompanyProfile: true,
-  },
-  {
-    path: 'drivers/applications',
-    screen: 'companyCandidatesListPage',
-    featureName: 'Applications',
-    props: { scope: 'applications' },
-  },
-  {
-    path: 'drivers/leads/safehaul',
-    screen: 'companyCandidatesListPage',
-    featureName: 'SafeHaul Leads',
-    props: { scope: 'find_driver' },
-  },
-  {
-    path: 'drivers/leads/company',
-    screen: 'companyCandidatesListPage',
-    featureName: 'Company Leads',
-    props: { scope: 'company_leads' },
-  },
-  {
-    path: 'drivers/leads/my',
-    screen: 'companyCandidatesListPage',
-    featureName: 'My Leads',
-    props: { scope: 'my_leads' },
-  },
-  {
-    path: 'drivers/pipeline',
-    screen: 'pipelineSheetPage',
-    featureName: 'Pipeline',
-  },
-  {
-    path: 'search',
-    screen: 'searchDriversPage',
-    featureName: 'Search Drivers',
-  },
-  {
-    path: 'e-docs',
-    screen: 'documentsManager',
-    featureName: 'E-Docs',
-  },
-  {
-    path: 'import-leads',
-    screen: 'importLeadsPage',
-    featureName: 'Import Leads',
-  },
-  {
-    path: 'quick-add-lead',
-    screen: 'quickAddLeadPage',
-    featureName: 'Quick Add Lead',
-  },
-  {
-    path: 'profile',
-    screen: 'userProfilePage',
-    featureName: 'Profile',
-  },
-  {
-    path: 'settings',
-    screen: 'companySettings',
-    featureName: 'Company Settings',
-    requiresCompanyProfile: true,
-  },
-]);
+export const companyChildRouteDefs = Object.freeze(
+  COMPANY_ROUTE_MANIFEST.map((route) => ({
+    id: route.id,
+    path: route.path,
+    screen: route.screen,
+    featureName: route.featureName,
+    props: route.props,
+    requiresCompanyProfile: route.requiresCompanyProfile,
+  })),
+);

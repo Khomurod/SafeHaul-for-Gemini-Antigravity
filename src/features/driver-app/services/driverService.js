@@ -30,11 +30,8 @@ import {
 // --- Offer Logic ---
 export async function respondToOffer(companyId, applicationId, response, signatureData = null) {
     if (!companyId || !applicationId) throw new Error("Missing ID");
-
-    // Determine path based on whether it's a company app or a general lead
-    const docRef = (companyId === 'general-leads')
-        ? doc(db, "leads", applicationId)
-        : doc(db, "companies", companyId, "applications", applicationId);
+    if (!companyId) throw new Error("Company ID is required.");
+    const docRef = doc(db, "companies", companyId, "applications", applicationId);
 
     const updatePayload = {
         status: response,
@@ -74,21 +71,21 @@ export async function fetchMyApplications(email, userId) {
     const processedIds = new Set(); // To prevent duplicates
 
     // --- Helper to add docs to results safely ---
-    const addDocs = (snapshot, isGeneral = false) => {
+    const addDocs = (snapshot) => {
         snapshot.docs.forEach(doc => {
             // Avoid duplicates if we query by both Email and UID
             if (processedIds.has(doc.id)) return;
             processedIds.add(doc.id);
 
             const data = doc.data();
-            const companyId = isGeneral ? 'general-leads' : (doc.ref.parent.parent ? doc.ref.parent.parent.id : 'unknown');
+            const companyId = doc.ref.parent.parent ? doc.ref.parent.parent.id : 'unknown';
 
             results.push({
                 id: `${doc.id}_${companyId}`, // Unique React Key
                 originalId: doc.id,           // Real Firestore ID
                 companyId: companyId,
-                companyName: isGeneral ? 'SafeHaul General Pool' : (data.companyName || 'Unknown Company'),
-                isGeneral: isGeneral,
+                companyName: data.companyName || 'Unknown Company',
+                isGeneral: false,
                 ...data
             });
         });
@@ -104,7 +101,7 @@ export async function fetchMyApplications(email, userId) {
                 where('driverId', '==', userId)
             );
             const idSnap = await getDocs(idQuery);
-            addDocs(idSnap, false);
+            addDocs(idSnap);
         }
 
         // Strategy B: By Email (Legacy / Fallback)
@@ -114,40 +111,14 @@ export async function fetchMyApplications(email, userId) {
                 where('email', '==', email)
             );
             const emailSnap = await getDocs(emailQuery);
-            addDocs(emailSnap, false);
+            addDocs(emailSnap);
         }
     } catch (error) {
         console.error("Error fetching company applications:", error);
         // We continue to leads even if this fails
     }
 
-    // --- 2. Fetch General Leads (Root Collection) ---
-    try {
-        if (userId) {
-            // Check for direct lead doc by ID
-            const leadDocRef = doc(db, 'leads', userId);
-            const leadDocSnap = await getDoc(leadDocRef);
-            if (leadDocSnap.exists()) {
-                // Manually construct snapshot-like object
-                const fakeSnapshot = { docs: [leadDocSnap] };
-                addDocs(fakeSnapshot, true);
-            }
-        }
-
-        // Also check by email in leads collection (if multiple leads exist)
-        if (email) {
-            const leadsQuery = query(
-                collection(db, 'leads'),
-                where('email', '==', email)
-            );
-            const leadsSnap = await getDocs(leadsQuery);
-            addDocs(leadsSnap, true);
-        }
-    } catch (error) {
-        console.warn("Error fetching leads:", error);
-    }
-
-    // --- 3. Sort In-Memory (Robust) ---
+    // --- 2. Sort In-Memory (Robust) ---
     // This fixes the issue where documents without 'submittedAt' were disappearing
     return results.sort((a, b) => {
         const getMillis = (item) => {
@@ -218,9 +189,8 @@ export async function uploadApplicationFile(companyId, userId, fieldName, file) 
         throw new Error("Invalid file type. Only PDF, JPEG, PNG, and WEBP files are allowed.");
     }
 
-    const basePath = companyId
-        ? `companies/${companyId}/applications/${userId}`
-        : `global_leads/${userId}`;
+    if (!companyId) throw new Error("Company ID is required.");
+    const basePath = `companies/${companyId}/applications/${userId}`;
 
     // Fix: Sanitize filename to prevent path issues + Truncate
     let cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -293,7 +263,8 @@ function sanitizeData(data) {
 export async function submitDriverApplication(currentUser, formData, activeCompanyId, job) {
     const email = formData.email || currentUser?.email || '';
     const phone = formData.phone || '';
-    const companyId = activeCompanyId || 'general-leads';
+    if (!activeCompanyId) throw new Error('Company ID is required. Global lead pool is discontinued.');
+    const companyId = activeCompanyId;
 
     // Sentry breadcrumb for debugging
     Sentry.addBreadcrumb({
@@ -327,7 +298,7 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
         email: email,
         phone: phone,
         status: 'New Application',
-        sourceType: activeCompanyId ? 'Company App' : 'Global Pool',
+        sourceType: 'Company App',
         companyId: companyId,
         companyName: job?.companyName || formData.companyName || null,
         // Job specific data
@@ -385,12 +356,7 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
         try {
             // Determine document reference
             let docRef;
-            if (activeCompanyId) {
-                // Use deterministic ID for company applications
-                docRef = doc(db, "companies", activeCompanyId, "applications", applicationId);
-            } else {
-                docRef = doc(db, "leads", applicationId);
-            }
+            docRef = doc(db, "companies", activeCompanyId, "applications", applicationId);
 
             // P0-5 FIX: Override ISO timestamps with serverTimestamp() for Firestore write
             // (queue copy keeps ISO strings, Firestore gets canonical server time)

@@ -31,22 +31,22 @@ export function DriverProfileView({ driver, onBack, onCallStart }) {
         }
 
         if (!window.confirm(`Send job invite to ${pi.firstName}?`)) return;
-
         setSending(true);
         try {
             const sendFn = httpsCallable(functions, 'sendDriverInvite');
             const result = await sendFn({
+                companyId: currentCompanyProfile?.id,
                 driverEmail: pi.email,
                 driverName: `${pi.firstName} ${pi.lastName}`,
                 companyName: currentCompanyProfile?.companyName || "Our Company",
-                message: "" 
+                message: ""
             });
 
             if (result.data.success) {
                 setInviteSent(true);
                 alert("Invite sent successfully!");
             } else {
-                alert("Failed to send: " + result.data.error);
+                alert("Failed to send: " + (result.data.message || "Unknown error"));
             }
         } catch (err) {
             console.error(err);

@@ -1,24 +1,55 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
-  Truck,
   Building2,
   User,
   Search,
   FileText,
+  Megaphone,
   Upload,
   PlusCircle,
   Settings,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  GitBranch
+  GitBranch,
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
+import {
+  COMPANY_ROUTE_MANIFEST,
+  COMPANY_NAV_GROUPS,
+  COMPANY_NAV_LAYOUT,
+} from '@app/routes/companyRouteManifest';
 
 const SIDEBAR_STORAGE_KEY = 'companySidebarMode';
+const ICON_MAP = Object.freeze({
+  LayoutDashboard,
+  Users,
+  Building2,
+  User,
+  Search,
+  FileText,
+  Megaphone,
+  Upload,
+  PlusCircle,
+  Settings,
+  GitBranch,
+});
+
+function stripEdgeDividers(entries) {
+  const cleaned = [];
+  for (const entry of entries) {
+    if (entry.type === 'divider' && cleaned.length === 0) continue;
+    if (entry.type === 'divider' && cleaned[cleaned.length - 1]?.type === 'divider') continue;
+    cleaned.push(entry);
+  }
+  while (cleaned.length > 0 && cleaned[cleaned.length - 1].type === 'divider') {
+    cleaned.pop();
+  }
+  return cleaned;
+}
 
 export const CompanySidebar = () => {
   const [isExpanded, setIsExpanded] = useState(() => {
@@ -30,9 +61,14 @@ export const CompanySidebar = () => {
     applications: true
   });
 
-  const { currentCompanyProfile, logout, currentUserClaims } = useData();
+  const { currentCompanyProfile, currentUserClaims } = useData();
   const location = useLocation();
   const navigate = useNavigate();
+  const routeLookup = useMemo(
+    () => new Map(COMPANY_ROUTE_MANIFEST.map((route) => [route.id, route])),
+    [],
+  );
+  const featureFlags = currentCompanyProfile?.features || {};
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, isExpanded ? 'expanded' : 'minimized');
@@ -55,52 +91,60 @@ export const CompanySidebar = () => {
     currentUserClaims?.roles?.globalRole === 'super_admin'
   );
 
-  const f = currentCompanyProfile?.features || {};
+  const isRouteVisible = (route) => {
+    const nav = route?.nav;
+    if (!nav) return false;
+    if (nav.adminOnly && !isCompanyAdmin) return false;
+    if (nav.featureFlag && featureFlags[nav.featureFlag] === false) return false;
+    return true;
+  };
 
-  const rawMenuItems = [
-    {
-      type: 'item',
-      label: 'Dashboard',
-      icon: LayoutDashboard,
-      path: '/company/dashboard'
-    },
-    {
-      type: 'group',
-      label: 'Driver Applications & Leads',
-      id: 'applications',
-      icon: Users,
-      children: [
-        // Hide entire group? The requirement says "Driver Application" so maybe just the applications link, but it's central.
-        // We'll hide the applications link if driverApp is explicitly false.
-        // The default assumption is true if undefined, but explicit false means disabled.
-        ...(f.driverApp !== false ? [{ label: 'Applications', path: '/company/drivers/applications', icon: FileText }] : []),
-        { label: 'Company Leads', path: '/company/drivers/leads/company', icon: Building2 },
-        { label: 'My Leads', path: '/company/drivers/leads/my', icon: User },
-        { label: 'Pipeline', path: '/company/drivers/pipeline', icon: GitBranch },
-      ]
-    },
-    { type: 'element', element: <div className="my-2 border-t border-gray-200" /> },
-    ...(f.searchDB !== false ? [{ type: 'item', label: 'Search For Drivers', icon: Search, path: '/company/search' }] : []),
-    ...(f.eDocs !== false ? [{ type: 'item', label: 'E-Docs', icon: FileText, path: '/company/e-docs' }] : []),
-
-    // Admin Only Items
-    ...(isCompanyAdmin ? [
-      ...(f.importLeads !== false ? [{ type: 'item', label: 'Import Leads', icon: Upload, path: '/company/import-leads' }] : []),
-      { type: 'item', label: 'Quick Add Leads', icon: PlusCircle, path: '/company/quick-add-lead' },
-    ] : []),
-
-    { type: 'element', element: <div className="my-2 border-t border-gray-200" /> },
-    { type: 'item', label: 'Profile', icon: User, path: '/company/profile' },
-    ...(isCompanyAdmin ? [
-      { type: 'item', label: 'Settings', icon: Settings, path: '/company/settings' },
-    ] : []),
-  ];
-
-  // Clean up empty groups or consecutive dividers
-  const menuItems = rawMenuItems.filter(item => {
-      if (item.type === 'group') return item.children.length > 0;
-      return true;
+  const toMenuItem = (route) => ({
+    id: route.id,
+    label: route.nav.label,
+    icon: ICON_MAP[route.nav.icon] || FileText,
+    path: `/company/${route.path}`,
   });
+
+  const menuEntries = useMemo(() => {
+    const entries = [];
+    for (const block of COMPANY_NAV_LAYOUT) {
+      if (block.type === 'divider') {
+        entries.push({ type: 'divider' });
+        continue;
+      }
+
+      if (block.type === 'route') {
+        const route = routeLookup.get(block.routeId);
+        if (route && isRouteVisible(route)) {
+          entries.push({ type: 'item', item: toMenuItem(route) });
+        }
+        continue;
+      }
+
+      if (block.type === 'section') {
+        const routes = COMPANY_ROUTE_MANIFEST
+          .filter((route) => route.nav?.kind === 'item' && route.nav.section === block.section)
+          .filter((route) => isRouteVisible(route))
+          .map(toMenuItem);
+        for (const item of routes) entries.push({ type: 'item', item });
+        continue;
+      }
+
+      if (block.type === 'group') {
+        const group = COMPANY_NAV_GROUPS[block.group];
+        if (!group) continue;
+        const children = COMPANY_ROUTE_MANIFEST
+          .filter((route) => route.nav?.kind === 'group-item' && route.nav.group === block.group)
+          .filter((route) => isRouteVisible(route))
+          .map(toMenuItem);
+        if (children.length > 0) {
+          entries.push({ type: 'group', group, children });
+        }
+      }
+    }
+    return stripEdgeDividers(entries);
+  }, [featureFlags, isCompanyAdmin, routeLookup]);
 
   const NavItem = ({ item, isChild = false }) => {
     return (
@@ -169,27 +213,31 @@ export const CompanySidebar = () => {
 
       {/* Navigation */}
       <div className="flex-1 py-4 overflow-y-auto overflow-x-hidden space-y-1 custom-scrollbar">
-        {menuItems.map((item, idx) => {
-          if (item.type === 'element') return <React.Fragment key={idx}>{item.element}</React.Fragment>;
+        {menuEntries.map((entry, idx) => {
+          if (entry.type === 'divider') {
+            return <div key={`divider-${idx}`} className="my-2 border-t border-gray-200"></div>;
+          }
 
-          if (item.type === 'group') {
-            const isGroupActive = expandedGroups[item.id];
-            const hasActiveChild = item.children.some(child => location.pathname === child.path);
+          if (entry.type === 'group') {
+            const group = entry.group;
+            const isGroupActive = expandedGroups[group.id];
+            const hasActiveChild = entry.children.some(child => location.pathname === child.path);
+            const GroupIcon = ICON_MAP[group.icon] || Users;
 
             return (
-              <div key={idx} className="mb-2">
+              <div key={group.id} className="mb-2">
                 <button
-                  onClick={() => toggleGroup(item.id)}
+                  onClick={() => toggleGroup(group.id)}
                   className={`
                             w-full flex items-center gap-3 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors
                             ${!isExpanded ? 'justify-center' : ''}
                             ${hasActiveChild ? 'text-blue-700' : ''}
                         `}
                 >
-                  <item.icon size={20} className={hasActiveChild ? 'text-blue-600' : 'text-gray-500'} />
+                  <GroupIcon size={20} className={hasActiveChild ? 'text-blue-600' : 'text-gray-500'} />
                   {isExpanded && (
                     <>
-                      <span className="flex-1 text-left font-medium text-sm">{item.label}</span>
+                      <span className="flex-1 text-left font-medium text-sm">{group.label}</span>
                       {isGroupActive ? <ChevronRight size={16} className="rotate-90 transition-transform" /> : <ChevronRight size={16} className="transition-transform" />}
                     </>
                   )}
@@ -198,8 +246,8 @@ export const CompanySidebar = () => {
                 {/* Children */}
                 {isExpanded && isGroupActive && (
                   <div className="mt-1 space-y-0.5">
-                    {item.children.map((child, cIdx) => (
-                      <NavItem key={cIdx} item={child} isChild={true} />
+                    {entry.children.map((child) => (
+                      <NavItem key={child.id} item={child} isChild={true} />
                     ))}
                   </div>
                 )}
@@ -207,7 +255,7 @@ export const CompanySidebar = () => {
             )
           }
 
-          return <NavItem key={idx} item={item} />;
+          return <NavItem key={entry.item.id} item={entry.item} />;
         })}
       </div>
 

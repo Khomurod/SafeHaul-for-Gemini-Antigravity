@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Environment & Secrets
 # Ignoring local env files does not stop Firebase from reading them

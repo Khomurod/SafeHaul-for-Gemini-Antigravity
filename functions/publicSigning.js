@@ -147,6 +147,10 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
                 throw new HttpsError('permission-denied', 'Unauthorized');
             }
 
+            if (data.expiresAt && data.expiresAt.toMillis() < Date.now()) {
+                throw new HttpsError('deadline-exceeded', 'This signing link has expired. Please request a new one.');
+            }
+
             // ESIGN-19 FIX: Idempotency guard — reject if already submitted
             if (data.status !== 'sent') {
                 throw new HttpsError('failed-precondition', 'This document has already been submitted or is no longer available.');

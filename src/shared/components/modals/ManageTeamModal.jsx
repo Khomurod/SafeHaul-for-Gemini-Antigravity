@@ -1,20 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, User, Users, Mail, Target, Loader2, Link as LinkIcon, Copy, Phone, CheckCircle, Pencil, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Users, Loader2, Link as LinkIcon, Phone, Trash2 } from 'lucide-react';
 import { db, functions } from '@lib/firebase';
-import { collection, query, where, getDocs, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@shared/components/feedback';
-import { EditUserModal } from '@features/super-admin/components/modals/EditUserModal';
 
 export function ManageTeamModal({ companyId, onClose }) {
     const [team, setTeam] = useState([]);
     const [loading, setLoading] = useState(true);
     const [companySlug, setCompanySlug] = useState('');
-    const [companyName, setCompanyName] = useState('Current Company'); // New state for name
-    const [editingUserId, setEditingUserId] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(null);
 
-    const { showSuccess, showInfo, showError } = useToast();
+    const { showSuccess, showError } = useToast();
 
     // FIX: Robust base URL resolution
     const appBaseUrl = import.meta.env.VITE_DRIVER_APP_URL || window.location.origin;
@@ -28,7 +25,6 @@ export function ManageTeamModal({ companyId, onClose }) {
                 if (compDoc.exists()) {
                     const d = compDoc.data();
                     setCompanySlug(d.appSlug || companyId);
-                    setCompanyName(d.companyName || 'Current Company');
                 }
             } catch (e) { console.warn("Error fetching company info:", e); }
         };
@@ -114,13 +110,6 @@ export function ManageTeamModal({ companyId, onClose }) {
         }
     };
 
-    // FIX: Use a Map object instead of a plain object to satisfy UserMembershipsManager
-    const companiesMap = useMemo(() => {
-        const map = new Map();
-        map.set(companyId, companyName);
-        return map;
-    }, [companyId, companyName]);
-
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl border border-gray-200 flex flex-col max-h-[90vh]">
@@ -192,14 +181,6 @@ export function ManageTeamModal({ companyId, onClose }) {
                                             </button>
 
                                             <button
-                                                onClick={() => setEditingUserId(member.id)}
-                                                className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors text-sm font-semibold"
-                                                title="Edit User"
-                                            >
-                                                <Pencil size={14} />
-                                            </button>
-
-                                            <button
                                                 onClick={() => handleDeleteUser(member.id, member.name)}
                                                 disabled={deleteLoading === member.id}
                                                 className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg border border-red-200 transition-colors text-sm font-semibold disabled:opacity-50"
@@ -216,16 +197,6 @@ export function ManageTeamModal({ companyId, onClose }) {
 
                 </div>
             </div>
-
-            {editingUserId && (
-                <EditUserModal
-                    userId={editingUserId}
-                    companyId={companyId}
-                    allCompaniesMap={companiesMap}
-                    onClose={() => setEditingUserId(null)}
-                    onSave={() => { }}
-                />
-            )}
         </div>
     );
 }

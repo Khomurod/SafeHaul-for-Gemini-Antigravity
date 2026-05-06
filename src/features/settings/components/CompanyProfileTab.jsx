@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { saveCompanySettings } from '@features/companies/services/companyService';
+import { saveCompanySettings } from '@features/companies';
 import { uploadCompanyLogo } from '@lib/firebase';
 import { Save, Loader2, Edit2, Info, ListChecks, Briefcase } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';

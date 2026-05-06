@@ -23,13 +23,12 @@ const STEPS = [
     { id: 'sim_recruiter_link', label: '9. Flow: Recruiter Link Attribution' },
     { id: 'sim_job_offer', label: '10. Flow: Company Sending Offer' },
     { id: 'sim_offer_receive', label: '11. Flow: Driver Receiving Offer' },
-    { id: 'sim_safehaul_lead', label: '12. Data: SafeHaul & Personal Leads' },
-    { id: 'sim_pdf_gen', label: '13. Engine: PDF Generation' },
-    { id: 'sim_activity_log', label: '14. Logic: Audit Trail Logging' },
-    { id: 'test_visibility', label: '15. Data: Dashboard Visibility (All Views)' },
-    { id: 'test_integrity', label: '16. Data: DB <-> Storage Alignment' },
-    { id: 'cleanup', label: '17. System Cleanup & Data Purge' },
-    { id: 'security_audit', label: '18. Security: Automated Audit Scan' }
+    { id: 'sim_pdf_gen', label: '12. Engine: PDF Generation' },
+    { id: 'sim_activity_log', label: '13. Logic: Audit Trail Logging' },
+    { id: 'test_visibility', label: '14. Data: Dashboard Visibility (All Views)' },
+    { id: 'test_integrity', label: '15. Data: DB <-> Storage Alignment' },
+    { id: 'cleanup', label: '16. System Cleanup & Data Purge' },
+    { id: 'security_audit', label: '17. Security: Automated Audit Scan' }
 ];
 
 export function useSystemHealth() {
@@ -403,34 +402,6 @@ export function useSystemHealth() {
                 break;
             }
 
-            case 'sim_safehaul_lead': {
-                const globalLeadId = `SH_LEAD_${Date.now()}`;
-                await setDoc(doc(db, 'leads', globalLeadId), {
-                    name: "SafeHaul Test Lead",
-                    status: 'active',
-                    isTestRecord: true,
-                    createdAt: serverTimestamp()
-                });
-
-                const currentUser = auth.currentUser;
-                let myLeadId = null;
-                if (currentUser) {
-                    myLeadId = `MY_LEAD_${Date.now()}`;
-                    await setDoc(doc(db, 'companies', currentData.companyId, 'leads', myLeadId), {
-                        name: "Personal Assigned Lead",
-                        status: 'new',
-                        assignedTo: currentUser.uid,
-                        isTestRecord: true
-                    });
-                } else {
-                    addLog("⚠️ Skipping 'My Leads' creation (No Admin logged in).", "warning");
-                }
-
-                updateData({ globalLeadId, myLeadId });
-                addLog("✅ SafeHaul & Personal Leads Created.", "success");
-                break;
-            }
-
             case 'sim_pdf_gen': {
                 try {
                     const pdfDoc = new jsPDF();
@@ -465,11 +436,6 @@ export function useSystemHealth() {
                 const snapLeads = await getDocs(qLeads);
                 if (snapLeads.empty) throw new Error("Dashboard Visibility Error: Leads not showing in query.");
 
-                if (currentData.globalLeadId) {
-                    const shLeadSnap = await getDoc(doc(db, 'leads', currentData.globalLeadId));
-                    if (!shLeadSnap.exists()) throw new Error("Visibility Error: SafeHaul (Global) lead not retrievable.");
-                }
-
                 if (currentData.myLeadId) {
                     const currentUser = auth.currentUser;
                     const qMyLeads = query(
@@ -480,7 +446,7 @@ export function useSystemHealth() {
                     if (snapMyLeads.empty) throw new Error("Visibility Error: 'My Leads' query returned empty.");
                 }
 
-                addLog("✅ Dashboard Visibility Verified (Apps, Company Leads, SafeHaul, My Leads).", "success");
+                addLog("✅ Dashboard Visibility Verified (Apps, Company Leads, My Leads).", "success");
                 break;
             }
 
@@ -536,14 +502,6 @@ export function useSystemHealth() {
                         await deleteDoc(doc(db, 'drivers', data.driverId));
                     } catch (e) {
                         console.error("Cleanup driver error:", e);
-                    }
-                }
-
-                if (data.globalLeadId) {
-                    try {
-                        await deleteDoc(doc(db, 'leads', data.globalLeadId));
-                    } catch (e) {
-                        console.error("Cleanup global lead error:", e);
                     }
                 }
 

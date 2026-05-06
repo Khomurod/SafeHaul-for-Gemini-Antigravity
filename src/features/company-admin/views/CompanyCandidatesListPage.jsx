@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useCompanyDashboard } from '@features/companies/hooks/useCompanyDashboard';
-import { DashboardToolbar } from '@features/companies/components/DashboardToolbar';
+import { DashboardToolbar, useCompanyDashboard } from '@features/companies';
 import { ModernDriverTable } from '@shared/components/table';
 import { useData } from '@/context/DataContext';
 import { useToast } from '@shared/components/feedback/ToastProvider';

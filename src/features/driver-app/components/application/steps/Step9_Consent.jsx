@@ -3,6 +3,9 @@ import AgreementBox from '@shared/components/form/AgreementBox';
 import { useData } from '@/context/DataContext';
 import { FileSignature, PenTool, CheckCircle, Save, Eraser, RotateCcw } from 'lucide-react';
 import { getSignatureDataUrl, clearCanvas, initializeSignatureCanvas } from '@/lib/signature';
+import { isE2ETestMode } from '@lib/runtime/e2eMode';
+
+const E2E_SIGNATURE_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAAUCAYAAABwR4+JAAAAAXNSR0IArs4c6QAAAO5JREFUaEPt1zEOgjAURdEtjPEEXoCLcAuuYfQAroJzMJ5BG8kpXAxwsf96YfNQfGrJ1zR56Qvwf6MQQxgkNC+CP+zr79WD4QxR2jEfSxO93Jt0NdRnM6xQ81YeJX1FW/EMubQIq4B15xTCg+0haEoQO4jYl3mRr6z4nQ18fpwevUJj2wkfjmaB2YRQ4c2tw+Zx0AMmN7cN6wEJxS3R+lAk4lHCAZ5QULvXLiP9hCV2dAW8hJw8YZSUdBBQ+J0F6sN2W3/8c2kP4aK8e5zQ3VCfN8bYQ9xH+Hh2BV9AE2Lh5ws6gN95AAAAAElFTkSuQmCC';
 
 const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, isSubmitting, isUploading }) => {
     const { currentCompanyProfile } = useData();
@@ -48,6 +51,13 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, is
         clearCanvas();
         updateFormData('signature', '');
         setIsSigned(false);
+    };
+
+    const handleUseE2ESignature = () => {
+        updateFormData('signature', E2E_SIGNATURE_DATA_URL);
+        updateFormData('signatureType', 'typed');
+        updateFormData('signatureDate', new Date().toISOString());
+        setIsSigned(true);
     };
 
     return (
@@ -149,13 +159,24 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, is
 
                         <div className="flex gap-4 mt-4">
                             {!isSigned ? (
-                                <button
-                                    type="button"
-                                    onClick={handleSaveSignature}
-                                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md shadow-blue-100 transition-all active:scale-95"
-                                >
-                                    <Save size={18} /> Save Signature
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveSignature}
+                                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md shadow-blue-100 transition-all active:scale-95"
+                                    >
+                                        <Save size={18} /> Save Signature
+                                    </button>
+                                    {isE2ETestMode && (
+                                        <button
+                                            type="button"
+                                            onClick={handleUseE2ESignature}
+                                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-sm font-bold transition-all active:scale-95"
+                                        >
+                                            Use Test Signature
+                                        </button>
+                                    )}
+                                </>
                             ) : (
                                 <button
                                     type="button"

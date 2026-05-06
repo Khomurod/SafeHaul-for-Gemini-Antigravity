@@ -2,6 +2,7 @@ import { useData } from '@/context/DataContext';
 import { useState } from 'react';
 import { useAppFetch } from './useAppFetch';
 import { useAppActions } from './useAppActions';
+import { isCompanyWorkspaceRole } from '@app/auth/roles';
 
 export function useApplicationDetails(companyId, applicationId, onStatusUpdate) {
   const { currentUserClaims } = useData();
@@ -13,7 +14,7 @@ export function useApplicationDetails(companyId, applicationId, onStatusUpdate) 
   const userRole = currentUserClaims?.roles?.[companyId];
   const canEdit =
     currentUserClaims?.roles?.globalRole === 'super_admin' ||
-    ['company_admin', 'hr_user', 'recruiter'].includes(userRole);
+    isCompanyWorkspaceRole(userRole);
 
   const actions = useAppActions({
     companyId,

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@lib/firebase';
 import { sendNotification } from '@lib/notificationService';
-import { getCompanyProfile } from '@features/companies/services/companyService';
+import { getCompanyProfile } from '@features/companies';
 import { X, CheckCircle2, DollarSign, Calendar, FileSignature, Loader2 } from 'lucide-react';
 
 export function SendOfferModal({ companyId, applicationId, driverId, driverName, onClose, onOfferSent }) {

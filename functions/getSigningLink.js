@@ -8,6 +8,7 @@
  */
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { db } = require("./firebaseAdmin");
+const { assertCompanyAccessForRequest } = require("./shared/companyAccess");
 
 exports.getSigningLink = onCall({ cors: true }, async (request) => {
     // 1. Require authentication
@@ -20,13 +21,8 @@ exports.getSigningLink = onCall({ cors: true }, async (request) => {
         throw new HttpsError('invalid-argument', 'Missing companyId or requestId.');
     }
 
-    // 2. Verify the caller is a team member of this company
-    const memberSnap = await db.collection('companies').doc(companyId)
-        .collection('team').doc(request.auth.uid).get();
-
-    if (!memberSnap.exists) {
-        throw new HttpsError('permission-denied', 'You are not a member of this company.');
-    }
+    // 2. Verify the caller has company access through canonical RBAC sources.
+    await assertCompanyAccessForRequest(request, companyId, 'getSigningLink');
 
     // 3. Read the signing request to verify it exists and is still active
     const reqSnap = await db.collection('companies').doc(companyId)

@@ -126,7 +126,6 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
                                         >
                                             <option value="applications">Applicants</option>
                                             <option value="leads">My Leads</option>
-                                            <option value="global">Global Pool</option>
                                         </select>
                                     </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { loadCompanies } from '@features/companies/services/companyService';
-import { deleteApplication, moveApplication } from '@features/applications/services/applicationService';
+import { loadCompanies } from '@features/companies';
+import { deleteApplication, moveApplication } from '@features/applications';
 import { AlertTriangle, ArrowRight, X, Loader2 } from 'lucide-react';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 

@@ -10,6 +10,7 @@ import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
 import { isValidEmail, isValidPhone } from '@shared/utils/validation';
 import * as Sentry from '@sentry/react';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 // Bulletproof submission imports
 import {
@@ -40,6 +41,18 @@ const hasUploadedFile = (value) => {
   return false;
 };
 
+const buildE2EPublicProfile = (slugValue) => ({
+  id: 'e2e-company',
+  companyName: 'E2E Logistics',
+  appSlug: slugValue || 'e2e-company',
+  customQuestions: [],
+  applicationConfig: {
+    cdlUpload: { hidden: false, required: true },
+    medCardUpload: { hidden: false, required: true },
+    showEmergencyContacts: false,
+  },
+});
+
 export function PublicApplyHandler() {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
@@ -55,6 +68,7 @@ export function PublicApplyHandler() {
   const [isUploading, setIsUploading] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState(null);
   const hasStarted = useRef(false);
+  const e2eUploadMode = getE2EQueryParam('e2eUpload', 'allow');
 
   // #7 FIX: Derive custom questions from company profile for public applicants
   const customQuestions = company?.customQuestions || [];
@@ -76,6 +90,17 @@ export function PublicApplyHandler() {
       }
 
       try {
+        if (isE2ETestMode) {
+          const mockCompany = buildE2EPublicProfile(slug);
+          setCompany(mockCompany);
+          if (setCurrentCompanyProfile) {
+            setCurrentCompanyProfile(mockCompany);
+          }
+          sessionStorage.setItem('pending_application_company', mockCompany.id);
+          setLoading(false);
+          return;
+        }
+
         let companyData = null;
         let companyId = null;
 
@@ -156,6 +181,23 @@ export function PublicApplyHandler() {
     try {
       if (!company?.id) {
         throw new Error('Company context is missing.');
+      }
+
+      if (isE2ETestMode) {
+        if (e2eUploadMode === 'deny') {
+          const permissionError = new Error('E2E upload blocked by mock permission guard.');
+          permissionError.code = 'permission-denied';
+          throw permissionError;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        const fileData = {
+          name: file.name,
+          url: typeof URL !== 'undefined' ? URL.createObjectURL(file) : '',
+          storagePath: `companies/${company.id}/applications/e2e/${fieldName}/${Date.now()}-${file.name}`,
+        };
+        showSuccess("File uploaded successfully.");
+        return fileData;
       }
 
       // SECURE UPLOAD: Use Signed URL for Guests
@@ -252,6 +294,15 @@ export function PublicApplyHandler() {
     // Prevent double submission
     if (submissionStatus === 'submitting') return;
     setSubmissionStatus('submitting');
+
+    if (isE2ETestMode) {
+      const confirmationNumber = generateConfirmationNumber();
+      sessionStorage.setItem('lastConfirmationNumber', confirmationNumber);
+      localStorage.removeItem(`draft_${slug}`);
+      sessionStorage.removeItem('pending_application_recruiter');
+      setSubmissionStatus('success');
+      return;
+    }
 
     const email = formData.email || '';
     const phone = formData.phone || '';

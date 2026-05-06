@@ -14,8 +14,9 @@
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { admin, db, storage } = require("./firebaseAdmin");
+const { storage } = require("./firebaseAdmin");
 const { logger } = require("firebase-functions");
+const { assertCompanyAccessForRequest } = require("./shared/companyAccess");
 
 exports.getSignedPevUrl = onCall({ cors: true }, async (request) => {
     // 1. Auth check
@@ -44,31 +45,8 @@ exports.getSignedPevUrl = onCall({ cors: true }, async (request) => {
         throw new HttpsError('invalid-argument', 'This endpoint only serves PEV result files.');
     }
 
-    // 3. Security: Verify caller belongs to the company
-    try {
-        const userRecord = await admin.auth().getUser(request.auth.uid);
-        const claims = userRecord.customClaims || {};
-        const hasCompanyRole = claims.roles && claims.roles[companyId];
-        const globalRole = claims.globalRole || claims.roles?.globalRole;
-        const isSuperAdmin = globalRole === 'super_admin';
-
-        if (!hasCompanyRole && !isSuperAdmin) {
-            // Fallback: check team subcollection
-            const memberSnap = await db.collection('companies').doc(companyId)
-                .collection('team').doc(request.auth.uid).get();
-            const companySnap = await db.collection('companies').doc(companyId).get();
-            const companyData = companySnap.exists ? companySnap.data() : {};
-            const isOwner = companyData.ownerId === request.auth.uid || companyData.createdBy === request.auth.uid;
-
-            if (!memberSnap.exists && !isOwner) {
-                throw new HttpsError('permission-denied', 'You do not have access to this company.');
-            }
-        }
-    } catch (authErr) {
-        if (authErr?.code === 'permission-denied' || authErr?.code === 'functions/permission-denied') throw authErr;
-        logger.warn('[getSignedPevUrl] Auth check failed:', authErr?.message || authErr);
-        throw new HttpsError('internal', 'Unable to verify company access.');
-    }
+    // 3. Security: Verify caller belongs to the company.
+    await assertCompanyAccessForRequest(request, companyId, 'getSignedPevUrl');
 
     // 4. Generate signed URL (1 hour expiry — enough time to view/download)
     try {

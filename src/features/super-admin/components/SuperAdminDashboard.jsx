@@ -43,9 +43,6 @@ export function SuperAdminDashboard() {
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [selectedIntegrationCompany, setSelectedIntegrationCompany] = useState(null);
 
-  const [distributing, setDistributing] = useState(false);
-  const [fixingData, setFixingData] = useState(false);
-  const [cleaning, setCleaning] = useState(false);
   const [backfillingEmployers, setBackfillingEmployers] = useState(false);
 
   const isSearching = searchQuery.length > 0;
@@ -85,77 +82,15 @@ export function SuperAdminDashboard() {
     }
   };
 
-  const handleDistributeLeads = async () => {
-    if (!window.confirm("Are you sure you want to distribute daily leads? This will FORCE ROTATE current leads.")) return;
-
-    setDistributing(true);
-    showInfo("Distribution started. This may take a few minutes...");
-
-    try {
-      // FIX: Added timeout option (600,000ms = 10 minutes) to prevent "deadline-exceeded"
-      const distribute = httpsCallable(functions, 'distributeDailyLeads', { timeout: 600000 });
-      const result = await distribute();
-      const details = result.data.details || [];
-      const detailMsg = details.length > 0 ? details.join('\n') : "Distribution complete.";
-
-      console.log("Distribution Result:", result.data);
-      showSuccess(`Success! Check console for details.`);
-      alert("Distribution Report:\n" + detailMsg);
-
-      refreshData();
-    } catch (e) {
-      console.error("Distribution Failed:", e);
-      showError("Error distributing leads: " + e.message);
-    } finally {
-      setDistributing(false);
-    }
-  };
-
-  const handleFixData = async () => {
-    if (!window.confirm("Run database migration to copy DRIVERS to LEADS? This is required if the pool is empty.")) return;
-
-    setFixingData(true);
-    showInfo("Starting migration... this may take a moment.");
-
-    try {
-      const fixFn = httpsCallable(functions, 'migrateDriversToLeads', { timeout: 540000 });
-      const result = await fixFn();
-      showSuccess(result.data.message);
-      refreshData();
-    } catch (e) {
-      console.error("Migration Failed:", e);
-      showError("Migration failed: " + e.message);
-    } finally {
-      setFixingData(false);
-    }
-  };
-
-  const handleCleanup = async () => {
-    setCleaning(true);
-    showInfo("Purging trash leads...");
-
-    try {
-      const cleanupFn = httpsCallable(functions, 'cleanupBadLeads', { timeout: 540000 });
-      const result = await cleanupFn();
-      showSuccess(result.data.message);
-      refreshData();
-    } catch (e) {
-      console.error("Cleanup Failed:", e);
-      showError("Cleanup failed: " + e.message);
-    } finally {
-      setCleaning(false);
-    }
-  };
-
   const handleBackfillEmployers = async () => {
-    if (!window.confirm("Run employer field backfill? This will rename old field names (name→companyName, street→address, reason→reasonForLeaving) in ALL existing applications. Safe to run multiple times.")) return;
+    if (!window.confirm("Run employer field backfill? This will rename old field names in existing applications.")) return;
 
     setBackfillingEmployers(true);
     showInfo("Running employer field backfill... this may take a few minutes.");
 
     try {
       const backfillFn = httpsCallable(functions, 'backfillEmployerFields', { timeout: 540000 });
-      const result = await backfillFn();
+      const result = await backfillFn({ dryRun: false });
       const stats = result.data.stats || {};
       showSuccess(result.data.message);
       alert(`Employer Backfill Report:\n\nTotal Applications: ${stats.totalDocs || 0}\nUpdated: ${stats.updatedDocs || 0}\nAlready Correct: ${stats.skippedDocs || 0}\nErrors: ${stats.errorDocs || 0}`);
@@ -175,12 +110,6 @@ export function SuperAdminDashboard() {
         <DashboardHeader
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          onDistribute={handleDistributeLeads}
-          distributing={distributing}
-          onFixData={handleFixData}
-          fixingData={fixingData}
-          onCleanup={handleCleanup}
-          cleaning={cleaning}
           onBackfillEmployers={handleBackfillEmployers}
           backfillingEmployers={backfillingEmployers}
           onLogout={handleLogout}

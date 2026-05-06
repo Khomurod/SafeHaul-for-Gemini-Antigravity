@@ -45,13 +45,7 @@ const safeToTimestamp = (val) => {
  */
 const buildLeadQueries = (companyId, filters, userId) => {
     let baseRef;
-    if (filters.leadType === 'global') {
-        // BULK-6 FIX: Always scope the 'global' leads collection query by companyId.
-        // Without this, a company could query leads belonging to any other company.
-        // The global 'leads' collection stores leads captured directly from company forms;
-        // each lead document must have a companyId field for this filter to work correctly.
-        baseRef = db.collection('leads').where('companyId', '==', companyId);
-    } else if (filters.leadType === 'leads') {
+    if (filters.leadType === 'leads') {
         baseRef = db.collection('companies').doc(companyId).collection('leads');
     } else {
         baseRef = db.collection('companies').doc(companyId).collection('applications');
@@ -150,23 +144,8 @@ const buildLeadQueries = (companyId, filters, userId) => {
 
     // 7. Last Call Outcome
     if (filters.lastCallOutcome && filters.lastCallOutcome !== 'all') {
-        if (filters.leadType === 'global') {
-            const outcomeMap = {
-                "Connected / Interested": "interested",
-                "Connected / Scheduled Callback": "callback",
-                "Connected / Not Qualified": "not_qualified",
-                "Connected / Not Interested": "not_interested",
-                "Connected / Hired Elsewhere": "hired_elsewhere",
-                "Left Voicemail": "voicemail",
-                "No Answer": "no_answer",
-                "Wrong Number": "wrong_number"
-            };
-            const outcomeId = outcomeMap[filters.lastCallOutcome] || filters.lastCallOutcome;
-            applyToAll(q => q.where('lastOutcome', '==', outcomeId));
-        } else {
-            const dbOutcome = getDbValue(filters.lastCallOutcome, LAST_CALL_RESULTS);
-            applyToAll(q => q.where('lastCallOutcome', '==', dbOutcome));
-        }
+        const dbOutcome = getDbValue(filters.lastCallOutcome, LAST_CALL_RESULTS);
+        applyToAll(q => q.where('lastCallOutcome', '==', dbOutcome));
     }
 
     return queries;

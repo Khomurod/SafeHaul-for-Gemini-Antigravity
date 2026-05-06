@@ -159,10 +159,19 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         } else if (config.method === 'email') {
             // Setup Nodemailer
             try {
-                const emailSettingsDoc = await db.collection('companies').doc(companyId).collection('integrations').doc('email_settings').get();
+                let emailSettingsDoc = await db.collection('companies')
+                    .doc(companyId)
+                    .collection('system_settings')
+                    .doc('email_config')
+                    .get();
+
+                // Backward compatibility for pre-migration settings location.
+                if (!emailSettingsDoc.exists) {
+                    emailSettingsDoc = await db.collection('companies').doc(companyId).collection('integrations').doc('email_settings').get();
+                }
                 if (emailSettingsDoc.exists) {
                     const emailSettings = emailSettingsDoc.data();
-                    let mailPass = emailSettings.password;
+                    let mailPass = emailSettings.smtpPass || emailSettings.password;
 
                     // CONN-12 FIX: Use versioned prefix check instead of fragile `includes(':')` heuristic.
                     // The old `if (password.includes(':'))` would accidentally trigger decryption on any
@@ -178,16 +187,16 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                     }
 
                     const transportConfig = {};
-                    if (emailSettings.host) {
+                    if (emailSettings.smtpHost || emailSettings.host) {
                         // Custom SMTP (Outlook, SendGrid, Office 365, etc.)
-                        transportConfig.host = emailSettings.host;
-                        transportConfig.port = emailSettings.port || 587;
+                        transportConfig.host = emailSettings.smtpHost || emailSettings.host;
+                        transportConfig.port = emailSettings.smtpPort || emailSettings.port || 587;
                         transportConfig.secure = emailSettings.secure || false;
                     } else {
                         // Fallback to Gmail for backward compatibility
                         transportConfig.service = 'gmail';
                     }
-                    transportConfig.auth = { user: emailSettings.email, pass: mailPass };
+                    transportConfig.auth = { user: emailSettings.smtpUser || emailSettings.email, pass: mailPass };
                     emailTransporter = nodemailer.createTransport(transportConfig);
                 }
             } catch (e) { console.error("Failed to load Email Transporter:", e); }
@@ -246,9 +255,7 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                         if (tSnap.exists) leadData = tSnap.data();
                         else errorMsg = "Imported target data missing";
                     } else {
-                        if (leadSourceType === 'global') {
-                            leadDocRef = db.collection('leads').doc(leadId);
-                        } else if (leadSourceType === 'leads') {
+                        if (leadSourceType === 'leads') {
                             leadDocRef = db.collection('companies').doc(companyId).collection('leads').doc(leadId);
                         } else {
                             leadDocRef = db.collection('companies').doc(companyId).collection('applications').doc(leadId);

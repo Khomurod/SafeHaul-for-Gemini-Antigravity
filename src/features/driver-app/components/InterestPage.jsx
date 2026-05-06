@@ -44,8 +44,8 @@ export function InterestPage() {
                 setCompany(companyData);
 
                 // B. Find Driver Name (Optional UX enhancement)
-                if (leadId) {
-                    const leadSnap = await getDoc(doc(db, "leads", leadId));
+                if (leadId && companyData?.id) {
+                    const leadSnap = await getDoc(doc(db, "companies", companyData.id, "leads", leadId));
                     if (leadSnap.exists()) {
                         setDriverName(leadSnap.data().firstName || 'Driver');
                     }
@@ -66,13 +66,11 @@ export function InterestPage() {
         setProcessing(true);
         try {
             const confirmFn = httpsCallable(functions, 'confirmDriverInterest');
-
             await confirmFn({
-                leadId: leadId,
+                leadId,
                 companyIdOrSlug: company.id,
-                recruiterId: recruiterCode // Backend will map this to a user ID if needed
+                recruiterId: recruiterCode
             });
-
             showSuccess("Interest confirmed! Redirecting to application...");
 
             // Redirect to Full Application after 1.5s

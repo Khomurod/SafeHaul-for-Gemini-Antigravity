@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("./firebaseAdmin");
 const { checkRateLimit } = require("./shared/rateLimiter");
+const { assertCompanyAdminStrict } = require("./shared/companyAccess");
 
 /**
  * Save email settings to admin-only subcollection.
@@ -38,30 +39,8 @@ exports.saveEmailSettings = onCall(
             throw new HttpsError('resource-exhausted', 'Too many save requests. Please wait a moment.');
         }
 
-        // RBAC: Verify the caller is a member of the specified company.
-        try {
-            const userRecord = await admin.auth().getUser(request.auth.uid);
-            const claims = userRecord.customClaims || {};
-            const hasCompanyRole = claims.roles && claims.roles[companyId];
-            const globalRole = claims.globalRole || claims.roles?.globalRole;
-            const isSuperAdmin = globalRole === 'super_admin';
-
-            if (!hasCompanyRole && !isSuperAdmin) {
-                const memberSnap = await db.collection('companies').doc(companyId)
-                    .collection('team').doc(request.auth.uid).get();
-                const companySnap = await db.collection('companies').doc(companyId).get();
-                const companyData = companySnap.exists ? companySnap.data() : {};
-                const isOwner = companyData.ownerId === request.auth.uid || companyData.createdBy === request.auth.uid;
-
-                if (!memberSnap.exists && !isOwner) {
-                    throw new HttpsError('permission-denied', 'You do not have access to this company.');
-                }
-            }
-        } catch (authErr) {
-            if (authErr?.code === 'permission-denied' || authErr?.code === 'functions/permission-denied') throw authErr;
-            console.warn('[saveEmailSettings] Auth check failed:', authErr?.message || authErr);
-            throw new HttpsError('internal', 'Unable to verify company access.');
-        }
+        // Sensitive config writes require strict company admin (or super admin).
+        await assertCompanyAdminStrict(request.auth.uid, companyId);
 
         // Reference to the admin-only subcollection document
         const emailConfigRef = db.collection('companies').doc(companyId)

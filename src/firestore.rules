@@ -77,6 +77,17 @@ service cloud.firestore {
       );
     }
 
+    // Driver-owned application updates: block reassignment / identity / routing spoofing fields.
+    function applicationDriverSelfUpdateForbiddenKeys() {
+      return ['companyId', 'applicantId', 'driverId', 'userId', 'confirmationNumber',
+              'assignedTo', 'assignedToName', 'recruiterCode'];
+    }
+
+    function applicationDriverSelfUpdateAllowed() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(applicationDriverSelfUpdateForbiddenKeys());
+    }
+
     // =========================================================
     // 2. SUPER ADMIN GLOBAL BYPASS REMOVED
     // =========================================================
@@ -272,11 +283,12 @@ service cloud.firestore {
                     isSuperAdmin();
         
         // UPDATE:
-        // Company Team can update status/notes.
-        // Driver can only update if it matches their ID (mostly separate write, but allowing for now)
-        allow update: if isCompanyTeam(companyId) || 
-                      (isSignedIn() && (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid)) ||
-                      isSuperAdmin();
+        // Company Team: full operational updates.
+        // Driver owner: profile/offers/uploads/etc., but not reassignment or identity fields.
+        allow update: if isCompanyTeam(companyId) || isSuperAdmin() ||
+                      (isSignedIn() &&
+                       (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid) &&
+                       applicationDriverSelfUpdateAllowed());
 
         allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
 
@@ -321,18 +333,6 @@ service cloud.firestore {
         // Create/Delete: Restricted to Super Admin
         allow create, delete: if isSuperAdmin();
       }
-    }
-
-    // --- GLOBAL LEADS (Unclaimed / Platform) ---
-    match /leads/{leadId} {
-      allow create: if isSignedIn();
-      allow read: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid || isEmailOwner(resource.data.email);
-      // BUG-3 FIX: Scoped update — staff can only update OPERATIONAL fields on leads belonging to their company.
-      // Previously, company team could modify any field including companyId, userId, and email.
-      allow update: if isSuperAdmin() || isOwner(leadId) || resource.data.userId == request.auth.uid ||
-                    (isSignedIn() && resource.data.companyId is string && isCompanyTeam(resource.data.companyId) &&
-                     !request.resource.data.diff(resource.data).affectedKeys().hasAny(['companyId', 'userId', 'email']));
-      allow delete: if isSuperAdmin();
     }
 
     // --- DRIVERS (User Profiles) ---

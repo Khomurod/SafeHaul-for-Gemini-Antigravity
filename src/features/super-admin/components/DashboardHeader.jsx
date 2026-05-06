@@ -1,15 +1,9 @@
 import React from 'react';
-import { Building2, Search, X, Zap, LogOut, Loader2, Database, Trash2, Wrench } from 'lucide-react';
+import { Building2, Search, X, LogOut, Loader2, Wrench } from 'lucide-react';
 
 export function DashboardHeader({
     searchQuery,
     setSearchQuery,
-    onDistribute,
-    distributing,
-    onFixData,
-    fixingData,
-    onCleanup,
-    cleaning,
     onBackfillEmployers,
     backfillingEmployers,
     onLogout
@@ -65,50 +59,6 @@ export function DashboardHeader({
                         {backfillingEmployers ? "Backfilling..." : "Backfill Employers"}
                     </button>
 
-                    <button
-                        onClick={onCleanup}
-                        disabled={cleaning}
-                        className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-bold rounded-lg shadow-sm transition-colors ${cleaning
-                                ? 'bg-red-300 cursor-not-allowed'
-                                : 'bg-red-600 hover:bg-red-700'
-                            }`}
-                        title="Delete 'Unknown Driver' and placeholder records"
-                    >
-                        {cleaning ?
-                            <Loader2 size={16} className="animate-spin" /> :
-                            <Trash2 size={16} />
-                        }
-                        {cleaning ? "Purging..." : "Purge Trash"}
-                    </button>
-
-                    <button
-                        onClick={onFixData}
-                        disabled={fixingData}
-                        className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-bold rounded-lg shadow-sm transition-colors ${fixingData
-                                ? 'bg-gray-400 cursor-not-allowed'
-                                : 'bg-gray-700 hover:bg-gray-800'
-                            }`}
-                        title="Migrate Drivers to Leads"
-                    >
-                        {fixingData ?
-                            <Loader2 size={16} className="animate-spin" /> :
-                            <Database size={16} className="text-yellow-400" />
-                        }
-                        {fixingData ? "Migrating..." : "Fix Data"}
-                    </button>
-
-                    <button
-                        onClick={onDistribute}
-                        disabled={distributing}
-                        className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-bold rounded-lg shadow-sm transition-colors ${distributing ?
-                                'bg-purple-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'
-                            }`}
-                    >
-                        {distributing ?
-                            <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                        {distributing ?
-                            "Distributing..." : "Distribute Leads"}
-                    </button>
                 </div>
 
                 <button

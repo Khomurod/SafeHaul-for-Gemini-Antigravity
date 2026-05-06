@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
 import { db, storage } from '@lib/firebase';
-import { getCompanyProfile } from '@features/companies/services/companyService';
+import { getCompanyProfile } from '@features/companies';
 
 const simpleRetry = async (fn, retries = 3, delay = 1000) => {
   for (let i = 0; i < retries; i++) {
@@ -26,7 +26,7 @@ export function useAppFetch(companyId, applicationId) {
   const [teamMembers, setTeamMembers] = useState([]);
   const [assignedTo, setAssignedTo] = useState('');
 
-  const isGlobal = companyId === 'general-leads';
+  const isGlobal = false;
 
   useEffect(() => {
     if (!companyId || isGlobal) return;
@@ -65,48 +65,20 @@ export function useAppFetch(companyId, applicationId) {
     setError('');
 
     try {
-      if (!isGlobal) {
-        const companyProf = await getCompanyProfile(companyId);
-        setCompanyProfile(companyProf);
-      } else {
-        setCompanyProfile({ companyName: "General Pool (SafeHaul)" });
-      }
+      const companyProf = await getCompanyProfile(companyId);
+      setCompanyProfile(companyProf);
 
       let coll = 'applications';
       let docRef;
       let docSnap;
 
-      if (isGlobal) {
+      docRef = doc(db, "companies", companyId, coll, applicationId);
+      docSnap = await simpleRetry(() => getDoc(docRef));
+
+      if (!docSnap.exists()) {
         coll = 'leads';
-        docRef = doc(db, 'leads', applicationId);
-        docSnap = await simpleRetry(() => getDoc(docRef));
-
-        if (!docSnap.exists()) {
-          coll = 'drivers';
-          docRef = doc(db, 'drivers', applicationId);
-          docSnap = await simpleRetry(() => getDoc(docRef));
-
-          if (docSnap.exists()) {
-            const d = docSnap.data();
-            const flattened = {
-              ...d,
-              ...d.personalInfo,
-              ...d.driverProfile,
-              experience: d.qualifications?.experienceYears || '',
-              source: 'Bulk Import'
-            };
-            docSnap = { exists: () => true, data: () => flattened, id: docSnap.id, ref: docSnap.ref };
-          }
-        }
-      } else {
         docRef = doc(db, "companies", companyId, coll, applicationId);
         docSnap = await simpleRetry(() => getDoc(docRef));
-
-        if (!docSnap.exists()) {
-          coll = 'leads';
-          docRef = doc(db, "companies", companyId, coll, applicationId);
-          docSnap = await simpleRetry(() => getDoc(docRef));
-        }
       }
 
       if (docSnap.exists()) {

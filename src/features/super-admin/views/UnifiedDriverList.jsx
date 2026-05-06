@@ -4,7 +4,7 @@ import { db } from '@lib/firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
 import {
     Search, Trash2, Filter, X, Eye, MessageSquare, UserPlus,
-    FileText, Zap, User, Briefcase, Share2, Loader2, Clock,
+    FileText, User, Briefcase, Share2, Loader2, Clock,
     ChevronUp, ChevronDown, MapPin
 } from 'lucide-react';
 import { getFieldValue, formatPhoneNumber } from '@shared/utils/helpers';
@@ -36,8 +36,7 @@ const FilterChip = ({ label, active, onClick, onClear }) => (
 const SourceBadge = ({ type }) => {
     const config = {
         'Company App': { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', icon: FileText, label: 'Direct App' },
-        'Global Pool': { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', icon: Zap, label: 'Global Pool' },
-        'Distributed Lead': { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200', icon: Share2, label: 'Distributed' },
+        'Company Lead': { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200', icon: Share2, label: 'Company Lead' },
         'Company Import': { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', icon: Briefcase, label: 'Import' },
     };
     const c = config[type] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200', icon: User, label: type };
@@ -250,13 +249,11 @@ export function UnifiedDriverList({
         setDeletingId(item.id);
         try {
             let docRef;
-            if (item.sourceType === 'Global Pool' || item.sourceType === 'Bulk Lead') {
-                docRef = doc(db, "leads", item.id);
-            } else if (item.companyId && item.companyId !== 'general-leads') {
+            if (item.companyId) {
                 const collectionName = item.sourceType === 'Company App' ? 'applications' : 'leads';
                 docRef = doc(db, "companies", item.companyId, collectionName, item.id);
             } else {
-                docRef = doc(db, "leads", item.id);
+                throw new Error("Missing company ID for this record.");
             }
 
             await deleteDoc(docRef);
@@ -472,9 +469,8 @@ export function UnifiedDriverList({
                         onChange={(e) => setFilters(f => ({ ...f, source: e.target.value }))}
                     >
                         <option value="All">All Sources</option>
-                        <option value="Global Pool">Global Pool</option>
                         <option value="Company App">Direct Applications</option>
-                        <option value="Distributed Lead">Distributed Leads</option>
+                        <option value="Company Lead">Company Leads</option>
                         <option value="Company Import">Company Imports</option>
                     </select>
 

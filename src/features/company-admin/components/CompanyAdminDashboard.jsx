@@ -4,9 +4,7 @@ import { useData } from '@/context/DataContext';
 import { auth } from '@lib/firebase';
 import { getPortalUser } from '@features/auth';
 import { useToast } from '@shared/components/feedback/ToastProvider';
-
-import { useCompanyDashboard } from '@features/companies/hooks/useCompanyDashboard';
-import { StatCard } from '@features/companies/components/StatCard';
+import { StatCard, useCompanyDashboard } from '@features/companies';
 
 import { DriverSearchModal } from '@features/drivers/components/DriverSearchModal';
 import { CompanyBulkUpload } from './CompanyBulkUpload';

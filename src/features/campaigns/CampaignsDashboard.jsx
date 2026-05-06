@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Plus, Rocket, History, LayoutGrid, List, Search, Filter,
-    MessageSquare, Users, Zap, TrendingUp, BarChart3, Loader2
+    Plus, Rocket, History, LayoutGrid, Search,
+    Users, Zap, TrendingUp, BarChart3, Loader2
 } from 'lucide-react';
 import { collection, query, orderBy, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '@lib/firebase';
 import { CampaignCard } from './components/CampaignCard';
 import { CampaignEditor } from './CampaignEditor';
 import { CampaignDetails } from './components/CampaignDetails';
-import DetailedReportModal from '../company-admin/components/DetailedReportModal';
+import DetailedReportModal from './components/DetailedReportModal';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';

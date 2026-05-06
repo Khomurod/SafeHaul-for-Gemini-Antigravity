@@ -12,8 +12,8 @@ const SCHEMA_DEFINITIONS = {
     company: {
         fields: {
             // Subscription & Quotas
-            planType: "free",           // Critical for Lead Distribution
-            dailyLeadQuota: 50,         // Critical for Quota Logic
+            planType: "free",
+            dailyLeadQuota: 50,
 
             // Profile Basics
             companyName: "Untitled Company",
@@ -27,17 +27,17 @@ const SCHEMA_DEFINITIONS = {
         requiredSubcollections: ["leads", "applications", "team", "templates"]
     },
 
-    // 2. LEAD DOCUMENT SCHEMA (Global Pool)
+    // 2. LEAD DOCUMENT SCHEMA (Company Scoped)
     lead: {
         fields: {
-            // Status & Rotation Logic
+            // Status
             status: "active",
-            unavailableUntil: null,     // Critical for "Shuffle" logic
-            visitedCompanyIds: [],      // Critical for preventing duplicates
+            unavailableUntil: null,
+            visitedCompanyIds: [],
 
             // Source Tracking
             source: "System Import",
-            isPlatformLead: false,      // False = Global Pool, True = Assigned
+            isPlatformLead: false,
 
             // Timestamps
             createdAt: "TIMESTAMP",

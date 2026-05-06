@@ -186,8 +186,6 @@ const migrationLogic = onCall({
 });
 
 exports.runMigration = migrationLogic;
-// migrateDriversToLeads removed - real implementation is in leadDistribution.js
-
 /**
  * BACKFILL PUBLIC PROFILES
  * One-time callable function to force-sync ALL companies to public_profiles.

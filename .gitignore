@@ -127,11 +127,13 @@ exported_functions.txt
 missing_functions.txt
 
 # ===========================================
-# ENVIRONMENT & SECRETS (ADDED BY AUDIT)
+# ENVIRONMENT & SECRETS
 # ===========================================
-# NOTE: .env, .env.local, and .env.*.local are exposed on purpose.
-# The developer intentionally did NOT add them to .gitignore.
-# They should NEVER be added to .gitignore or deleted.
+.env
+.env.local
+.env.*
+!.env.example
+!.env.*.example
 serviceAccountKey.json
 *-key.json
 functions/serviceAccountKey.json

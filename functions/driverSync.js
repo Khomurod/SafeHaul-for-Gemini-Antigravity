@@ -337,50 +337,6 @@ exports.onApplicationUpdated = onDocumentUpdated({
   }
 });
 
-// HELPER: Real-time Stats Verification (Sharded)
-async function updateLeadStats(data, delta) {
-  try {
-    const inc = admin.firestore.FieldValue.increment;
-    const updates = { 'stats.total': inc(delta) };
-
-    const phone = data.phone || data.normalizedPhone || '';
-    const email = data.email || '';
-    const firstName = data.firstName || '';
-    const lastName = data.lastName || '';
-    const name = `${firstName} ${lastName} ${data.fullName || ''}`.toLowerCase();
-
-    if (!phone && !email) updates['stats.missingContact'] = inc(delta);
-    if (!firstName && !lastName && !data.fullName) updates['stats.missingNames'] = inc(delta);
-    if (email.includes('placeholder') || email.includes('no_email')) updates['stats.placeholderEmails'] = inc(delta);
-
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone && cleanPhone.length < 10) updates['stats.shortPhones'] = inc(delta);
-    if (name.includes('test') || name.includes('health check')) updates['stats.testData'] = inc(delta);
-
-    // WRITE HOTSPOT FIX: Use Random Shard (0-9)
-    const shardId = Math.floor(Math.random() * 10).toString();
-    const shardRef = db.collection('system_settings').doc('lead_pool_stats')
-      .collection('shards').doc(shardId);
-
-    await shardRef.set(updates, { merge: true });
-  } catch (e) {
-    console.warn("Failed to update lead stats:", e);
-  }
-}
-
-// 2. Global Leads (Unbranded)
-exports.onLeadSubmitted = onDocumentCreated({
-  document: "leads/{leadId}",
-  maxInstances: 2,
-  // BUG-10 FIX: processDriverData() uses encrypt() for SSN
-  secrets: ['SMS_ENCRYPTION_KEY']
-}, async (event) => {
-  if (!event.data) return;
-  const data = event.data.data();
-  await processDriverData(data, event.params.leadId);
-  await updateLeadStats(data, 1);
-});
-
 // 4. Sync Driver Log Activity (Fix for Permission Error + Support both 'activities' and 'activity_logs')
 exports.syncDriverOnActivity = onDocumentCreated({
   document: "companies/{companyId}/{collectionId}/{leadId}/activities/{logId}",

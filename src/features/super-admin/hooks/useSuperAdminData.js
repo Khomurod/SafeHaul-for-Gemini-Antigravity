@@ -105,7 +105,6 @@ export function useSuperAdminData() {
             if (compResult.success) {
                 const companies = [];
                 const compMap = new Map();
-                compMap.set('general-leads', 'SafeHaul Pool (Unassigned)');
 
                 compResult.data.forEach((doc) => {
                     const data = doc.data();
@@ -163,7 +162,7 @@ export function useSuperAdminData() {
                 const processedLeads = leadsResult.data.docs.map(doc => {
                     const data = doc.data();
                     // Handle potential permission errors accessing parent details safely
-                    let companyId = 'general-leads';
+                    let companyId = 'unknown';
                     try {
                         const parentCollection = doc.ref.parent;
                         const parentDoc = parentCollection.parent;
@@ -175,7 +174,7 @@ export function useSuperAdminData() {
                         ...data,
                         companyId,
                         status: data.status || 'New Lead',
-                        sourceType: data.isPlatformLead ? 'Distributed Lead' : 'Direct Lead'
+                        sourceType: 'Company Lead'
                     };
                 });
                 combinedActivity = [...combinedActivity, ...processedLeads];
@@ -294,9 +293,9 @@ export function useSuperAdminData() {
                     return {
                         id: doc.id,
                         ...data,
-                        companyId: parentDoc ? parentDoc.id : 'general-leads',
+                        companyId: parentDoc ? parentDoc.id : 'unknown',
                         status: data.status || 'New Lead',
-                        sourceType: data.isPlatformLead ? 'Distributed Lead' : 'Direct Lead'
+                        sourceType: 'Company Lead'
                     };
                 });
 
@@ -358,7 +357,7 @@ export function useSuperAdminData() {
 
             // Leads use a lowercased 'searchName' field in backend logic
             const leadsQuery = query(
-                collection(db, "leads"),
+                collectionGroup(db, "leads"),
                 where('searchName', '>=', queryTerm.toLowerCase()),
                 where('searchName', '<=', queryTerm.toLowerCase() + '\uf8ff'),
                 limit(20)

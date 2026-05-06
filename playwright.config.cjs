@@ -33,6 +33,10 @@ module.exports = defineConfig({
     /* Run your local dev server before starting the tests */
     webServer: {
         command: 'npm run dev',
+        env: {
+            ...process.env,
+            VITE_E2E_TEST_MODE: '1',
+        },
         url: 'http://localhost:5000',
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000, // Give it 2 mins to start up if needed

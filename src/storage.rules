@@ -53,8 +53,8 @@ service firebase.storage {
     // 3. Application Attachments (Guest Uploads)
     // M4 FIX: Added App Check–based read so guest applicants can verify their own uploads
     match /companies/{companyId}/{folder}/guest_uploads/{allPaths=**} {
-      allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (request.appcheck != null && folder in ['applications', 'leads']);
-      allow create: if request.appcheck != null && folder in ['applications', 'leads'] && isValidFile();
+      allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (request.appcheck != null && folder == 'applications');
+      allow create: if request.appcheck != null && folder == 'applications' && isValidFile();
       // No delete or update permissions for guests
     }
 
@@ -96,12 +96,7 @@ service firebase.storage {
       allow write: if false; // Only Cloud Functions (Admin SDK) can write
     }
 
-    // 6. Global Leads Files
-    match /global_leads/{applicantId}/{allPaths=**} {
-      allow read, write: if isOwner(applicantId) || isSuperAdmin();
-    }
-    
-    // 7. System Health Tests
+    // 6. System Health Tests
     match /system_health_tests/{fileName} {
       allow read, write: if isSuperAdmin();
     }

@@ -1,7 +1,8 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const SMSAdapterFactory = require('../factory');
-const { assertCompanyAdmin } = require('../../bulkActions/helpers/auth');
+const { assertCompanyAdminStrict } = require('../../shared/companyAccess');
+const { checkRateLimit } = require('../../shared/rateLimiter');
 
 // Shared options for functions that need encryption capabilities
 const encryptedCallOptions = {
@@ -19,6 +20,12 @@ exports.sendTestSMS = onCall(encryptedCallOptions, async (request) => {
     const { companyId, testPhoneNumber, fromNumber } = request.data;
 
     try {
+        await assertCompanyAdminStrict(request.auth.uid, companyId);
+        const rateOk = await checkRateLimit(`send_test_sms_${companyId}_${request.auth.uid}`, 20, 300, 'closed');
+        if (!rateOk) {
+            throw new HttpsError('resource-exhausted', 'Too many test SMS requests. Please try again shortly.');
+        }
+
         // NEW: Use per-line JWT routing if a specific fromNumber is provided
         // This gets an adapter authenticated with that line's specific JWT from the keychain
         const adapter = fromNumber
@@ -64,6 +71,12 @@ exports.sendSMS = onCall(encryptedCallOptions, async (request) => {
     }
 
     try {
+        await assertCompanyAdminStrict(userId, companyId);
+        const rateOk = await checkRateLimit(`send_sms_${companyId}_${userId}`, 120, 300, 'closed');
+        if (!rateOk) {
+            throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait before sending more messages.');
+        }
+
         // Use the smart recruiter routing - automatically picks dedicated credentials if assigned
         const adapter = await SMSAdapterFactory.getAdapterForUser(companyId, userId);
 
@@ -104,7 +117,7 @@ exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) 
 
     // BULK-4 FIX: Enforce RBAC — verify the caller is a member of the specified company.
     // Without this, any authenticated user can send bulk SMS to leads belonging to any company.
-    await assertCompanyAdmin(request.auth.uid, companyId);
+    await assertCompanyAdminStrict(request.auth.uid, companyId);
 
     let successCount = 0;
     let failCount = 0;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { updateCompany } from '@features/companies/services/companyService';
+import { updateCompany } from '@features/companies';
 import { uploadCompanyLogo } from '@lib/firebase';
 import { X, CreditCard } from 'lucide-react';
 

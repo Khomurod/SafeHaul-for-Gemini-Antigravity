@@ -95,13 +95,7 @@ export async function updateApplicationStatus(companyId, applicationId, newStatu
 }
 
 export async function deleteApplication(companyId, applicationId, collectionName = 'applications') {
-  let docRef;
-  if (companyId === 'general-leads') {
-    const targetCollection = (collectionName === 'drivers' || collectionName === 'leads') ? collectionName : 'leads';
-    docRef = doc(db, targetCollection, applicationId);
-  } else {
-    docRef = doc(db, "companies", companyId, collectionName, applicationId);
-  }
+  const docRef = doc(db, "companies", companyId, collectionName, applicationId);
   return await deleteDoc(docRef);
 }
 

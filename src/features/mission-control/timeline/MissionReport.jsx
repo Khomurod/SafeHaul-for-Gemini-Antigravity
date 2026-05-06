@@ -39,7 +39,7 @@ const MissionReport = ({ companyId, sessionId, onBack }) => {
         const fetchAttempts = async () => {
             if (!companyId || !sessionId) return;
             try {
-                const attemptsRef = collection(db, 'companies', companyId, 'bulk_sessions', sessionId, 'attempts');
+                const attemptsRef = collection(db, 'companies', companyId, 'bulk_sessions', sessionId, 'logs');
                 const q = query(attemptsRef, orderBy('timestamp', 'desc'), limit(100));
                 const snapshot = await getDocs(q);
                 setAttempts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -54,8 +54,8 @@ const MissionReport = ({ companyId, sessionId, onBack }) => {
         setActionLoading('pause');
         try {
             // Update session status to paused
-            const updateStatus = httpsCallable(functions, 'updateBulkSessionStatus');
-            await updateStatus({ companyId, sessionId, status: 'paused' });
+            const pauseSession = httpsCallable(functions, 'pauseBulkSession');
+            await pauseSession({ companyId, sessionId });
         } catch (err) {
             console.error('Pause error:', err);
         } finally {
@@ -66,8 +66,8 @@ const MissionReport = ({ companyId, sessionId, onBack }) => {
     const handleResume = async () => {
         setActionLoading('resume');
         try {
-            const updateStatus = httpsCallable(functions, 'updateBulkSessionStatus');
-            await updateStatus({ companyId, sessionId, status: 'active' });
+            const resumeSession = httpsCallable(functions, 'resumeBulkSession');
+            await resumeSession({ companyId, sessionId });
         } catch (err) {
             console.error('Resume error:', err);
         } finally {
@@ -91,8 +91,8 @@ const MissionReport = ({ companyId, sessionId, onBack }) => {
         if (!confirm('Are you sure you want to cancel this mission?')) return;
         setActionLoading('cancel');
         try {
-            const updateStatus = httpsCallable(functions, 'updateBulkSessionStatus');
-            await updateStatus({ companyId, sessionId, status: 'cancelled' });
+            const cancelSession = httpsCallable(functions, 'cancelBulkSession');
+            await cancelSession({ companyId, sessionId });
         } catch (err) {
             console.error('Cancel error:', err);
         } finally {
@@ -103,8 +103,8 @@ const MissionReport = ({ companyId, sessionId, onBack }) => {
     const exportCSV = () => {
         const headers = ['Driver Name', 'Phone/Email', 'Status', 'Error', 'Timestamp'];
         const rows = attempts.map(a => [
-            a.driverName || 'Unknown',
-            a.phone || a.email || '--',
+            a.recipientName || a.driverName || 'Unknown',
+            a.recipientIdentity || a.phone || a.email || '--',
             a.status,
             a.error || '',
             a.timestamp?.toDate?.()?.toLocaleString() || ''
@@ -325,8 +325,8 @@ const MissionReport = ({ companyId, sessionId, onBack }) => {
                             ) : (
                                 attempts.map((att) => (
                                     <tr key={att.id} className="border-b border-white/5 hover:bg-white/5">
-                                        <td className="p-4 text-white font-medium">{att.driverName || 'Unknown'}</td>
-                                        <td className="p-4 text-slate-400 font-mono text-sm">{att.phone || att.email || '--'}</td>
+                                        <td className="p-4 text-white font-medium">{att.recipientName || att.driverName || 'Unknown'}</td>
+                                        <td className="p-4 text-slate-400 font-mono text-sm">{att.recipientIdentity || att.phone || att.email || '--'}</td>
                                         <td className="p-4">
                                             <span className={`
                         px-2 py-1 rounded-full text-xs font-bold

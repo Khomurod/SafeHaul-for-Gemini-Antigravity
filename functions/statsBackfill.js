@@ -11,7 +11,7 @@ const { admin, db } = require("./firebaseAdmin");
 const { checkRateLimit } = require("./shared/rateLimiter");
 
 const CONTACT_OUTCOMES = new Set(['interested', 'callback', 'not_qualified', 'not_interested', 'hired_elsewhere']);
-const MAX_DAYS_BACK = 730; // 2 years
+const COLLECTION_GROUP_PAGE_SIZE = 1000;
 
 function hasSuperAdminRole(claims = {}) {
     const globalRole = claims.globalRole || claims.roles?.globalRole;
@@ -95,47 +95,62 @@ function toDateKey(ts) {
     }).format(d);
 }
 
+function isCompanyLeadActivityPath(path, companyId) {
+    if (!path.startsWith(`companies/${companyId}/`)) return false;
+    return path.includes('/applications/') || path.includes('/leads/');
+}
+
+/**
+ * Cost-optimized reader for company activity documents.
+ * Uses collection-group scans with documentId range + pagination to avoid
+ * N+1 parent collection scans.
+ */
+async function accumulateByDayFromCollectionGroup(companyId, collectionName, byDay) {
+    const documentId = admin.firestore.FieldPath.documentId();
+    const prefix = `companies/${companyId}/`;
+    const upperBound = `${prefix}\uf8ff`;
+
+    let total = 0;
+    let lastDoc = null;
+
+    let hasMore = true;
+    while (hasMore) {
+        let query = db
+            .collectionGroup(collectionName)
+            .where(documentId, '>=', prefix)
+            .where(documentId, '<', upperBound)
+            .orderBy(documentId)
+            .limit(COLLECTION_GROUP_PAGE_SIZE);
+
+        if (lastDoc) {
+            query = query.startAfter(lastDoc);
+        }
+
+        const snap = await query.get();
+        if (snap.empty) break;
+
+        for (const d of snap.docs) {
+            if (!isCompanyLeadActivityPath(d.ref.path, companyId)) continue;
+            const dk = toDateKey(d.data().timestamp);
+            if (!byDay[dk]) byDay[dk] = [];
+            byDay[dk].push(d);
+            total++;
+        }
+
+        lastDoc = snap.docs[snap.docs.length - 1];
+        hasMore = snap.size === COLLECTION_GROUP_PAGE_SIZE;
+    }
+
+    return total;
+}
+
 /**
  * Process one company: collect all call activities, group by day, write stats_daily.
  */
 async function processCompany(companyId, dryRun) {
-    // Collect all activity_logs and legacy activities across applications and leads
-    const collectionPaths = [
-        `companies/${companyId}/applications`,
-        `companies/${companyId}/leads`,
-    ];
-
     const byDay = {}; // dateKey -> [snapshots]
-    let legacyCount = 0;
-    let modernCount = 0;
-
-    for (const parentPath of collectionPaths) {
-        const [, col] = parentPath.split('/').slice(1);
-        // Get all docs in this collection (applications or leads)
-        const parentSnap = await db.collection(parentPath).get();
-
-        for (const parentDoc of parentSnap.docs) {
-            const parentId = parentDoc.id;
-
-            // Modern: activity_logs
-            const modernSnap = await db.collection(`${parentPath}/${parentId}/activity_logs`).get();
-            modernCount += modernSnap.size;
-            for (const d of modernSnap.docs) {
-                const dk = toDateKey(d.data().timestamp);
-                if (!byDay[dk]) byDay[dk] = [];
-                byDay[dk].push(d);
-            }
-
-            // Legacy: activities
-            const legacySnap = await db.collection(`${parentPath}/${parentId}/activities`).get();
-            legacyCount += legacySnap.size;
-            for (const d of legacySnap.docs) {
-                const dk = toDateKey(d.data().timestamp);
-                if (!byDay[dk]) byDay[dk] = [];
-                byDay[dk].push(d);
-            }
-        }
-    }
+    const modernCount = await accumulateByDayFromCollectionGroup(companyId, 'activity_logs', byDay);
+    const legacyCount = await accumulateByDayFromCollectionGroup(companyId, 'activities', byDay);
 
     const preview = [];
     let daysWritten = 0;

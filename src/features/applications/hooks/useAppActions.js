@@ -21,7 +21,6 @@ export function useAppActions({
   companyId,
   applicationId,
   collectionName,
-  isGlobal,
   appData,
   setAppData,
   setFileUrls,
@@ -37,18 +36,10 @@ export function useAppActions({
   const [isSaving, setIsSaving] = useState(false);
 
   const getDocRef = () => {
-    if (isGlobal) {
-      return doc(db, collectionName, applicationId);
-    }
     return doc(db, "companies", companyId, collectionName, applicationId);
   };
 
   const handleAssignChange = async (newUserId) => {
-    if (isGlobal) {
-      showError("Global leads cannot be assigned to specific recruiters. Please 'Move' them to a company first.");
-      return;
-    }
-
     const newOwnerName = teamMembers.find(m => m.id === newUserId)?.name || 'Unassigned';
     setAssignedTo(newUserId);
 
@@ -77,9 +68,7 @@ export function useAppActions({
     if (!file || !canEdit) return;
     setIsUploading(true);
 
-    const storagePath = isGlobal
-      ? `global_leads/${applicationId}/${fieldKey}-${file.name}`
-      : `companies/${companyId}/${collectionName}/${applicationId}/${fieldKey}-${file.name}`;
+    const storagePath = `companies/${companyId}/${collectionName}/${applicationId}/${fieldKey}-${file.name}`;
 
     const fileRef = ref(storage, storagePath);
 
@@ -94,7 +83,7 @@ export function useAppActions({
       const docRef = getDocRef();
       await simpleRetry(() => updateDoc(docRef, { [fieldKey]: fileData }));
 
-      if (!isGlobal) await logActivity(companyId, collectionName, applicationId, "File Uploaded", `Uploaded ${fieldKey}`);
+      await logActivity(companyId, collectionName, applicationId, "File Uploaded", `Uploaded ${fieldKey}`);
       showSuccess("File uploaded successfully");
     } catch (error) {
       console.error("Upload Error:", error);
@@ -116,7 +105,7 @@ export function useAppActions({
       const docRef = getDocRef();
       await simpleRetry(() => updateDoc(docRef, { [fieldKey]: null }));
 
-      if (!isGlobal) await logActivity(companyId, collectionName, applicationId, "File Deleted", `Deleted ${fieldKey}`);
+      await logActivity(companyId, collectionName, applicationId, "File Deleted", `Deleted ${fieldKey}`);
       showSuccess("File removed");
     } catch (error) {
       showError("File deletion failed.");
@@ -159,9 +148,9 @@ export function useAppActions({
 
       await simpleRetry(() => updateDoc(docRef, finalData));
 
-      if (!isGlobal && diff) {
+      if (diff) {
         await logActivity(companyId, collectionName, applicationId, "Details Updated", diff);
-      } else if (!isGlobal && !diff) {
+      } else if (!diff) {
         await logActivity(companyId, collectionName, applicationId, "Details Saved", "No changes detected");
       }
 
@@ -186,9 +175,7 @@ export function useAppActions({
       const oldStatus = currentStatus || 'Unknown';
       await simpleRetry(() => updateDoc(docRef, { status: newStatus }));
 
-      if (!isGlobal) {
-        await logActivity(companyId, collectionName, applicationId, "Status Changed", `Transitioned from ${oldStatus} to ${newStatus}`);
-      }
+      await logActivity(companyId, collectionName, applicationId, "Status Changed", `Transitioned from ${oldStatus} to ${newStatus}`);
 
       setCurrentStatus(newStatus);
       showSuccess(`Status updated to ${newStatus}`);
@@ -209,7 +196,7 @@ export function useAppActions({
       await simpleRetry(() => updateDoc(docRef, payload));
 
       setAppData(prev => ({ ...prev, driverType: newType }));
-      if (!isGlobal) await logActivity(companyId, collectionName, applicationId, "Type Updated", `Driver type changed to ${newType}`);
+      await logActivity(companyId, collectionName, applicationId, "Type Updated", `Driver type changed to ${newType}`);
       showSuccess(`Driver type updated to ${newType}`);
     } catch (error) {
       console.error("Error updating driver type:", error);

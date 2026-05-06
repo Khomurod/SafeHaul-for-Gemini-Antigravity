@@ -137,14 +137,14 @@ async function checkDriverCDL() {
         }
     }
 
-    // Also check leads collection
-    const leadsSnap = await db.collection('leads').get();
+    // Also check company-scoped leads collection group
+    const leadsSnap = await db.collectionGroup('leads').get();
     for (const leadDoc of leadsSnap.docs) {
         const data = leadDoc.data();
         const firstName = (data.firstName || '').toLowerCase();
         const lastName = (data.lastName || '').toLowerCase();
         if (firstName.includes(targetFirst.toLowerCase()) || lastName.includes(targetLast.toLowerCase())) {
-            console.log(`📋 Also found in LEADS collection: ${data.firstName} ${data.lastName} (ID: ${leadDoc.id})`);
+            console.log(`📋 Also found in company leads: ${data.firstName} ${data.lastName} (ID: ${leadDoc.id})`);
         }
     }
 

@@ -161,7 +161,7 @@ SafeHaul uses three distinct communication patterns:
 |---------|----------|---------|
 | **Real-time Listeners** (`onSnapshot`) | Dashboards, feeds | Lead lists, application status |
 | **Direct SDK** (`getDocs`, `setDoc`) | Low-latency CRUD | Templates, search, stats |
-| **Cloud Functions** (`httpsCallable`) | Complex logic, 3rd-party APIs | Bulk SMS, lead distribution, auth |
+| **Cloud Functions** (`httpsCallable`) | Complex logic, 3rd-party APIs | Bulk SMS, automations, auth |
 | **Background Triggers** (`onDocumentCreated`) | Automated pipelines | Driver profile sync, stats aggregation |
 
 > For detailed architecture documentation, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -309,7 +309,6 @@ SafeHaul uses **40+ Cloud Functions** organized by domain. Key function groups:
 |-------|-----------|---------|
 | **Driver Sync** | `onApplicationCreated` | Firestore trigger (v2) |
 | **Guest Application** | `submitGuestApplication` | Callable (v1) |
-| **Lead Distribution** | `runLeadDistribution`, `distributeDailyLeads` | Scheduled + Callable (v2) |
 | **Bulk Actions** | `startBulkSession`, `processBulkBatch` | Callable (v2) |
 | **SMS Integration** | `sendDirectSms` | Callable (v2) |
 | **Email Service** | `sendCustomEmail` | Callable |
@@ -379,18 +378,19 @@ firebase deploy --only firestore:rules
 firebase deploy --only storage
 ```
 
-### Automatic GitHub Hosting Deploys
+### Automatic GitHub Deploys (Hosting + Rules)
 
-The workflow in `.github/workflows/main.yml` deploys Hosting only and runs this command on successful pushes to `main`:
+The workflow in `.github/workflows/main.yml` deploys both Hosting and Firebase rules on successful pushes to `main`:
 
 ```bash
 npx firebase-tools deploy --only hosting --project truckerapp-system --non-interactive
+npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project truckerapp-system --non-interactive
 ```
 
 One-time GitHub setup is still required:
 
 1. Create a GitHub Actions secret named `FIREBASE_SERVICE_ACCOUNT_TRUCKERAPP_SYSTEM`.
-2. Store the JSON for a Google service account that can deploy to the `truckerapp-system` Firebase project.
+2. Store the JSON for a Google service account that can deploy Hosting and manage Firestore/Storage rules in the `truckerapp-system` Firebase project.
 3. Push or merge changes into `main`.
 
 > **Important**: When deploying Cloud Functions, deploy them **one at a time** if you have limited CPU to avoid OOM issues during build.
@@ -407,7 +407,7 @@ npm test
 cd functions && npm test
 
 # End-to-end tests (Playwright)
-npx playwright test
+npm run test:e2e
 
 # Linting (Frontend + Backend)
 npm run lint

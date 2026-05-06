@@ -17,6 +17,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { admin, db, storage } = require("./firebaseAdmin");
 const { sendDynamicEmail } = require("./emailService");
 const { checkRateLimit } = require("./shared/rateLimiter");
+const { assertCompanyAccessForRequest } = require("./shared/companyAccess");
 const { v4: uuidv4 } = require("uuid");
 const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 const { logger } = require("firebase-functions");
@@ -246,32 +247,7 @@ exports.sendVerificationRequest = onCall({ cors: true }, async (request) => {
     }
 
     // PEV-SEC-1 FIX: Verify the caller actually belongs to the specified company.
-    // Without this check, any authenticated user from any company can trigger a PEV request
-    // against another company's applications (IDOR vulnerability).
-    try {
-        const userRecord = await admin.auth().getUser(request.auth.uid);
-        const claims = userRecord.customClaims || {};
-        const hasCompanyRole = claims.roles && claims.roles[companyId];
-        const globalRole = claims.globalRole || claims.roles?.globalRole;
-        const isSuperAdmin = globalRole === 'super_admin';
-
-        if (!hasCompanyRole && !isSuperAdmin) {
-            // Fallback: check team subcollection
-            const memberSnap = await db.collection('companies').doc(companyId)
-                .collection('team').doc(request.auth.uid).get();
-            const companySnap = await db.collection('companies').doc(companyId).get();
-            const companyData = companySnap.exists ? companySnap.data() : {};
-            const isOwner = companyData.ownerId === request.auth.uid || companyData.createdBy === request.auth.uid;
-
-            if (!memberSnap.exists && !isOwner) {
-                throw new HttpsError('permission-denied', 'You do not have access to this company.');
-            }
-        }
-    } catch (authErr) {
-        if (authErr?.code === 'permission-denied' || authErr?.code === 'functions/permission-denied') throw authErr;
-        logger.warn('[PEV] Auth check failed:', authErr?.message || authErr);
-        throw new HttpsError('internal', 'Unable to verify company access.');
-    }
+    await assertCompanyAccessForRequest(request, companyId, 'PEV/sendVerificationRequest');
 
     try {
         // Get company name
@@ -358,7 +334,7 @@ exports.getVerificationRequest = onCall({ cors: true }, async (request) => {
     if (!token) throw new HttpsError('invalid-argument', 'Missing verification token.');
 
     // Rate limit: 20 reads per minute per token
-    const isAllowed = await checkRateLimit(`pev_read_${token}`, 20, 60);
+    const isAllowed = await checkRateLimit(`pev_read_${token}`, 20, 60, 'closed');
     if (!isAllowed) throw new HttpsError('resource-exhausted', 'Too many requests. Please wait a moment.');
 
     try {

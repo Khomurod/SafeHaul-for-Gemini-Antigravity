@@ -11,7 +11,8 @@
     "lint:frontend": "eslint .",
     "lint:backend": "cd functions && npm run lint",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@floating-ui/dom": "1.7.6",

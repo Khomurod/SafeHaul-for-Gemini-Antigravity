@@ -27,6 +27,7 @@ exports.checkImportPhones = bulkActions.checkImportPhones;
 const driverSync = require('./driverSync');
 const hrAdmin = require('./hrAdmin');
 const companyAdmin = require('./companyAdmin');
+const legacyCompat = require('./legacyCompat');
 
 const digitalSealing = require('./digitalSealing');
 const notifySigner = require('./notifySigner');
@@ -68,7 +69,6 @@ exports.syncPublicProfile = companyAdmin.syncPublicProfile;
 // 4. Applications & Driver Sync
 exports.onApplicationSubmitted = driverSync.onApplicationSubmitted;
 exports.onApplicationUpdated = driverSync.onApplicationUpdated;  // NEW: Sync files on update
-exports.onLeadSubmitted = driverSync.onLeadSubmitted;
 exports.syncDriverOnLog = driverSync.syncDriverOnLog;
 exports.syncDriverOnActivity = driverSync.syncDriverOnActivity;
 exports.onCompanyLeadSubmitted = driverSync.onCompanyLeadSubmitted;
@@ -175,3 +175,9 @@ exports.getSignedPevUrl = require('./getSignedPevUrl').getSignedPevUrl;
 // 18. Feature Scheduler
 const featureScheduler = require('./featureScheduler');
 exports.enforceFeatureSchedules = featureScheduler.enforceFeatureSchedules;
+
+// 19. Legacy Compatibility Callables (frontend contract preservation)
+exports.updateBulkSessionStatus = legacyCompat.updateBulkSessionStatus;
+exports.confirmDriverInterest = legacyCompat.confirmDriverInterest;
+exports.sendDriverInvite = legacyCompat.sendDriverInvite;
+exports.backfillEmployerFields = legacyCompat.backfillEmployerFields;

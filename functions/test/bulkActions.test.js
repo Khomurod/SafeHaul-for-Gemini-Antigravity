@@ -163,7 +163,7 @@ describe('Bulk Actions Tests', () => {
         const request = {
             data: {
                 companyId: 'company123',
-                filters: { leadType: 'global' },
+                filters: { leadType: 'leads' },
                 config: { method: 'sms', message: 'Hello' }
             },
             auth: { uid: 'user123', token: { roles: { company123: 'company_admin' } } }
@@ -215,7 +215,7 @@ describe('Bulk Actions Tests', () => {
             })
         };
 
-        // Global leads query mock
+        // Company leads query mock
         const leadsCollectionMock = {
             doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }) })),
             where: jest.fn().mockReturnThis(),
@@ -371,7 +371,7 @@ describe('Bulk Actions Tests', () => {
             data: {
                 companyId: 'company123',
                 filters: {
-                    leadType: 'global',
+                    leadType: 'leads',
                     excludedLeadIds: ['lead1']
                 },
                 config: { method: 'sms', message: 'Hello' }
@@ -403,11 +403,20 @@ describe('Bulk Actions Tests', () => {
                         })
                     }))
                 };
-                return { doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: false }) })) };
+                return {
+                    doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: false }) })),
+                    where: jest.fn().mockReturnThis(),
+                    select: jest.fn().mockReturnThis(),
+                    limit: jest.fn().mockReturnThis(),
+                    get: jest.fn().mockResolvedValue({
+                        docs: [{ id: 'lead1', data: () => ({}) }, { id: 'lead2', data: () => ({}) }],
+                        size: 2
+                    })
+                };
             })
         };
 
-        // Global leads — return 2 leads (lead1 should be filtered out by excludedLeadIds)
+        // Company leads — return 2 leads (lead1 should be filtered out by excludedLeadIds)
         const leadsCollectionMock = {
             doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }) })),
             where: jest.fn().mockReturnThis(),

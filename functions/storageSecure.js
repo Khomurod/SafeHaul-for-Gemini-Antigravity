@@ -1,6 +1,8 @@
 const functions = require("firebase-functions/v1");
 const { getStorage } = require("firebase-admin/storage");
+const { db } = require("./firebaseAdmin");
 const { checkRateLimit } = require("./shared/rateLimiter"); // C3 FIX
+const { assertCompanyAcceptingIntake } = require("./shared/companyTenant");
 
 // --- HELPER: Validate File Type ---
 const ALLOWED_MIME_TYPES = [
@@ -14,7 +16,7 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
     // Note: This function is explicitly for GUESTS (and users), so no auth check is strictly required for generation,
     // BUT we must strictly validate the payload to prevent abuse.
 
-    const { companyId, fileName, fileType, folder } = data;
+    const { companyId, fileName, fileType } = data;
 
     // 1. Security: App Check & Rate Limiting (Prevent abuse)
     if (!context.app && !process.env.FUNCTIONS_EMULATOR) {
@@ -46,14 +48,15 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Invalid file type. Only PDF and Images are allowed.');
     }
 
-    // Default to 'applications' if not specified or invalid
-    const targetFolder = (folder === 'leads') ? 'leads' : 'applications';
+    await assertCompanyAcceptingIntake(db, companyId);
+
+    // Guest intake uploads use applications path only (global leads path retired server-side).
 
     // 2. Generate Safe Filename
     // Use timestamp + random string to prevent collisions and guessing
     const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const finalPath = `companies/${companyId}/${targetFolder}/guest_uploads/${uniqueId}_${cleanFileName}`;
+    const finalPath = `companies/${companyId}/applications/guest_uploads/${uniqueId}_${cleanFileName}`;
 
     // Generate a random UUID for the Firebase Storage Download Token
     const { v4: uuidv4 } = require('uuid');

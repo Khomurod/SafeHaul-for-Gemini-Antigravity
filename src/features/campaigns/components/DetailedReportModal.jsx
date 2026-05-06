@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { db, functions } from '@lib/firebase';
+import React, { useEffect, useState } from 'react';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { collection, query, limit, getDocs, orderBy } from 'firebase/firestore';
-import { useToast } from '@shared/components/feedback/ToastProvider';
+import { db, functions } from '@lib/firebase';
+import { useToast } from '@shared/components/feedback';
 
 export default function DetailedReportModal({ companyId, sessionId, isOpen, onClose }) {
     const [logs, setLogs] = useState([]);
@@ -10,7 +10,6 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
     const [retrying, setRetrying] = useState(false);
     const { showSuccess, showError } = useToast();
 
-    // ... (useEffect for fetching logs remains same)
     useEffect(() => {
         if (!isOpen || !companyId || !sessionId) return;
 
@@ -18,42 +17,41 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
             try {
                 setLoading(true);
                 const logsRef = collection(db, 'companies', companyId, 'bulk_sessions', sessionId, 'logs');
-                // Order by timestamp desc, limit to 200 to see more
                 const q = query(logsRef, orderBy('timestamp', 'desc'), limit(200));
                 const snapshot = await getDocs(q);
 
-                const fetchedLogs = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
+                const fetchedLogs = snapshot.docs.map((docSnap) => ({
+                    id: docSnap.id,
+                    ...docSnap.data(),
                 }));
                 setLogs(fetchedLogs);
             } catch (error) {
-                console.error("Error fetching logs:", error);
-                showError("Failed to load delivery details. Check permissions.");
+                console.error('Error fetching logs:', error);
+                showError('Failed to load delivery details. Check permissions.');
             } finally {
                 setLoading(false);
             }
         };
 
         fetchLogs();
-    }, [isOpen, companyId, sessionId]);
+    }, [isOpen, companyId, sessionId, showError]);
 
     const handleRetry = async () => {
-        if (!confirm("Start a new campaign for FAILED recipients only? This will retry permanent errors too.")) return;
+        if (!window.confirm('Start a new campaign for FAILED recipients only? This will retry permanent errors too.')) return;
 
         try {
             setRetrying(true);
             const retryFn = httpsCallable(functions, 'retryFailedAttempts');
             const result = await retryFn({
                 companyId,
-                originalSessionId: sessionId
+                originalSessionId: sessionId,
             });
 
             if (result.data.success) {
                 showSuccess(`Retry session started with ${result.data.targetCount} targets.`);
                 onClose();
             } else {
-                showError(result.data.message || "Retry failed to start.");
+                showError(result.data.message || 'Retry failed to start.');
             }
         } catch (err) {
             console.error(err);
@@ -63,7 +61,7 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
         }
     };
 
-    const hasFailures = logs.some(l => l.status === 'failed' || (l.isSuccess === false));
+    const hasFailures = logs.some((log) => log.status === 'failed' || log.isSuccess === false);
 
     if (!isOpen) return null;
 

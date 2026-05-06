@@ -88,7 +88,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
         // Apply .select() to only fetch fields needed for in-memory filtering.
         // This prevents crashes from corrupt Timestamp fields in documents.
         const fieldsNeeded = ['lastBulkMessageAt', 'lastContactedAt', 'phone', 'phoneNumber'];
-        const selectQueries = queries.map(q => q.select(...fieldsNeeded));
+        const selectQueries = queries.map(q => typeof q.select === 'function' ? q.select(...fieldsNeeded) : q);
 
         // Execute all queries to get IDs
         try {

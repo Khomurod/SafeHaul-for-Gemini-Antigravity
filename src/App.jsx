@@ -9,8 +9,13 @@ import {
   GlobalLoadingState,
 } from '@shared/components/feedback';
 import { QueueStatusIndicator } from '@shared/components/feedback/QueueStatusIndicator';
-import { DiscontinuedLeadsPopup } from '@shared/components/modals/DiscontinuedLeadsPopup';
 import { featureScreens, companyChildRouteDefs } from '@app/routes/featureRegistry';
+import { isCompanyWorkspaceRole } from '@app/auth/roles';
+import {
+  COMPANY_WORKSPACE_ROUTE,
+  PROTECTED_FEATURE_ROUTE_MANIFEST,
+  PUBLIC_FEATURE_ROUTE_MANIFEST,
+} from '@app/routes/appRouteManifest';
 
 // Keep Auth screens eager-loaded as they are the entry point
 import { LoginScreen, TeamMemberSignup } from '@features/auth';
@@ -30,8 +35,7 @@ function RootRedirect() {
   if (!currentUser) return <Navigate to="/login" />;
 
   if (userRole === 'super_admin') return <Navigate to="/super-admin" />;
-  // P2 FIX: Accept all company-side roles, not just 'company_admin'
-  if (['company_admin', 'hr_user', 'recruiter'].includes(userRole)) return <Navigate to="/company/dashboard" />;
+  if (isCompanyWorkspaceRole(userRole)) return <Navigate to="/company/dashboard" />;
   if (userRole === 'driver') return <Navigate to="/driver/dashboard" />;
 
   // P0 FIX: If role is null (pending selection modal), don't show infinite loader
@@ -59,26 +63,7 @@ function ProtectedRoute({ children, allowedRoles }) {
 // --- MAIN ROUTER ---
 function AppRoutes() {
   const { currentCompanyProfile } = useData();
-  const {
-    superAdminDashboard: SuperAdminDashboardScreen,
-    companyAppShell: CompanyAppShellScreen,
-    publicApplyHandler: PublicApplyHandlerScreen,
-    interestPage: InterestPageScreen,
-    signingRoom: SigningRoomScreen,
-    verificationPortal: VerificationPortalScreen,
-    driverDashboard: DriverDashboardScreen,
-    driverApplicationWizard: DriverApplicationWizardScreen,
-  } = featureScreens;
-
-  const superAdminElement = withFeatureBoundary(
-    'Super Admin',
-    <SuperAdminDashboardScreen />,
-  );
-
-  const companyLayoutElement = withFeatureBoundary(
-    'Company Workspace',
-    <CompanyAppShellScreen />,
-  );
+  const CompanyWorkspaceLayout = featureScreens[COMPANY_WORKSPACE_ROUTE.screen];
 
   return (
     <Suspense fallback={<GlobalLoadingState />}>
@@ -88,51 +73,57 @@ function AppRoutes() {
         <Route path="/login" element={<AuthGuardedLogin />} />
         <Route path="/join/:companyId" element={<TeamMemberSignup />} />
 
-        {/* Public Driver Routes */}
-        <Route
-          path="/apply/:slug"
-          element={withFeatureBoundary('Driver Application', <PublicApplyHandlerScreen />)}
-        />
+        {/* Public feature routes */}
+        {PUBLIC_FEATURE_ROUTE_MANIFEST.map((routeDef) => {
+          const Screen = featureScreens[routeDef.screen];
+          if (!Screen) return null;
 
-        {/* FIX: New route for personalized recruiter invites */}
-        <Route
-          path="/interest/:slug"
-          element={withFeatureBoundary('Interest Page', <InterestPageScreen />)}
-        />
-
-        {/* Signing Room (Publicly Accessible via Token) */}
-        <Route
-          path="/sign/:companyId/:requestId"
-          element={withFeatureBoundary('E-Signature Room', <SigningRoomScreen />)}
-        />
-
-        {/* Employment Verification Portal (Publicly Accessible via Token) */}
-        <Route
-          path="/verify/:token"
-          element={withFeatureBoundary('Verification Portal', <VerificationPortalScreen />)}
-        />
+          return (
+            <Route
+              key={routeDef.id}
+              path={routeDef.path}
+              element={withFeatureBoundary(routeDef.featureName, <Screen />)}
+            />
+          );
+        })}
 
         {/* --- PROTECTED ROUTES (Login Required) --- */}
+        {PROTECTED_FEATURE_ROUTE_MANIFEST.map((routeDef) => {
+          const Screen = featureScreens[routeDef.screen];
+          if (!Screen) return null;
 
-        {/* Super Admin */}
-        <Route path="/super-admin/*" element={
-          <ProtectedRoute allowedRoles={['super_admin']}>
-            {superAdminElement}
-          </ProtectedRoute>
-        } />
+          return (
+            <Route
+              key={routeDef.id}
+              path={routeDef.path}
+              element={(
+                <ProtectedRoute allowedRoles={routeDef.allowedRoles}>
+                  {withFeatureBoundary(routeDef.featureName, <Screen />)}
+                </ProtectedRoute>
+              )}
+            />
+          );
+        })}
 
-        {/* Company Admin / HR */}
-        <Route path="/company" element={
-          <ProtectedRoute allowedRoles={['company_admin', 'super_admin', 'hr_user', 'recruiter']}>
-            {companyLayoutElement}
-          </ProtectedRoute>
-        }>
-          <Route index element={<Navigate to="dashboard" replace />} />
+        {/* Company workspace */}
+        {CompanyWorkspaceLayout && (
+          <Route
+            path={COMPANY_WORKSPACE_ROUTE.path}
+            element={(
+              <ProtectedRoute allowedRoles={COMPANY_WORKSPACE_ROUTE.allowedRoles}>
+                {withFeatureBoundary(
+                  COMPANY_WORKSPACE_ROUTE.featureName,
+                  <CompanyWorkspaceLayout />,
+                )}
+              </ProtectedRoute>
+            )}
+          >
+          <Route index element={<Navigate to={COMPANY_WORKSPACE_ROUTE.indexRedirect} replace />} />
           {companyChildRouteDefs.map((routeDef) => {
             const Screen = featureScreens[routeDef.screen];
             if (!Screen) return null;
 
-            if (routeDef.path === 'settings' && !currentCompanyProfile) {
+            if (routeDef.id === 'settings' && !currentCompanyProfile) {
               return (
                 <Route
                   key={routeDef.path}
@@ -158,26 +149,8 @@ function AppRoutes() {
               />
             );
           })}
-        </Route>
-
-        {/* Driver App */}
-        <Route path="/driver/dashboard" element={
-          <ProtectedRoute allowedRoles={['driver']}>
-            {withFeatureBoundary('Driver Dashboard', <DriverDashboardScreen />)}
-          </ProtectedRoute>
-        } />
-
-        <Route path="/driver/apply" element={
-          <ProtectedRoute allowedRoles={['driver']}>
-            {withFeatureBoundary('Driver Application', <DriverApplicationWizardScreen />)}
-          </ProtectedRoute>
-        } />
-
-        <Route path="/driver/apply/:companyId" element={
-          <ProtectedRoute allowedRoles={['driver']}>
-            {withFeatureBoundary('Driver Application', <DriverApplicationWizardScreen />)}
-          </ProtectedRoute>
-        } />
+          </Route>
+        )}
 
         {/* Fallbacks */}
         <Route path="/" element={<RootRedirect />} />
@@ -196,7 +169,6 @@ export default function App() {
             <AppRoutes />
             {/* Bulletproof: Show queue/offline status indicator */}
             <QueueStatusIndicator />
-            <DiscontinuedLeadsPopup />
           </Router>
         </DataProvider>
       </ToastProvider>

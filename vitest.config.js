@@ -16,6 +16,7 @@ export default defineConfig({
         // Exclude Jest-only backend tests — those run via `cd functions && npm test`
         exclude: [
             '**/node_modules/**',
+            'e2e/**',
             'functions/test/bulkActions.test.js',
             'functions/test/integration/**',
             'functions/test/unit/rateLimiter.test.js',
@@ -24,6 +25,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),
+            '@app': path.resolve(__dirname, './src/app'),
             '@features': path.resolve(__dirname, './src/features'),
             '@shared': path.resolve(__dirname, './src/shared'),
             '@lib': path.resolve(__dirname, './src/lib'),

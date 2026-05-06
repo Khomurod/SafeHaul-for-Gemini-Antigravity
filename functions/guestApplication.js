@@ -7,6 +7,7 @@ const functions = require('firebase-functions/v1');
 const { db } = require('./firebaseAdmin');
 const crypto = require('crypto');
 const { FieldValue } = require('firebase-admin/firestore');
+const { assertCompanyAcceptingIntake } = require('./shared/companyTenant');
 
 function generateApplicationId(companyId, email, phone) {
     const normalizedEmail = (email || '').toLowerCase().trim();
@@ -63,7 +64,10 @@ exports.submitGuestApplication = functions
     .https.onCall(async (data, context) => {
         const hasAppCheck = !!context.app;
         if (!hasAppCheck && !process.env.FUNCTIONS_EMULATOR) {
-            console.warn('[submitGuestApplication] Called without App Check token; request is still allowed and monitored.');
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'The function must be called from an App Check verified app.'
+            );
         }
 
         const { checkRateLimit } = require('./shared/rateLimiter');
@@ -91,26 +95,19 @@ exports.submitGuestApplication = functions
             throw new functions.https.HttpsError('invalid-argument', 'Signature is required.');
         }
 
-        let companyName = 'Unknown Company';
-        let applicationConfig = null;
+        const companyData = await assertCompanyAcceptingIntake(db, companyId);
+        let companyName = companyData.companyName || 'Unknown Company';
+        let applicationConfig = companyData.applicationConfig || null;
+
         try {
             const publicSnap = await db.collection('public_profiles').doc(companyId).get();
             if (publicSnap.exists) {
                 const publicData = publicSnap.data() || {};
                 companyName = publicData.companyName || companyName;
-                applicationConfig = publicData.applicationConfig || applicationConfig;
-            } else {
-                const companySnap = await db.collection('companies').doc(companyId).get();
-                if (companySnap.exists) {
-                    const companyData = companySnap.data() || {};
-                    companyName = companyData.companyName || companyName;
-                    applicationConfig = companyData.applicationConfig || applicationConfig;
-                } else {
-                    console.warn(`[submitGuestApplication] Company ID ${companyId} not found, proceeding with placeholder name.`);
-                }
+                applicationConfig = publicData.applicationConfig ?? applicationConfig;
             }
         } catch (err) {
-            console.error('[submitGuestApplication] Company lookup error:', err);
+            console.error('[submitGuestApplication] Public profile lookup error:', err);
         }
 
         const cdlUploadConfig = getFieldConfig(applicationConfig, 'cdlUpload', true);

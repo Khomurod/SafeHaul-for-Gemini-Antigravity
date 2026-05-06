@@ -8,6 +8,7 @@ import { CompanyChooserModal } from '@shared/components/modals';
 import { RoleSelectionModal } from '@shared/components/modals/RoleSelectionModal';
 import { SESSION_KEYS } from './dataContext/sessionKeys';
 import { extractRoleContext, getPrimaryCompanyRole } from './dataContext/claims';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 export const DataContext = createContext();
 
@@ -59,6 +60,61 @@ export function DataProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (isE2ETestMode) {
+      const e2eAuthMode = getE2EQueryParam('e2eAuth', 'none');
+      const mockCompany = {
+        id: 'e2e-company',
+        companyName: 'E2E Logistics',
+        appSlug: 'e2e-company',
+        applicationConfig: {},
+      };
+
+      if (e2eAuthMode === 'none') {
+        setCurrentUser(null);
+        setCurrentUserClaims(null);
+        setCurrentCompanyProfile(null);
+        setUserRole(null);
+        setHasDriverProfile(false);
+        setHasEmployerProfile(false);
+        setSelectedPortal(null);
+        setShowCompanyChooser(false);
+        setShowRoleSelection(false);
+        setLoading(false);
+        return () => {};
+      }
+
+      const mockClaimsByMode = {
+        super_admin: { globalRole: 'super_admin', roles: { globalRole: 'super_admin' } },
+        company_admin: { roles: { [mockCompany.id]: 'company_admin' } },
+        driver: { roles: {} },
+      };
+      const modeClaims = mockClaimsByMode[e2eAuthMode] || { roles: {} };
+      const userRoleByMode = {
+        super_admin: 'super_admin',
+        company_admin: 'company_admin',
+        driver: 'driver',
+      };
+      const userRoleForMode = userRoleByMode[e2eAuthMode] || null;
+
+      setCurrentUser({
+        uid: `e2e-${e2eAuthMode}`,
+        email: `${e2eAuthMode}@safehaul.local`,
+        getIdTokenResult: async () => ({ claims: modeClaims }),
+      });
+      setCurrentUserClaims(modeClaims);
+      setUserRole(userRoleForMode);
+      setHasDriverProfile(e2eAuthMode === 'driver');
+      setHasEmployerProfile(e2eAuthMode === 'super_admin' || e2eAuthMode === 'company_admin');
+      setSelectedPortal(e2eAuthMode === 'driver' ? 'driver' : 'employer');
+      setCurrentCompanyProfile(
+        e2eAuthMode === 'company_admin' || e2eAuthMode === 'super_admin' ? mockCompany : null,
+      );
+      setShowCompanyChooser(false);
+      setShowRoleSelection(false);
+      setLoading(false);
+      return () => {};
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       const thisVersion = ++authVersionRef.current;
 
@@ -270,7 +326,7 @@ export function DataProvider({ children }) {
         <RoleSelectionModal onSelect={handlePortalSelection} />
       )}
 
-      {currentUser && showCompanyChooser && !loading && userRole === 'company_admin' && !showRoleSelection && (
+      {currentUser && showCompanyChooser && !loading && selectedPortal === 'employer' && !showRoleSelection && (
         <CompanyChooserModal />
       )}
     </DataContext.Provider>

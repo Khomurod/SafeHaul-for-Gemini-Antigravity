@@ -110,13 +110,11 @@ export function useSubmissionQueue() {
 
         // Authenticated submissions → direct Firestore write (rules pass with auth)
         const applicationId = data.applicationId || entry.id;
-
-        let docRef;
-        if (companyId && companyId !== 'general-leads') {
-            docRef = doc(db, "companies", companyId, "applications", applicationId);
-        } else {
-            docRef = doc(db, "leads", applicationId);
+        if (!companyId) {
+            throw new Error('Queued submission missing a valid companyId.');
         }
+
+        const docRef = doc(db, "companies", companyId, "applications", applicationId);
 
         const submissionData = {
             ...data,

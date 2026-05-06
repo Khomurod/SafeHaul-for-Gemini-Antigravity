@@ -178,30 +178,6 @@ export function useCallOutcome(lead, companyId, onUpdate, onClose) {
             // The client no longer writes to drivers/{lead.id} directly to avoid permission errors.
             // See functions/driverSync.js -> syncDriverOnLog
 
-            // --- Pool Logic (Direct Firestore SDK) ---
-            if (lead.isPlatformLead && (outcome === 'hired_elsewhere' || outcome === 'not_interested' || outcome === 'not_qualified')) {
-                const globalLeadId = lead.originalLeadId || lead.id;
-                const globalLeadRef = doc(db, 'leads', globalLeadId);
-
-                let lockDays = 7; // Default cool-off
-                let poolStatus = 'rejected';
-
-                if (outcome === 'hired_elsewhere' || outcome === 'hired') {
-                    lockDays = 60;
-                    poolStatus = 'hired';
-                }
-
-                const lockUntil = new Date();
-                lockUntil.setDate(lockUntil.getDate() + lockDays);
-
-                updateDoc(globalLeadRef, {
-                    unavailableUntil: lockUntil,
-                    lastOutcome: outcome,
-                    lastOutcomeBy: companyId,
-                    poolStatus: poolStatus
-                }).catch(err => console.error("Failed to report outcome to pool directly:", err));
-            }
-
             // --- Notifications ---
             if (showCallbackSelect) {
                 const scheduledTime = new Date(`${callbackDate}T${callbackTime}`);

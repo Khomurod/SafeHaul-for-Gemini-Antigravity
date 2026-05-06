@@ -20,7 +20,7 @@ const AudienceNode = memo(({ data, selected }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [filters, setFilters] = useState({
-        source: 'applications', // applications | leads | global
+        source: 'applications', // applications | leads
         statuses: [],
         recruiterId: 'all',
         campaignLimit: '', // Part 3: Cap & Slice
@@ -110,7 +110,7 @@ const AudienceNode = memo(({ data, selected }) => {
 
     const sourceOptions = [
         { id: 'applications', label: '📋 Company Applicants', desc: 'Drivers who applied to your company' },
-        { id: 'leads', label: '🌐 Marketplace Leads', desc: 'Leads from SafeHaul marketplace' },
+        { id: 'leads', label: '🗂 Company Leads', desc: 'Leads in your company workspace' },
     ];
 
     const currentStatuses = APPLICATION_STATUSES;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { createNewCompany, loadCompanies } from '@features/companies/services/companyService';
+import { createNewCompany, loadCompanies } from '@features/companies';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { Plus, UserPlus, Save, Loader2, Shield, Crown, Truck, Briefcase, User, X } from 'lucide-react';
@@ -89,7 +89,7 @@ export function CreateView({ onDataUpdate, setActiveView }) {
             const newCompanyRef = await createNewCompany({
                 ...companyForm,
                 dailyQuota: calculatedQuota,
-                isActive: true, // Required for lead distribution
+                isActive: true,
                 createdAt: new Date()
             });
 

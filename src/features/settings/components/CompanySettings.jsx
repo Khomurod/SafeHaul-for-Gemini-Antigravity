@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
 import {
     Building, User, CreditCard, CheckCircle,
-    Blocks, ArrowLeft, Users, Mail, Briefcase, MessageSquare, Megaphone
+    Blocks, ArrowLeft, Users, Mail, Briefcase, MessageSquare
 } from 'lucide-react';
 
 import { NumberAssignmentManager } from './NumberAssignmentManager';
@@ -15,8 +15,6 @@ import { PersonalProfileTab } from './PersonalProfileTab';
 import { IntegrationsTab } from './IntegrationsTab';
 import { JobPostingManager } from './hiring/JobPostingManager';
 import { ManageTeamModal } from '@shared/components/modals';
-import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
-import { CampaignsDashboard } from '@features/campaigns';
 
 const SidebarItem = ({ id, label, icon: Icon, activeTab, onClick }) => (
     <button
@@ -116,34 +114,12 @@ export function CompanySettings() {
                         </div>
                     </div>
                 );
-            case 'bulk-actions':
-                return <CampaignsDashboard companyId={currentCompanyProfile?.id} />;
             default:
                 return <div className="p-10 text-center text-gray-500">Select a tab to view settings.</div>;
         }
     };
 
     if (!currentCompanyProfile) return null;
-
-    // Full-screen mode for Campaigns
-    if (activeTab === 'bulk-actions' && currentCompanyProfile?.features?.campaignsEnabled) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex flex-col">
-                <div className="h-16 bg-white border-b border-gray-200 flex items-center px-8 sticky top-0 z-10 shrink-0">
-                    <button onClick={() => navigate('/company/dashboard')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors font-medium">
-                        <ArrowLeft size={20} /> Back to Dashboard
-                    </button>
-                    <div className="h-6 w-px bg-slate-200 mx-4"></div>
-                    <button onClick={() => setActiveTab('company')} className="text-sm font-bold text-slate-500 hover:text-slate-800">
-                        Settings
-                    </button>
-                </div>
-                <div className="flex-1">
-                    <CampaignsDashboard companyId={currentCompanyProfile?.id} />
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -166,12 +142,11 @@ export function CompanySettings() {
                             <SidebarItem id="email" label="Email Settings" icon={Mail} activeTab={activeTab} onClick={setActiveTab} />
                             <SidebarItem id="sms" label="SMS Settings" icon={MessageSquare} activeTab={activeTab} onClick={setActiveTab} />
 
-                            <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Revenue & Reach</h3>
                             {currentCompanyProfile?.features?.callTracking !== false && (
-                                <SidebarItem id="integrations" label="Integrations" icon={Blocks} activeTab={activeTab} onClick={setActiveTab} />
-                            )}
-                            {currentCompanyProfile?.features?.campaignsEnabled !== false && (
-                                <SidebarItem id="bulk-actions" label="Bulk Actions" icon={Megaphone} activeTab={activeTab} onClick={setActiveTab} />
+                                <>
+                                    <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Revenue & Reach</h3>
+                                    <SidebarItem id="integrations" label="Integrations" icon={Blocks} activeTab={activeTab} onClick={setActiveTab} />
+                                </>
                             )}
 
                             <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Account Control</h3>
