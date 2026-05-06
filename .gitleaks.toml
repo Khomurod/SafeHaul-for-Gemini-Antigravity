@@ -1,0 +1,12 @@
+# Local / CI secret scanning (gitleaks-action picks this up automatically).
+title = "SafeHaul"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholder env templates only — never allow real .env files here."
+paths = [
+  '''\.env\.example$''',
+  '''functions/\.env\.example$''',
+]

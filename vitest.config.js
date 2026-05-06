@@ -13,14 +13,9 @@ export default defineConfig({
         environment: 'happy-dom',
         setupFiles: './src/tests/setup.js',
         css: true,
-        // Exclude Jest-only backend tests — those run via `cd functions && npm test`
-        exclude: [
-            '**/node_modules/**',
-            'e2e/**',
-            'functions/test/bulkActions.test.js',
-            'functions/test/integration/**',
-            'functions/test/unit/rateLimiter.test.js',
-        ],
+        // Cloud Functions use Jest (`cd functions && npm test`). Do not pick up those files here.
+        include: ['src/**/*.{test,spec}.{js,mjs,jsx,tsx}'],
+        exclude: ['**/node_modules/**', 'e2e/**'],
     },
     resolve: {
         alias: {

@@ -130,6 +130,8 @@ missing_functions.txt
 # ENVIRONMENT & SECRETS
 # ===========================================
 .env
+/.env
+functions/.env
 .env.local
 .env.*
 !.env.example

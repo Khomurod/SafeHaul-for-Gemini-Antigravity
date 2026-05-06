@@ -52,8 +52,9 @@ describe('migrateEmailSettings — Decryption Logic', () => {
         expect(plaintextPassword).toBe(legacyPlaintext);
     });
 
-    it('should handle SendGrid API key format passwords', () => {
-        const apiKey = 'SG.abc123def456ghi789';
+    it('should handle SMTP passwords that contain dots (not a real provider API key)', () => {
+        // Avoid "SG." prefixes in-repo — secret scanners treat them as SendGrid keys.
+        const apiKey = 'unit-test-smtp-password.with.dots-not-sendgrid';
         const encrypted = `enc:v1:${encrypt(apiKey)}`;
 
         let plaintextPassword;
