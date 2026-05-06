@@ -157,6 +157,8 @@ jobs:
       - name: Deploy Firestore and Storage Rules
         run: npx firebase deploy --only firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
 
+  # Deploy uses the service account in FIREBASE_SERVICE_ACCOUNT_TRUCKERAPP_SYSTEM. If deploy fails with
+  # firebaseextensions.googleapis.com 403, add IAM role "Firebase Extensions Viewer" to that account.
   deploy-functions:
     name: Deploy Cloud Functions
     runs-on: ubuntu-latest
