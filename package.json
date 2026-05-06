@@ -12,7 +12,8 @@
     "lint:backend": "cd functions && npm run lint",
     "preview": "vite preview",
     "test": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "deploy:functions": "firebase deploy --only functions --non-interactive"
   },
   "dependencies": {
     "@floating-ui/dom": "1.7.6",

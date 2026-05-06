@@ -152,10 +152,10 @@ jobs:
         run: npm run build
 
       - name: Deploy Firebase Hosting
-        run: npx firebase-tools deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: npx firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
 
       - name: Deploy Firestore and Storage Rules
-        run: npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: npx firebase deploy --only firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
 
   deploy-functions:
     name: Deploy Cloud Functions
@@ -193,12 +193,17 @@ jobs:
           credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_TRUCKERAPP_SYSTEM }}'
           project_id: ${{ env.FIREBASE_PROJECT_ID }}
 
+      # Root lockfile pins firebase-tools; without this, npx downloads a random CLI each run.
+      - name: Install repo dependencies (Firebase CLI from package-lock)
+        run: npm ci
+
       - name: Install Functions Dependencies
         run: npm ci
         working-directory: ./functions
 
+      # Use local firebase binary so version matches package-lock.json
       - name: Deploy Cloud Functions
-        run: npx firebase-tools deploy --only functions --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: npx firebase deploy --only functions --project "$FIREBASE_PROJECT_ID" --non-interactive
 
       - name: Post-deploy smoke check
         run: node scripts/smoke-functions-deploy.mjs
