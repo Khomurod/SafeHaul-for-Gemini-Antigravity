@@ -209,9 +209,12 @@ jobs:
         continue-on-error: true
         run: npx firebase functions:delete onLeadSubmitted --region us-central1 --project "$FIREBASE_PROJECT_ID" --non-interactive --force
 
-      # Use local firebase binary so version matches package-lock.json
-      - name: Deploy Cloud Functions
-        run: npx firebase deploy --only functions --project "$FIREBASE_PROJECT_ID" --non-interactive
+      # One function per deploy (default firebase deploy runs ~40 updates in parallel — heavy on CPU/quota).
+      # Optional: set DEPLOY_FUNCTIONS_SLEEP_SEC in env below (e.g. 2) to pause between deploys.
+      - name: Deploy Cloud Functions (sequential)
+        env:
+          DEPLOY_FUNCTIONS_SLEEP_SEC: '0'
+        run: node scripts/deploy-functions-sequential.mjs
 
       - name: Post-deploy smoke check
         run: node scripts/smoke-functions-deploy.mjs
