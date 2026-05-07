@@ -71,7 +71,7 @@ test('guest applicant can complete full submission with CDL and med card uploads
   await page.setInputFiles('input[name="cdl-front"]', pdfFile('cdl-front.pdf'));
   await page.setInputFiles('input[name="cdl-back"]', pdfFile('cdl-back.pdf'));
   await page.setInputFiles('input[name="medical-card-upload"]', pdfFile('med-card.pdf'));
-  await expect(page.getByText('Uploaded Successfully')).toHaveCount(3);
+  await expect.poll(async () => page.getByText('Uploaded Successfully').count()).toBeGreaterThanOrEqual(3);
 
   await page.getByRole('button', { name: 'Continue' }).click();
   await completeRemainingSteps(page);

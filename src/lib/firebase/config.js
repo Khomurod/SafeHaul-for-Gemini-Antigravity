@@ -9,7 +9,7 @@ import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
-const firebaseConfig = {
+const rawFirebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -17,6 +17,43 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
+
+const requiredFirebaseKeys = [
+  'apiKey',
+  'authDomain',
+  'projectId',
+  'storageBucket',
+  'messagingSenderId',
+  'appId',
+];
+
+const missingFirebaseKeys = requiredFirebaseKeys.filter((key) => !rawFirebaseConfig[key]);
+const isE2ETestMode = import.meta.env.VITE_E2E_TEST_MODE === '1';
+const canUsePlaceholderConfig = missingFirebaseKeys.length > 0 && !import.meta.env.PROD;
+
+if (missingFirebaseKeys.length > 0 && import.meta.env.PROD) {
+  throw new Error(
+    `[firebase] Missing required Firebase env vars in production: ${missingFirebaseKeys.join(', ')}`,
+  );
+}
+
+if (canUsePlaceholderConfig) {
+  const modeLabel = isE2ETestMode ? 'E2E test mode' : 'non-production mode';
+  console.warn(
+    `[firebase] Missing env vars (${missingFirebaseKeys.join(', ')}). Using placeholder config in ${modeLabel}.`,
+  );
+}
+
+const firebaseConfig = canUsePlaceholderConfig
+  ? {
+      apiKey: rawFirebaseConfig.apiKey || 'AIzaSyE2EPlaceholderKey1234567890123',
+      authDomain: rawFirebaseConfig.authDomain || 'safehaul-e2e.firebaseapp.com',
+      projectId: rawFirebaseConfig.projectId || 'safehaul-e2e',
+      storageBucket: rawFirebaseConfig.storageBucket || 'safehaul-e2e.appspot.com',
+      messagingSenderId: rawFirebaseConfig.messagingSenderId || '1234567890',
+      appId: rawFirebaseConfig.appId || '1:1234567890:web:1234567890abcdef123456',
+    }
+  : rawFirebaseConfig;
 
 // Initialize Firebase with HMR safety
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();

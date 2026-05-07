@@ -1,3 +1,4 @@
-const RC = require('@ringcentral/sdk').SDK;
-console.log('Production Server:', RC.server.production);
-console.log('Sandbox Server:', RC.server.sandbox);
+import { SDK as RingCentralSDK } from '@ringcentral/sdk';
+
+console.log('Production Server:', RingCentralSDK.server.production);
+console.log('Sandbox Server:', RingCentralSDK.server.sandbox);

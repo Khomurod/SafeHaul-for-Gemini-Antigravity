@@ -6,14 +6,14 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
 export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
-    if (!employer || !applicant) return null;
+    const hasRequiredData = Boolean(employer && applicant);
 
-    const signatureUrl = applicant.signature && !applicant.signature.startsWith('TEXT_SIGNATURE')
-        ? applicant.signature
+    const signatureUrl = applicant?.signature && !applicant.signature.startsWith('TEXT_SIGNATURE')
+        ? applicant?.signature
         : null;
 
-    const signatureText = applicant.signature && applicant.signature.startsWith('TEXT_SIGNATURE')
-        ? applicant.signature.replace('TEXT_SIGNATURE:', '')
+    const signatureText = applicant?.signature && applicant.signature.startsWith('TEXT_SIGNATURE')
+        ? applicant?.signature.replace('TEXT_SIGNATURE:', '')
         : null;
 
     const documentRef = useRef(null);
@@ -26,6 +26,10 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
         const base = (applicant?.id || applicant?.uid || Date.now().toString());
         return base.slice(-6).toUpperCase() + '-' + Math.abs(base.split('').reduce((a, c) => a + c.charCodeAt(0), 0)).toString(36).toUpperCase().slice(0, 6);
     }, [applicant?.id, applicant?.uid]);
+
+    if (!hasRequiredData) {
+        return null;
+    }
 
     const handlePrint = () => {
         const printContent = documentRef.current;

@@ -43,17 +43,6 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
         ...localOverrides
     }), [baseStatuses, localOverrides]);
 
-    if (currentCompanyProfile?.features?.pev === false) {
-        return (
-            <div className="p-8">
-                <PaywallMessage
-                    title="PEV Module Unavailable"
-                    message="The Previous Employment Verification module is currently turned off for your company. Please contact our Sales Team to enable automated VOE."
-                />
-            </div>
-        );
-    }
-
     const [uploadingResult, setUploadingResult] = useState(false);
     const fileRef = React.useRef(null);
     const [uploadTargetIndex, setUploadTargetIndex] = useState(null);
@@ -260,6 +249,17 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
             default: return <Plus size={14} />;
         }
     };
+
+    if (currentCompanyProfile?.features?.pev === false) {
+        return (
+            <div className="p-8">
+                <PaywallMessage
+                    title="PEV Module Unavailable"
+                    message="The Previous Employment Verification module is currently turned off for your company. Please contact our Sales Team to enable automated VOE."
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 max-w-6xl mx-auto">
