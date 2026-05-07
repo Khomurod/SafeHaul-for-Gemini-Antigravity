@@ -8,7 +8,7 @@ import Draggable from 'react-draggable';
 import {
     Loader2, UploadCloud, Save, X, Plus, Type, CheckSquare, Calendar, PenTool,
     Scaling, FileText, Mail, MessageSquare, Copy, Send, Fingerprint,
-    User, Building2, Lock, ToggleLeft, ToggleRight
+    User, Building2, Lock, ToggleLeft, ToggleRight, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
@@ -22,6 +22,12 @@ import {
     computeNextPasteRect,
     isEditableKeyboardTarget,
 } from '@features/signing/utils/envelopeFieldClipboard';
+import {
+    PDF_VIEWPORT_WIDTH_DEFAULT,
+    adjustPdfViewportWidth,
+    clampPdfViewportWidth,
+    zoomPercentLabel,
+} from '@features/signing/utils/envelopePdfZoom';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -322,7 +328,9 @@ export default function EnvelopeCreator({
 
     const [fields, setFields] = useState([]);
     const [pageDimensions, setPageDimensions] = useState({});
+    const [pdfViewportWidth, setPdfViewportWidth] = useState(PDF_VIEWPORT_WIDTH_DEFAULT);
 
+    const pdfWorkbenchRef = useRef(null);
     const fieldsRef = useRef([]);
     const selectedFieldIdRef = useRef(null);
     const fileRef = useRef(null);
@@ -339,6 +347,29 @@ export default function EnvelopeCreator({
     useEffect(() => {
         fileRef.current = file;
     }, [file]);
+
+    useEffect(() => {
+        if (!file) {
+            setPdfViewportWidth(PDF_VIEWPORT_WIDTH_DEFAULT);
+        }
+    }, [file]);
+
+    useEffect(() => {
+        if (hydrating) return undefined;
+        const el = pdfWorkbenchRef.current;
+        if (!el) return undefined;
+
+        const onWheel = (e) => {
+            if (!fileRef.current) return;
+            if (!(e.ctrlKey || e.metaKey)) return;
+            if (!el.contains(e.target)) return;
+            e.preventDefault();
+            setPdfViewportWidth((w) => adjustPdfViewportWidth(w, e.deltaY, e.deltaMode));
+        };
+
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => el.removeEventListener('wheel', onWheel);
+    }, [hydrating]);
 
     useEffect(() => {
         const onKeyDown = (e) => {
@@ -890,6 +921,12 @@ export default function EnvelopeCreator({
                                 {' / '}
                                 <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">⌘V</kbd>
                                 . Same size; repeats step to the right (wraps below).
+                                {' '}
+                                Over the PDF,{' '}
+                                <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">Ctrl</kbd>
+                                {' / '}
+                                <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">⌘</kbd>
+                                {' + '}scroll zooms the document only (not the whole page).
                             </p>
                         )}
 
@@ -953,9 +990,45 @@ export default function EnvelopeCreator({
 
                 {/* CENTER: PDF Viewer & Draggable Fields */}
                 <div
+                    ref={pdfWorkbenchRef}
                     className="flex-1 overflow-y-auto bg-gray-200 p-8 flex justify-center relative scroll-smooth"
                     onClick={() => setSelectedFieldId(null)}
                 >
+                    {file && (
+                        <div
+                            className="absolute top-3 right-6 z-30 flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-300 bg-white/95 px-2 py-1.5 text-[11px] shadow-md backdrop-blur-sm"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <span className="font-bold text-gray-500 pr-0.5">PDF zoom</span>
+                            <button
+                                type="button"
+                                title="Zoom out"
+                                className="p-1 rounded-md hover:bg-gray-100 text-gray-700"
+                                onClick={() => setPdfViewportWidth((w) => clampPdfViewportWidth(w - 48))}
+                            >
+                                <ZoomOut size={14} />
+                            </button>
+                            <button
+                                type="button"
+                                title="Reset zoom"
+                                className="min-w-[3rem] px-1.5 py-0.5 rounded-md bg-gray-100 font-mono font-bold text-gray-800 hover:bg-gray-200"
+                                onClick={() => setPdfViewportWidth(PDF_VIEWPORT_WIDTH_DEFAULT)}
+                            >
+                                {zoomPercentLabel(pdfViewportWidth)}%
+                            </button>
+                            <button
+                                type="button"
+                                title="Zoom in"
+                                className="p-1 rounded-md hover:bg-gray-100 text-gray-700"
+                                onClick={() => setPdfViewportWidth((w) => clampPdfViewportWidth(w + 48))}
+                            >
+                                <ZoomIn size={14} />
+                            </button>
+                            <span className="hidden md:inline text-gray-400 border-l border-gray-200 pl-2 ml-0.5">
+                                Ctrl/⌘ + scroll
+                            </span>
+                        </div>
+                    )}
                     {file && (
                         <Document
                             file={file}
@@ -974,7 +1047,7 @@ export default function EnvelopeCreator({
                                         </div>
                                         <Page
                                             pageNumber={pageNum}
-                                            width={700}
+                                            width={pdfViewportWidth}
                                             onLoadSuccess={onPageLoadSuccess}
                                             renderAnnotationLayer={false}
                                             renderTextLayer={false}
@@ -985,7 +1058,7 @@ export default function EnvelopeCreator({
                                                     key={field.id}
                                                     field={field}
                                                     pageNum={pageNum}
-                                                    pageWidth={700}
+                                                    pageWidth={pdfViewportWidth}
                                                     pageHeight={dims ? dims.height : 900}
                                                     onStop={updateFieldPosition}
                                                     onResize={updateFieldSize}
