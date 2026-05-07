@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import InputField from '@shared/components/form/InputField';
 import DateTripletField from '@shared/components/form/DateTripletField';
+import MonthYearField from '@shared/components/form/MonthYearField';
 import { ageFromIsoDate } from '@shared/utils/dateFormHelpers';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
@@ -10,6 +11,7 @@ import { AlertCircle } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
 
 const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }) => {
+    const ty = new Date().getFullYear();
     const { states } = useUtils();
     const { currentCompanyProfile } = useData();
     const { showError } = useToast();
@@ -335,23 +337,26 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
                                 />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                <InputField
-                                    label="From Date"
-                                    id={`prev-start-${index}`}
+                                <MonthYearField
+                                    label="From (month / year)"
+                                    idPrefix={`prev-start-${index}`}
                                     name="startDate"
-                                    type="month"
                                     value={item.startDate}
                                     onChange={(n, v) => handleChange('startDate', v)}
                                     required={true}
+                                    maxToday={true}
+                                    minYear={ty - 80}
+                                    helpText="Same easy dropdowns as employment gaps — no calendar picker."
                                 />
-                                <InputField
-                                    label="To Date"
-                                    id={`prev-end-${index}`}
+                                <MonthYearField
+                                    label="To (month / year)"
+                                    idPrefix={`prev-end-${index}`}
                                     name="endDate"
-                                    type="month"
                                     value={item.endDate}
                                     onChange={(n, v) => handleChange('endDate', v)}
                                     required={true}
+                                    maxToday={true}
+                                    minYear={ty - 80}
                                 />
                             </div>
                         </div>

@@ -16,7 +16,8 @@
     "deploy:functions": "firebase deploy --only functions --non-interactive",
     "deploy:functions:sequential": "node scripts/deploy-functions-sequential.mjs",
     "deploy:functions:incremental": "node scripts/deploy-functions-incremental.mjs",
-    "check:function-exports": "node scripts/validate-function-index-parse.mjs"
+    "check:function-exports": "node scripts/validate-function-index-parse.mjs",
+    "storage:set-cors": "node scripts/set-storage-cors.mjs"
   },
   "dependencies": {
     "@floating-ui/dom": "1.7.6",

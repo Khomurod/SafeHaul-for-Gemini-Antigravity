@@ -120,14 +120,20 @@ const Step8_Review = ({ formData, onNavigate }) => {
                     <div className="col-span-2 mt-2 pt-2 border-t border-gray-100">
                         <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Previous Address(es)</span>
                         {Array.isArray(formData.previousAddresses) && formData.previousAddresses.length > 0 ? (
-                            formData.previousAddresses.map((addr, i) => (
-                                <ReviewItem
-                                    key={i}
-                                    label={`Previous Address ${i + 1}`}
-                                    value={`${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}`}
-                                    fullWidth
-                                />
-                            ))
+                            formData.previousAddresses.map((addr, i) => {
+                                const period =
+                                    addr.startDate || addr.endDate
+                                        ? ` (${displayAnyDate(addr.startDate) || addr.startDate || '?'} – ${displayAnyDate(addr.endDate) || addr.endDate || '?'})`
+                                        : '';
+                                return (
+                                    <ReviewItem
+                                        key={i}
+                                        label={`Previous Address ${i + 1}`}
+                                        value={`${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}${period}`}
+                                        fullWidth
+                                    />
+                                );
+                            })
                         ) : (
                             <ReviewItem
                                 label="Previous Address"

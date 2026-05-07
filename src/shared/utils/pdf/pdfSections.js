@@ -333,7 +333,12 @@ export function addAddressHistorySection(doc, y, applicant) {
         applicant.previousAddresses.forEach((addr, i) => {
             const addrStreet = addr.address || addr.street;
             const addrStr = `${getFieldValue(addrStreet)}, ${getFieldValue(addr.city)}, ${getFieldValue(addr.state)} ${getFieldValue(addr.zip)}`;
-            const dates = (addr.startDate || addr.endDate) ? ` (${addr.startDate || 'N/A'} - ${addr.endDate || 'Present'})` : '';
+            const fmtAddrPeriod = (start, end) => {
+                const a = start && String(start).trim() ? (formatMonthYearUs(start) || start) : 'N/A';
+                const b = end && String(end).trim() ? (formatMonthYearUs(end) || end) : 'Present';
+                return ` (${a} – ${b})`;
+            };
+            const dates = (addr.startDate || addr.endDate) ? fmtAddrPeriod(addr.startDate, addr.endDate) : '';
             y = addTableRow(doc, y, `Prev Address ${i + 1}:`, addrStr + dates);
         });
     }

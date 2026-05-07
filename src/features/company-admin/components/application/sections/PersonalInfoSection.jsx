@@ -1,7 +1,15 @@
 import React from 'react';
 import { Section, InfoGrid, InfoItem } from '../ApplicationUI';
 import DateTripletField from '@shared/components/form/DateTripletField';
-import { formatIsoDateUs } from '@shared/utils/dateFormHelpers';
+import { formatIsoDateUs, formatMonthYearUs } from '@shared/utils/dateFormHelpers';
+
+function formatPeriodLabel(v) {
+    if (!v) return '-';
+    const s = String(v).trim();
+    if (/^\d{4}-\d{2}$/.test(s)) return formatMonthYearUs(s);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatIsoDateUs(s);
+    return s;
+}
 import { AlertCircle, User } from 'lucide-react';
 
 /**
@@ -184,8 +192,8 @@ export function PersonalInfoSection({
                                             <div><span className="text-gray-500">City:</span> {addr.city || '-'}</div>
                                             <div><span className="text-gray-500">State:</span> {addr.state || '-'}</div>
                                             <div><span className="text-gray-500">Zip:</span> {addr.zip || '-'}</div>
-                                            {addr.startDate && <div><span className="text-gray-500">From:</span> {addr.startDate}</div>}
-                                            {addr.endDate && <div><span className="text-gray-500">To:</span> {addr.endDate}</div>}
+                                            {addr.startDate && <div><span className="text-gray-500">From:</span> {formatPeriodLabel(addr.startDate)}</div>}
+                                            {addr.endDate && <div><span className="text-gray-500">To:</span> {formatPeriodLabel(addr.endDate)}</div>}
                                         </div>
                                     </div>
                                 ))}
