@@ -6,6 +6,7 @@
  * - Compares DEPLOY_GIT_BASE..DEPLOY_GIT_HEAD (or GITHUB_PUSH_BEFORE + GITHUB_SHA) under functions/.
  * - Parses functions/index.js to map each export name → primary module file (direct require from index).
  * - If anything touches index.js, package files, firebaseAdmin.js, shared/, or firebase.json → full deploy.
+ * - Ignores functions/test/** (tests are not deployed and must not trigger unmapped-file full deploy).
  * - If a changed file is not a known top-level module from index → full deploy (nested imports we didn't trace).
  * - Otherwise: single `firebase deploy --only functions:a,functions:b,...`
  *
@@ -89,6 +90,15 @@ function getChangedFunctionFiles(base, head) {
     .map((p) => normalize(p).replace(/\\/g, '/'));
 }
 
+/** Unit/integration tests are not deployed; ignore them for export mapping (avoids full-deploy fallback). */
+function filterProductionFunctionPaths(changedFiles) {
+  return changedFiles.filter((c) => {
+    const n = c.replace(/\\/g, '/');
+    if (n.startsWith('functions/test/')) return false;
+    return true;
+  });
+}
+
 function mustDeployAll(changedFiles) {
   const triggers = [
     'functions/index.js',
@@ -167,14 +177,16 @@ function main() {
     return;
   }
 
-  if (changedFiles.length === 0) {
-    console.log('[incremental] No changes under functions/ or firebase.json — skipping deploy.');
+  const productionChanges = filterProductionFunctionPaths(changedFiles);
+
+  if (productionChanges.length === 0) {
+    console.log('[incremental] No production changes under functions/ or firebase.json (tests-only or empty diff) — skipping deploy.');
     return;
   }
 
   console.log('[incremental] Changed files:', changedFiles.join(', '));
 
-  const fullReason = mustDeployAll(changedFiles);
+  const fullReason = mustDeployAll(productionChanges);
   if (fullReason) {
     console.log(`[incremental] Full deploy: ${fullReason.reason}`);
     runSequentialAll();
@@ -182,7 +194,7 @@ function main() {
   }
 
   const toDeploy = new Set();
-  for (const cf of changedFiles) {
+  for (const cf of productionChanges) {
     const n = cf.replace(/\\/g, '/');
     if (n === 'firebase.json') continue;
 
