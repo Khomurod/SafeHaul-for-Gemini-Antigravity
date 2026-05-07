@@ -10,19 +10,6 @@ jest.mock('firebase-functions/v1', () => ({
   },
 }));
 
-const mockGetSignedUrl = jest.fn().mockResolvedValue(['https://signed-write']);
-
-jest.mock('firebase-admin/storage', () => ({
-  getStorage: jest.fn(() => ({
-    bucket: jest.fn(() => ({
-      name: 'bucket1',
-      file: jest.fn(() => ({
-        getSignedUrl: mockGetSignedUrl,
-      })),
-    })),
-  })),
-}));
-
 jest.mock('../../firebaseAdmin', () => ({
   db: {},
 }));
@@ -35,16 +22,13 @@ jest.mock('../../shared/rateLimiter', () => ({
   checkRateLimit: jest.fn().mockResolvedValue(true),
 }));
 
-jest.mock('uuid', () => ({ v4: () => 'test-uuid' }));
-
 const { assertCompanyAcceptingIntake } = require('../../shared/companyTenant');
 const { getSignedUploadUrl } = require('../../storageSecure');
 
-describe('getSignedUploadUrl', () => {
+describe('getSignedUploadUrl (guest upload path reservation)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     assertCompanyAcceptingIntake.mockResolvedValue({});
-    mockGetSignedUrl.mockResolvedValue(['https://signed-write']);
   });
 
   const authedCtx = {
@@ -53,17 +37,18 @@ describe('getSignedUploadUrl', () => {
     rawRequest: { ip: '1.2.3.4' },
   };
 
-  it('validates tenant before signing URL', async () => {
+  it('validates tenant and returns a guest_uploads storage path', async () => {
     const data = await getSignedUploadUrl(
       { companyId: 'co99', fileName: 'doc.pdf', fileType: 'application/pdf' },
       authedCtx
     );
     expect(assertCompanyAcceptingIntake).toHaveBeenCalledWith(expect.anything(), 'co99');
-    expect(data.storagePath).toContain('companies/co99/applications/guest_uploads/');
-    expect(data.url).toBe('https://signed-write');
+    expect(data.storagePath).toMatch(/^companies\/co99\/applications\/guest_uploads\//);
+    expect(data.storagePath).toContain('_doc.pdf');
+    expect(data.url).toBeUndefined();
   });
 
-  it('does not generate URL when tenant check fails', async () => {
+  it('does not return a path when tenant check fails', async () => {
     const functions = require('firebase-functions/v1');
     assertCompanyAcceptingIntake.mockRejectedValueOnce(
       new functions.https.HttpsError('not-found', 'Company not found.')
@@ -71,6 +56,5 @@ describe('getSignedUploadUrl', () => {
     await expect(
       getSignedUploadUrl({ companyId: 'missing', fileName: 'a.pdf', fileType: 'application/pdf' }, authedCtx)
     ).rejects.toMatchObject({ code: 'not-found' });
-    expect(mockGetSignedUrl).not.toHaveBeenCalled();
   });
 });

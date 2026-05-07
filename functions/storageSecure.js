@@ -1,5 +1,4 @@
 const functions = require("firebase-functions/v1");
-const { getStorage } = require("firebase-admin/storage");
 const { db } = require("./firebaseAdmin");
 const { checkRateLimit } = require("./shared/rateLimiter"); // C3 FIX
 const { assertCompanyAcceptingIntake } = require("./shared/companyTenant");
@@ -12,13 +11,15 @@ const ALLOWED_MIME_TYPES = [
     'image/jpg'
 ];
 
+/**
+ * Callable name kept as getSignedUploadUrl for backward compatibility.
+ * Returns a server-approved Storage path only — the browser uploads via the
+ * Firebase Storage SDK (uploadBytes → firebasestorage.googleapis.com), avoiding
+ * signed URL PUTs to storage.googleapis.com and their bucket CORS pitfalls.
+ */
 exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
-    // Note: This function is explicitly for GUESTS (and users), so no auth check is strictly required for generation,
-    // BUT we must strictly validate the payload to prevent abuse.
-
     const { companyId, fileName, fileType } = data;
 
-    // 1. Security: App Check & Rate Limiting (Prevent abuse)
     if (!context.app && !process.env.FUNCTIONS_EMULATOR) {
         console.error('[getSignedUploadUrl] App Check token missing.');
         throw new functions.https.HttpsError(
@@ -28,7 +29,6 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
     }
 
     if (!context.auth) {
-        // C3 FIX: Enforce actual rate limiting for guest uploads (10 per minute per IP)
         const ip = context.rawRequest?.ip || 'unknown_guest';
         const isAllowed = await checkRateLimit(`upload_guest_${ip}`, 10, 60, 'closed');
         if (!isAllowed) {
@@ -39,7 +39,6 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
         }
     }
 
-    // 2. Validation
     if (!companyId || !fileName || !fileType) {
         throw new functions.https.HttpsError('invalid-argument', 'Missing file parameters (companyId, fileName, or fileType).');
     }
@@ -50,44 +49,9 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
 
     await assertCompanyAcceptingIntake(db, companyId);
 
-    // Guest intake uploads use applications path only (global leads path retired server-side).
-
-    // 2. Generate Safe Filename
-    // Use timestamp + random string to prevent collisions and guessing
     const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const finalPath = `companies/${companyId}/applications/guest_uploads/${uniqueId}_${cleanFileName}`;
+    const storagePath = `companies/${companyId}/applications/guest_uploads/${uniqueId}_${cleanFileName}`;
 
-    // Generate a random UUID for the Firebase Storage Download Token
-    const { v4: uuidv4 } = require('uuid');
-    const downloadToken = uuidv4();
-
-    try {
-        const bucket = getStorage().bucket();
-        const file = bucket.file(finalPath);
-
-        // 3. Generate Signed URL
-        const [url] = await file.getSignedUrl({
-            version: 'v4',
-            action: 'write',
-            expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-            contentType: fileType,
-            extensionHeaders: {
-                'x-goog-meta-firebasestoragedownloadtokens': downloadToken
-            }
-        });
-
-        // Generate the properly formatted Firebase Storage download URL
-        const firebaseUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(finalPath)}?alt=media&token=${downloadToken}`;
-
-        return {
-            url: url,
-            storagePath: finalPath,
-            publicUrl: firebaseUrl, // Replaces the raw GCS link
-            token: downloadToken
-        };
-    } catch (e) {
-        console.error("Error generating signed URL:", e);
-        throw new functions.https.HttpsError('internal', 'Could not generate upload URL.');
-    }
+    return { storagePath };
 });

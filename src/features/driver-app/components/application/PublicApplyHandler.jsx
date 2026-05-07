@@ -3,7 +3,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '@lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, functions, storage } from '@lib/firebase';
 import { Loader2, AlertCircle, Building2 } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
 import { useToast } from '@shared/components/feedback/ToastProvider';
@@ -200,33 +201,25 @@ export function PublicApplyHandler() {
         return fileData;
       }
 
-      // SECURE UPLOAD: Use Signed URL for Guests
-      // 1. Get Signed URL from Backend
-      const getSignedUrlFn = httpsCallable(functions, 'getSignedUploadUrl');
+      // Guest upload: server reserves path + validates tenant/rate limits; client uploads via Firebase SDK.
+      // Avoids browser PUT to storage.googleapis.com (bucket CORS / signed URL extension headers).
+      const prepareGuestUpload = httpsCallable(functions, 'getSignedUploadUrl');
 
-      const { data: { url, storagePath, publicUrl, token } } = await getSignedUrlFn({
+      const { data: { storagePath } } = await prepareGuestUpload({
         companyId: company.id,
         fileName: file.name,
         fileType: file.type,
         folder: 'applications'
       });
 
-      // 2. Perform PUT Request to Google Cloud Storage
-      // The signed URL includes extensionHeaders requirements, we must pass the exact headers it expects
-      const headers = { 'Content-Type': file.type };
-      if (token) {
-        headers['x-goog-meta-firebasestoragedownloadtokens'] = token;
+      if (!storagePath) {
+        throw new Error('Upload prepare failed: missing storage path.');
       }
 
-      const uploadRes = await fetch(url, {
-        method: 'PUT',
-        headers: headers,
-        body: file
-      });
+      const fileRef = ref(storage, storagePath);
+      const snapshot = await uploadBytes(fileRef, file, { contentType: file.type });
+      const publicUrl = await getDownloadURL(snapshot.ref);
 
-      if (!uploadRes.ok) throw new Error('Upload request failed');
-
-      // 3. Return metadata for UploadField to persist in form state
       const fileData = { name: file.name, url: publicUrl, storagePath };
       showSuccess("File uploaded successfully.");
       return fileData;
@@ -236,6 +229,8 @@ export function PublicApplyHandler() {
         showError("Upload is blocked by App Check. For localhost testing, set VITE_FIREBASE_APPCHECK_DEBUG_TOKEN and register that token in Firebase App Check.");
       } else if (error?.code === 'functions/resource-exhausted') {
         showError("Too many upload attempts. Please wait a moment and try again.");
+      } else if (error?.code === 'storage/unauthorized') {
+        showError("Upload was denied. Refresh the page and try again, or contact support if this persists.");
       } else {
         showError("Upload failed. Please try again.");
       }
