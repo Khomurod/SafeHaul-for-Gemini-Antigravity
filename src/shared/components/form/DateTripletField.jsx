@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     parseIsoDateParts,
     buildIsoDate,
@@ -42,13 +42,17 @@ export default function DateTripletField({
         parsedFromProp ? { year: parsedFromProp.year, month: parsedFromProp.month, day: parsedFromProp.day } : emptyTriplet()
     );
 
+    const prevValueRef = useRef(value);
+
     useEffect(() => {
         const parsed = parseIsoDateParts(value);
         if (parsed) {
             setInner({ year: parsed.year, month: parsed.month, day: parsed.day });
-        } else if (!value) {
+        } else if (!value && parseIsoDateParts(prevValueRef.current)) {
+            // Parent dropped a complete ISO (reset / clear) — clear UI.
             setInner(emptyTriplet());
         }
+        prevValueRef.current = value;
     }, [value]);
 
     const p = inner;
@@ -71,9 +75,17 @@ export default function DateTripletField({
 
     const tryEmit = (next) => {
         const { year: y, month: m, day: d } = next;
+        const allEmpty = !y && !m && !d;
+        if (allEmpty) {
+            setInner(emptyTriplet());
+            onChange(name, '');
+            return;
+        }
         if (!y || !m || !d) {
             setInner(next);
-            onChange(name, '');
+            // Keep parent '' while user builds a date from scratch (value was already '').
+            // If we had a complete ISO and user walks back to incomplete, clear parent.
+            if (parseIsoDateParts(value)) onChange(name, '');
             return;
         }
         let iso = buildIsoDate(y, m, d);
@@ -105,7 +117,6 @@ export default function DateTripletField({
         const y = p.year;
         if (!y) {
             setInner({ ...p, month: m, day: '' });
-            onChange(name, '');
             return;
         }
         let mm = m;
@@ -125,7 +136,6 @@ export default function DateTripletField({
         const m = p.month;
         if (!y || !m) {
             setInner({ ...p, day: d });
-            onChange(name, '');
             return;
         }
         tryEmit({ year: y, month: m, day: clampDay(y, m, d) });

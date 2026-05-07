@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { parseMonthYear, formatMonthYearIso } from '@shared/utils/dateFormHelpers';
 
 const MONTH_NAMES = [
@@ -35,13 +35,17 @@ export default function MonthYearField({
             : empty()
     );
 
+    const prevValueRef = useRef(value);
+
     useEffect(() => {
         const parsed = parseMonthYear(value);
+        const prevParsed = parseMonthYear(prevValueRef.current);
         if (parsed.year && parsed.month) {
             setInner({ year: parsed.year, month: parsed.month });
-        } else if (!value) {
+        } else if (!value && prevParsed.year && prevParsed.month) {
             setInner(empty());
         }
+        prevValueRef.current = value;
     }, [value]);
 
     const p = inner;
@@ -56,9 +60,19 @@ export default function MonthYearField({
 
     const tryEmit = (next) => {
         const { year: y, month: m } = next;
+        const allEmpty = !y && !m;
+        if (allEmpty) {
+            setInner(empty());
+            onChange(name, '');
+            return;
+        }
         if (!y || !m) {
             setInner(next);
-            onChange(name, '');
+            const hadComplete = (() => {
+                const pv = parseMonthYear(value);
+                return Boolean(pv.year && pv.month);
+            })();
+            if (hadComplete) onChange(name, '');
             return;
         }
         let mm = m;
@@ -88,7 +102,6 @@ export default function MonthYearField({
         const y = p.year;
         if (!y) {
             setInner({ ...p, month: m });
-            onChange(name, '');
             return;
         }
         tryEmit({ year: y, month: m });
