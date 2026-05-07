@@ -179,6 +179,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js 20.x
         uses: actions/setup-node@v5
@@ -209,12 +211,14 @@ jobs:
         continue-on-error: true
         run: npx firebase functions:delete onLeadSubmitted --region us-central1 --project "$FIREBASE_PROJECT_ID" --non-interactive --force
 
-      # One function per deploy (default firebase deploy runs ~40 updates in parallel — heavy on CPU/quota).
-      # Optional: set DEPLOY_FUNCTIONS_SLEEP_SEC in env below (e.g. 2) to pause between deploys.
-      - name: Deploy Cloud Functions (sequential)
+      # Incremental: only deploy exports tied to changed top-level modules (see scripts/deploy-functions-incremental.mjs).
+      # Falls back to full sequential deploy when shared/, index.js, firebase.json, etc. change.
+      - name: Deploy Cloud Functions (incremental or full)
         env:
+          GITHUB_PUSH_BEFORE: ${{ github.event.before }}
+          GITHUB_SHA: ${{ github.sha }}
           DEPLOY_FUNCTIONS_SLEEP_SEC: '0'
-        run: node scripts/deploy-functions-sequential.mjs
+        run: node scripts/deploy-functions-incremental.mjs
 
       - name: Post-deploy smoke check
         run: node scripts/smoke-functions-deploy.mjs
