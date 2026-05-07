@@ -1,5 +1,6 @@
 import React from 'react';
-import { UploadCloud, Calendar, Clock } from 'lucide-react';
+import { UploadCloud, Clock } from 'lucide-react';
+import DateTripletField from '@shared/components/form/DateTripletField';
 
 const DynamicQuestionRenderer = ({
     question,
@@ -9,6 +10,7 @@ const DynamicQuestionRenderer = ({
     onCheckboxChange,
     handleFileUpload
 }) => {
+    const ty = new Date().getFullYear();
     const answer = (formData.customAnswers && formData.customAnswers[question.id || question]) || '';
 
     if (typeof question === 'string') {
@@ -143,16 +145,18 @@ const DynamicQuestionRenderer = ({
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
                     {q.helpText && <p className="text-xs text-gray-500">{q.helpText}</p>}
-                    <div className="relative">
-                        <Calendar size={18} className="absolute left-3 top-3.5 text-gray-400" />
-                        <input
-                            type="date"
-                            className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={answer}
-                            onChange={(e) => onAnswerChange(q.id, e.target.value)}
-                            required={q.required}
-                        />
-                    </div>
+                    <DateTripletField
+                        label=""
+                        idPrefix={`dyn-q-${q.id}`}
+                        name={String(q.id)}
+                        value={answer}
+                        onChange={(_, v) => onAnswerChange(q.id, v)}
+                        required={q.required}
+                        maxToday={false}
+                        minYear={ty - 100}
+                        maxYear={ty + 25}
+                        helpText="Month / Day / Year."
+                    />
                 </div>
             );
 

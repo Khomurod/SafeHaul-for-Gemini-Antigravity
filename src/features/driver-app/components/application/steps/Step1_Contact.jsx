@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
 import InputField from '@shared/components/form/InputField';
+import DateTripletField from '@shared/components/form/DateTripletField';
+import { ageFromIsoDate } from '@shared/utils/dateFormHelpers';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
 import { useUtils } from '@shared/hooks/useUtils';
@@ -80,6 +82,28 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
         if (digitsOnly.length < 10) {
             showError("Phone number must have at least 10 digits.");
             return false;
+        }
+
+        if (!dobConfig.hidden && dobConfig.required) {
+            if (!formData.dob || String(formData.dob).trim() === '') {
+                showError('Date of birth is required.');
+                return false;
+            }
+            const age = ageFromIsoDate(formData.dob);
+            if (age === null) {
+                showError('Please enter a valid date of birth.');
+                return false;
+            }
+            if (age < 21) {
+                showError('You must be at least 21 years old for interstate CMV positions.');
+                return false;
+            }
+        } else if (!dobConfig.hidden && formData.dob) {
+            const age = ageFromIsoDate(formData.dob);
+            if (age !== null && age < 21) {
+                showError('Date of birth indicates under 21 — interstate CMV roles typically require age 21+. Please verify.');
+                return false;
+            }
         }
 
         return true;
@@ -164,14 +188,16 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
 
                     {/* DOB Field - Configurable */}
                     {!dobConfig.hidden && (
-                        <InputField
+                        <DateTripletField
                             label="Date of Birth"
-                            id="dob"
+                            idPrefix="dob"
                             name="dob"
-                            type="date"
                             required={dobConfig.required}
                             value={formData.dob}
                             onChange={updateFormData}
+                            maxToday={true}
+                            minYear={1920}
+                            helpText="Select month, day, and year — easier than scrolling a calendar."
                         />
                     )}
                 </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import InputField from '@shared/components/form/InputField';
+import DateTripletField from '@shared/components/form/DateTripletField';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
 import { useData } from '@/context/DataContext';
@@ -20,6 +21,7 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
     };
 
     const yesNoOptions = YES_NO_OPTIONS;
+    const ty = new Date().getFullYear();
     const initialViolation = { date: '', charge: '', location: '', penalty: '' };
 
     const handleContinue = () => {
@@ -35,14 +37,16 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
 
     const renderViolationRow = (index, item, handleChange) => (
         <div key={index} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InputField
+            <DateTripletField
                 label="Date of Conviction"
-                id={'violation-date-' + index}
+                idPrefix={'violation-date-' + index}
                 name="date"
-                type="date"
                 value={item.date}
                 onChange={handleChange}
                 required={true}
+                maxToday={true}
+                minYear={ty - 15}
+                helpText="Past 3 years — pick month, day, year."
             />
             <InputField
                 label="Charge"

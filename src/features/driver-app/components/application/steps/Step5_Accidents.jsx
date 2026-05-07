@@ -1,10 +1,12 @@
 import React from 'react';
 import InputField from '@shared/components/form/InputField';
+import DateTripletField from '@shared/components/form/DateTripletField';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
 import { useUtils } from '@shared/hooks/useUtils';
 
 const Step5_Accidents = ({ formData, updateFormData, onNavigate }) => {
+    const ty = new Date().getFullYear();
     const { states } = useUtils();
     const yesNoOptions = [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }];
     const initialAccident = { date: '', city: '', state: '', commercial: 'no', details: '', preventable: 'no' };
@@ -21,14 +23,16 @@ const Step5_Accidents = ({ formData, updateFormData, onNavigate }) => {
 
     const renderAccidentRow = (index, item, handleChange) => (
         <div key={index} className="space-y-3">
-            <InputField 
-                label="Date of Accident" 
-                id={'accident-date-' + index} 
-                name="date" 
-                type="date"
-                value={item.date} 
+            <DateTripletField
+                label="Date of Accident"
+                idPrefix={'accident-date-' + index}
+                name="date"
+                value={item.date}
                 onChange={handleChange}
-                required={true} 
+                required={true}
+                maxToday={true}
+                minYear={ty - 15}
+                helpText="Pick month, day, year."
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField 

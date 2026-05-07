@@ -15,10 +15,19 @@ import {
     PenTool
 } from 'lucide-react';
 import { formatDate } from '@shared/utils/helpers';
+import { formatIsoDateUs, formatMonthYearUs } from '@shared/utils/dateFormHelpers';
 import { APPLICATION_SCHEMA } from '@/config/applicationSchema';
 import { SchemaSection } from '@shared/components/schema/SchemaRenderer';
 
 /** Safely convert Firestore Timestamps, ISO strings, or epoch values to a Date (or null). */
+function formatTimelineDate(val) {
+    if (!val) return '??';
+    const s = String(val).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatIsoDateUs(s);
+    if (/^\d{4}-\d{2}$/.test(s)) return formatMonthYearUs(s);
+    return formatDate(val);
+}
+
 function toDateOrNull(val) {
     if (!val) return null;
     if (typeof val?.toDate === 'function') return val.toDate();          // Firestore Timestamp
@@ -342,7 +351,7 @@ function ExperienceTimeline({ appData }) {
                                     <p className="text-sm text-gray-600">{job.position || 'Driver'}</p>
                                 </div>
                                 <div className="text-sm font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded">
-                                    {job.startDate ? formatDate(job.startDate) : '??'} - {job.endDate ? formatDate(job.endDate) : 'Present'}
+                                    {formatTimelineDate(job.startDate)} – {job.endDate ? formatTimelineDate(job.endDate) : 'Present'}
                                 </div>
                             </div>
 
@@ -360,10 +369,28 @@ function ExperienceTimeline({ appData }) {
                                         <span>{job.phone}</span>
                                     </div>
                                 )}
+                                {job.companyEmail && (
+                                    <div className="flex items-center gap-1 text-gray-500">
+                                        <span className="text-gray-400 text-xs">✉</span>
+                                        <span>{job.companyEmail}</span>
+                                    </div>
+                                )}
                                 {job.supervisorName && (
                                     <div className="flex items-center gap-1 text-gray-500">
                                         <User size={12} className="text-gray-400 shrink-0" />
                                         <span>Supervisor: {job.supervisorName}</span>
+                                    </div>
+                                )}
+                                {job.supervisorPhone && (
+                                    <div className="flex items-center gap-1 text-gray-500">
+                                        <span className="text-gray-400 text-xs">📞</span>
+                                        <span>{job.supervisorPhone}</span>
+                                    </div>
+                                )}
+                                {job.supervisorEmail && (
+                                    <div className="flex items-center gap-1 text-gray-500">
+                                        <span className="text-gray-400 text-xs">✉</span>
+                                        <span>{job.supervisorEmail}</span>
                                     </div>
                                 )}
                                 {job.mayContact && (

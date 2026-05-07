@@ -1,6 +1,7 @@
 import React from 'react';
 import { Section, InfoGrid, InfoItem } from '../ApplicationUI';
-import { getFieldValue } from '@shared/utils/helpers';
+import DateTripletField from '@shared/components/form/DateTripletField';
+import { formatIsoDateUs } from '@shared/utils/dateFormHelpers';
 import { AlertCircle, User } from 'lucide-react';
 
 /**
@@ -96,7 +97,26 @@ export function PersonalInfoSection({
 
                 <InfoItem label="Email" value={appData.email} isEditing={isEditing} onChange={v => handleDataChange('email', v)} />
 
-                <InfoItem label="Date of Birth" value={appData.dob} isEditing={isEditing} type="date" onChange={v => handleDataChange('dob', v)} />
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Date of Birth</label>
+                    {isEditing ? (
+                        <DateTripletField
+                            label=""
+                            idPrefix="admin-edit-dob"
+                            name="dob"
+                            value={appData.dob || ''}
+                            onChange={(_, v) => handleDataChange('dob', v)}
+                            required={false}
+                            maxToday={true}
+                            minYear={1920}
+                            helpText="Month / Day / Year"
+                        />
+                    ) : (
+                        <p className="text-lg font-medium text-gray-900">
+                            {appData.dob ? formatIsoDateUs(appData.dob) || appData.dob : <span className="text-gray-300 italic">N/A</span>}
+                        </p>
+                    )}
+                </div>
 
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">SSN</label>

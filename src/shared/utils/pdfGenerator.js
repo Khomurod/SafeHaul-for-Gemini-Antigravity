@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import { getFieldValue } from '@shared/utils/helpers';
 import { PDF_CONFIG } from '@shared/utils/pdf/pdfConfig';
 import { addTableHeader, addTableRow, addFullWidthText, checkPageBreak } from '@shared/utils/pdf/pdfHelpers';
+import { formatIsoDateUs } from '@shared/utils/dateFormHelpers';
 import {
     addPageHeader,
     addAgreementHeader,
@@ -102,7 +103,7 @@ export function generateApplicationPDF(pdfData) {
     // not on every administrative copy. Full SSN in a downloaded PDF is a FCRA exposure risk.
     const maskedSSN = applicant?.ssn ? `***-**-${String(applicant.ssn).slice(-4)}` : 'Not Provided';
     y = addTableRow(doc, y, "Social Security Number:", maskedSSN);
-    y = addTableRow(doc, y, "Date of Birth:", applicant?.dob);
+    y = addTableRow(doc, y, "Date of Birth:", formatIsoDateUs(applicant?.dob) || applicant?.dob);
 
     // --- 3. Address History ---
     y = addAddressHistorySection(doc, y, applicant);

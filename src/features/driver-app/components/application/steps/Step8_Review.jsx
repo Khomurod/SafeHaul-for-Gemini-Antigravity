@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatIsoDateUs, formatMonthYearUs } from '@shared/utils/dateFormHelpers';
 import {
     User, MapPin, Truck, Briefcase, FileCheck,
     AlertCircle, IdCard, ShieldCheck, Beaker, Edit2,
@@ -26,6 +27,14 @@ const ReviewSection = ({ title, icon: Icon, onEdit, children }) => (
         </div>
     </div>
 );
+
+function displayAnyDate(raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    const s = String(raw).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatIsoDateUs(s);
+    if (/^\d{4}-\d{2}$/.test(s)) return formatMonthYearUs(s);
+    return s;
+}
 
 const ReviewItem = ({ label, value, className = "", fullWidth = false }) => {
     if (value === null || value === undefined || value === "") return null;
@@ -93,7 +102,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
 
             <ReviewSection title="Personal Information" icon={User} onEdit={() => navigateToStep(0)}>
                 <ReviewItem label="Full Name" value={`${formData.firstName} ${formData.middleName || ''} ${formData.lastName} ${formData.suffix || ''}`} />
-                <ReviewItem label="Date of Birth" value={formData.dob} />
+                <ReviewItem label="Date of Birth" value={displayAnyDate(formData.dob)} />
                 <ReviewItem label="SSN" value={formData.ssn ? `***-**-${String(formData.ssn).slice(-4)}` : 'Not Provided'} />
                 <ReviewItem label="Phone" value={formData.phone} />
                 <ReviewItem label="Email" value={formData.email} />
@@ -141,11 +150,11 @@ const Step8_Review = ({ formData, onNavigate }) => {
             <ReviewSection title="License & Credentials" icon={IdCard} onEdit={() => navigateToStep(2)}>
                 <ReviewItem label="License Number" value={formData.cdlNumber} />
                 <ReviewItem label="State & Class" value={`${formData.cdlState} (Class ${formData.cdlClass})`} />
-                <ReviewItem label="Expiration Date" value={formData.cdlExpiration} />
+                <ReviewItem label="Expiration Date" value={displayAnyDate(formData.cdlExpiration)} />
                 <ReviewItem label="Endorsements" value={formData.endorsements || 'None'} fullWidth />
 
                 <div className="col-span-2 border-t border-gray-100 mt-2 pt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <ReviewItem label="TWIC Card" value={formData['has-twic'] === 'yes' ? `Yes (Exp: ${formData.twicExpiration})` : 'No'} />
+                    <ReviewItem label="TWIC Card" value={formData['has-twic'] === 'yes' ? `Yes (Exp: ${displayAnyDate(formData.twicExpiration) || formData.twicExpiration || '—'})` : 'No'} />
                 </div>
 
                 <div className="col-span-2 border-t border-gray-100 mt-2 pt-2">
@@ -183,7 +192,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
                         renderItem={(v) => (
                             <div className="flex justify-between">
                                 <span className="font-bold">{v.charge}</span>
-                                <span className="text-gray-500">{v.date} ({v.location})</span>
+                                <span className="text-gray-500">{displayAnyDate(v.date) || v.date} ({v.location})</span>
                             </div>
                         )}
                     />
@@ -198,7 +207,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
                             <div>
                                 <div className="flex justify-between font-bold">
                                     <span>{a.city}, {a.state}</span>
-                                    <span>{a.date}</span>
+                                    <span>{displayAnyDate(a.date) || a.date}</span>
                                 </div>
                                 <p className="text-gray-600 mt-1">{a.details}</p>
                                 <div className="mt-1 text-xs text-gray-500">
@@ -222,10 +231,17 @@ const Step8_Review = ({ formData, onNavigate }) => {
                                     <div className="flex justify-between font-bold text-gray-900">
                                         <span>{e.companyName || e.name || 'Unknown'}</span>
                                         <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
-                                            {e.startDate || '??'} – {e.endDate || 'Present'}
+                                            {displayAnyDate(e.startDate) || e.startDate || '??'} – {displayAnyDate(e.endDate) || e.endDate || 'Present'}
                                         </span>
                                     </div>
                                     <p className="text-gray-600">{e.position}</p>
+                                    <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                                        {e.phone && <div>Company phone: {e.phone}</div>}
+                                        {e.companyEmail && <div>Company email: {e.companyEmail}</div>}
+                                        {e.supervisorName && <div>Supervisor: {e.supervisorName}</div>}
+                                        {e.supervisorPhone && <div>Supervisor phone: {e.supervisorPhone}</div>}
+                                        {e.supervisorEmail && <div>Supervisor email: {e.supervisorEmail}</div>}
+                                    </div>
                                 </div>
                             )}
                         />
@@ -237,7 +253,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
                             <ReviewList
                                 items={formData.unemployment}
                                 renderItem={(u) => (
-                                    <span>{u.startDate} - {u.endDate}: {u.details}</span>
+                                    <span>{displayAnyDate(u.startDate) || u.startDate} - {displayAnyDate(u.endDate) || u.endDate}: {u.details}</span>
                                 )}
                             />
                         </div>

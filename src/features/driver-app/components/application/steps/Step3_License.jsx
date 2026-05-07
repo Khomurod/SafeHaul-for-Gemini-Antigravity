@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import InputField from '@shared/components/form/InputField';
+import DateTripletField from '@shared/components/form/DateTripletField';
 import UploadField from '../UploadField';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
@@ -8,6 +9,9 @@ import { useData } from '@/context/DataContext';
 import { YES_NO_OPTIONS, LICENSE_CLASS_OPTIONS, ENDORSEMENT_OPTIONS } from '@/config/form-options';
 
 const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate, isUploading }) => {
+    const ty = new Date().getFullYear();
+    const expMaxYear = ty + 20;
+    const expMinYear = ty - 30;
     const { states } = useUtils();
     const { currentCompanyProfile } = useData();
     const currentCompany = currentCompanyProfile;
@@ -127,7 +131,17 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                 />
 
                 <InputField label="License Number" id="cdl-number" name="cdlNumber" required={true} value={formData.cdlNumber} onChange={updateFormData} />
-                <InputField label="License Expiration" id="cdl-expiration" name="cdlExpiration" type="date" required={true} value={formData.cdlExpiration} onChange={updateFormData} />
+                <DateTripletField
+                    label="License Expiration"
+                    idPrefix="cdl-expiration"
+                    name="cdlExpiration"
+                    required={true}
+                    value={formData.cdlExpiration}
+                    onChange={updateFormData}
+                    minYear={expMinYear}
+                    maxYear={expMaxYear}
+                    helpText="Use Month / Day / Year."
+                />
 
                 <div className="space-y-3 pt-4 border-t border-gray-200">
                     <label className="block text-sm font-medium text-gray-900">Endorsements</label>
@@ -211,14 +225,16 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                                                     {licenseClassOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                                 </select>
                                             </div>
-                                            <InputField
+                                            <DateTripletField
                                                 label="Expiration Date"
-                                                id={`add-lic-exp-${index}`}
+                                                idPrefix={`add-lic-exp-${index}`}
                                                 name="expiration"
-                                                type="date"
                                                 value={item.expiration}
                                                 onChange={(n, v) => handleChange('expiration', v)}
                                                 required={true}
+                                                minYear={expMinYear}
+                                                maxYear={expMaxYear}
+                                                helpText="Month / Day / Year."
                                             />
                                         </div>
                                     </div>
@@ -261,13 +277,15 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                             onChange={updateUploadedFile}
                             required={medCardConfig.required && !formData['medical-card-upload']}
                         />
-                        <InputField
+                        <DateTripletField
                             label="Medical Card Expiration"
-                            id="medical-card-expiration"
+                            idPrefix="medical-card-expiration"
                             name="medCardExpiration"
-                            type="date"
                             value={formData.medCardExpiration}
                             onChange={updateFormData}
+                            minYear={expMinYear}
+                            maxYear={expMaxYear}
+                            helpText="Month / Day / Year (optional if not shown on card)."
                         />
                     </div>
                 )}
@@ -286,7 +304,16 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                 />
                 {hasTwic && (
                     <div id="twic-card-details" className="space-y-4 pt-4 border-t border-gray-200">
-                        <InputField label="Expiration Date" id="twic-expiration" name="twicExpiration" type="date" value={formData.twicExpiration} onChange={updateFormData} />
+                        <DateTripletField
+                            label="Expiration Date"
+                            idPrefix="twic-expiration"
+                            name="twicExpiration"
+                            value={formData.twicExpiration}
+                            onChange={updateFormData}
+                            minYear={expMinYear}
+                            maxYear={expMaxYear}
+                            helpText="Month / Day / Year."
+                        />
                         <UploadField
                             label="Upload TWIC Card"
                             name="twic-card-upload"

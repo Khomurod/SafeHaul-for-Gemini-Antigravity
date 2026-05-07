@@ -9,7 +9,8 @@
  */
 
 import React from 'react';
-import { Shield, UploadCloud, Calendar, Clock } from 'lucide-react';
+import { Shield, UploadCloud, Clock } from 'lucide-react';
+import DateTripletField from '@shared/components/form/DateTripletField';
 
 export function DynamicQuestionsStep({
     questions = [],
@@ -18,6 +19,7 @@ export function DynamicQuestionsStep({
     onNavigate,
     handleFileUpload // Optional file upload handler from parent
 }) {
+    const ty = new Date().getFullYear();
     if (!questions || questions.length === 0) {
         return (
             <div className="text-center py-12 text-gray-500">
@@ -125,16 +127,18 @@ export function DynamicQuestionsStep({
 
             case 'date':
                 return (
-                    <div className="relative">
-                        <Calendar size={18} className="absolute left-3 top-3.5 text-gray-400 pointer-events-none" />
-                        <input
-                            type="date"
-                            className={`${baseInputClass} pl-10`}
-                            value={value}
-                            onChange={(e) => handleChange(field.key, e.target.value)}
-                            required={field.required}
-                        />
-                    </div>
+                    <DateTripletField
+                        label=""
+                        idPrefix={`custom-q-${field.key}`}
+                        name={field.key}
+                        value={value}
+                        onChange={(_, v) => handleChange(field.key, v)}
+                        required={field.required}
+                        maxToday={false}
+                        minYear={ty - 100}
+                        maxYear={ty + 25}
+                        helpText="Month / Day / Year."
+                    />
                 );
 
             case 'time':

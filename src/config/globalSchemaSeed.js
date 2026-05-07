@@ -101,7 +101,7 @@ export const GLOBAL_SCHEMA_SEED = {
                     fmcsaReference: "49 CFR 391.21(a)",
                     canCompanyHide: false,
                     canCompanyModify: false,
-                    helpText: "Must be at least 21 for interstate"
+                    helpText: "Month, day, and year dropdowns (easier than a calendar). Must be at least 21 for interstate."
                 },
                 {
                     key: "phone",

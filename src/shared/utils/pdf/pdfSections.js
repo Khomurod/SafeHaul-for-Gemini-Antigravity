@@ -2,6 +2,7 @@
 import { PDF_CONFIG } from './pdfConfig';
 import { checkPageBreak, addTableHeader, addTableRow } from './pdfHelpers';
 import { getFieldValue } from '../helpers';
+import { formatIsoDateUs, formatMonthYearUs } from '../dateFormHelpers';
 
 export function addPageHeader(doc, companyData) {
     let y = PDF_CONFIG.MARGIN;
@@ -55,7 +56,7 @@ export function addPageHeader(doc, companyData) {
 }
 
 export function addEmploymentSection(doc, y, employers) {
-    y = addTableHeader(doc, y, "Employment History (Past 3-10 Years)");
+    y = addTableHeader(doc, y, "Employment History (10-year application record)");
 
     if (!employers || employers.length === 0) {
         y = addTableRow(doc, y, "Status", "No employment history provided.");
@@ -77,19 +78,25 @@ export function addEmploymentSection(doc, y, employers) {
         y = addTableRow(doc, y, `Employer ${i + 1}:`, getFieldValue(emp.companyName || emp.name));
         doc.setFont(PDF_CONFIG.FONT.NORMAL, "normal");
 
-        const formatMonthYear = (dateStr) => {
+        const formatPeriodCell = (dateStr) => {
             if (!dateStr) return 'N/A';
-            const date = new Date(dateStr);
-            if (isNaN(date.getTime())) return dateStr; // Fallback if it's already a string like "mm/yyyy"
-            return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+            const s = String(dateStr).trim();
+            if (/^\d{4}-\d{2}$/.test(s)) return formatMonthYearUs(s);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return formatIsoDateUs(s);
+            const date = new Date(s);
+            if (!isNaN(date.getTime())) return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+            return s;
         };
 
-        y = addTableRow(doc, y, "Dates Employed:", `${formatMonthYear(emp.startDate)} - ${formatMonthYear(emp.endDate)}`);
+        y = addTableRow(doc, y, "Dates Employed:", `${formatPeriodCell(emp.startDate)} - ${formatPeriodCell(emp.endDate)}`);
         y = addTableRow(doc, y, "Position Held:", getFieldValue(emp.position));
         y = addTableRow(doc, y, "Address:", `${getFieldValue(emp.address || emp.street || '')} ${getFieldValue(emp.city)}, ${getFieldValue(emp.state)}`);
         y = addTableRow(doc, y, "Reason for Leaving:", getFieldValue(emp.reasonForLeaving || emp.reason));
-        if (emp.phone) y = addTableRow(doc, y, "Contact Phone:", getFieldValue(emp.phone));
+        if (emp.phone) y = addTableRow(doc, y, "Company Phone:", getFieldValue(emp.phone));
+        if (emp.companyEmail) y = addTableRow(doc, y, "Company Email:", getFieldValue(emp.companyEmail));
         if (emp.supervisorName) y = addTableRow(doc, y, "Supervisor:", getFieldValue(emp.supervisorName));
+        if (emp.supervisorPhone) y = addTableRow(doc, y, "Supervisor Phone:", getFieldValue(emp.supervisorPhone));
+        if (emp.supervisorEmail) y = addTableRow(doc, y, "Supervisor Email:", getFieldValue(emp.supervisorEmail));
         if (emp.mayContact) y = addTableRow(doc, y, "May Contact:", emp.mayContact === 'yes' ? 'Yes' : 'No');
 
         // DOT specific question often asked
