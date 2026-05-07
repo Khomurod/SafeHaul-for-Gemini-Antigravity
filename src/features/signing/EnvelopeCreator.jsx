@@ -17,6 +17,11 @@ import {
     normalizePrefillPolicy,
     resolveFieldForSend,
 } from '@features/signing/utils/prefillEngine';
+import {
+    cloneFieldWithoutId,
+    computeNextPasteRect,
+    isEditableKeyboardTarget,
+} from '@features/signing/utils/envelopeFieldClipboard';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -318,6 +323,86 @@ export default function EnvelopeCreator({
     const [fields, setFields] = useState([]);
     const [pageDimensions, setPageDimensions] = useState({});
 
+    const fieldsRef = useRef([]);
+    const selectedFieldIdRef = useRef(null);
+    const fileRef = useRef(null);
+    const envelopeClipboardRef = useRef(null);
+
+    useEffect(() => {
+        fieldsRef.current = fields;
+    }, [fields]);
+
+    useEffect(() => {
+        selectedFieldIdRef.current = selectedFieldId;
+    }, [selectedFieldId]);
+
+    useEffect(() => {
+        fileRef.current = file;
+    }, [file]);
+
+    useEffect(() => {
+        const onKeyDown = (e) => {
+            const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+            if (!(e.ctrlKey || e.metaKey) || !key) return;
+
+            if (key === 'c') {
+                if (isEditableKeyboardTarget(e.target)) return;
+                const fid = selectedFieldIdRef.current;
+                if (!fid || !fileRef.current) return;
+                const field = fieldsRef.current.find((f) => f.id === fid);
+                if (!field) return;
+                e.preventDefault();
+                const template = cloneFieldWithoutId(field);
+                const anchorRect = {
+                    x: field.x,
+                    y: field.y,
+                    width: field.width,
+                    height: field.height,
+                    page: field.page,
+                };
+                envelopeClipboardRef.current = {
+                    template,
+                    anchor: anchorRect,
+                    lastPlaced: { ...anchorRect },
+                };
+                return;
+            }
+
+            if (key === 'v') {
+                if (isEditableKeyboardTarget(e.target)) return;
+                const clip = envelopeClipboardRef.current;
+                if (!clip?.template || !fileRef.current) return;
+                e.preventDefault();
+                const { template, anchor, lastPlaced } = clip;
+                const rect = computeNextPasteRect(lastPlaced, anchor, template.width, template.height);
+                const newField = {
+                    ...template,
+                    id: uuidv4(),
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    page: rect.page,
+                };
+                setFields((prev) => [...prev, newField]);
+                setSelectedFieldId(newField.id);
+                envelopeClipboardRef.current = {
+                    ...clip,
+                    lastPlaced: {
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: rect.height,
+                        page: rect.page,
+                    },
+                };
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, []);
+
     // Derive active field from selection
     const activeField = useMemo(() => {
         if (!selectedFieldId) return null;
@@ -367,6 +452,7 @@ export default function EnvelopeCreator({
                         readOnly: f.readOnly ?? false,
                         prefillPolicy: f.prefillPolicy || (f.readOnly ? 'locked' : 'editable'),
                         bindingKey: f.bindingKey || '',
+                        prefillGroupKey: f.prefillGroupKey || '',
                         defaultValue: f.defaultValue || '',
                         fontSize: f.fontSize || 'Auto',
                     }));
@@ -562,6 +648,7 @@ export default function EnvelopeCreator({
                     readOnly: f.readOnly || false,
                     prefillPolicy: normalizePrefillPolicy(f),
                     bindingKey: f.bindingKey || '',
+                    prefillGroupKey: f.prefillGroupKey || '',
                     fontSize: f.fontSize || 'Auto',
                 })),
                 updatedAt: serverTimestamp()
@@ -792,6 +879,19 @@ export default function EnvelopeCreator({
                         <label className="block text-[10px] font-bold text-gray-400 uppercase mb-3 tracking-wider">
                             {creatorMode === 'request' ? 'Fields' : 'Setup Fields'}
                         </label>
+                        {file && (
+                            <p className="text-[10px] text-gray-400 mb-3 leading-snug">
+                                Duplicate a placed field: select it on the PDF, then{' '}
+                                <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">Ctrl+C</kbd>
+                                {' / '}
+                                <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">⌘C</kbd>
+                                , then{' '}
+                                <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">Ctrl+V</kbd>
+                                {' / '}
+                                <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">⌘V</kbd>
+                                . Same size; repeats step to the right (wraps below).
+                            </p>
+                        )}
 
                         {!file ? (
                             <div className="text-center p-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:border-blue-400 transition-colors">

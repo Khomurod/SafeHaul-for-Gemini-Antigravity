@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '@lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -8,9 +8,13 @@ import EnvelopeCreator from '@features/signing/EnvelopeCreator';
 import EnvelopeHistory from '@features/signing/components/EnvelopeHistory';
 import {
     buildPrefillContext,
-    normalizePrefillPolicy,
+    buildEditablePrefillGroups,
+    buildPrefillOverridesForSend,
+    initialGroupedPrefillState,
+    initialPlainPrefillState,
     resolveFieldForSend,
 } from '@features/signing/utils/prefillEngine';
+import DateTripletField from '@shared/components/form/DateTripletField';
 import { GlobalLoadingState } from '@shared/components/feedback';
 import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2, Mail, Phone, Copy, MessageSquare, Edit3 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,8 +48,9 @@ export default function DocumentsManager() {
     const [manualEmail, setManualEmail] = useState('');
     const [manualPhone, setManualPhone] = useState('');
     const [deliveryMethod, setDeliveryMethod] = useState('email'); // 'email' | 'sms' | 'both' | 'copy'
-    // Template pre-fill: user can edit field values before sending
+    // Template pre-fill: grouped keys share one control; plain text fields stay per-slot
     const [prefillValues, setPrefillValues] = useState({});
+    const [prefillValuesByGroupKey, setPrefillValuesByGroupKey] = useState({});
 
     if (currentCompanyProfile?.features?.eDocs === false) {
         return <FeatureLockedModal featureName="E-Docs" onClose={() => navigate('/company/dashboard')} />;
@@ -79,17 +84,19 @@ export default function DocumentsManager() {
         setManualEmail('');
         setManualPhone('');
         setDeliveryMethod('email');
-        // Initialize prefill values from template defaults for editable text/date fields.
-        const initialPrefill = {};
-        (template.fields || []).forEach(f => {
-            const policy = normalizePrefillPolicy(f);
-            if ((f.type === 'text' || f.type === 'date') && policy === 'editable') {
-                initialPrefill[f.id] = f.defaultValue || '';
-            }
-        });
-        setPrefillValues(initialPrefill);
+        const { groups, plainFields } = buildEditablePrefillGroups(template.fields || []);
+        setPrefillValuesByGroupKey(initialGroupedPrefillState(groups));
+        setPrefillValues(initialPlainPrefillState(plainFields));
         setShowDriverPicker(true);
     };
+
+    const editablePrefillPartition = useMemo(() => {
+        if (!selectedTemplate?.fields) return { groups: [], plainFields: [] };
+        return buildEditablePrefillGroups(selectedTemplate.fields);
+    }, [selectedTemplate]);
+
+    const slugPrefillGroupId = (groupKey) =>
+        String(groupKey).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
 
     // FEAT-2: Quick-select a driver to auto-fill manual entry fields
     const handleQuickSelect = (driver) => {
@@ -128,11 +135,9 @@ export default function DocumentsManager() {
                 companyName: currentCompanyProfile?.companyName || currentCompanyProfile?.name || '',
             });
 
-            const overridesByFieldId = {};
-            Object.entries(prefillValues || {}).forEach(([fieldId, value]) => {
-                if (value !== undefined && value !== null && String(value) !== '') {
-                    overridesByFieldId[fieldId] = value;
-                }
+            const overridesByFieldId = buildPrefillOverridesForSend(selectedTemplate.fields || [], {
+                prefillValues,
+                prefillValuesByGroupKey,
             });
 
             const missingLockedRequired = [];
@@ -402,22 +407,88 @@ export default function DocumentsManager() {
                                 ))}
                             </div>
 
-                            {/* Template Pre-fill Fields */}
-                            {selectedTemplate?.fields?.filter(f => f.type === 'text' || f.type === 'date').length > 0 && (
+                            {/* Template Pre-fill Fields — grouped bindings/tokens; plain text stays per field */}
+                            {(editablePrefillPartition.groups.length > 0 || editablePrefillPartition.plainFields.length > 0) && (
                                 <div className="pt-3">
                                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pre-fill Fields (Optional)</h3>
-                                    <div className="max-h-[140px] overflow-y-auto space-y-2 pr-1">
-                                        {selectedTemplate.fields.filter(f => f.type === 'text' || f.type === 'date').map(field => (
-                                            <div key={field.id} className="flex items-center gap-2">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase w-24 truncate shrink-0" title={field.label}>
-                                                    {field.label}
+                                    <div className="max-h-[220px] overflow-y-auto space-y-3 pr-1">
+                                        {editablePrefillPartition.groups.map((group) => (
+                                            <div key={group.groupKey} className="space-y-1" role="group" aria-label={group.uiLabel}>
+                                                {group.useDateTriplet ? (
+                                                    <div
+                                                        className="block text-[10px] font-bold text-gray-500 uppercase"
+                                                        title={group.members.map((m) => m.label || m.id).join(', ')}
+                                                    >
+                                                        {group.uiLabel}
+                                                        {group.appliesCount > 1 ? (
+                                                            <span className="font-normal normal-case text-gray-400"> — applies to {group.appliesCount} places</span>
+                                                        ) : null}
+                                                    </div>
+                                                ) : (
+                                                    <label
+                                                        className="block text-[10px] font-bold text-gray-500 uppercase"
+                                                        htmlFor={`edoc-grp-${slugPrefillGroupId(group.groupKey)}`}
+                                                        title={group.members.map((m) => m.label || m.id).join(', ')}
+                                                    >
+                                                        {group.uiLabel}
+                                                        {group.appliesCount > 1 ? (
+                                                            <span className="font-normal normal-case text-gray-400"> — applies to {group.appliesCount} places</span>
+                                                        ) : null}
+                                                    </label>
+                                                )}
+                                                {group.useDateTriplet ? (
+                                                    <DateTripletField
+                                                        label=""
+                                                        idPrefix={`edoc-grp-${slugPrefillGroupId(group.groupKey)}`}
+                                                        name={`prefill-${group.groupKey}`}
+                                                        value={prefillValuesByGroupKey[group.groupKey] || ''}
+                                                        onChange={(_n, v) =>
+                                                            setPrefillValuesByGroupKey((prev) => ({
+                                                                ...prev,
+                                                                [group.groupKey]: v,
+                                                            }))
+                                                        }
+                                                        required={false}
+                                                        maxToday={true}
+                                                        minYear={1920}
+                                                    />
+                                                ) : (
+                                                    <input
+                                                        id={`edoc-grp-${slugPrefillGroupId(group.groupKey)}`}
+                                                        type="text"
+                                                        placeholder={`Enter ${group.uiLabel}...`}
+                                                        className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                                                        value={prefillValuesByGroupKey[group.groupKey] || ''}
+                                                        onChange={(e) =>
+                                                            setPrefillValuesByGroupKey((prev) => ({
+                                                                ...prev,
+                                                                [group.groupKey]: e.target.value,
+                                                            }))
+                                                        }
+                                                    />
+                                                )}
+                                            </div>
+                                        ))}
+                                        {editablePrefillPartition.plainFields.map((field) => (
+                                            <div key={field.id} className="space-y-1">
+                                                <label
+                                                    className="block text-[10px] font-bold text-gray-500 uppercase"
+                                                    htmlFor={`edoc-plain-${field.id}`}
+                                                >
+                                                    {field.label || field.id}
                                                 </label>
                                                 <input
-                                                    type={field.type === 'date' ? 'date' : 'text'}
-                                                    placeholder={`Enter ${field.label}...`}
-                                                    className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
+                                                    id={`edoc-plain-${field.id}`}
+                                                    type="text"
+                                                    placeholder={`Enter ${field.label || 'text'}...`}
+                                                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
                                                     value={prefillValues[field.id] || ''}
-                                                    onChange={e => setPrefillValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                    onChange={(e) =>
+                                                        setPrefillValues((prev) => ({
+                                                            ...prev,
+                                                            [field.id]: e.target.value,
+                                                        }))
+                                                    }
                                                 />
                                             </div>
                                         ))}
