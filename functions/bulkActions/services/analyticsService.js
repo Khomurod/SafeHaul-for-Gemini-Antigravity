@@ -4,8 +4,6 @@ const { buildLeadQueries } = require("../helpers/queryBuilder");
 const { assertCompanyAdmin } = require("../helpers/auth");
 const { normalizePhone } = require("../../utils/phoneUtils");
 
-const cors = require("cors")({ origin: true });
-
 /**
  * Safely convert a Firestore Timestamp, Date, string, or number to an ISO string.
  * Returns null if the value is falsy or cannot be converted.
@@ -185,8 +183,6 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
         // We fetch 3x the limit to try and fill the page after exclusions
         const fetchLimit = limit * 3;
         const snap = await mainQuery.limit(fetchLimit).get();
-
-        let leads = [];
 
         let excludeThreshold = null;
         let excludeForever = false;

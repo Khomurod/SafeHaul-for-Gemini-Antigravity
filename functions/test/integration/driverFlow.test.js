@@ -1,4 +1,3 @@
-const assert = require('assert');
 // jest is available globally via jest globals: true config
 
 // --- MOCK FACTORY ---
@@ -49,7 +48,7 @@ jest.mock('../../integrations/encryption', () => ({
 }));
 
 // Imports
-const driverSync = require('../../driverSync');
+require('../../driverSync');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { db: mockFirestore, auth: mockAuth } = require('../../firebaseAdmin');
 

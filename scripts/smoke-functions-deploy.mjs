@@ -23,7 +23,7 @@ const raw = execSync(
 let parsed;
 try {
   parsed = JSON.parse(raw);
-} catch (err) {
+} catch {
   console.error("Could not parse functions:list output as JSON.");
   console.error(raw);
   process.exit(1);

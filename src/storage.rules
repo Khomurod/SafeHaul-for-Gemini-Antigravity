@@ -60,10 +60,10 @@ service firebase.storage {
 
     match /companies/{companyId}/applications/{applicantId}/{allPaths=**} {
       allow read: if isOwner(applicantId) || isCompanyTeam(companyId) || isSuperAdmin();
-      // M4 FIX: Allow guest file creation via App Check (signed URLs bypass rules, but this covers SDK fallback)
-      allow create, update: if isSuperAdmin() || 
-                              (isSignedIn() && (isOwner(applicantId) || isCompanyTeam(companyId)) && isValidFile()) ||
-                              (request.appcheck != null && isValidFile());
+      // Restricted to authenticated owner/team or super admin.
+      // Guest uploads are only allowed in the dedicated guest_uploads path above.
+      allow create, update: if isSuperAdmin() ||
+                              (isSignedIn() && (isOwner(applicantId) || isCompanyTeam(companyId)) && isValidFile());
       allow delete: if isSuperAdmin() || 
                        (isSignedIn() && (isOwner(applicantId) || isCompanyTeam(companyId)));
     }

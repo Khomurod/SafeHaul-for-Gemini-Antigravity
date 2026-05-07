@@ -130,7 +130,6 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
 
         // ESIGN-19 FIX: Use a transaction to atomically verify the status hasn't changed and
         // update it, preventing double-submission race conditions.
-        let existingData = null;
         await db.runTransaction(async (txn) => {
             const docSnap = await txn.get(docRef);
             if (!docSnap.exists) throw new HttpsError('not-found', 'Document not found');
@@ -158,7 +157,6 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
 
             // Claim the slot atomically
             txn.update(docRef, { status: 'processing' });
-            existingData = data;
         });
 
         const bucket = storage.bucket();

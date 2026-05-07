@@ -1,4 +1,3 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
 const { CloudTasksClient } = require("@google-cloud/tasks");
 

@@ -43,7 +43,7 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         }
 
         const sessionData = sessionSnap.data();
-        const { status, targetIds, progress, config, leadSourceType } = sessionData;
+        const { status, targetIds, config, leadSourceType } = sessionData;
 
         // 1. Status Check
         if (status !== 'active') {
@@ -63,7 +63,6 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
 
         // 1. Claim Batch Transactionally
         let batchIds = [];
-        let startPointer = 0;
         let endPointer = 0;
 
         try {
@@ -106,7 +105,6 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
             }
 
             batchIds = claimResult.allIds.slice(claimResult.start, claimResult.end);
-            startPointer = claimResult.start;
             endPointer = claimResult.end;
 
             // Use the data we already fetched
@@ -134,7 +132,7 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         // Setup Sender (SMS or Email)
         let adapter = null;
         let emailTransporter = null;
-        let senderId = sessionData.createdBy;
+        const senderId = sessionData.createdBy;
 
         if (config.method === 'sms') {
             try {

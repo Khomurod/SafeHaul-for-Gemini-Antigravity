@@ -48,7 +48,6 @@ exports.SEGMENT_RULES = SEGMENT_RULES;
  */
 exports.onApplicationUpdateSegments = onDocumentUpdated("companies/{companyId}/applications/{applicationId}", async (event) => {
     const newData = event.data.after.data();
-    const oldData = event.data.before.data();
     const companyId = event.params.companyId;
     const appId = event.params.applicationId;
 

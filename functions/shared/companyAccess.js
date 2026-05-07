@@ -1,6 +1,12 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../firebaseAdmin");
 
+const COMPANY_TEAM_ROLES = new Set(['company_admin', 'hr_user', 'recruiter', 'admin', 'owner']);
+
+function isCompanyTeamRole(role) {
+    return typeof role === 'string' && COMPANY_TEAM_ROLES.has(role);
+}
+
 function isPermissionDeniedError(err) {
     if (!err || typeof err.code !== 'string') return false;
     const normalized = err.code.startsWith('functions/')
@@ -25,27 +31,40 @@ async function assertCompanyAccess(userId, companyId) {
         throw new HttpsError('invalid-argument', 'companyId is required.');
     }
 
-    const userRecord = await admin.auth().getUser(userId);
-    const claims = userRecord.customClaims || {};
+    let claims = {};
+    try {
+        const userRecord = await admin.auth().getUser(userId);
+        claims = userRecord.customClaims || {};
+    } catch (err) {
+        console.warn(`[assertCompanyAccess] Unable to load custom claims for ${userId}: ${err?.message || err}`);
+    }
     const roles = claims.roles || {};
     const globalRole = claims.globalRole || roles.globalRole;
     const isSuperAdmin = globalRole === 'super_admin';
 
-    if (isSuperAdmin || roles[companyId]) {
+    if (isSuperAdmin || isCompanyTeamRole(roles[companyId])) {
         return;
     }
 
-    const [memberSnap, companySnap] = await Promise.all([
+    const [memberSnap, membershipSnap, companySnap] = await Promise.all([
         db.collection('companies').doc(companyId).collection('team').doc(userId).get(),
+        db.collection('memberships')
+            .where('userId', '==', userId)
+            .where('companyId', '==', companyId)
+            .limit(1)
+            .get(),
         db.collection('companies').doc(companyId).get(),
     ]);
+
+    const teamRole = memberSnap.exists ? memberSnap.data()?.role : null;
+    const membershipRole = !membershipSnap.empty ? membershipSnap.docs[0].data()?.role : null;
 
     const companyData = companySnap.exists ? companySnap.data() : {};
     const isOwner =
         companyData.ownerId === userId ||
         companyData.createdBy === userId;
 
-    if (memberSnap.exists || isOwner) {
+    if (isCompanyTeamRole(teamRole) || isCompanyTeamRole(membershipRole) || isOwner) {
         return;
     }
 
@@ -68,8 +87,13 @@ async function assertCompanyAdminStrict(userId, companyId) {
         throw new HttpsError('invalid-argument', 'companyId is required.');
     }
 
-    const userRecord = await admin.auth().getUser(userId);
-    const claims = userRecord.customClaims || {};
+    let claims = {};
+    try {
+        const userRecord = await admin.auth().getUser(userId);
+        claims = userRecord.customClaims || {};
+    } catch (err) {
+        console.warn(`[assertCompanyAdminStrict] Unable to load custom claims for ${userId}: ${err?.message || err}`);
+    }
     const roles = claims.roles || {};
     const globalRole = claims.globalRole || roles.globalRole;
     if (globalRole === 'super_admin') return;

@@ -269,7 +269,9 @@ exports.sealDocument = functions.runWith({
                 if (fs.existsSync(tempPdfPath)) fs.unlinkSync(tempPdfPath);
                 if (fs.existsSync(outputPdfPath)) fs.unlinkSync(outputPdfPath);
                 tempSigPaths.forEach(p => { if (fs.existsSync(p)) fs.unlinkSync(p); });
-            } catch (e) { }
+            } catch (e) {
+                // Best-effort temp file cleanup.
+            }
         }
     });
 

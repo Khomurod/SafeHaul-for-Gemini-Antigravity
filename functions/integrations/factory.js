@@ -1,5 +1,5 @@
 const admin = require('firebase-admin');
-const { encrypt, decrypt } = require('./encryption');
+const { decrypt } = require('./encryption');
 const RingCentralAdapter = require('./adapters/ringcentral');
 const EightByEightAdapter = require('./adapters/eightbyeight');
 

@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
 const { APPLICATION_STATUSES, LAST_CALL_RESULTS, getDbValue } = require("../../shared/constants");
 

@@ -59,7 +59,14 @@ jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
     initializeApp: jest.fn(),
     firestore: mockFirestoreFn,
-    auth: jest.fn()
+    auth: jest.fn(() => ({
+        getUser: jest.fn().mockResolvedValue({
+            customClaims: {
+                globalRole: 'super_admin',
+                roles: { globalRole: 'super_admin' }
+            }
+        })
+    }))
 }));
 
 // --- Mock firebaseAdmin.js (shared module) ---
@@ -167,14 +174,6 @@ describe('Bulk Actions Tests', () => {
                 config: { method: 'sms', message: 'Hello' }
             },
             auth: { uid: 'user123', token: { roles: { company123: 'company_admin' } } }
-        };
-
-        // Mock the auth check (assertCompanyAdmin)
-        const userDoc = {
-            get: jest.fn().mockResolvedValue({
-                exists: true,
-                data: () => ({ role: 'company_admin', companyId: 'company123' })
-            })
         };
 
         // Session doc mock
