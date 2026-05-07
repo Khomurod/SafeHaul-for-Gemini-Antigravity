@@ -7,11 +7,16 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import Draggable from 'react-draggable';
 import {
     Loader2, UploadCloud, Save, X, Plus, Type, CheckSquare, Calendar, PenTool,
-    Scaling, FileText, Mail, Phone, MessageSquare, Copy, Send, Fingerprint,
-    User, Building2, ChevronDown, ChevronRight, Settings2, Lock, ToggleLeft, ToggleRight
+    Scaling, FileText, Mail, MessageSquare, Copy, Send, Fingerprint,
+    User, Building2, Lock, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
+import {
+    buildPrefillContext,
+    normalizePrefillPolicy,
+    resolveFieldForSend,
+} from '@features/signing/utils/prefillEngine';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -24,16 +29,16 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 // --- FIELD TEMPLATES ---
 const FIELD_TEMPLATES = {
     // Category 1: Standard Fields
-    signature: { type: 'signature', required: true, label: 'Signature', readOnly: false, defaultValue: '', fontSize: 'Auto' },
-    initial: { type: 'initial', required: true, label: 'Initial', readOnly: false, defaultValue: '', fontSize: 'Auto' },
-    date_signed: { type: 'date', required: true, readOnly: true, defaultValue: '{{current_date}}', label: 'Date Signed', fontSize: 'Auto' },
+    signature: { type: 'signature', required: true, label: 'Signature', readOnly: false, prefillPolicy: 'editable', defaultValue: '', fontSize: 'Auto' },
+    initial: { type: 'initial', required: true, label: 'Initial', readOnly: false, prefillPolicy: 'editable', defaultValue: '', fontSize: 'Auto' },
+    date_signed: { type: 'date', required: true, readOnly: true, prefillPolicy: 'locked', bindingKey: 'current_date', defaultValue: '{{current_date}}', label: 'Date Signed', fontSize: 'Auto' },
     // Category 2: Signer Info (Auto-mapped)
-    name: { type: 'text', required: true, readOnly: true, defaultValue: '{{full_name}}', label: 'Name', fontSize: 'Auto' },
-    email_field: { type: 'text', required: true, readOnly: true, defaultValue: '{{email}}', label: 'Email', fontSize: 'Auto' },
-    company: { type: 'text', required: false, readOnly: false, defaultValue: '{{company_name}}', label: 'Company', fontSize: 'Auto' },
+    name: { type: 'text', required: true, readOnly: false, prefillPolicy: 'editable', bindingKey: 'full_name', defaultValue: '{{full_name}}', label: 'Name', fontSize: 'Auto' },
+    email_field: { type: 'text', required: true, readOnly: false, prefillPolicy: 'editable', bindingKey: 'email', defaultValue: '{{email}}', label: 'Email', fontSize: 'Auto' },
+    company: { type: 'text', required: false, readOnly: false, prefillPolicy: 'editable', bindingKey: 'company_name', defaultValue: '{{company_name}}', label: 'Company', fontSize: 'Auto' },
     // Category 3: Data Fields
-    text: { type: 'text', required: false, readOnly: false, label: 'Text', defaultValue: '', fontSize: 'Auto' },
-    checkbox: { type: 'checkbox', required: false, label: 'Checkbox', readOnly: false, defaultValue: '', fontSize: 'Auto' },
+    text: { type: 'text', required: false, readOnly: false, prefillPolicy: 'editable', label: 'Text', defaultValue: '', fontSize: 'Auto' },
+    checkbox: { type: 'checkbox', required: false, label: 'Checkbox', readOnly: false, prefillPolicy: 'editable', defaultValue: '', fontSize: 'Auto' },
 };
 
 const FIELD_CATEGORIES = [
@@ -202,7 +207,11 @@ const FieldPropertiesPanel = React.memo(({ activeField, updateActiveField, getIc
                     </span>
                     <button
                         type="button"
-                        onClick={() => updateActiveField('readOnly', !activeField.readOnly)}
+                        onClick={() => {
+                            const nextReadOnly = !activeField.readOnly;
+                            updateActiveField('readOnly', nextReadOnly);
+                            updateActiveField('prefillPolicy', nextReadOnly ? 'locked' : 'editable');
+                        }}
                         className="transition-colors"
                     >
                         {activeField.readOnly ?
@@ -211,6 +220,24 @@ const FieldPropertiesPanel = React.memo(({ activeField, updateActiveField, getIc
                         }
                     </button>
                 </label>
+
+                {activeField.type !== 'signature' && activeField.type !== 'initial' && activeField.type !== 'checkbox' && (
+                    <label className="block pt-1">
+                        <span className="text-xs text-gray-600 font-medium">Prefill Behavior</span>
+                        <select
+                            value={activeField.prefillPolicy || (activeField.readOnly ? 'locked' : 'editable')}
+                            onChange={(e) => {
+                                const mode = e.target.value;
+                                updateActiveField('prefillPolicy', mode);
+                                updateActiveField('readOnly', mode === 'locked');
+                            }}
+                            className="w-full mt-1 px-2.5 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                        >
+                            <option value="editable">Editable when prefilled</option>
+                            <option value="locked">Locked after prefill</option>
+                        </select>
+                    </label>
+                )}
             </div>
 
             {/* Default Value */}
@@ -225,8 +252,10 @@ const FieldPropertiesPanel = React.memo(({ activeField, updateActiveField, getIc
                         placeholder="Enter default value..."
                     />
                     <p className="text-[10px] text-gray-400 leading-relaxed">
-                        Use <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{full_name}}"}</code> or{' '}
-                        <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{email}}"}</code> to auto-fill data when sending.
+                        Use tokens like <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{full_name}}"}</code>,{' '}
+                        <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{email}}"}</code>,{' '}
+                        <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{phone}}"}</code>,{' '}
+                        <code className="bg-gray-100 px-1 rounded text-gray-600">{"{{current_date}}"}</code>.
                     </p>
                 </div>
             )}
@@ -255,13 +284,21 @@ const FieldPropertiesPanel = React.memo(({ activeField, updateActiveField, getIc
     );
 });
 
-export default function EnvelopeCreator({ companyId, onClose, initialMode = 'request', editRequestId = null }) {
+export default function EnvelopeCreator({
+    companyId,
+    onClose,
+    initialMode = 'request',
+    editRequestId = null,
+    editTemplateId = null,
+    companyName = '',
+}) {
     const { showSuccess, showError } = useToast();
     const [file, setFile] = useState(null);
     const [numPages, setNumPages] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [hydrating, setHydrating] = useState(!!editRequestId);
-    const [creatorMode, setCreatorMode] = useState(initialMode); // 'request' or 'template'
+    const [hydrating, setHydrating] = useState(Boolean(editRequestId || editTemplateId));
+    const [creatorMode, setCreatorMode] = useState(editTemplateId ? 'template' : initialMode); // 'request' or 'template'
+    const [existingStoragePath, setExistingStoragePath] = useState('');
 
     // PHASE 1: Selected field state
     const [selectedFieldId, setSelectedFieldId] = useState(null);
@@ -287,13 +324,18 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
         return fields.find(f => f.id === selectedFieldId) || null;
     }, [selectedFieldId, fields]);
 
-    // PHASE 4: Hydrate from existing document for "Correct" flow
+    const isEditingRequest = Boolean(editRequestId);
+    const isEditingTemplate = Boolean(editTemplateId);
+    const editingEntityId = editRequestId || editTemplateId;
+    const editingCollection = isEditingTemplate ? 'templates' : 'signing_requests';
+
+    // PHASE 4: Hydrate from existing document for "Correct" / "Edit Template" flows
     useEffect(() => {
-        if (!editRequestId || !companyId) return;
+        if (!editingEntityId || !companyId) return;
         (async () => {
             setHydrating(true);
             try {
-                const docRef = doc(db, 'companies', companyId, 'signing_requests', editRequestId);
+                const docRef = doc(db, 'companies', companyId, editingCollection, editingEntityId);
                 const snap = await getDoc(docRef);
                 if (!snap.exists()) {
                     showError('Document not found.');
@@ -306,6 +348,8 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 setRecipientPhone(data.recipientPhone || '');
                 setTitle(data.title || '');
                 setDeliveryMethod(data.deliveryMethod || 'email');
+                setCreatorMode(isEditingTemplate ? 'template' : 'request');
+                setExistingStoragePath(data.storagePath || '');
 
                 // Hydrate fields (convert stored format back to editor format)
                 if (data.fields) {
@@ -321,6 +365,8 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                         height: f.height || 5,
                         required: f.required ?? true,
                         readOnly: f.readOnly ?? false,
+                        prefillPolicy: f.prefillPolicy || (f.readOnly ? 'locked' : 'editable'),
+                        bindingKey: f.bindingKey || '',
                         defaultValue: f.defaultValue || '',
                         fontSize: f.fontSize || 'Auto',
                     }));
@@ -344,7 +390,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 setHydrating(false);
             }
         })();
-    }, [editRequestId, companyId]);
+    }, [editingEntityId, companyId, editingCollection, isEditingTemplate, showError]);
 
     // FEAT-1: IntersectionObserver to track which page is visible
     useEffect(() => {
@@ -438,7 +484,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
             return;
         }
 
-        if (creatorMode === 'request') {
+        if (creatorMode === 'request' && !isEditingTemplate) {
             if (!recipientName) {
                 showError('Please provide a recipient name.');
                 return;
@@ -453,33 +499,55 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
             }
         }
 
-        setLoading(true);
-        // BUG FIX: Complete placeholder map — {{current_date}} and {{company_name}} were missing
-        const placeholderMap = {
-            '{{full_name}}': recipientName,
-            '{{email}}': recipientEmail,
-            '{{current_date}}': new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-            '{{company_name}}': '' // No company data available here — leave blank for signer to fill
-        };
-
-        const processedFields = fields.map(f => {
-            // BUG FIX: Match ALL field types (not just 'text') so date_signed {{current_date}} resolves
-            if (f.defaultValue && placeholderMap[f.defaultValue] !== undefined) {
-                const resolved = placeholderMap[f.defaultValue];
-                if (resolved) {
-                    return { ...f, defaultValue: resolved, readOnly: true };
-                }
-                // If placeholder resolves to empty string (e.g. company_name), leave editable
-                return { ...f, defaultValue: '' };
-            }
-            return f;
+        const shouldResolveForDelivery = creatorMode === 'request' || isEditingRequest;
+        const prefillContext = buildPrefillContext({
+            recipientName,
+            recipientEmail,
+            recipientPhone,
+            companyName,
         });
+
+        let processedFields = [];
+        if (shouldResolveForDelivery) {
+            const missingLockedRequired = [];
+            processedFields = fields.map((field) => {
+                const resolved = resolveFieldForSend(field, prefillContext);
+                if (resolved.meta.shouldBlockMissingLockedRequired) {
+                    missingLockedRequired.push(field.label || field.id || 'Unnamed field');
+                }
+
+                return {
+                    ...resolved.field,
+                    bindingKey: field.bindingKey || '',
+                };
+            });
+
+            if (missingLockedRequired.length > 0) {
+                showError(
+                    `Cannot send yet. These locked required fields are missing prefill data: ${missingLockedRequired.join(', ')}.`
+                );
+                return;
+            }
+        } else {
+            // Template save/edit keeps raw placeholder tokens instead of pre-resolving values.
+            processedFields = fields.map((field) => {
+                const policy = normalizePrefillPolicy(field);
+                return {
+                    ...field,
+                    prefillPolicy: policy,
+                    readOnly: policy === 'locked',
+                    bindingKey: field.bindingKey || '',
+                };
+            });
+        }
+
+        setLoading(true);
 
         try {
             const commonData = {
                 companyId,
                 title,
-                // SAFETY: Aggressively sanitize before Firestore write — strip null/undefined entries
+                // SAFETY: Aggressively sanitize before Firestore write - strip null/undefined entries
                 fields: (processedFields || []).filter(f => f != null).map(f => ({
                     id: f.id,
                     type: f.type,
@@ -492,13 +560,14 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     required: f.required ?? true,
                     defaultValue: f.defaultValue ?? '',
                     readOnly: f.readOnly || false,
+                    prefillPolicy: normalizePrefillPolicy(f),
+                    bindingKey: f.bindingKey || '',
                     fontSize: f.fontSize || 'Auto',
                 })),
                 updatedAt: serverTimestamp()
             };
 
-            // PHASE 4: If editing, update existing doc (no re-upload needed if file unchanged)
-            if (editRequestId) {
+            if (isEditingRequest) {
                 const docRef = doc(db, 'companies', companyId, 'signing_requests', editRequestId);
                 await updateDoc(docRef, {
                     ...commonData,
@@ -511,7 +580,21 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 return;
             }
 
-            // --- Original create flow below (unchanged) ---
+            if (isEditingTemplate) {
+                if (!existingStoragePath) {
+                    showError('Template file reference is missing. Please re-upload the PDF as a new template.');
+                    return;
+                }
+                const docRef = doc(db, 'companies', companyId, 'templates', editTemplateId);
+                await updateDoc(docRef, {
+                    ...commonData,
+                    storagePath: existingStoragePath,
+                });
+                showSuccess('Template updated successfully!');
+                if (onClose) onClose();
+                return;
+            }
+
             const folder = creatorMode === 'template' ? 'templates' : 'originals';
             const storagePath = `secure_documents/${companyId}/${folder}/${Date.now()}_${file.name}`;
             const fileRef = ref(storage, storagePath);
@@ -531,7 +614,6 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 const expiresAt = Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
                 const senderName = auth.currentUser?.displayName || auth.currentUser?.email || 'Your Employer';
 
-                // ADV-2 FIX: Set delivery flags based on selected method
                 const sendEmail = deliveryMethod === 'email' || deliveryMethod === 'both';
                 const sendSms = deliveryMethod === 'sms' || deliveryMethod === 'both';
 
@@ -548,49 +630,45 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     senderId: auth.currentUser.uid,
                     senderName,
                     sendEmail,
-                    sendSms, // Use computed value — true for 'sms' and 'both' delivery methods
-                    deliveryMethod, // Audit trail
-                    appBaseUrl: window.location.origin // DOMAIN FIX: Store sender's domain for backend link generation
+                    sendSms,
+                    deliveryMethod,
+                    appBaseUrl: window.location.origin
                 });
                 batch.set(doc(signingRef, 'secrets', 'token'), { accessToken });
                 await batch.commit();
 
-                // Copy Link mode — copy URL to clipboard instead of sending
                 if (deliveryMethod === 'copy') {
                     const baseUrl = window.location.origin;
                     const link = `${baseUrl}/sign/${companyId}/${signingRef.id}?token=${accessToken}`;
                     await navigator.clipboard.writeText(link);
                     showSuccess('Signing link copied to clipboard!');
-                } else {
-                    // Send SMS directly via callable (not relying on async trigger)
-                    if (sendSms && recipientPhone) {
-                        try {
-                            const baseUrl = window.location.origin;
-                            const signingLink = `${baseUrl}/sign/${companyId}/${signingRef.id}?token=${accessToken}`;
-                            const smsMessage = `${senderName} sent you "${title || 'Document'}" to sign: ${signingLink}`;
+                } else if (sendSms && recipientPhone) {
+                    try {
+                        const baseUrl = window.location.origin;
+                        const signingLink = `${baseUrl}/sign/${companyId}/${signingRef.id}?token=${accessToken}`;
+                        const smsMessage = `${senderName} sent you "${title || 'Document'}" to sign: ${signingLink}`;
 
-                            const functions = getFunctions();
-                            const sendSMSCallable = httpsCallable(functions, 'sendSMS');
-                            await sendSMSCallable({
-                                companyId,
-                                recipientPhone,
-                                messageBody: smsMessage
-                            });
-                            showSuccess('Document created & SMS sent!');
-                        } catch (smsErr) {
-                            console.error('SMS send failed:', smsErr);
-                            showError(`Document created but SMS failed: ${smsErr.message}`);
-                        }
-                    } else {
-                        const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : 'Email';
-                        showSuccess(`Document created! ${methodLabel} delivery in progress...`);
+                        const functions = getFunctions();
+                        const sendSMSCallable = httpsCallable(functions, 'sendSMS');
+                        await sendSMSCallable({
+                            companyId,
+                            recipientPhone,
+                            messageBody: smsMessage
+                        });
+                        showSuccess('Document created & SMS sent!');
+                    } catch (smsErr) {
+                        console.error('SMS send failed:', smsErr);
+                        showError(`Document created but SMS failed: ${smsErr.message}`);
                     }
+                } else {
+                    const methodLabel = deliveryMethod === 'both' ? 'Email + SMS' : 'Email';
+                    showSuccess(`Document created! ${methodLabel} delivery in progress...`);
                 }
             }
 
             if (onClose) onClose();
         } catch (err) {
-            console.error("Error saving:", err);
+            console.error('Error saving:', err);
             showError('Action failed. Please try again.');
         } finally {
             setLoading(false);
@@ -625,9 +703,9 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
                         {creatorMode === 'template' ? <FileText className="text-purple-600" /> : <UploadCloud className="text-blue-600" />}
-                        {editRequestId ? 'Correct Document' : creatorMode === 'template' ? 'Create Template' : 'New Envelope'}
+                        {isEditingTemplate ? 'Edit Template' : isEditingRequest ? 'Correct Document' : creatorMode === 'template' ? 'Create Template' : 'New Envelope'}
                     </h2>
-                    {!editRequestId && (
+                    {!isEditingRequest && !isEditingTemplate && (
                         <div className="flex bg-gray-100 p-1 rounded-lg">
                             <button
                                 onClick={() => setCreatorMode('request')}
@@ -653,7 +731,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                     ${creatorMode === 'template' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                     >
                         {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />}
-                        {editRequestId ? 'Save Correction' : creatorMode === 'template' ? 'Save Template' : 'Send Document'}
+                        {isEditingTemplate ? 'Save Template Changes' : isEditingRequest ? 'Save Correction' : creatorMode === 'template' ? 'Save Template' : 'Send Document'}
                     </button>
                 </div>
             </div>
@@ -664,7 +742,7 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
                 {/* LEFT SIDEBAR: Recipient + Semantic Field Palette */}
                 <div className="w-64 bg-white border-r flex flex-col z-10 shadow-lg shrink-0 overflow-y-auto">
                     {/* Recipient Info (only in request mode) */}
-                    {creatorMode === 'request' && (
+                    {creatorMode === 'request' && !isEditingTemplate && (
                         <div className="p-4 border-b">
                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 tracking-wider">Recipient</label>
                             <input
@@ -840,3 +918,4 @@ export default function EnvelopeCreator({ companyId, onClose, initialMode = 'req
         </div>
     );
 }
+

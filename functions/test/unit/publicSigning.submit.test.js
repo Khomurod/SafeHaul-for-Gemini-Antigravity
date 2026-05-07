@@ -58,7 +58,12 @@ describe('submitPublicEnvelope', () => {
     firebaseAdmin.docRefStub.update.mockResolvedValue(undefined);
   });
 
-  function mockTxnEnvelope({ expired, token = 'secret-token' } = {}) {
+  function mockTxnEnvelope({
+    expired,
+    token = 'secret-token',
+    status = 'sent',
+    fields = [],
+  } = {}) {
     const expiresAt = expired
       ? { toMillis: () => Date.now() - 60000 }
       : { toMillis: () => Date.now() + 60000 };
@@ -71,8 +76,9 @@ describe('submitPublicEnvelope', () => {
             return {
               exists: true,
               data: () => ({
-                status: 'sent',
+                status,
                 expiresAt,
+                fields,
               }),
             };
           }
@@ -109,6 +115,76 @@ describe('submitPublicEnvelope', () => {
     mockTxnEnvelope({ expired: false });
 
     const res = await submitPublicEnvelope(baseReq);
+    expect(res.success).toBe(true);
+    expect(firebaseAdmin.docRefStub.update).toHaveBeenCalled();
+  });
+
+  it('rejects non-object fieldValues payloads', async () => {
+    await expect(
+      submitPublicEnvelope({
+        ...baseReq,
+        data: {
+          ...baseReq.data,
+          fieldValues: 'bad-payload',
+        },
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
+  it('rejects unknown field ids', async () => {
+    mockTxnEnvelope({
+      expired: false,
+      fields: [
+        { id: 'known_field', type: 'text', required: false, defaultValue: '' },
+      ],
+    });
+
+    await expect(
+      submitPublicEnvelope({
+        ...baseReq,
+        data: {
+          ...baseReq.data,
+          fieldValues: { unknown_field: 'x' },
+        },
+      })
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
+  it('rejects missing required fields before sealing', async () => {
+    mockTxnEnvelope({
+      expired: false,
+      fields: [
+        { id: 'name', type: 'text', label: 'Name', required: true, defaultValue: '' },
+      ],
+    });
+
+    await expect(
+      submitPublicEnvelope({
+        ...baseReq,
+        data: {
+          ...baseReq.data,
+          fieldValues: {},
+        },
+      })
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+  });
+
+  it('allows valid submissions with known fields and required values', async () => {
+    mockTxnEnvelope({
+      expired: false,
+      fields: [
+        { id: 'name', type: 'text', label: 'Name', required: true, defaultValue: '' },
+      ],
+    });
+
+    const res = await submitPublicEnvelope({
+      ...baseReq,
+      data: {
+        ...baseReq.data,
+        fieldValues: { name: 'Ada Lovelace' },
+      },
+    });
+
     expect(res.success).toBe(true);
     expect(firebaseAdmin.docRefStub.update).toHaveBeenCalled();
   });

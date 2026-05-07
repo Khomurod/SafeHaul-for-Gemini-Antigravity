@@ -3,8 +3,9 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
+import { isFieldLocked } from '@features/signing/utils/prefillEngine';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { Loader2, CheckCircle, PenTool, X, ChevronRight, ChevronDown, AlertTriangle, ShieldCheck, FileText, Ban, Fingerprint } from 'lucide-react';
+import { Loader2, CheckCircle, PenTool, X, ChevronDown, AlertTriangle, ShieldCheck, FileText, Ban, Fingerprint } from 'lucide-react';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -26,7 +27,7 @@ export default function SigningRoom() {
     const [numPages, setNumPages] = useState(null);
 
     // ESIGN-8 FIX: Track electronic consent before allowing signing.
-    // UETA (15 U.S.C. § 96) and ESIGN Act (15 U.S.C. § 7001) require affirmative consent
+    // UETA (15 U.S.C. Sec. 96) and ESIGN Act (15 U.S.C. Sec. 7001) require affirmative consent
     // to use electronic records/signatures. Without this screen, e-signatures may not be
     // legally enforceable in disputes.
     const [hasEsignConsent, setHasEsignConsent] = useState(false);
@@ -84,11 +85,21 @@ export default function SigningRoom() {
 
                 setRequest(data);
 
-                // Initialize Fields — filter out null/undefined entries
+                // Initialize Fields - filter out null/undefined entries
                 if (data.fields) {
                     const initial = {};
                     data.fields.forEach(f => {
-                        initial[f.id] = (f.type === 'checkbox' ? false : '');
+                        if (f.type === 'checkbox') {
+                            initial[f.id] = false;
+                            return;
+                        }
+
+                        if ((f.type === 'text' || f.type === 'date') && !isFieldLocked(f) && f.defaultValue) {
+                            initial[f.id] = String(f.defaultValue);
+                            return;
+                        }
+
+                        initial[f.id] = '';
                     });
                     setFieldValues(initial);
                 }
@@ -121,7 +132,7 @@ export default function SigningRoom() {
     // PROD-FIX: Compute remaining required fields for the progress indicator
     const requiredFields = useMemo(() => {
         if (!request?.fields) return [];
-        return request.fields.filter(f => f && f.required && !f.readOnly);
+        return request.fields.filter(f => f && f.required && !isFieldLocked(f));
     }, [request?.fields]);
 
     const completedCount = useMemo(() => {
@@ -134,6 +145,13 @@ export default function SigningRoom() {
     const firstIncompleteField = useMemo(() => {
         return requiredFields.find(f => !fieldValues[f.id]) || null;
     }, [requiredFields, fieldValues]);
+
+    const lockedRequiredMissing = useMemo(() => {
+        return (request?.fields || []).filter((field) => {
+            if (!field || !field.required || !isFieldLocked(field)) return false;
+            return String(field.defaultValue || '').trim() === '';
+        });
+    }, [request?.fields]);
 
     // PROD-FIX: Scroll to the page containing a specific field
     const scrollToField = useCallback((field) => {
@@ -151,11 +169,19 @@ export default function SigningRoom() {
     }, []);
 
     const handleFinishSigning = async () => {
+        if (lockedRequiredMissing.length > 0) {
+            alert(
+                'This document has required locked fields with no value. Please ask the sender to correct and resend it.'
+            );
+            scrollToField(lockedRequiredMissing[0]);
+            return;
+        }
+
         // Validate
-        // BUG FIX: Exclude readOnly fields from validation — they are pre-filled via defaultValue
+        // BUG FIX: Exclude readOnly fields from validation - they are pre-filled via defaultValue
         // and rendered as non-editable divs, so fieldValues[f.id] will always be '' for them.
         // SAFETY: Guard against null/undefined elements in the fields array from corrupted Firestore data.
-        const missing = (request?.fields || []).filter(f => f && f.required && !f.readOnly && !fieldValues[f.id]);
+        const missing = (request?.fields || []).filter(f => f && f.required && !isFieldLocked(f) && !fieldValues[f.id]);
         if (missing.length > 0) {
             alert(`Please complete all required fields. (${missing.length} remaining)`);
             // PROD-FIX: Auto-scroll to the first missing field so the signer can find it
@@ -182,7 +208,7 @@ export default function SigningRoom() {
             });
 
             setSuccess(true);
-            // ESIGN-16 FIX: Confetti removed — document signing is a professional/legal act;
+            // ESIGN-16 FIX: Confetti removed - document signing is a professional/legal act;
             // celebratory animations are inappropriate in regulated trucking compliance context.
 
         } catch (e) {
@@ -248,7 +274,7 @@ export default function SigningRoom() {
     );
 
     // ESIGN-8 FIX: Electronic consent screen required before document access.
-    // UETA § 5(b) and ESIGN Act § 101(c) mandate that signers affirmatively agree to
+    // UETA Sec. 5(b) and ESIGN Act Sec. 101(c) mandate that signers affirmatively agree to
     // conduct business electronically before they can be bound by electronic signatures.
     // The consent must be presented BEFORE the document is displayed (not inline).
     if (!hasEsignConsent) return (
@@ -273,7 +299,7 @@ export default function SigningRoom() {
                             <FileText size={16} /> Electronic Records & Signature Disclosure
                         </p>
                         <ul className="list-disc list-inside space-y-1 text-blue-800 text-xs">
-                            <li>Your electronic signature is legally binding under the ESIGN Act (15 U.S.C. § 7001) and UETA.</li>
+                            <li>Your electronic signature is legally binding under the ESIGN Act (15 U.S.C. Sec. 7001) and UETA.</li>
                             <li>You agree to receive and sign this document electronically instead of on paper.</li>
                             <li>You may withdraw consent and request a paper copy by contacting the sender.</li>
                             <li>To sign electronically, you need a compatible web browser with JavaScript enabled.</li>
@@ -281,7 +307,7 @@ export default function SigningRoom() {
                         </ul>
                     </div>
                     <p className="text-gray-600">
-                        By clicking <strong>"I Agree – Proceed to Sign"</strong>, you confirm that you have read and agree to use electronic records and signatures.
+                        By clicking <strong>"I Agree - Proceed to Sign"</strong>, you confirm that you have read and agree to use electronic records and signatures.
                     </p>
                 </div>
 
@@ -297,7 +323,7 @@ export default function SigningRoom() {
                         className="flex-1 px-4 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
                     >
                         <ShieldCheck size={18} />
-                        I Agree – Proceed to Sign
+                        I Agree - Proceed to Sign
                     </button>
                 </div>
             </div>
@@ -326,7 +352,7 @@ export default function SigningRoom() {
         switch (field.type) {
             case 'text': {
                 // PHASE 5: Read-only text fields render as styled divs
-                if (field.readOnly) {
+                if (isFieldLocked(field)) {
                     return (
                         <div style={style}
                             className="border-2 border-blue-300 bg-blue-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium">
@@ -342,7 +368,7 @@ export default function SigningRoom() {
             }
             case 'date': {
                 // PHASE 5: Read-only date fields render as styled divs
-                if (field.readOnly) {
+                if (isFieldLocked(field)) {
                     return (
                         <div style={style}
                             className="border-2 border-green-300 bg-green-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium">
@@ -368,7 +394,7 @@ export default function SigningRoom() {
                         {isSigned ? <div className="text-yellow-800 font-bold text-xs flex items-center gap-1"><CheckCircle size={14} /> Signed</div> : <div className="text-yellow-700 font-medium text-xs flex items-center gap-1"><PenTool size={14} /> Sign</div>}
                     </div>);
             }
-            // PHASE 5: Initial type — same as signature but visually smaller
+            // PHASE 5: Initial type - same as signature but visually smaller
             case 'initial': {
                 const isInitialed = !!fieldValues[field.id];
                 return (
@@ -387,7 +413,7 @@ export default function SigningRoom() {
             <header className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-30">
                 <div>
                     <h1 className="font-bold text-gray-800">{request?.title || 'Document'}</h1>
-                    <p className="text-xs text-gray-500">Signing as: {request?.recipientName}</p>
+                    <p className="text-xs text-gray-500">Signing as: {request?.recipientName || 'Signer'}</p>
                 </div>
 
                 {/* PROD-FIX: Progress counter showing remaining fields */}
@@ -426,14 +452,14 @@ export default function SigningRoom() {
                                 renderAnnotationLayer={false}
                                 renderTextLayer={false}
                             />
-                            {/* PROD-FIX: Use Number() cast for type-safe comparison — prevents string/number mismatch */}
+                            {/* PROD-FIX: Use Number() cast for type-safe comparison - prevents string/number mismatch */}
                             {(request?.fields || []).filter(f => Number(f?.pageNumber) === index + 1).map(field => <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>)}
                         </div>
                     ))}
                 </Document>
             </main>
 
-            {/* PROD-FIX: Floating "Jump to next field" button — only shows when there are incomplete required fields */}
+            {/* PROD-FIX: Floating "Jump to next field" button - only shows when there are incomplete required fields */}
             {firstIncompleteField && (
                 <div className="fixed bottom-6 right-6 z-40">
                     <button

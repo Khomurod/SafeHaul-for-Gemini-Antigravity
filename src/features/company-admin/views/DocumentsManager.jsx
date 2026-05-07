@@ -6,8 +6,13 @@ import { collection, query, onSnapshot, orderBy, deleteDoc, doc, serverTimestamp
 import { useData } from '@/context/DataContext';
 import EnvelopeCreator from '@features/signing/EnvelopeCreator';
 import EnvelopeHistory from '@features/signing/components/EnvelopeHistory';
+import {
+    buildPrefillContext,
+    normalizePrefillPolicy,
+    resolveFieldForSend,
+} from '@features/signing/utils/prefillEngine';
 import { GlobalLoadingState } from '@shared/components/feedback';
-import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2, Mail, Phone, Copy, MessageSquare } from 'lucide-react';
+import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2, Mail, Phone, Copy, MessageSquare, Edit3 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
 
@@ -22,6 +27,7 @@ export default function DocumentsManager() {
     const [viewMode, setViewMode] = useState('view');
     const [creatorInitialMode, setCreatorInitialMode] = useState('request');
     const [editRequestId, setEditRequestId] = useState(null);
+    const [editTemplateId, setEditTemplateId] = useState(null);
 
     const [templates, setTemplates] = useState([]);
     const [templatesLoading, setTemplatesLoading] = useState(true);
@@ -73,10 +79,11 @@ export default function DocumentsManager() {
         setManualEmail('');
         setManualPhone('');
         setDeliveryMethod('email');
-        // Initialize prefill values from template field defaults
+        // Initialize prefill values from template defaults for editable text/date fields.
         const initialPrefill = {};
         (template.fields || []).forEach(f => {
-            if (f.type === 'text' || f.type === 'date') {
+            const policy = normalizePrefillPolicy(f);
+            if ((f.type === 'text' || f.type === 'date') && policy === 'editable') {
                 initialPrefill[f.id] = f.defaultValue || '';
             }
         });
@@ -110,26 +117,37 @@ export default function DocumentsManager() {
         try {
             const accessToken = uuidv4();
 
-            // AUTO-FILL LOGIC: Map profile data to placeholders, then apply user prefill overrides
-            const autoFilledFields = selectedTemplate.fields.map(f => {
-                // First check if user manually pre-filled this field
-                if (prefillValues[f.id] !== undefined && prefillValues[f.id] !== '') {
-                    return { ...f, defaultValue: prefillValues[f.id] };
-                }
+            const resolvedRecipientName = manualName.trim();
+            const resolvedRecipientEmail = manualEmail.trim();
+            const resolvedRecipientPhone = manualPhone.trim();
 
-                // Otherwise try auto-fill from recipient data
-                let value = null;
-                const label = (f.label || '').toLowerCase();
-
-                if (label.includes('{{full_name}}')) value = manualName;
-                else if (label.includes('{{first_name}}')) value = manualName.split(' ')[0];
-                else if (label.includes('{{last_name}}')) value = manualName.split(' ').slice(1).join(' ');
-                else if (label.includes('{{email}}')) value = manualEmail;
-                else if (label.includes('{{phone}}')) value = manualPhone;
-                else if (label.includes('{{date}}')) value = new Date().toLocaleDateString();
-
-                return { ...f, defaultValue: value };
+            const prefillContext = buildPrefillContext({
+                recipientName: resolvedRecipientName,
+                recipientEmail: resolvedRecipientEmail,
+                recipientPhone: resolvedRecipientPhone,
+                companyName: currentCompanyProfile?.companyName || currentCompanyProfile?.name || '',
             });
+
+            const overridesByFieldId = {};
+            Object.entries(prefillValues || {}).forEach(([fieldId, value]) => {
+                if (value !== undefined && value !== null && String(value) !== '') {
+                    overridesByFieldId[fieldId] = value;
+                }
+            });
+
+            const missingLockedRequired = [];
+            const autoFilledFields = (selectedTemplate.fields || []).map((field) => {
+                const resolved = resolveFieldForSend(field, prefillContext, { overridesByFieldId });
+                if (resolved.meta.shouldBlockMissingLockedRequired) {
+                    missingLockedRequired.push(field.label || field.id || 'Unnamed field');
+                }
+                return resolved.field;
+            });
+
+            if (missingLockedRequired.length > 0) {
+                showError(`Cannot send this template yet. Missing locked prefill data: ${missingLockedRequired.join(', ')}.`);
+                return;
+            }
 
             const expiresAt = Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
             const senderName = auth.currentUser?.displayName || auth.currentUser?.email || 'Your Employer';
@@ -140,9 +158,9 @@ export default function DocumentsManager() {
 
             const docData = {
                 companyId: currentCompanyProfile.id,
-                recipientEmail: manualEmail.trim() || null,
-                recipientName: manualName.trim(),
-                recipientPhone: manualPhone.trim() || null,
+                recipientEmail: resolvedRecipientEmail || null,
+                recipientName: resolvedRecipientName,
+                recipientPhone: resolvedRecipientPhone || null,
                 title: selectedTemplate.title,
                 status: 'sent',
                 createdAt: serverTimestamp(),
@@ -151,7 +169,7 @@ export default function DocumentsManager() {
                 senderId: auth.currentUser.uid,
                 senderName,
                 sendEmail,
-                sendSms: false, // SMS is sent directly by frontend callable — do NOT trigger async function
+                sendSms: false, // SMS is sent directly by frontend callable; do not trigger async function.
                 deliveryMethod, // Record what user chose for audit trail
                 appBaseUrl: window.location.origin, // DOMAIN FIX: Store sender's domain for backend link generation
                 fields: autoFilledFields,
@@ -169,7 +187,7 @@ export default function DocumentsManager() {
             batch.set(doc(signingRef, 'secrets', 'token'), { accessToken });
             await batch.commit();
 
-            // FEAT-4: Copy Link mode — copy URL to clipboard instead of sending
+            // FEAT-4: Copy Link mode - copy URL to clipboard instead of sending
             if (deliveryMethod === 'copy') {
                 const baseUrl = window.location.origin;
                 const link = `${baseUrl}/sign/${currentCompanyProfile.id}/${signingRef.id}?token=${accessToken}`;
@@ -177,7 +195,7 @@ export default function DocumentsManager() {
                 showSuccess('Signing link copied to clipboard!');
             } else {
                 // Send SMS directly via callable (not relying on async trigger)
-                if (sendSms && manualPhone.trim()) {
+                if (sendSms && resolvedRecipientPhone) {
                     try {
                         const baseUrl = window.location.origin;
                         const signingLink = `${baseUrl}/sign/${currentCompanyProfile.id}/${signingRef.id}?token=${accessToken}`;
@@ -188,7 +206,7 @@ export default function DocumentsManager() {
                         const sendSMSCallable = httpsCallable(functions, 'sendSMS');
                         await sendSMSCallable({
                             companyId: currentCompanyProfile.id,
-                            recipientPhone: manualPhone.trim(),
+                            recipientPhone: resolvedRecipientPhone,
                             messageBody: smsMessage
                         });
                         showSuccess('Document created & SMS sent!');
@@ -217,18 +235,39 @@ export default function DocumentsManager() {
         await deleteDoc(doc(db, 'companies', currentCompanyProfile.id, 'templates', id));
     };
 
+    const handleEditTemplate = (template) => {
+        setEditRequestId(null);
+        setEditTemplateId(template.id);
+        setCreatorInitialMode('template');
+        setViewMode('create');
+    };
+
     if (loading) return <GlobalLoadingState />;
     if (!currentCompanyProfile) { navigate('/company/dashboard'); return null; }
 
     // PHASE 4: Handle "Correct" action from EnvelopeHistory
     const handleCorrect = (docItem) => {
         setEditRequestId(docItem.id);
+        setEditTemplateId(null);
         setCreatorInitialMode('request');
         setViewMode('create');
     };
 
     if (viewMode === 'create') {
-        return <EnvelopeCreator companyId={currentCompanyProfile.id} initialMode={creatorInitialMode} editRequestId={editRequestId} onClose={() => { setViewMode('view'); setEditRequestId(null); }} />;
+        return (
+            <EnvelopeCreator
+                companyId={currentCompanyProfile.id}
+                companyName={currentCompanyProfile.companyName || currentCompanyProfile.name || ''}
+                initialMode={creatorInitialMode}
+                editRequestId={editRequestId}
+                editTemplateId={editTemplateId}
+                onClose={() => {
+                    setViewMode('view');
+                    setEditRequestId(null);
+                    setEditTemplateId(null);
+                }}
+            />
+        );
     }
 
     const filteredDrivers = drivers.filter(d =>
@@ -248,10 +287,10 @@ export default function DocumentsManager() {
                         </h1>
                     </div>
                     <div className="flex gap-3">
-                        <button onClick={() => { setCreatorInitialMode('template'); setViewMode('create'); }} className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 font-bold rounded-xl shadow-sm hover:bg-gray-50 transition-all">
+                        <button onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('template'); setViewMode('create'); }} className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 font-bold rounded-xl shadow-sm hover:bg-gray-50 transition-all">
                             <FileText size={18} className="text-purple-600" /> Create Template
                         </button>
-                        <button onClick={() => { setCreatorInitialMode('request'); setViewMode('create'); }} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:shadow-blue-200 transition-all transform hover:-translate-y-0.5">
+                        <button onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('request'); setViewMode('create'); }} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:shadow-blue-200 transition-all transform hover:-translate-y-0.5">
                             <Plus size={20} /> Send One-off
                         </button>
                     </div>
@@ -280,10 +319,15 @@ export default function DocumentsManager() {
                                                 <button onClick={() => handleDeleteTemplate(tmp.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-opacity"><Trash2 size={16} /></button>
                                             </div>
                                             <h3 className="font-bold text-gray-900 mb-1 truncate">{tmp.title}</h3>
-                                            <p className="text-[10px] text-gray-400 uppercase font-bold mb-6">{tmp.fields?.length || 0} Fields</p>
-                                            <button onClick={() => handleUseTemplate(tmp)} className="w-full py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2 transition-all shadow-sm">
-                                                <Send size={14} /> Use Template
-                                            </button>
+                                            <p className="text-[10px] text-gray-400 uppercase font-bold mb-4">{tmp.fields?.length || 0} Fields</p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button onClick={() => handleUseTemplate(tmp)} className="w-full py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2 transition-all shadow-sm">
+                                                    <Send size={14} /> Use
+                                                </button>
+                                                <button onClick={() => handleEditTemplate(tmp)} className="w-full py-2.5 bg-white text-purple-700 border border-purple-200 text-xs font-bold rounded-xl hover:bg-purple-50 flex items-center justify-center gap-2 transition-all shadow-sm">
+                                                    <Edit3 size={14} /> Edit
+                                                </button>
+                                            </div>
                                         </div>
                                     ))
                             }
@@ -420,7 +464,7 @@ export default function DocumentsManager() {
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-xs font-bold text-gray-900 truncate">{d.firstName} {d.lastName}</p>
-                                                <p className="text-[10px] text-gray-400 truncate">{d.email || 'No email'} · {d.phone || d.phoneNumber || 'No phone'}</p>
+                                                <p className="text-[10px] text-gray-400 truncate">{d.email || 'No email'} | {d.phone || d.phoneNumber || 'No phone'}</p>
                                             </div>
                                         </button>
                                     ))
@@ -433,3 +477,5 @@ export default function DocumentsManager() {
         </div>
     );
 }
+
+

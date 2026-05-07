@@ -124,9 +124,16 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
     if (!isAllowed) throw new HttpsError('resource-exhausted', 'Too many attempts. Please wait.');
 
     if (!companyId || !requestId) throw new HttpsError('invalid-argument', 'Missing parameters.');
+    if (fieldValues !== undefined && (fieldValues === null || typeof fieldValues !== 'object' || Array.isArray(fieldValues))) {
+        throw new HttpsError('invalid-argument', 'fieldValues must be an object.');
+    }
 
     try {
         const docRef = db.collection('companies').doc(companyId).collection('signing_requests').doc(requestId);
+        const normalizedFieldValues = (fieldValues && typeof fieldValues === 'object' && !Array.isArray(fieldValues))
+            ? fieldValues
+            : {};
+        let requestData = null;
 
         // ESIGN-19 FIX: Use a transaction to atomically verify the status hasn't changed and
         // update it, preventing double-submission race conditions.
@@ -135,6 +142,7 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
             if (!docSnap.exists) throw new HttpsError('not-found', 'Document not found');
 
             const data = docSnap.data();
+            requestData = data;
 
             // BUG-2 FIX: Read accessToken from secrets subcollection
             const secretSnap = await txn.get(docRef.collection('secrets').doc('token'));
@@ -159,10 +167,19 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
             txn.update(docRef, { status: 'processing' });
         });
 
+        const fields = Array.isArray(requestData?.fields)
+            ? requestData.fields.filter((f) => f && f.id)
+            : [];
+        const allowedFieldIds = new Set(fields.map((f) => String(f.id)));
+
         const bucket = storage.bucket();
         const finalValues = {};
 
-        for (const [key, value] of Object.entries(fieldValues)) {
+        for (const [key, value] of Object.entries(normalizedFieldValues)) {
+            if (!allowedFieldIds.has(key)) {
+                throw new HttpsError('invalid-argument', `Invalid field id submitted: ${key}`);
+            }
+
             if (typeof value === 'string' && value.startsWith('data:image')) {
                 const base64Image = value.split(';base64,').pop();
                 const buffer = Buffer.from(base64Image, 'base64');
@@ -175,6 +192,36 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
             } else {
                 finalValues[key] = value;
             }
+        }
+
+        const missingRequired = [];
+        for (const field of fields) {
+            if (!field.required) continue;
+
+            const submitted = Object.prototype.hasOwnProperty.call(finalValues, field.id)
+                ? finalValues[field.id]
+                : field.defaultValue;
+
+            if (field.type === 'checkbox') {
+                if (submitted !== true) missingRequired.push(field.label || field.id);
+                continue;
+            }
+
+            if (submitted === null || submitted === undefined) {
+                missingRequired.push(field.label || field.id);
+                continue;
+            }
+
+            if (typeof submitted === 'string' && submitted.trim() === '') {
+                missingRequired.push(field.label || field.id);
+            }
+        }
+
+        if (missingRequired.length > 0) {
+            throw new HttpsError(
+                'failed-precondition',
+                `Required fields missing: ${missingRequired.join(', ')}`
+            );
         }
 
         // ESIGN-2 FIX: Override the client-supplied IP with the actual server-observed IP.
