@@ -26,6 +26,7 @@
     "@tiptap/react": "^3.17.1",
     "@tiptap/starter-kit": "^3.17.1",
     "canvas-confetti": "^1.9.4",
+    "dompurify": "^3.4.2",
     "exceljs": "^4.4.0",
     "firebase": "^11.0.2",
     "framer-motion": "^12.29.2",

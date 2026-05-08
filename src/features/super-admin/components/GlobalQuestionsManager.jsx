@@ -9,6 +9,7 @@ import React, { useMemo, useState } from 'react';
 import { Loader2, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import { CustomQuestionsBuilder } from '@/features/settings/components/questions/CustomQuestionsBuilder';
 import { useGlobalSchema } from '@/hooks/useGlobalSchema';
+import { sanitizeQuestionPayload } from '@shared/utils/sanitizeUserContent';
 
 export function GlobalQuestionsManager() {
     const {
@@ -54,6 +55,7 @@ export function GlobalQuestionsManager() {
         const sectionMap = new Map();
 
         for (const q of localQuestions || questions) {
+            const sanitizedQuestion = sanitizeQuestionPayload(q);
             const sectionId = q.sectionId || 'custom';
             if (!sectionMap.has(sectionId)) {
                 // Find original section or create new
@@ -68,7 +70,7 @@ export function GlobalQuestionsManager() {
             }
 
             // Clean question object for storage
-            const { sectionId: _, sectionTitle: __, order: ___, ...fieldData } = q;
+            const { sectionId: _, sectionTitle: __, order: ___, ...fieldData } = sanitizedQuestion;
             sectionMap.get(sectionId).fields.push(fieldData);
         }
 

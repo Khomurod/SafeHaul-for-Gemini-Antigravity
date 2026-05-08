@@ -4,6 +4,7 @@ import { collection, query, orderBy, getDocs, addDoc, serverTimestamp, doc, getD
 import { getPortalUser } from '@features/auth/services/userService';
 import { Send, MessageSquare, Clock, Loader2, History } from 'lucide-react';
 import { logActivity } from '@shared/utils/activityLogger';
+import { sanitizeUserContent } from '@shared/utils/sanitizeUserContent';
 
 function ShieldIcon({ size }) {
     return (
@@ -30,6 +31,7 @@ export function NotesTab({ companyId, applicationId, collectionName = 'applicati
                 const localNotes = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data(),
+                    text: sanitizeUserContent(doc.data().text || ''),
                     isLocal: true
                 }));
 
@@ -43,7 +45,7 @@ export function NotesTab({ companyId, applicationId, collectionName = 'applicati
                     const history = parentSnap.data().sharedHistory || [];
                     sharedNotes = history.map((item, index) => ({
                         id: `shared_${index}`,
-                        text: item.text,
+                        text: sanitizeUserContent(item.text || ''),
                         author: "Previous Recruiter", // Anonymized
                         createdAt: item.date, // Timestamp from backend
                         type: 'note',
@@ -85,21 +87,22 @@ export function NotesTab({ companyId, applicationId, collectionName = 'applicati
 
         setSending(true);
         try {
+            const sanitizedNote = sanitizeUserContent(newNote);
             const notesRef = collection(db, "companies", companyId, collectionName, applicationId, "internal_notes");
             await addDoc(notesRef, {
-                text: newNote,
+                text: sanitizedNote,
                 author: currentUser,
                 createdAt: serverTimestamp(),
                 type: 'note'
             });
 
             // Log to global activity history
-            await logActivity(companyId, collectionName, applicationId, "Note Added", newNote.substring(0, 100) + (newNote.length > 100 ? "..." : ""), "note");
+            await logActivity(companyId, collectionName, applicationId, "Note Added", sanitizedNote.substring(0, 100) + (sanitizedNote.length > 100 ? "..." : ""), "note");
 
             // Optimistic update (only adds to top)
             const optimisticNote = {
                 id: Date.now().toString(),
-                text: newNote,
+                text: sanitizedNote,
                 author: currentUser,
                 createdAt: { seconds: Date.now() / 1000 },
                 type: 'note',

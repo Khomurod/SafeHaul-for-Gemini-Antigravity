@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from '@lib/firebase';
+import { sanitizeQuestionPayload } from '@shared/utils/sanitizeUserContent';
 
 export async function loadCompanies() {
   return await getDocs(collection(db, "companies"));
@@ -78,7 +79,11 @@ export async function saveCompanySettings(companyId, settingsData) {
   if (settingsData.legal) payload.legal = settingsData.legal;
   if (settingsData.hiringPreferences) payload.hiringPreferences = settingsData.hiringPreferences;
   if (settingsData.structuredOffers) payload.structuredOffers = settingsData.structuredOffers;
-  if (settingsData.customQuestions) payload.customQuestions = settingsData.customQuestions;
+  if (settingsData.customQuestions) {
+    payload.customQuestions = Array.isArray(settingsData.customQuestions)
+      ? settingsData.customQuestions.map((q) => sanitizeQuestionPayload(q))
+      : settingsData.customQuestions;
+  }
   if (settingsData.companyLogoUrl) payload.companyLogoUrl = settingsData.companyLogoUrl;
   if (settingsData.driverTypes) payload.driverTypes = settingsData.driverTypes;
 

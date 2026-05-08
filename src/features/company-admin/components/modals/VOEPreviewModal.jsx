@@ -4,6 +4,7 @@ import { getFieldValue } from '@shared/utils/helpers';
 import { useData } from '@/context/DataContext';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { sanitizeUserContent } from '@shared/utils/sanitizeUserContent';
 
 export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
     const hasRequiredData = Boolean(employer && applicant);
@@ -38,7 +39,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
         // Load tailwind via CDN for printing styles
         windowPrint.document.write('<script src="https://cdn.tailwindcss.com"></script>');
         windowPrint.document.write('</head><body>');
-        windowPrint.document.write('<div style="padding: 20px;">' + printContent.innerHTML + '</div>');
+        windowPrint.document.write('<div style="padding: 20px;">' + sanitizeUserContent(printContent.innerHTML) + '</div>');
         windowPrint.document.write('</body></html>');
         windowPrint.document.close();
         windowPrint.focus();
