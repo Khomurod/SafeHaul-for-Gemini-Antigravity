@@ -9,6 +9,17 @@ export const FMCSA_EMPLOYER_SOCRATA_URL =
 const MIN_PREFIX_LENGTH = 2;
 const MAX_PREFIX_LENGTH = 80;
 
+/** Columns always available on company census export (used in driver employment step). */
+export const FMCSA_SELECT_MINIMAL =
+  'dot_number,legal_name,phy_street,phy_city,phy_state';
+
+/**
+ * Extended census fields for phone / fax / email when supported by the dataset.
+ * If the API rejects unknown columns, callers retry with {@link FMCSA_SELECT_MINIMAL}.
+ */
+export const FMCSA_SELECT_EXTENDED =
+  `${FMCSA_SELECT_MINIMAL},phy_zip,telephone,fax,email_address`;
+
 /**
  * Escape a value for use inside a SoQL single-quoted string literal.
  */
@@ -26,16 +37,59 @@ export function sanitizeEmployerSearchPrefix(input) {
 }
 
 /**
+ * First significant word (min 2 chars) for starts_with — helps match "Intercontinental carriers"
+ * to legal names beginning with "INTERCONTINENTAL…".
+ */
+export function fmcsaPrefixTokenFromCompanyName(name) {
+  const safe = sanitizeEmployerSearchPrefix(name);
+  if (safe.length < MIN_PREFIX_LENGTH) return '';
+  const parts = safe.split(/\s+/).filter(Boolean);
+  const first = parts[0] || safe;
+  return first.length >= MIN_PREFIX_LENGTH ? first : safe.slice(0, MIN_PREFIX_LENGTH);
+}
+
+/**
  * Build request URL with SoQL query params (properly URL-encoded).
  */
-export function buildFmcsaEmployerSearchUrl(prefix) {
+export function buildFmcsaEmployerSearchUrl(prefix, selectFields = FMCSA_SELECT_MINIMAL) {
   const safe = escapeSoqlStringLiteral(sanitizeEmployerSearchPrefix(prefix));
   if (safe.length < MIN_PREFIX_LENGTH) {
     return null;
   }
   const params = new URLSearchParams();
-  params.set('$select', 'dot_number,legal_name,phy_street,phy_city,phy_state');
+  params.set('$select', selectFields);
   params.set('$where', `starts_with(upper(legal_name), upper('${safe}'))`);
+  params.set('$limit', '5');
+  return `${FMCSA_EMPLOYER_SOCRATA_URL}?${params.toString()}`;
+}
+
+/**
+ * Prefix search using first word of company name (stronger match for informal driver-entered names).
+ */
+export function buildFmcsaEmployerSearchUrlFromCompanyName(
+  companyName,
+  selectFields = FMCSA_SELECT_MINIMAL,
+) {
+  const token = fmcsaPrefixTokenFromCompanyName(companyName);
+  if (!token) return null;
+  return buildFmcsaEmployerSearchUrl(token, selectFields);
+}
+
+/**
+ * Broader match: LIKE on full sanitized company string (bounded length).
+ */
+export function buildFmcsaEmployerLikeSearchUrl(
+  companyName,
+  selectFields = FMCSA_SELECT_MINIMAL,
+) {
+  const safe = escapeSoqlStringLiteral(sanitizeEmployerSearchPrefix(companyName));
+  if (safe.length < MIN_PREFIX_LENGTH) return null;
+  const params = new URLSearchParams();
+  params.set('$select', selectFields);
+  params.set(
+    '$where',
+    `like(upper(legal_name), '%' || upper('${safe}') || '%')`,
+  );
   params.set('$limit', '5');
   return `${FMCSA_EMPLOYER_SOCRATA_URL}?${params.toString()}`;
 }
@@ -64,13 +118,44 @@ export function mapFmcsaRowToEmployerFields(row, statesAllowlist = []) {
 }
 
 /**
+ * Map census row to PEV / verification contact fields (best-effort — many carriers lack public email in FMCSA).
+ */
+export function mapFmcsaRowToPevContact(row) {
+  const pick = (v) =>
+    v === undefined || v === null ? '' : String(v).trim();
+  return {
+    email: pick(row.email_address || row.email),
+    fax: pick(row.fax),
+    phone: pick(row.telephone || row.phone),
+    legalName: pick(row.legal_name),
+    dotNumber: pick(row.dot_number),
+    phyStreet: pick(row.phy_street),
+    phyCity: pick(row.phy_city),
+    phyState: pick(row.phy_state),
+    phyZip: pick(row.phy_zip),
+  };
+}
+
+async function fetchJson(url, headers, signal) {
+  const res = await fetch(url, { method: 'GET', headers, signal });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    const err = new Error(`FMCSA lookup failed (${res.status}): ${text.slice(0, 200)}`);
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+/**
  * @param {string} prefix
- * @param {{ signal?: AbortSignal, appToken?: string }} [options]
- * @returns {Promise<Array<{ dot_number?: string|number, legal_name?: string, phy_street?: string, phy_city?: string, phy_state?: string }>>}
+ * @param {{ signal?: AbortSignal, appToken?: string, selectFields?: string }} [options]
  */
 export async function fetchFmcsaEmployerSuggestions(prefix, options = {}) {
-  const { signal, appToken } = options;
-  const url = buildFmcsaEmployerSearchUrl(prefix);
+  const { signal, appToken, selectFields = FMCSA_SELECT_MINIMAL } = options;
+  let url = buildFmcsaEmployerSearchUrl(prefix, selectFields);
   if (!url || !appToken) {
     return [];
   }
@@ -80,12 +165,58 @@ export async function fetchFmcsaEmployerSuggestions(prefix, options = {}) {
     'X-App-Token': appToken,
   };
 
-  const res = await fetch(url, { method: 'GET', headers, signal });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`FMCSA lookup failed (${res.status}): ${text.slice(0, 200)}`);
+  try {
+    return await fetchJson(url, headers, signal);
+  } catch (e) {
+    if (
+      selectFields !== FMCSA_SELECT_MINIMAL &&
+      (e.status === 400 || /unknown column|invalid/i.test(String(e.body || e.message)))
+    ) {
+      url = buildFmcsaEmployerSearchUrl(prefix, FMCSA_SELECT_MINIMAL);
+      if (!url) return [];
+      return await fetchJson(url, headers, signal);
+    }
+    throw e;
   }
+}
 
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+/**
+ * For PEV modal: prefix by first word, then LIKE fallback; tries extended select then minimal.
+ * @param {string} companyName
+ * @param {{ signal?: AbortSignal, appToken?: string }} options
+ */
+export async function fetchFmcsaCarrierCandidatesForPev(companyName, options = {}) {
+  const { signal, appToken } = options;
+  if (!appToken) return [];
+
+  const tryFetch = async (buildUrlFn, selectFields) => {
+    const url = buildUrlFn(companyName, selectFields);
+    if (!url) return [];
+    const headers = {
+      Accept: 'application/json',
+      'X-App-Token': appToken,
+    };
+    try {
+      return await fetchJson(url, headers, signal);
+    } catch (e) {
+      if (
+        selectFields !== FMCSA_SELECT_MINIMAL &&
+        (e.status === 400 || /unknown column|invalid/i.test(String(e.body || e.message)))
+      ) {
+        const fallbackUrl = buildUrlFn(companyName, FMCSA_SELECT_MINIMAL);
+        if (!fallbackUrl) return [];
+        return await fetchJson(fallbackUrl, headers, signal);
+      }
+      throw e;
+    }
+  };
+
+  let rows = await tryFetch(
+    buildFmcsaEmployerSearchUrlFromCompanyName,
+    FMCSA_SELECT_EXTENDED,
+  );
+  if (rows.length > 0) return rows;
+
+  rows = await tryFetch(buildFmcsaEmployerLikeSearchUrl, FMCSA_SELECT_EXTENDED);
+  return rows;
 }
