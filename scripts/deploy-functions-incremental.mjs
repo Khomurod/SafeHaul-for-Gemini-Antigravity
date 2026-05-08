@@ -8,6 +8,7 @@
  * - If anything touches index.js, package files, firebaseAdmin.js, shared/, or firebase.json → full deploy.
  * - Ignores functions/test/** (tests are not deployed and must not trigger unmapped-file full deploy).
  * - If a changed file is not a known top-level module from index → full deploy (nested imports we didn't trace).
+ * - Directory entrypoints (require('./bulkActions') → bulkActions/index.js) and any file under that folder map to the same deploy unit.
  * - Otherwise: single `firebase deploy --only functions:a,functions:b,...`
  *
  * Env:
@@ -17,7 +18,7 @@
  *   DEPLOY_FUNCTIONS_FORCE_FULL=1 — skip incremental, deploy all (sequential script)
  */
 
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'url';
 import { dirname, join, normalize } from 'path';
 import { spawnSync } from 'child_process';
@@ -33,11 +34,40 @@ if (!projectId) {
   process.exit(1);
 }
 
-/** Normalize ./foo or ./integrations/bar → functions/foo.js */
+/**
+ * Normalize require('./foo') to a repo-relative path under functions/.
+ * Prefers foo/index.js when present (Node resolution), else foo.js.
+ */
 function modulePathToFile(rel) {
   let n = rel.replace(/^\.\//, '');
-  if (!n.endsWith('.js')) n += '.js';
-  return normalize(join('functions', n)).replace(/\\/g, '/');
+  const funcRoot = join(repoRoot, 'functions');
+
+  if (n.endsWith('.js')) {
+    return normalize(join('functions', n)).replace(/\\/g, '/');
+  }
+
+  const indexFile = join(funcRoot, n, 'index.js');
+  const directFile = join(funcRoot, `${n}.js`);
+
+  if (existsSync(indexFile)) {
+    return normalize(join('functions', n, 'index.js')).replace(/\\/g, '/');
+  }
+  if (existsSync(directFile)) {
+    return normalize(join('functions', `${n}.js`)).replace(/\\/g, '/');
+  }
+
+  return normalize(join('functions', `${n}.js`)).replace(/\\/g, '/');
+}
+
+/** Map e.g. functions/bulkActions/workers/x.js → functions/bulkActions/index.js */
+function resolveNestedUnderDirectoryModules(changedNormalized, knownTopLevelFiles) {
+  if (knownTopLevelFiles.has(changedNormalized)) return changedNormalized;
+  for (const kf of knownTopLevelFiles) {
+    if (!kf.endsWith('/index.js')) continue;
+    const dirPrefix = kf.slice(0, -'index.js'.length);
+    if (changedNormalized.startsWith(dirPrefix)) return kf;
+  }
+  return null;
 }
 
 /**
@@ -202,6 +232,13 @@ function main() {
 
     if (knownTopLevelFiles.has(n)) {
       const exps = fileToExports.get(n) || [];
+      exps.forEach((e) => toDeploy.add(e));
+      continue;
+    }
+
+    const mappedTopLevel = resolveNestedUnderDirectoryModules(n, knownTopLevelFiles);
+    if (mappedTopLevel && knownTopLevelFiles.has(mappedTopLevel)) {
+      const exps = fileToExports.get(mappedTopLevel) || [];
       exps.forEach((e) => toDeploy.add(e));
       continue;
     }

@@ -28,18 +28,6 @@ service firebase.storage {
       );
     }
 
-    // Company team helper retained for non-sensitive resources.
-    function isCompanyTeam(companyId) {
-      return isSignedIn() && (
-        isSuperAdmin() ||
-        (
-          request.auth.token.keys().hasAny(['roles']) && 
-          request.auth.token.roles.keys().hasAny([companyId]) && 
-          request.auth.token.roles[companyId] in ['company_admin', 'hr_user', 'recruiter']
-        )
-      );
-    }
-
     function metadataDriverId() {
       return resource != null &&
              resource.metadata != null &&

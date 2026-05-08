@@ -154,8 +154,15 @@ jobs:
       - name: Deploy Firebase Hosting
         run: npx firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
 
-      - name: Deploy Firestore and Storage Rules
-        run: npx firebase deploy --only firestore:rules,firestore:indexes,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
+      # Rules + Storage first so a indexes IAM issue does not block rule rollouts.
+      # If indexes deploy fails with 403, grant the CI service account one of:
+      # - roles/datastore.indexAdmin (Datastore Index Admin), or
+      # - Editor / Firebase Admin roles that include composite index management.
+      - name: Deploy Firestore rules and Storage rules
+        run: npx firebase deploy --only firestore:rules,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
+
+      - name: Deploy Firestore indexes
+        run: npx firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --non-interactive
 
   # Deploy uses the service account in FIREBASE_SERVICE_ACCOUNT_TRUCKERAPP_SYSTEM. If deploy fails with
   # firebaseextensions.googleapis.com 403, add IAM role "Firebase Extensions Viewer" to that account.
