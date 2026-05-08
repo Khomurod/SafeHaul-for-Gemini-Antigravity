@@ -5,10 +5,11 @@
  * Rules:
  * - Compares DEPLOY_GIT_BASE..DEPLOY_GIT_HEAD (or GITHUB_PUSH_BEFORE + GITHUB_SHA) under functions/.
  * - Parses functions/index.js to map each export name → primary module file (direct require from index).
- * - If anything touches index.js, package files, firebaseAdmin.js, shared/, or firebase.json → full deploy.
+ * - functions/index.js: diffs export→module mappings vs base commit; only exports whose wiring or backing
+ *   file path changed are redeployed (whitespace-only edits deploy nothing). Parse ambiguity → full deploy.
+ * - Full deploy if: package files, firebaseAdmin.js, shared/, firebase.json, or unmapped changed files.
  * - Ignores functions/test/** (tests are not deployed and must not trigger unmapped-file full deploy).
- * - If a changed file is not a known top-level module from index → full deploy (nested imports we didn't trace).
- * - Directory entrypoints (require('./bulkActions') → bulkActions/index.js) and any file under that folder map to the same deploy unit.
+ * - Directory entrypoints (require('./bulkActions') → bulkActions/index.js) and nested files map to deploy unit.
  * - Otherwise: single `firebase deploy --only functions:a,functions:b,...`
  *
  * Env:
@@ -71,10 +72,9 @@ function resolveNestedUnderDirectoryModules(changedNormalized, knownTopLevelFile
 }
 
 /**
- * Parse functions/index.js: export name → functions/relative path of top-level module.
+ * Parse index.js source: export name → functions/relative path of top-level module.
  */
-function buildExportToFile() {
-  const src = readFileSync(indexPath, 'utf8');
+function buildExportToFileFromSource(src) {
   const varToFile = new Map();
 
   const reRequire = /(?:const|let|var)\s+(\w+)\s*=\s*require\(['"](\.\/[^'"]+)['"]\)/g;
@@ -101,6 +101,46 @@ function buildExportToFile() {
   const parseOk = exportToFile.size === rawExportNames.size && [...rawExportNames].every((n) => exportToFile.has(n));
 
   return { exportToFile, varToFile, parseOk, rawExportNames };
+}
+
+function buildExportToFile() {
+  const src = readFileSync(indexPath, 'utf8');
+  return buildExportToFileFromSource(src);
+}
+
+function gitShow(commitColonPath) {
+  const r = spawnSync('git', ['show', commitColonPath], { cwd: repoRoot, encoding: 'utf8' });
+  if (r.status !== 0) return null;
+  return r.stdout;
+}
+
+/**
+ * Export names whose mapping changed between base index.js and current working tree index.js.
+ * Returns null if unsafe to diff (missing base file or parse incomplete).
+ */
+function diffExportsFromIndexChange(baseSha) {
+  const oldSrc = gitShow(`${baseSha}:functions/index.js`);
+  if (oldSrc === null) {
+    console.warn('[incremental] Cannot read functions/index.js at base commit — full deploy');
+    return null;
+  }
+
+  const newSrc = readFileSync(indexPath, 'utf8');
+  const oldParsed = buildExportToFileFromSource(oldSrc);
+  const newParsed = buildExportToFileFromSource(newSrc);
+
+  if (!oldParsed.parseOk || !newParsed.parseOk) {
+    console.warn('[incremental] index.js export parse incomplete (base or head) — full deploy');
+    return null;
+  }
+
+  const changed = new Set();
+  for (const name of newParsed.exportToFile.keys()) {
+    const oldPath = oldParsed.exportToFile.get(name);
+    const newPath = newParsed.exportToFile.get(name);
+    if (oldPath !== newPath) changed.add(name);
+  }
+  return changed;
 }
 
 function getChangedFunctionFiles(base, head) {
@@ -131,7 +171,6 @@ function filterProductionFunctionPaths(changedFiles) {
 
 function mustDeployAll(changedFiles) {
   const triggers = [
-    'functions/index.js',
     'functions/package.json',
     'functions/package-lock.json',
     'functions/firebaseAdmin.js',
@@ -216,6 +255,11 @@ function main() {
 
   console.log('[incremental] Changed files:', changedFiles.join(', '));
 
+  const nonIndexProductionChanges = productionChanges.filter((c) => {
+    const n = c.replace(/\\/g, '/');
+    return n !== 'functions/index.js';
+  });
+
   const fullReason = mustDeployAll(productionChanges);
   if (fullReason) {
     console.log(`[incremental] Full deploy: ${fullReason.reason}`);
@@ -223,8 +267,25 @@ function main() {
     return;
   }
 
+  const indexChanged = productionChanges.some((c) => c.replace(/\\/g, '/') === 'functions/index.js');
+
   const toDeploy = new Set();
-  for (const cf of productionChanges) {
+
+  if (indexChanged) {
+    const fromIndex = diffExportsFromIndexChange(base);
+    if (fromIndex === null) {
+      runSequentialAll();
+      return;
+    }
+    fromIndex.forEach((e) => toDeploy.add(e));
+    if (fromIndex.size > 0) {
+      console.log(`[incremental] index.js export mapping changed → ${fromIndex.size} function(s): ${[...fromIndex].sort().join(', ')}`);
+    } else {
+      console.log('[incremental] index.js changed (format/comments only or identical wiring) → no exports flagged from manifest diff');
+    }
+  }
+
+  for (const cf of nonIndexProductionChanges) {
     const n = cf.replace(/\\/g, '/');
     if (n === 'firebase.json') continue;
 
