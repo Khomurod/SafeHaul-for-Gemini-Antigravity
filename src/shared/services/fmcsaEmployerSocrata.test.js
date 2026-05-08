@@ -83,14 +83,14 @@ describe('fmcsaEmployerSocrata', () => {
     expect(decoded).toContain(`$select=${FMCSA_SELECT_MINIMAL}`);
   });
 
-  it('mapFmcsaRowToPevContact maps census columns', () => {
+  it('mapFmcsaRowToPevContact maps census columns (Transportation.gov uses `phone`, not `telephone`)', () => {
     expect(
       mapFmcsaRowToPevContact({
         legal_name: 'X LLC',
         dot_number: '1',
         phy_city: 'Dallas',
         phy_state: 'TX',
-        telephone: '214',
+        phone: '214',
         fax: '215',
         email_address: 'x@y.com',
       }),
@@ -103,6 +103,17 @@ describe('fmcsaEmployerSocrata', () => {
       fax: '215',
       email: 'x@y.com',
     });
+  });
+
+  it('mapFmcsaRowToPevContact accepts legacy telephone field if present', () => {
+    expect(
+      mapFmcsaRowToPevContact({ telephone: '214', legal_name: 'A', dot_number: '1' }).phone,
+    ).toBe('214');
+  });
+
+  it('FMCSA_SELECT_EXTENDED uses dataset column id `phone` (wrong id caused silent fallback without contacts)', () => {
+    expect(FMCSA_SELECT_EXTENDED).toMatch(/(^|,)phone(,|$)/);
+    expect(FMCSA_SELECT_EXTENDED).not.toContain('telephone');
   });
 
   it('mapFmcsaRowToEmployerFields maps API columns', () => {

@@ -63,10 +63,11 @@ export const FMCSA_SELECT_MINIMAL =
 
 /**
  * Extended census fields for phone / fax / email when supported by the dataset.
+ * Dataset column is `phone` (not `telephone`) — see Transportation.gov az4n-8mr2 schema.
  * If the API rejects unknown columns, callers retry with {@link FMCSA_SELECT_MINIMAL}.
  */
 export const FMCSA_SELECT_EXTENDED =
-  `${FMCSA_SELECT_MINIMAL},phy_zip,telephone,fax,email_address`;
+  `${FMCSA_SELECT_MINIMAL},phy_zip,phone,fax,email_address,cell_phone`;
 
 /**
  * Escape a value for use inside a SoQL single-quoted string literal.
@@ -178,10 +179,12 @@ export function mapFmcsaRowToEmployerFields(row, statesAllowlist = []) {
 export function mapFmcsaRowToPevContact(row) {
   const pick = (v) =>
     v === undefined || v === null ? '' : String(v).trim();
+  const phoneRaw =
+    row?.phone ?? row?.telephone ?? row?.cell_phone ?? '';
   return {
     email: pick(row.email_address || row.email),
     fax: pick(row.fax),
-    phone: pick(row.telephone || row.phone),
+    phone: pick(phoneRaw),
     legalName: pick(row.legal_name),
     dotNumber: pick(row.dot_number),
     phyStreet: pick(row.phy_street),
