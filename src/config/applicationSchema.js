@@ -265,6 +265,7 @@ export const EMPLOYMENT_SECTION = {
     type: 'array',
     itemFields: [
         { key: 'companyName', label: 'Company Name', type: 'text', required: true },
+        { key: 'dotNumber', label: 'USDOT Number', type: 'text' },
         { key: 'address', label: 'Address', type: 'text' },
         { key: 'city', label: 'City', type: 'text' },
         { key: 'state', label: 'State', type: 'select' },

@@ -241,7 +241,13 @@ const Step8_Review = ({ formData, onNavigate }) => {
                                         </span>
                                     </div>
                                     <p className="text-gray-600">{e.position}</p>
+                                    {(e.address || e.city || e.state) && (
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            {[e.address, [e.city, e.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                                        </p>
+                                    )}
                                     <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                                        {e.dotNumber && <div>USDOT: {e.dotNumber}</div>}
                                         {e.phone && <div>Company phone: {e.phone}</div>}
                                         {e.companyEmail && <div>Company email: {e.companyEmail}</div>}
                                         {e.supervisorName && <div>Supervisor: {e.supervisorName}</div>}

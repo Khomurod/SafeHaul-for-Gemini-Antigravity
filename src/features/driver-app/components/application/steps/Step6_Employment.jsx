@@ -9,6 +9,7 @@ import { useData } from '@/context/DataContext';
 import { YES_NO_OPTIONS, MILITARY_BRANCH_OPTIONS } from '@/config/form-options';
 import { useToast } from '@shared/components/feedback';
 import { employerRowHasVerifierContact } from '@shared/utils/employmentApplicationHelpers';
+import EmployerNameAutocomplete from './components/EmployerNameAutocomplete';
 
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,6 +34,7 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
 
     const initialEmployer = {
         companyName: '',
+        dotNumber: '',
         address: '',
         city: '',
         state: '',
@@ -87,7 +89,22 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
 
     const renderEmployerRow = (index, item, handleChange) => (
         <div key={index} className="space-y-3">
-            <InputField label="Company Name" id={'emp-name-' + index} name="companyName" value={item.companyName} onChange={handleChange} required={empHistoryConfig.required} />
+            <EmployerNameAutocomplete
+                id={'emp-name-' + index}
+                label="Company Name"
+                value={item.companyName}
+                onChange={handleChange}
+                required={empHistoryConfig.required}
+                statesAllowlist={states}
+            />
+            <InputField
+                label="USDOT Number"
+                id={'emp-dot-' + index}
+                name="dotNumber"
+                value={item.dotNumber}
+                onChange={handleChange}
+                placeholder="Optional — filled when you pick a carrier from search"
+            />
             <InputField label="Street Address" id={'emp-street-' + index} name="address" value={item.address} onChange={handleChange} required={empHistoryConfig.required} />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <InputField label="City" id={'emp-city-' + index} name="city" value={item.city} onChange={handleChange} required={empHistoryConfig.required} />
