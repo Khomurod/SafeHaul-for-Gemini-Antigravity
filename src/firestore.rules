@@ -67,25 +67,48 @@ service cloud.firestore {
              request.auth.token.roles.keys().size() > 0;
     }
 
-    // PARENT OWNERSHIP CHECK FOR SUBCOLLECTIONS (M6 Fix)
-    // Checks if the signed-in user owns the parent application document
-    function isParentApplicationOwner(companyId, applicationId) {
-      let app = get(/databases/$(database)/documents/companies/$(companyId)/applications/$(applicationId));
-      return app != null && (
-        app.data.applicantId == request.auth.uid || 
-        app.data.driverId == request.auth.uid
-      );
-    }
-
-    // Driver-owned application updates: block reassignment / identity / routing spoofing fields.
-    function applicationDriverSelfUpdateForbiddenKeys() {
-      return ['companyId', 'applicantId', 'driverId', 'userId', 'confirmationNumber',
-              'assignedTo', 'assignedToName', 'recruiterCode'];
+    // Driver-owned application updates: strict allowlist model (default deny).
+    function applicationDriverSelfUpdateAllowedKeys() {
+      return [
+        // Profile/contact fields
+        'firstName', 'lastName', 'middleName', 'email', 'phone', 'dob',
+        'address', 'city', 'state', 'zip', 'licenseNumber', 'cdlState', 'cdlClass', 'cdlExpiration',
+        'experience', 'experience-years',
+        // Structured self-reported sections
+        'employers', 'violations', 'accidents', 'schools', 'military', 'previousAddresses',
+        // Driver-submitted uploads and signatures
+        'cdl-front', 'cdl-back', 'medical-card-upload', 'twic-card-upload', 'mvr-upload',
+        'mvr-consent-upload', 'drug-test-consent-upload', 'ssc-upload',
+        'signature', 'signatureType',
+        // Offer response fields (driver can only accept/decline)
+        'offerDetails', 'offerResponseDate', 'status',
+        // Non-privileged presentation metadata
+        'sourceType', 'sourceSlug',
+        // Lifecycle + timestamps related to self-submission
+        'submittedAt', 'updatedAt', 'lifecycle'
+      ];
     }
 
     function applicationDriverSelfUpdateAllowed() {
-      return !request.resource.data.diff(resource.data).affectedKeys()
-               .hasAny(applicationDriverSelfUpdateForbiddenKeys());
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(applicationDriverSelfUpdateAllowedKeys());
+    }
+
+    function applicationDriverSelfStatusTransitionAllowed() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
+             (
+               request.resource.data.status in ['Offer Accepted', 'Offer Declined'] &&
+               request.resource.data.offerDetails.response == request.resource.data.status
+             );
+    }
+
+    function canReadApplicationSubcollectionDoc(fileData) {
+      return isSignedIn() && (
+        fileData.driverId == request.auth.uid ||
+        fileData.applicantId == request.auth.uid ||
+        fileData.userId == request.auth.uid ||
+        (fileData.ownerUserIds is list && fileData.ownerUserIds.hasAny([request.auth.uid]))
+      );
     }
 
     // =========================================================
@@ -288,19 +311,18 @@ service cloud.firestore {
         allow update: if isCompanyTeam(companyId) || isSuperAdmin() ||
                       (isSignedIn() &&
                        (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid) &&
-                       applicationDriverSelfUpdateAllowed());
+                       applicationDriverSelfUpdateAllowed() &&
+                       applicationDriverSelfStatusTransitionAllowed());
 
         allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
 
         // Application Subcollections
         match /dq_files/{fileId} { 
-          // M6 FIX: Use parent ownership check instead of checking file doc's applicantId
-          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (isSignedIn() && isParentApplicationOwner(companyId, applicationId));
+          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || canReadApplicationSubcollectionDoc(resource.data);
           allow write: if isCompanyTeam(companyId) || isSuperAdmin(); 
         }
         match /general_documents/{fileId} { 
-          // M6 FIX: Use parent ownership check instead of checking file doc's applicantId
-          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || (isSignedIn() && isParentApplicationOwner(companyId, applicationId));
+          allow read: if isCompanyTeam(companyId) || isSuperAdmin() || canReadApplicationSubcollectionDoc(resource.data);
           allow write: if isCompanyTeam(companyId) || isSuperAdmin(); 
         }
         match /internal_notes/{noteId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
@@ -368,7 +390,12 @@ service cloud.firestore {
           isCompanyAdmin(resource.data.companyId)
       );
       // Only Admins can manage memberships
-      allow create, update: if isSuperAdmin() || (isCompanyAdmin(request.resource.data.companyId) && request.resource.data.role != 'super_admin');
+      allow create: if isSuperAdmin() || (isCompanyAdmin(request.resource.data.companyId) && request.resource.data.role != 'super_admin');
+      allow update: if isSuperAdmin() || (
+        isCompanyAdmin(resource.data.companyId) &&
+        isCompanyAdmin(request.resource.data.companyId) &&
+        request.resource.data.role != 'super_admin'
+      );
       allow delete: if isSuperAdmin() || isCompanyAdmin(resource.data.companyId);
     }
 

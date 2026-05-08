@@ -1,8 +1,7 @@
 /**
  * Application ID Generator
  * 
- * Generates deterministic application IDs based on key fields (companyId, email, phone).
- * This prevents duplicate applications and enables idempotent submissions.
+ * Generates chronological application IDs while preserving identity linkage.
  * 
  * @module applicationId
  */
@@ -43,21 +42,19 @@ function normalizeEmail(email) {
 }
 
 /**
- * Generate a deterministic application ID based on company, email, and phone
+ * Generate a deterministic applicant key based on company, email, and phone.
  * 
- * The same inputs will always produce the same ID, which:
- * - Prevents duplicate applications (Firestore setDoc with same ID = update)
- * - Enables idempotent retries (safe to retry without creating duplicates)
- * - Provides consistent reference for tracking
+ * The same inputs always produce the same key, which can be used to query
+ * an applicant's full history across re-applications.
  * 
  * @param {string} companyId - Target company ID
  * @param {string} email - Applicant email (optional but recommended)
  * @param {string} phone - Applicant phone (optional but recommended)
- * @returns {Promise<string>} 20-character hex application ID
+ * @returns {Promise<string>} Chronological application ID string
  * 
  * @example
  * const appId = await generateApplicationId('company-123', 'john@example.com', '555-123-4567');
- * // Returns: '3a7f2b9c8d1e4f5a6b7c' (deterministic)
+ * // Returns: '3a7f2b9c8d1e4f5a6b7c_madi0r9v_a1b2c3'
  */
 export async function generateApplicationId(companyId, email, phone) {
     if (!companyId) {
@@ -69,9 +66,7 @@ export async function generateApplicationId(companyId, email, phone) {
     const normalizedPhone = normalizePhone(phone);
 
     if (!normalizedEmail && !normalizedPhone) {
-        // Fallback: use timestamp + random for truly anonymous submissions
-        // This is less ideal but prevents blocking the submission entirely
-        console.warn('[ApplicationId] No email or phone provided, using timestamp fallback');
+        console.warn('[ApplicationId] No email or phone provided, generating anonymous application ID');
         const timestamp = Date.now().toString(36);
         const random = Math.random().toString(36).substring(2, 8);
         return `anon_${timestamp}_${random}`;
@@ -84,18 +79,20 @@ export async function generateApplicationId(companyId, email, phone) {
     // Generate hash
     const hash = await sha256(canonicalInput);
 
-    // Return first 20 characters (80 bits of entropy - sufficient for uniqueness)
-    return hash.substring(0, 20);
+    const applicantKey = hash.substring(0, 20);
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 8);
+    return `${applicantKey}_${timestamp}_${random}`;
 }
 
 /**
  * Synchronous version using simple hash for cases where async is problematic
- * Less secure but deterministic - suitable for non-critical client-side use
+ * Less secure but deterministic key prefix - suitable for non-critical client-side use
  * 
  * @param {string} companyId - Target company ID  
  * @param {string} email - Applicant email
  * @param {string} phone - Applicant phone
- * @returns {string} 20-character application ID
+ * @returns {string} Chronological application ID string
  */
 export function generateApplicationIdSync(companyId, email, phone) {
     if (!companyId) {
@@ -113,8 +110,7 @@ export function generateApplicationIdSync(companyId, email, phone) {
 
     const canonicalInput = `${companyId}:${normalizedEmail}:${normalizedPhone}`;
 
-    // BUG-5 FIX: Use TWO independent djb2 hashes to produce a 20-char deterministic ID.
-    // Previously used Date.now() in the output, making it non-deterministic.
+    // Generate deterministic prefix with two hashes, then append chronological suffix.
     let hash1 = 5381;
     for (let i = 0; i < canonicalInput.length; i++) {
         hash1 = ((hash1 << 5) + hash1) + canonicalInput.charCodeAt(i);
@@ -127,10 +123,12 @@ export function generateApplicationIdSync(companyId, email, phone) {
         hash2 = hash2 & hash2;
     }
 
-    const part1 = Math.abs(hash1).toString(36).padStart(7, '0');
-    const part2 = Math.abs(hash2).toString(36).padStart(7, '0');
-    // Combine and truncate to exactly 20 characters for consistency with async version
-    return `${part1}${part2}`.substring(0, 20).padEnd(20, '0');
+    const part1 = Math.abs(hash1).toString(36).padStart(10, '0');
+    const part2 = Math.abs(hash2).toString(36).padStart(10, '0');
+    const prefix = `${part1}${part2}`.substring(0, 20).padEnd(20, '0');
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 8);
+    return `${prefix}_${timestamp}_${random}`;
 }
 
 /**
@@ -169,11 +167,8 @@ export function isValidApplicationId(id) {
         return /^anon_[a-z0-9]+_[a-z0-9]+$/.test(id);
     }
 
-    // Hash format: 20 hex characters (async SHA-256 version)
-    if (/^[a-f0-9]{20}$/.test(id)) return true;
-
-    // BUG-5 FIX: New sync format: 20-char base36 string (may include 0-9, a-z)
-    if (/^[a-z0-9]{20}$/.test(id)) return true;
+    // Reapplication-safe format: deterministic key + timestamp + randomness
+    if (/^[a-z0-9]{20}_[a-z0-9]+_[a-z0-9]+$/.test(id)) return true;
 
     // Legacy sync format: hash_identifier_timestamp (kept for backwards compatibility)
     if (/^[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/.test(id)) return true;

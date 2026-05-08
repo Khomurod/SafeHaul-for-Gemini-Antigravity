@@ -286,6 +286,7 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
 
     // 2. Generate confirmation number for user
     const confirmationNumber = generateConfirmationNumber();
+    const applicantKey = typeof applicationId === 'string' ? applicationId.split('_')[0] : applicationId;
 
     // 3. Prepare the final payload
     const finalData = sanitizeData({
@@ -295,6 +296,7 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
         userId: currentUser.uid,
         driverId: currentUser.uid,
         applicantId: applicationId, // REQUIRED: Must match doc ID for Firestore rules deterministic ID check
+        applicantKey,
         email: email,
         phone: phone,
         status: 'New Application',

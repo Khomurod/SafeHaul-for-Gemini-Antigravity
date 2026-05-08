@@ -9,12 +9,18 @@ const crypto = require('crypto');
 const { FieldValue } = require('firebase-admin/firestore');
 const { assertCompanyAcceptingIntake } = require('./shared/companyTenant');
 
-function generateApplicationId(companyId, email, phone) {
+function generateApplicantKey(companyId, email, phone) {
     const normalizedEmail = (email || '').toLowerCase().trim();
     const normalizedPhone = (phone || '').replace(/\D/g, '').trim();
     const input = `${companyId}:${normalizedEmail}:${normalizedPhone}`;
     const fullHash = crypto.createHash('sha256').update(input).digest('hex');
     return fullHash.substring(0, 20);
+}
+
+function generateApplicationId(applicantKey) {
+    const nowPart = Date.now().toString(36);
+    const randPart = crypto.randomBytes(3).toString('hex');
+    return `${applicantKey}_${nowPart}_${randPart}`;
 }
 
 function generateConfirmationNumber() {
@@ -130,7 +136,8 @@ exports.submitGuestApplication = functions
             );
         }
 
-        const applicationId = generateApplicationId(companyId, email, phone);
+        const applicantKey = generateApplicantKey(companyId, email, phone);
+        const applicationId = generateApplicationId(applicantKey);
         const confirmationNumber = generateConfirmationNumber();
 
         const now = FieldValue.serverTimestamp();
@@ -140,6 +147,7 @@ exports.submitGuestApplication = functions
             applicationId: applicationId,
             driverId: applicationId,
             userId: applicationId,
+            applicantKey,
             confirmationNumber,
             email: (email || '').toLowerCase().trim(),
             phone: phone || '',
@@ -176,17 +184,7 @@ exports.submitGuestApplication = functions
                 .collection('applications')
                 .doc(applicationId);
 
-            try {
-                await docRef.create(applicationDoc);
-            } catch (writeError) {
-                if (writeError.code === 6 || (typeof writeError.message === 'string' && writeError.message.includes('ALREADY_EXISTS'))) {
-                    throw new functions.https.HttpsError(
-                        'already-exists',
-                        'An application with this email/phone already exists for this company.'
-                    );
-                }
-                throw writeError;
-            }
+            await docRef.create(applicationDoc);
 
             console.log(`[submitGuestApplication] Wrote application ${applicationId} for company ${companyId}`);
 

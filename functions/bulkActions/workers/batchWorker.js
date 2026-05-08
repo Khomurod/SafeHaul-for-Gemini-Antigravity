@@ -61,9 +61,11 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
             }
         }
 
-        // 1. Claim Batch Transactionally
+        // 1. Claim Batch Range (without advancing pointer yet)
         let batchIds = [];
-        let endPointer = 0;
+        let claimedStartPointer = 0;
+        let claimedEndPointer = 0;
+        let pointerAdvanceCount = 0;
 
         try {
             const claimResult = await db.runTransaction(async (t) => {
@@ -82,12 +84,6 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                 const BATCH_SIZE = 50;
                 const next = Math.min(current + BATCH_SIZE, total);
 
-                // CLAIM: Advance the pointer immediately
-                t.update(sessionRef, {
-                    'progress.currentPointer': next,
-                    lastUpdateAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-
                 return {
                     start: current,
                     end: next,
@@ -105,7 +101,8 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
             }
 
             batchIds = claimResult.allIds.slice(claimResult.start, claimResult.end);
-            endPointer = claimResult.end;
+            claimedStartPointer = claimResult.start;
+            claimedEndPointer = claimResult.end;
 
             // Use the data we already fetched
             // sessionData variable in outer scope is not used much below, except for config/leadSourceType
@@ -239,6 +236,11 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                     const logRef = sessionRef.collection('logs').doc(leadId);
                     const logSnap = await logRef.get();
                     if (logSnap.exists) {
+                        await sessionRef.update({
+                            'progress.currentPointer': admin.firestore.FieldValue.increment(1),
+                            lastUpdateAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+                        pointerAdvanceCount++;
                         continue; // Already processed
                     }
 
@@ -319,21 +321,53 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                     success = false;
                 }
 
-                // 3. Log Result
+                // 3. Log result + advance pointer atomically so pause/cancel never skips work.
+                const logPayload = {
+                    leadId,
+                    recipientName,
+                    recipientIdentity,
+                    status: success ? 'delivered' : 'failed',
+                    error: errorMsg,
+                    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                    isSuccess: success
+                };
                 try {
-                    await sessionRef.collection('logs').doc(leadId).set({
-                        leadId,
-                        recipientName,
-                        recipientIdentity,
-                        status: success ? 'delivered' : 'failed',
-                        error: errorMsg,
-                        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                        isSuccess: success
-                    });
-                } catch (e) { console.error("Failed to write log:", e); }
+                    const applied = await db.runTransaction(async (t) => {
+                        const logRef = sessionRef.collection('logs').doc(leadId);
+                        const [sessionDoc, logDoc] = await Promise.all([
+                            t.get(sessionRef),
+                            t.get(logRef)
+                        ]);
+                        if (!sessionDoc.exists) return { alreadyLogged: false };
 
-                if (success) batchSuccessCount++;
-                else batchFailCount++;
+                        const updates = {
+                            'progress.currentPointer': admin.firestore.FieldValue.increment(1),
+                            lastUpdateAt: admin.firestore.FieldValue.serverTimestamp()
+                        };
+
+                        if (logDoc.exists) {
+                            t.update(sessionRef, updates);
+                            return { alreadyLogged: true };
+                        }
+
+                        t.set(logRef, logPayload);
+                        t.update(sessionRef, {
+                            ...updates,
+                            'progress.processedCount': admin.firestore.FieldValue.increment(1),
+                            'progress.successCount': admin.firestore.FieldValue.increment(success ? 1 : 0),
+                            'progress.failedCount': admin.firestore.FieldValue.increment(success ? 0 : 1),
+                        });
+                        return { alreadyLogged: false };
+                    });
+
+                    if (!applied?.alreadyLogged) {
+                        if (success) batchSuccessCount++;
+                        else batchFailCount++;
+                    }
+                    pointerAdvanceCount++;
+                } catch (e) {
+                    console.error("Failed to write log + progress transaction:", e);
+                }
 
                 // 4.5 Update Lead Timestamp (Smart Exclusion)
                 // AUDIT FIX #7: Log errors instead of silently swallowing them
@@ -380,24 +414,31 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
             return res.status(200).send("Session stopped mid-batch.");
         }
 
-        const isKnownLast = (endPointer >= targetIds.length);
+        const postBatchSnap = await sessionRef.get();
+        if (!postBatchSnap.exists) {
+            return res.status(200).send("Session removed mid-batch.");
+        }
+        const postBatch = postBatchSnap.data();
+        const persistedPointer = postBatch.progress?.currentPointer || 0;
+        const currentPointer = Math.max(persistedPointer, claimedStartPointer + pointerAdvanceCount);
+        const totalTargets = postBatch.targetIds?.length || 0;
+        const isKnownLast = (currentPointer >= totalTargets);
 
-        await sessionRef.update({
-            status: isKnownLast ? 'completed' : 'active',
-            'progress.processedCount': admin.firestore.FieldValue.increment(batchSuccessCount + batchFailCount), // Explicitly sum processed
-            'progress.successCount': admin.firestore.FieldValue.increment(batchSuccessCount),
-            'progress.failedCount': admin.firestore.FieldValue.increment(batchFailCount),
-            lastUpdateAt: admin.firestore.FieldValue.serverTimestamp(),
-            ...(isKnownLast ? { completedAt: admin.firestore.FieldValue.serverTimestamp() } : {})
-        });
+        if (isKnownLast && postBatch.status === 'active') {
+            await sessionRef.update({
+                status: 'completed',
+                completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                lastUpdateAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        }
 
-        // Loop next batch
-        if (!isKnownLast) {
+        // Loop next batch while active and not complete
+        if (!isKnownLast && postBatch.status === 'active') {
             // AUDIT FIX #4: Forward workerGeneration so next batch can verify it
             await enqueueWorker(companyId, sessionId, 1, workerGeneration);
         }
 
-        res.status(200).send(`Processed partial batch. Success: ${batchSuccessCount}, Fail: ${batchFailCount}`);
+        res.status(200).send(`Processed batch window up to ${claimedEndPointer}. Success: ${batchSuccessCount}, Fail: ${batchFailCount}`);
 
     } catch (error) {
         console.error("[processBulkBatch] Critical Error:", error);
@@ -405,9 +446,7 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         // Attempt to save progress before dying
         try {
             await db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId).update({
-                'progress.processedCount': admin.firestore.FieldValue.increment(batchSuccessCount + batchFailCount),
-                'progress.successCount': admin.firestore.FieldValue.increment(batchSuccessCount),
-                'progress.failedCount': admin.firestore.FieldValue.increment(batchFailCount),
+                lastUpdateAt: admin.firestore.FieldValue.serverTimestamp()
             });
         } catch (e) { /* best effort */ }
 

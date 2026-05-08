@@ -103,8 +103,19 @@ describe('submitGuestApplication', () => {
   it('succeeds with App Check and creates application doc', async () => {
     const res = await submitGuestApplication(validPayload, ctxBase);
     expect(res.success).toBe(true);
-    expect(res.applicationId).toMatch(/^[a-f0-9]{20}$/);
+    expect(res.applicationId).toMatch(/^[a-z0-9]{20}_[a-z0-9]+_[a-f0-9]{6}$/);
     expect(res.confirmationNumber).toMatch(/^SAF-/);
     expect(mockCreate).toHaveBeenCalled();
+  });
+
+  it('allows chronological re-applications for same identity', async () => {
+    const first = await submitGuestApplication(validPayload, ctxBase);
+    const second = await submitGuestApplication(validPayload, ctxBase);
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(first.applicationId).not.toBe(second.applicationId);
+    expect(first.applicationId.split('_')[0]).toBe(second.applicationId.split('_')[0]);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 });

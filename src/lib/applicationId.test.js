@@ -19,15 +19,15 @@ describe('Application ID Generator', () => {
             const id = await generateApplicationId('company-1', 'test@example.com', '555-123-4567');
 
             expect(id).toBeDefined();
-            expect(id.length).toBe(20);
-            expect(/^[a-f0-9]{20}$/.test(id)).toBe(true);
+            expect(id).toMatch(/^[a-z0-9]{20}_[a-z0-9]+_[a-z0-9]+$/);
         });
 
-        it('should generate the same ID for the same inputs', async () => {
+        it('should generate distinct IDs for the same inputs (re-applications)', async () => {
             const id1 = await generateApplicationId('company-1', 'john@test.com', '555-111-2222');
             const id2 = await generateApplicationId('company-1', 'john@test.com', '555-111-2222');
 
-            expect(id1).toBe(id2);
+            expect(id1).not.toBe(id2);
+            expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
         });
 
         it('should generate different IDs for different companies', async () => {
@@ -55,28 +55,28 @@ describe('Application ID Generator', () => {
             const id1 = await generateApplicationId('company-1', 'TEST@EXAMPLE.COM', '555-123-4567');
             const id2 = await generateApplicationId('company-1', 'test@example.com', '555-123-4567');
 
-            expect(id1).toBe(id2);
+            expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
         });
 
         it('should normalize phone (ignore formatting)', async () => {
             const id1 = await generateApplicationId('company-1', 'test@test.com', '(555) 123-4567');
             const id2 = await generateApplicationId('company-1', 'test@test.com', '5551234567');
 
-            expect(id1).toBe(id2);
+            expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
         });
 
         it('should work with only email (no phone)', async () => {
             const id = await generateApplicationId('company-1', 'only@email.com', '');
 
             expect(id).toBeDefined();
-            expect(id.length).toBe(20);
+            expect(id).toMatch(/^[a-z0-9]{20}_[a-z0-9]+_[a-z0-9]+$/);
         });
 
         it('should work with only phone (no email)', async () => {
             const id = await generateApplicationId('company-1', '', '555-123-4567');
 
             expect(id).toBeDefined();
-            expect(id.length).toBe(20);
+            expect(id).toMatch(/^[a-z0-9]{20}_[a-z0-9]+_[a-z0-9]+$/);
         });
 
         it('should generate anonymous ID when both email and phone are missing', async () => {
@@ -94,11 +94,10 @@ describe('Application ID Generator', () => {
     });
 
     describe('generateApplicationIdSync', () => {
-        it('should generate a deterministic ID', () => {
+        it('should preserve deterministic key prefix across re-applications', () => {
             const id1 = generateApplicationIdSync('company-1', 'test@example.com', '5551234567');
             const id2 = generateApplicationIdSync('company-1', 'test@example.com', '5551234567');
 
-            // The timestamp portion will be same within test execution
             expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
         });
 
@@ -154,9 +153,9 @@ describe('Application ID Generator', () => {
     });
 
     describe('isValidApplicationId', () => {
-        it('should validate 20-char hex IDs', () => {
-            expect(isValidApplicationId('1234567890abcdef1234')).toBe(true);
-            expect(isValidApplicationId('abcdef1234567890abcd')).toBe(true);
+        it('should validate reapplication-safe IDs', () => {
+            expect(isValidApplicationId('1234567890abcdef1234_madix9_abc123')).toBe(true);
+            expect(isValidApplicationId('abcdef1234567890abcd_madiz1_qwerty')).toBe(true);
         });
 
         it('should validate anonymous IDs', () => {

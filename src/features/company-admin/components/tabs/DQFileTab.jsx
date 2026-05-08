@@ -99,6 +99,10 @@ export function DQFileTab({ companyId, applicationId, collectionName = 'applicat
                 url: fileData.url,
                 storagePath: fileData.storagePath || '',
                 createdAt: new Date(),
+                applicantId: appData.applicantId || null,
+                driverId: appData.driverId || null,
+                userId: appData.userId || null,
+                ownerUserIds: [appData.driverId || appData.userId || appData.applicantId || applicationId],
                 isSynced: true,
                 sourceField: target.field
               };
@@ -160,11 +164,18 @@ export function DQFileTab({ companyId, applicationId, collectionName = 'applicat
       setUploadMessage('Saving to database...');
 
       // Create Firestore document in the sub-collection
+      const appRef = doc(db, "companies", companyId, collectionName, applicationId);
+      const appSnap = await getDoc(appRef);
+      const appData = appSnap.exists() ? appSnap.data() : {};
       const newDoc = {
         fileType: selectedFileType,
         fileName: fileToUpload.name,
         url: downloadURL,
         storagePath: storagePath,
+        applicantId: appData.applicantId || null,
+        driverId: appData.driverId || null,
+        userId: appData.userId || null,
+        ownerUserIds: [appData.driverId || appData.userId || appData.applicantId || applicationId],
         createdAt: new Date()
       };
 
