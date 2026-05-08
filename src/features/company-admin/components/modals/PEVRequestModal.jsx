@@ -3,6 +3,7 @@ import { X, Mail, Printer, Send, ShieldCheck, Info, FileText, Loader2, Building2
 import {
     fetchFmcsaCarrierCandidatesForPev,
     mapFmcsaRowToPevContact,
+    normalizeEmployerStateToFmcsaPhyState,
 } from '@shared/services/fmcsaEmployerSocrata';
 
 function employerDisplayName(employer) {
@@ -26,6 +27,11 @@ export function PEVRequestModal({ employer, applicant: _applicant, onClose, onPr
     const abortRef = useRef(null);
 
     const companyLabel = employerDisplayName(employer);
+    const employerStateRaw = employer?.state ?? '';
+    const fmcsaStateCode = useMemo(
+        () => normalizeEmployerStateToFmcsaPhyState(employerStateRaw),
+        [employerStateRaw],
+    );
 
     useEffect(() => {
         if (!socrataToken || companyLabel.length < 2) {
@@ -45,6 +51,7 @@ export function PEVRequestModal({ employer, applicant: _applicant, onClose, onPr
                 const rows = await fetchFmcsaCarrierCandidatesForPev(companyLabel, {
                     appToken: socrataToken,
                     signal: controller.signal,
+                    employerState: employerStateRaw,
                 });
                 if (!cancelled) setFmcsaRows(rows);
             } catch (e) {
@@ -63,7 +70,7 @@ export function PEVRequestModal({ employer, applicant: _applicant, onClose, onPr
             cancelled = true;
             controller.abort();
         };
-    }, [socrataToken, companyLabel]);
+    }, [socrataToken, companyLabel, employerStateRaw]);
 
     const applyFmcsaRow = (row) => {
         const m = mapFmcsaRowToPevContact(row);
@@ -128,6 +135,11 @@ export function PEVRequestModal({ employer, applicant: _applicant, onClose, onPr
                                 <Building2 size={14} className="text-blue-600" />
                                 FMCSA company match
                             </div>
+                            {fmcsaStateCode && (
+                                <p className="text-[10px] text-slate-600 leading-snug">
+                                    Prioritizing carriers in <span className="font-semibold">{fmcsaStateCode}</span> (employment address state). If none match there, results include other states.
+                                </p>
+                            )}
                             {fmcsaLoading && (
                                 <div className="flex items-center gap-2 text-sm text-slate-500">
                                     <Loader2 size={16} className="animate-spin text-blue-600" />

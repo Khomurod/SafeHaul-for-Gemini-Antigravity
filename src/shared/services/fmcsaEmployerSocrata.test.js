@@ -12,6 +12,7 @@ import {
   fetchFmcsaCarrierCandidatesForPev,
   mapFmcsaRowToEmployerFields,
   mapFmcsaRowToPevContact,
+  normalizeEmployerStateToFmcsaPhyState,
 } from './fmcsaEmployerSocrata';
 
 describe('fmcsaEmployerSocrata', () => {
@@ -41,6 +42,18 @@ describe('fmcsaEmployerSocrata', () => {
     expect(decoded).toContain('$select=dot_number,legal_name,phy_street,phy_city,phy_state');
     expect(decoded).toContain("starts_with(upper(legal_name), upper('Swift'))");
     expect(decoded).toContain('$limit=5');
+  });
+
+  it('buildFmcsaEmployerSearchUrl can filter by phy_state', () => {
+    const url = buildFmcsaEmployerSearchUrl('Swift', FMCSA_SELECT_MINIMAL, 'IL');
+    const decoded = decodeURIComponent(url).replace(/\+/g, ' ');
+    expect(decoded).toContain("upper(trim(phy_state)) = upper('IL')");
+  });
+
+  it('normalizeEmployerStateToFmcsaPhyState maps full name and 2-letter codes', () => {
+    expect(normalizeEmployerStateToFmcsaPhyState('Illinois')).toBe('IL');
+    expect(normalizeEmployerStateToFmcsaPhyState('il')).toBe('IL');
+    expect(normalizeEmployerStateToFmcsaPhyState('')).toBe('');
   });
 
   it('buildFmcsaEmployerSearchUrl accepts custom $select fields', () => {
@@ -236,6 +249,45 @@ describe('fmcsaEmployerSocrata', () => {
       expect(rows).toHaveLength(1);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0][0])).toContain('starts_with');
+    });
+
+    it('queries in-state first when employerState is set, then nationwide if empty', async () => {
+      const fetchMock = vi.fn((url) => {
+        const decoded = decodeURIComponent(String(url)).replace(/\+/g, ' ');
+        if (decoded.includes("upper('IL')") && decoded.includes('starts_with')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }
+        if (decoded.includes("upper('IL')") && decoded.includes('like(')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }
+        if (!decoded.includes("upper('IL')") && decoded.includes('starts_with')) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve([
+                {
+                  dot_number: '99',
+                  legal_name: 'BARON MOTORS LLC',
+                  phy_city: 'Chicago',
+                  phy_state: 'IL',
+                },
+              ]),
+          });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const rows = await fetchFmcsaCarrierCandidatesForPev('Baron Mardon inc', {
+        appToken: 'tok',
+        employerState: 'Illinois',
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].legal_name).toBe('BARON MOTORS LLC');
+      expect(fetchMock.mock.calls.length).toBe(3);
+      const third = decodeURIComponent(String(fetchMock.mock.calls[2][0])).replace(/\+/g, ' ');
+      expect(third).toContain('starts_with');
+      expect(third).not.toContain("upper('IL')");
     });
   });
 });

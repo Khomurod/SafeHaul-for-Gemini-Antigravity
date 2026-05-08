@@ -9,6 +9,54 @@ export const FMCSA_EMPLOYER_SOCRATA_URL =
 const MIN_PREFIX_LENGTH = 2;
 const MAX_PREFIX_LENGTH = 80;
 
+/**
+ * Full state names (employment dropdown) → FMCSA phy_state abbreviations.
+ * Order matches `useUtils` US_STATES and SearchConfig two-letter lists.
+ */
+const US_STATE_FULL_NAMES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware', 'Florida', 'Georgia',
+  'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland',
+  'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey',
+  'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
+  'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+];
+
+const US_STATE_ABBRS = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+];
+
+const FULL_STATE_NAME_TO_ABBR = Object.fromEntries(
+  US_STATE_FULL_NAMES.map((name, i) => [name, US_STATE_ABBRS[i]]),
+);
+
+/**
+ * Normalize driver employment `state` (full name or 2-letter) to FMCSA `phy_state` code.
+ * @param {unknown} raw — e.g. "Illinois", "IL", or ""
+ * @returns {string} two-letter uppercase or ""
+ */
+export function normalizeEmployerStateToFmcsaPhyState(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (/^[a-zA-Z]{2}$/.test(s)) return s.toUpperCase();
+  return FULL_STATE_NAME_TO_ABBR[s] || '';
+}
+
+function normalizeFmcsaPhyStateFilter(phyStateCode) {
+  const code = String(phyStateCode ?? '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : '';
+}
+
+function appendPhyStateToWhere(baseWhere, phyStateCode) {
+  const code = normalizeFmcsaPhyStateFilter(phyStateCode);
+  if (!code) return baseWhere;
+  const esc = escapeSoqlStringLiteral(code);
+  return `${baseWhere} and upper(trim(phy_state)) = upper('${esc}')`;
+}
+
 /** Columns always available on company census export (used in driver employment step). */
 export const FMCSA_SELECT_MINIMAL =
   'dot_number,legal_name,phy_street,phy_city,phy_state';
@@ -51,14 +99,20 @@ export function fmcsaPrefixTokenFromCompanyName(name) {
 /**
  * Build request URL with SoQL query params (properly URL-encoded).
  */
-export function buildFmcsaEmployerSearchUrl(prefix, selectFields = FMCSA_SELECT_MINIMAL) {
+export function buildFmcsaEmployerSearchUrl(
+  prefix,
+  selectFields = FMCSA_SELECT_MINIMAL,
+  phyStateCode = '',
+) {
   const safe = escapeSoqlStringLiteral(sanitizeEmployerSearchPrefix(prefix));
   if (safe.length < MIN_PREFIX_LENGTH) {
     return null;
   }
+  let where = `starts_with(upper(legal_name), upper('${safe}'))`;
+  where = appendPhyStateToWhere(where, phyStateCode);
   const params = new URLSearchParams();
   params.set('$select', selectFields);
-  params.set('$where', `starts_with(upper(legal_name), upper('${safe}'))`);
+  params.set('$where', where);
   params.set('$limit', '5');
   return `${FMCSA_EMPLOYER_SOCRATA_URL}?${params.toString()}`;
 }
@@ -69,10 +123,11 @@ export function buildFmcsaEmployerSearchUrl(prefix, selectFields = FMCSA_SELECT_
 export function buildFmcsaEmployerSearchUrlFromCompanyName(
   companyName,
   selectFields = FMCSA_SELECT_MINIMAL,
+  phyStateCode = '',
 ) {
   const token = fmcsaPrefixTokenFromCompanyName(companyName);
   if (!token) return null;
-  return buildFmcsaEmployerSearchUrl(token, selectFields);
+  return buildFmcsaEmployerSearchUrl(token, selectFields, phyStateCode);
 }
 
 /**
@@ -81,15 +136,15 @@ export function buildFmcsaEmployerSearchUrlFromCompanyName(
 export function buildFmcsaEmployerLikeSearchUrl(
   companyName,
   selectFields = FMCSA_SELECT_MINIMAL,
+  phyStateCode = '',
 ) {
   const safe = escapeSoqlStringLiteral(sanitizeEmployerSearchPrefix(companyName));
   if (safe.length < MIN_PREFIX_LENGTH) return null;
+  let where = `like(upper(legal_name), '%' || upper('${safe}') || '%')`;
+  where = appendPhyStateToWhere(where, phyStateCode);
   const params = new URLSearchParams();
   params.set('$select', selectFields);
-  params.set(
-    '$where',
-    `like(upper(legal_name), '%' || upper('${safe}') || '%')`,
-  );
+  params.set('$where', where);
   params.set('$limit', '5');
   return `${FMCSA_EMPLOYER_SOCRATA_URL}?${params.toString()}`;
 }
@@ -181,16 +236,19 @@ export async function fetchFmcsaEmployerSuggestions(prefix, options = {}) {
 }
 
 /**
- * For PEV modal: prefix by first word, then LIKE fallback; tries extended select then minimal.
+ * For PEV modal: optional employer state first (matches application phy_state), then nationwide.
+ * Prefix by first word → LIKE; extended select with minimal fallback per request.
  * @param {string} companyName
- * @param {{ signal?: AbortSignal, appToken?: string }} options
+ * @param {{ signal?: AbortSignal, appToken?: string, employerState?: string }} options — employerState = employment row state (full name or 2-letter)
  */
 export async function fetchFmcsaCarrierCandidatesForPev(companyName, options = {}) {
-  const { signal, appToken } = options;
+  const { signal, appToken, employerState } = options;
   if (!appToken) return [];
 
-  const tryFetch = async (buildUrlFn, selectFields) => {
-    const url = buildUrlFn(companyName, selectFields);
+  const stateCode = normalizeEmployerStateToFmcsaPhyState(employerState);
+
+  const tryFetch = async (buildUrlFn, selectFields, phyState = '') => {
+    const url = buildUrlFn(companyName, selectFields, phyState);
     if (!url) return [];
     const headers = {
       Accept: 'application/json',
@@ -203,7 +261,7 @@ export async function fetchFmcsaCarrierCandidatesForPev(companyName, options = {
         selectFields !== FMCSA_SELECT_MINIMAL &&
         (e.status === 400 || /unknown column|invalid/i.test(String(e.body || e.message)))
       ) {
-        const fallbackUrl = buildUrlFn(companyName, FMCSA_SELECT_MINIMAL);
+        const fallbackUrl = buildUrlFn(companyName, FMCSA_SELECT_MINIMAL, phyState);
         if (!fallbackUrl) return [];
         return await fetchJson(fallbackUrl, headers, signal);
       }
@@ -211,12 +269,28 @@ export async function fetchFmcsaCarrierCandidatesForPev(companyName, options = {
     }
   };
 
-  let rows = await tryFetch(
-    buildFmcsaEmployerSearchUrlFromCompanyName,
-    FMCSA_SELECT_EXTENDED,
-  );
-  if (rows.length > 0) return rows;
+  const runNationalPipeline = async () => {
+    let rows = await tryFetch(
+      buildFmcsaEmployerSearchUrlFromCompanyName,
+      FMCSA_SELECT_EXTENDED,
+      '',
+    );
+    if (rows.length > 0) return rows;
+    rows = await tryFetch(buildFmcsaEmployerLikeSearchUrl, FMCSA_SELECT_EXTENDED, '');
+    return rows;
+  };
 
-  rows = await tryFetch(buildFmcsaEmployerLikeSearchUrl, FMCSA_SELECT_EXTENDED);
-  return rows;
+  if (stateCode) {
+    let rows = await tryFetch(
+      buildFmcsaEmployerSearchUrlFromCompanyName,
+      FMCSA_SELECT_EXTENDED,
+      stateCode,
+    );
+    if (rows.length > 0) return rows;
+
+    rows = await tryFetch(buildFmcsaEmployerLikeSearchUrl, FMCSA_SELECT_EXTENDED, stateCode);
+    if (rows.length > 0) return rows;
+  }
+
+  return runNationalPipeline();
 }
