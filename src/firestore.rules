@@ -102,6 +102,43 @@ service cloud.firestore {
              );
     }
 
+    // ATS + legacy pipeline statuses company recruiters may set on applications/leads
+    function allowedRecruiterPipelineStatus() {
+      return [
+        'New',
+        'Contact Attempt 1',
+        'Contact Attempt 2',
+        'Contact Attempt 3',
+        'In Process',
+        'Interested',
+        'Hired',
+        'Terminated',
+        'Declined',
+        'New Application',
+        'Approved',
+        'Rejected',
+        'Background Check',
+        'In Review',
+        'Qualified',
+        'Hold',
+        'Stale',
+        'Offer Accepted',
+        'Offer Declined'
+      ];
+    }
+
+    function applicationCompanyTeamUpdateAllowed() {
+      return (!request.resource.data.keys().hasAny(['status'])) ||
+             (request.resource.data.status is string &&
+              request.resource.data.status in allowedRecruiterPipelineStatus());
+    }
+
+    function leadCompanyTeamWriteAllowed() {
+      return (!request.resource.data.keys().hasAny(['status'])) ||
+             (request.resource.data.status is string &&
+              request.resource.data.status in allowedRecruiterPipelineStatus());
+    }
+
     function canReadApplicationSubcollectionDoc(fileData) {
       return isSignedIn() && (
         fileData.driverId == request.auth.uid ||
@@ -256,6 +293,12 @@ service cloud.firestore {
         allow read, write: if isCompanyAdmin(companyId) || isSuperAdmin();
       }
 
+      // Per-company settings docs (custom questions, ATS SMS templates, etc.)
+      match /settings/{settingDocId} {
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow write: if isCompanyAdmin(companyId) || isSuperAdmin();
+      }
+
       // SIGNING REQUESTS: Secure Envelopes for E-Signatures
       match /signing_requests/{requestId} {
          // BUG-2 FIX: accessToken has been moved to the secrets subcollection below.
@@ -295,7 +338,7 @@ service cloud.firestore {
         // 3. Super Admin / Company Team (Manual Entry — bypasses ID check)
         allow create: if (isSignedIn() && isValidAuthenticatedApplication() && isDeterministicApplicationId(companyId, applicationId)) || 
                          (isValidGuestApplication(companyId) && isDeterministicApplicationId(companyId, applicationId)) || 
-                         isCompanyTeam(companyId);
+                         (isCompanyTeam(companyId) && (isSuperAdmin() || applicationCompanyTeamUpdateAllowed()));
 
         // READ:
         // 1. Company Team
@@ -306,9 +349,10 @@ service cloud.firestore {
                     isSuperAdmin();
         
         // UPDATE:
-        // Company Team: full operational updates.
+        // Company Team: operational updates; status must stay within ATS / legacy funnel enums.
         // Driver owner: profile/offers/uploads/etc., but not reassignment or identity fields.
-        allow update: if isCompanyTeam(companyId) || isSuperAdmin() ||
+        allow update: if isSuperAdmin() ||
+                      (isCompanyTeam(companyId) && applicationCompanyTeamUpdateAllowed()) ||
                       (isSignedIn() &&
                        (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid) &&
                        applicationDriverSelfUpdateAllowed() &&
@@ -332,7 +376,10 @@ service cloud.firestore {
 
       // LEADS (Company Specific)
       match /leads/{leadId} {
-        allow read, write: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow create: if (isCompanyTeam(companyId) || isSuperAdmin()) && (isSuperAdmin() || leadCompanyTeamWriteAllowed());
+        allow update: if (isCompanyTeam(companyId) || isSuperAdmin()) && (isSuperAdmin() || leadCompanyTeamWriteAllowed());
+        allow delete: if isCompanyTeam(companyId) || isSuperAdmin();
         match /activity_logs/{logId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
         match /activities/{activityId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
         match /internal_notes/{noteId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }

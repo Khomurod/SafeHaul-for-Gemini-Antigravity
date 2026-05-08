@@ -14,8 +14,8 @@ import {
 import { db, auth } from '@lib/firebase';
 import { normalizePhone } from '@shared/utils/helpers';
 
+/** applications: all | hired | terminated | declined — leads: all | attempting | in_process | interested */
 export function useCompanyDashboard(companyId) {
-    // --- State ---
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -29,16 +29,15 @@ export function useCompanyDashboard(companyId) {
         myLeads: 0
     });
 
-    // --- Pagination State ---
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [listTotalCount, setListTotalCount] = useState(0);
 
-    // FIX: Use Ref for cursors to prevent re-render loops
     const lastVisibleDocsRef = useRef({});
 
-    // --- Filter & Search State ---
     const [activeTab, setActiveTab] = useState('applications');
+    const [pipelineSegment, setPipelineSegment] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [filters, setFilters] = useState({
@@ -46,10 +45,10 @@ export function useCompanyDashboard(companyId) {
         driverType: '',
         dob: '',
         assignee: '',
-        dateFilter: ''
+        dateFilter: '',
+        myAssignmentsOnly: false
     });
 
-    // --- Debounce Search ---
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedSearch(searchQuery);
@@ -57,15 +56,16 @@ export function useCompanyDashboard(companyId) {
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
-    // --- 1. Fetch Stats (Counts) ---
+    useEffect(() => {
+        setPipelineSegment('all');
+    }, [activeTab]);
+
     const fetchStats = useCallback(async () => {
         if (!companyId) return;
         try {
-            // Applications
             const appsRef = collection(db, "companies", companyId, "applications");
             const appsSnap = await getCountFromServer(appsRef);
 
-            // Leads
             const leadsRef = collection(db, "companies", companyId, "leads");
 
             const qPlatform = query(leadsRef, where("isPlatformLead", "==", true));
@@ -92,31 +92,60 @@ export function useCompanyDashboard(companyId) {
         }
     }, [companyId]);
 
-    // --- 2. Build Query Constraints ---
-    const buildConstraints = (baseRef, isSearchMode = false) => {
+    const pipelineConstraints = useCallback(() => {
+        if (activeTab === 'applications') {
+            if (pipelineSegment === 'hired') return [where('status', 'in', ['Hired', 'Approved'])];
+            if (pipelineSegment === 'terminated') return [where('status', '==', 'Terminated')];
+            if (pipelineSegment === 'declined') return [where('status', 'in', ['Declined', 'Rejected'])];
+            return [];
+        }
+        if (activeTab === 'company_leads' || activeTab === 'my_leads') {
+            if (pipelineSegment === 'attempting') {
+                return [where('status', 'in', ['Contact Attempt 1', 'Contact Attempt 2', 'Contact Attempt 3'])];
+            }
+            if (pipelineSegment === 'in_process') return [where('status', '==', 'In Process')];
+            if (pipelineSegment === 'interested') return [where('status', '==', 'Interested')];
+        }
+        return [];
+    }, [activeTab, pipelineSegment]);
+
+    const usesPipelineOrderBy = useCallback(() => {
+        if (activeTab === 'applications' && pipelineSegment !== 'all') return true;
+        if ((activeTab === 'company_leads' || activeTab === 'my_leads') && pipelineSegment !== 'all') return true;
+        return false;
+    }, [activeTab, pipelineSegment]);
+
+    const buildConstraints = useCallback((baseRef, isSearchMode = false) => {
         let constraints = [];
 
-        // A. Tab Constraints
         if (activeTab === 'applications') {
-            if (!isSearchMode) {
-                // Keep default order (Document ID) to ensure legacy docs appear
-                // constraints.push(orderBy("createdAt", "desc"));
+            if (!isSearchMode && !usesPipelineOrderBy()) {
+                // legacy browse: no orderBy (document-id ordering)
             }
         } else {
-            // Leads Logic
             if (activeTab === 'find_driver') {
                 constraints.push(where("isPlatformLead", "==", true));
                 if (!isSearchMode) constraints.push(orderBy("distributedAt", "desc"));
             } else if (activeTab === 'company_leads') {
                 constraints.push(where("isPlatformLead", "==", false));
-                if (!isSearchMode) constraints.push(orderBy("createdAt", "desc"));
+                if (!isSearchMode && !usesPipelineOrderBy()) {
+                    constraints.push(orderBy("createdAt", "desc"));
+                }
             } else if (activeTab === 'my_leads' && auth.currentUser) {
                 constraints.push(where("assignedTo", "==", auth.currentUser.uid));
-                if (!isSearchMode) constraints.push(orderBy("createdAt", "desc"));
+                if (!isSearchMode && !usesPipelineOrderBy()) {
+                    constraints.push(orderBy("createdAt", "desc"));
+                }
             }
         }
 
-        // B. Filter Constraints
+        constraints.push(...pipelineConstraints());
+
+        if (filters.myAssignmentsOnly && auth.currentUser &&
+            (activeTab === 'applications' || activeTab === 'company_leads')) {
+            constraints.push(where('assignedTo', '==', auth.currentUser.uid));
+        }
+
         if (filters.state) {
             constraints.push(where("state", "==", filters.state.toUpperCase()));
         }
@@ -125,17 +154,37 @@ export function useCompanyDashboard(companyId) {
         }
         if (filters.assignee) {
             if (filters.assignee === '__unassigned__') {
-                // Filter for unassigned: assignedTo is null/empty
                 constraints.push(where("assignedTo", "==", ""));
             } else {
                 constraints.push(where("assignedTo", "==", filters.assignee));
             }
         }
 
-        return constraints;
-    };
+        if (!isSearchMode && usesPipelineOrderBy()) {
+            constraints.push(orderBy('createdAt', 'desc'));
+        }
 
-    // --- 3. Main Data Fetcher ---
+        return constraints;
+    }, [activeTab, filters, pipelineConstraints, usesPipelineOrderBy]);
+
+    const fetchListTotalCount = useCallback(async () => {
+        if (!companyId || debouncedSearch) return;
+        try {
+            const collectionName = activeTab === 'applications' ? 'applications' : 'leads';
+            const baseRef = collection(db, "companies", companyId, collectionName);
+            const constraints = buildConstraints(baseRef, false);
+            const snap = await getCountFromServer(query(baseRef, ...constraints));
+            setListTotalCount(snap.data().count);
+        } catch (e) {
+            console.error('fetchListTotalCount', e);
+            setListTotalCount(0);
+        }
+    }, [companyId, activeTab, debouncedSearch, buildConstraints]);
+
+    useEffect(() => {
+        fetchListTotalCount();
+    }, [fetchListTotalCount]);
+
     const fetchData = useCallback(async () => {
         if (!companyId) return;
 
@@ -150,7 +199,6 @@ export function useCompanyDashboard(companyId) {
             const isSearch = !!debouncedSearch;
 
             if (isSearch) {
-                // --- SEARCH MODE ---
                 const term = debouncedSearch.trim();
                 let searchConstraints = buildConstraints(baseRef, true);
 
@@ -160,12 +208,10 @@ export function useCompanyDashboard(companyId) {
                 if (isEmail) {
                     searchConstraints.push(where("email", "==", term.toLowerCase()));
                 } else if (isPhone) {
-                    // M4: Search by normalized phone
                     const normalized = normalizePhone(term);
                     if (normalized) {
                         searchConstraints.push(where("phoneNormalized", "==", normalized));
                     } else {
-                        // Fallback if normalization fails (unlikely for matched regex)
                         searchConstraints.push(where("phone", "==", term));
                     }
                 } else {
@@ -178,16 +224,13 @@ export function useCompanyDashboard(companyId) {
                 q = query(baseRef, ...searchConstraints);
 
             } else {
-                // --- BROWSE MODE ---
                 let constraints = buildConstraints(baseRef, false);
 
-                // Pagination using Ref
                 if (currentPage > 1) {
                     const prevPageLastDoc = lastVisibleDocsRef.current[currentPage - 1];
                     if (prevPageLastDoc) {
                         constraints.push(startAfter(prevPageLastDoc));
                     } else {
-                        // Fallback if cursor lost
                         setCurrentPage(1);
                         return;
                     }
@@ -197,21 +240,18 @@ export function useCompanyDashboard(companyId) {
                 q = query(baseRef, ...constraints);
             }
 
-            // EXECUTE QUERY
             const snapshot = await getDocs(q);
-            let newData = snapshot.docs.map(doc => {
-                const d = doc.data();
+            let newData = snapshot.docs.map(docSnap => {
+                const d = docSnap.data();
                 return {
-                    id: doc.id,
+                    id: docSnap.id,
                     companyId,
                     ...d,
-                    // FIX: Explicitly map fields for DashboardTable
                     lastCall: d.lastContactedAt || d.lastCall,
                     lastCallOutcome: d.lastCallOutcome
                 };
             });
 
-            // --- Client-side date filter (specific date) ---
             if (filters.dateFilter) {
                 const filterDate = new Date(filters.dateFilter + 'T00:00:00');
                 const filterYear = filterDate.getFullYear();
@@ -232,23 +272,18 @@ export function useCompanyDashboard(companyId) {
 
             setData(newData);
 
-            // Update Cursor Ref (Does not trigger re-render)
             if (!isSearch && snapshot.docs.length > 0) {
                 const lastDoc = snapshot.docs[snapshot.docs.length - 1];
                 lastVisibleDocsRef.current[currentPage] = lastDoc;
             }
 
-            // Recalculate Total Pages based on Stats
-            const currentCount = (activeTab === 'applications') ? stats.applications :
-                (activeTab === 'find_driver') ? stats.platformLeads :
-                    (activeTab === 'company_leads') ? stats.companyLeads : stats.myLeads;
-
-            setTotalPages(isSearch ? 1 : Math.ceil(currentCount / itemsPerPage) || 1);
+            if (isSearch) {
+                setTotalPages(1);
+            }
 
         } catch (err) {
             console.error("Dashboard fetch error:", err);
 
-            // Friendly Error for Missing Indexes
             if (err.message && err.message.includes('requires an index')) {
                 setError("Missing Index: Please check the browser console for the creation link.");
                 console.warn("CLICK THIS LINK TO CREATE INDEX:", err);
@@ -258,10 +293,16 @@ export function useCompanyDashboard(companyId) {
         } finally {
             setLoading(false);
         }
-        // Remove 'lastVisibleDocs' and 'fetchData' to prevent loops
-    }, [companyId, activeTab, currentPage, itemsPerPage, debouncedSearch, filters, stats]);
+    }, [companyId, activeTab, currentPage, itemsPerPage, debouncedSearch, filters, buildConstraints]);
 
-    // --- 4. Timer Fetcher (SafeHaul Leads) ---
+    useEffect(() => {
+        if (debouncedSearch) {
+            setTotalPages(1);
+        } else {
+            setTotalPages(Math.max(1, Math.ceil((listTotalCount || 0) / itemsPerPage)));
+        }
+    }, [listTotalCount, itemsPerPage, debouncedSearch]);
+
     useEffect(() => {
         const fetchBatchTime = async () => {
             if (!companyId || activeTab !== 'find_driver') {
@@ -290,14 +331,10 @@ export function useCompanyDashboard(companyId) {
         fetchBatchTime();
     }, [companyId, activeTab]);
 
-    // --- 5. Init & Refresh Effects ---
-
-    // A. Fetch Stats on Mount/Change
     useEffect(() => {
         fetchStats();
     }, [companyId, fetchStats]);
 
-    // D. Fetch Team Members
     useEffect(() => {
         const fetchTeamMembers = async () => {
             if (!companyId) return;
@@ -313,20 +350,16 @@ export function useCompanyDashboard(companyId) {
         fetchTeamMembers();
     }, [companyId]);
 
-    // B. Reset Pagination on Tab/Filter Change
     useEffect(() => {
         setData([]);
-        lastVisibleDocsRef.current = {}; // Reset ref
+        lastVisibleDocsRef.current = {};
         setCurrentPage(1);
-    }, [activeTab, companyId, debouncedSearch, filters]);
+    }, [activeTab, companyId, debouncedSearch, filters, pipelineSegment]);
 
-    // C. Trigger Data Fetch
-    // Only runs when these specific dependencies change
     useEffect(() => {
         fetchData();
-    }, [companyId, activeTab, currentPage, itemsPerPage, debouncedSearch, filters, fetchData]);
+    }, [companyId, activeTab, currentPage, itemsPerPage, debouncedSearch, filters, pipelineSegment, fetchData]);
 
-    // --- 6. Handlers ---
     const handleSetItemsPerPage = (num) => {
         setItemsPerPage(num);
         setCurrentPage(1);
@@ -335,19 +368,19 @@ export function useCompanyDashboard(companyId) {
 
     const handleSetFilters = (keyOrObjOrFn, value) => {
         if (typeof keyOrObjOrFn === 'function') {
-            // Updater function — used by DashboardToolbar's handleFilterChange
             setFilters(keyOrObjOrFn);
         } else if (typeof keyOrObjOrFn === 'object' && keyOrObjOrFn !== null) {
-            // Full replacement — used by clearFilters
             setFilters(keyOrObjOrFn);
         } else {
-            // Single key update
             setFilters(prev => ({ ...prev, [keyOrObjOrFn]: value }));
         }
     };
 
+    const headerTotalCount = debouncedSearch
+        ? data.length
+        : listTotalCount;
+
     return {
-        // Data
         paginatedData: data,
         counts: stats,
         latestBatchTime,
@@ -355,27 +388,25 @@ export function useCompanyDashboard(companyId) {
         loading,
         error,
 
-        // Actions
         refreshData: () => {
             fetchStats();
+            fetchListTotalCount();
             fetchData();
         },
 
-        // Pagination
         currentPage,
         itemsPerPage,
         totalPages,
-        totalCount: (activeTab === 'applications') ? stats.applications :
-            (activeTab === 'find_driver') ? stats.platformLeads :
-                (activeTab === 'company_leads') ? stats.companyLeads : stats.myLeads,
+        totalCount: headerTotalCount,
 
         setItemsPerPage: handleSetItemsPerPage,
         nextPage: () => setCurrentPage(p => p + 1),
         prevPage: () => setCurrentPage(p => Math.max(1, p - 1)),
 
-        // State Controls
         activeTab,
         setActiveTab,
+        pipelineSegment,
+        setPipelineSegment,
         searchQuery,
         setSearchQuery,
         filters,

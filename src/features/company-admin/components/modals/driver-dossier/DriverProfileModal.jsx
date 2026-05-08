@@ -31,15 +31,15 @@ export function DriverProfileModal({
         setIsEditing,
         isSaving,
         canEdit,
-        canEditAllFields,
         handleStatusUpdate,
+        handleAssignChange,
         handleSaveEdit,
         handleManagementComplete,
         fileUrls,
         dqStatus,
-        activities, // Note: these might need to be passed down or fetched inside tabs
-        notes,
-        collectionName // Get collectionName from hook
+        collectionName,
+        teamMembers,
+        assignedTo,
     } = useApplicationView(companyId, driverId, null, onClose, null);
 
     // Close on Escape key
@@ -89,6 +89,9 @@ export function DriverProfileModal({
                             onClose={onClose}
                             onStatusUpdate={handleStatusUpdate}
                             canEdit={canEdit}
+                            teamMembers={teamMembers}
+                            assignedTo={assignedTo}
+                            onAssignChange={handleAssignChange}
                         />
                     </div>
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { db, storage } from '@lib/firebase';
+import { db, storage, auth } from '@lib/firebase';
 import { logActivity } from '@shared/utils/activityLogger';
 import { useToast } from '@shared/components/feedback';
 import { normalizePhone } from '@shared/utils/helpers';
@@ -41,6 +41,11 @@ export function useAppActions({
 
   const handleAssignChange = async (newUserId) => {
     const newOwnerName = teamMembers.find(m => m.id === newUserId)?.name || 'Unassigned';
+    const prevName = appData?.assignedToName || 'Unassigned';
+    const actor =
+      auth.currentUser?.displayName ||
+      auth.currentUser?.email ||
+      'Team member';
     setAssignedTo(newUserId);
 
     try {
@@ -50,7 +55,13 @@ export function useAppActions({
         assignedToName: newOwnerName
       }));
 
-      await logActivity(companyId, collectionName, applicationId, "Reassigned", `Assigned to ${newOwnerName}`);
+      await logActivity(
+        companyId,
+        collectionName,
+        applicationId,
+        "Assignment Changed",
+        `${actor} reassigned this from ${prevName} to ${newOwnerName}`
+      );
       showSuccess(`Assigned to ${newOwnerName}`);
       if (onStatusUpdate) onStatusUpdate();
     } catch (error) {
@@ -173,7 +184,10 @@ export function useAppActions({
     try {
       const docRef = getDocRef();
       const oldStatus = currentStatus || 'Unknown';
-      await simpleRetry(() => updateDoc(docRef, { status: newStatus }));
+      await simpleRetry(() => updateDoc(docRef, {
+        status: newStatus,
+        statusEnteredAt: serverTimestamp(),
+      }));
 
       await logActivity(companyId, collectionName, applicationId, "Status Changed", `Transitioned from ${oldStatus} to ${newStatus}`);
 

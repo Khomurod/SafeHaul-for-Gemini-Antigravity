@@ -3,11 +3,12 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
 import {
     Building, User, CreditCard, CheckCircle,
-    Blocks, ArrowLeft, Users, Mail, Briefcase, MessageSquare
+    Blocks, ArrowLeft, Users, Mail, Briefcase, MessageSquare, Send
 } from 'lucide-react';
 
 import { NumberAssignmentManager } from './NumberAssignmentManager';
 
+import { AutomatedSmsTab } from './AutomatedSmsTab';
 import { CompanyProfileTab } from './CompanyProfileTab';
 import { TeamManagementTab } from './TeamManagementTab';
 import { EmailSettingsTab } from './EmailSettingsTab';
@@ -93,6 +94,10 @@ export function CompanySettings() {
                 return (
                     <NumberAssignmentManager companyId={currentCompanyProfile?.id} />
                 );
+            case 'automated_sms':
+                return (
+                    <AutomatedSmsTab companyId={currentCompanyProfile?.id} />
+                );
             case 'hiring':
                 return (
                     <JobPostingManager
@@ -141,6 +146,7 @@ export function CompanySettings() {
                             <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Communication</h3>
                             <SidebarItem id="email" label="Email Settings" icon={Mail} activeTab={activeTab} onClick={setActiveTab} />
                             <SidebarItem id="sms" label="SMS Settings" icon={MessageSquare} activeTab={activeTab} onClick={setActiveTab} />
+                            <SidebarItem id="automated_sms" label="Automated SMS" icon={Send} activeTab={activeTab} onClick={setActiveTab} />
 
                             {currentCompanyProfile?.features?.callTracking !== false && (
                                 <>

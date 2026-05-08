@@ -57,6 +57,35 @@ const formatAddedDate = (item) => {
     }
 };
 
+/** >48h in Contact Attempt 1 (uses statusEnteredAt only). */
+function staleContactMeta(item) {
+    if (!item || item.status !== 'Contact Attempt 1') return null;
+    const ts = item.statusEnteredAt;
+    if (!ts || (typeof ts.seconds !== 'number' && !ts.toDate)) return null;
+    try {
+        const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+        const hours = (Date.now() - d.getTime()) / 3600000;
+        if (hours <= 48) return null;
+        return hours >= 72 ? 'severe' : 'warn';
+    } catch {
+        return null;
+    }
+}
+
+const APPLICATION_PIPELINE_TABS = [
+    { id: 'all', label: 'All Applications' },
+    { id: 'hired', label: 'Hired' },
+    { id: 'terminated', label: 'Terminated' },
+    { id: 'declined', label: 'Declined' },
+];
+
+const LEAD_PIPELINE_TABS = [
+    { id: 'all', label: 'All Leads' },
+    { id: 'attempting', label: 'Attempting to Contact' },
+    { id: 'in_process', label: 'In Process' },
+    { id: 'interested', label: 'Interested' },
+];
+
 export const CompanyCandidatesListPage = ({ scope }) => {
     const { currentCompanyProfile, currentUserClaims } = useData();
     const companyId = currentCompanyProfile?.id;
@@ -64,7 +93,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
     const isCompanyAdmin = currentUserClaims?.roles?.[companyId] === 'company_admin'
         || currentUserClaims?.roles?.globalRole === 'super_admin';
 
-    const dashboard = useCompanyDashboard(companyId, scope);
+    const dashboard = useCompanyDashboard(companyId);
     const { showError, showSuccess } = useToast();
 
     // Local State
@@ -90,7 +119,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         if (scope && dashboard.activeTab !== scope) {
             dashboard.setActiveTab(scope);
         }
-    }, [scope]);
+    }, [scope, dashboard.activeTab, dashboard.setActiveTab]);
 
     // Reset selection on data changes
     useEffect(() => {
@@ -181,6 +210,19 @@ export const CompanyCandidatesListPage = ({ scope }) => {
 
     const canAssign = isCompanyAdmin && (scope === 'company_leads');
 
+    const showPipelineTabs =
+        scope === 'applications' || scope === 'company_leads' || scope === 'my_leads';
+
+    const pipelineTabs =
+        scope === 'applications' ? APPLICATION_PIPELINE_TABS : LEAD_PIPELINE_TABS;
+
+    const getRowClassName = (item) => {
+        const level = staleContactMeta(item);
+        if (!level) return '';
+        if (level === 'severe') return 'border-l-4 border-red-500 bg-red-50/60';
+        return 'border-l-4 border-amber-400 bg-amber-50/60';
+    };
+
     // ── Column Config ──
     const columns = useMemo(() => {
         const cols = [
@@ -192,11 +234,22 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                     const name = item.fullName
                         ? toTitleCase(item.fullName)
                         : toTitleCase(`${item.firstName || 'Unknown'} ${item.lastName || 'Driver'}`.trim());
+                    const stale = staleContactMeta(item);
 
                     return (
                         <div className="min-w-[200px]">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-sm font-semibold text-slate-900">{name}</p>
+                                {stale && (
+                                    <span
+                                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${stale === 'severe'
+                                            ? 'bg-red-100 text-red-800 border-red-200'
+                                            : 'bg-amber-100 text-amber-900 border-amber-200'
+                                            }`}
+                                    >
+                                        Stale CA1
+                                    </span>
+                                )}
                             </div>
                             <div className="mt-1">
                                 <button
@@ -400,7 +453,14 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                         filters={dashboard.filters}
                         setFilters={dashboard.setFilters}
                         clearFilters={() => {
-                            dashboard.setFilters({ state: '', driverType: '', dob: '', assignee: '', dateFilter: '' });
+                            dashboard.setFilters({
+                                state: '',
+                                driverType: '',
+                                dob: '',
+                                assignee: '',
+                                dateFilter: '',
+                                myAssignmentsOnly: false,
+                            });
                             dashboard.setSearchQuery('');
                         }}
                         latestBatchTime={dashboard.latestBatchTime}
@@ -410,7 +470,30 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                         canAssign={canAssign}
                         onAssignLeads={() => handleOpenAssignment(selectedRowIds)}
                         teamMembers={dashboard.teamMembers}
+                        showMyAssignmentsToggle={scope === 'applications' || scope === 'company_leads'}
+                        myAssignmentsOnly={!!dashboard.filters.myAssignmentsOnly}
+                        onToggleMyAssignments={(next) =>
+                            dashboard.setFilters((prev) => ({ ...prev, myAssignmentsOnly: next }))
+                        }
+                        myAssignmentsLabel={scope === 'applications' ? 'My assignments' : 'My leads'}
                     />
+                    {showPipelineTabs && (
+                        <div className="flex flex-wrap gap-2 px-4 py-3 border-t border-gray-100 bg-slate-50/60">
+                            {pipelineTabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => dashboard.setPipelineSegment(tab.id)}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${dashboard.pipelineSegment === tab.id
+                                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                                        }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Modern Table */}
@@ -418,6 +501,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                     <ModernDriverTable
                         data={sortedData}
                         columns={columns}
+                        getRowClassName={getRowClassName}
                         onRowClick={setSelectedApp}
                         isLoading={dashboard.loading}
                         emptyMessage="No records found."

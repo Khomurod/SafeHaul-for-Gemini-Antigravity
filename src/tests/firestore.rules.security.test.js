@@ -106,4 +106,65 @@ describeFirestore('firestore.rules security regressions', () => {
     await assertSucceeds(getDoc(doc(ownerDb, 'companies', 'co1', 'applications', 'app1', 'dq_files', 'f1')));
     await assertFails(getDoc(doc(otherDb, 'companies', 'co1', 'applications', 'app2', 'dq_files', 'f2')));
   });
+
+  it('allows company admin ATS status + assignee writes on applications', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'co1', 'applications', 'app1'), {
+        applicantId: 'driver-1',
+        driverId: 'driver-1',
+        status: 'New Application',
+        phone: '1111111111',
+        firstName: 'Alice',
+      });
+    });
+
+    const companyAdminDb = testEnv.authenticatedContext('admin-1', {
+      roles: { co1: 'company_admin' },
+    }).firestore();
+
+    await assertSucceeds(
+      updateDoc(doc(companyAdminDb, 'companies', 'co1', 'applications', 'app1'), {
+        status: 'Contact Attempt 1',
+        assignedTo: 'admin-1',
+        assignedToName: 'Admin One',
+      }),
+    );
+
+    await assertFails(
+      updateDoc(doc(companyAdminDb, 'companies', 'co1', 'applications', 'app1'), {
+        status: 'Invalid Fake Status',
+      }),
+    );
+  });
+
+  it('blocks drivers from manipulating ATS assignment fields', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'co1', 'applications', 'app1'), {
+        applicantId: 'driver-1',
+        driverId: 'driver-1',
+        status: 'New Application',
+        phone: '1111111111',
+      });
+    });
+
+    const driverDb = testEnv.authenticatedContext('driver-1', {
+      email: 'driver@example.com',
+      email_verified: true,
+    }).firestore();
+
+    await assertFails(
+      updateDoc(doc(driverDb, 'companies', 'co1', 'applications', 'app1'), {
+        assignedTo: 'admin-1',
+        assignedToName: 'Admin',
+      }),
+    );
+
+    await assertFails(
+      updateDoc(doc(driverDb, 'companies', 'co1', 'applications', 'app1'), {
+        status: 'Hired',
+      }),
+    );
+  });
 });

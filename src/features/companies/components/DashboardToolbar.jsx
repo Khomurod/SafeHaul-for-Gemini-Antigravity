@@ -1,7 +1,7 @@
 // src/features/companies/components/DashboardToolbar.jsx
 
 import React, { useState, useEffect, useMemo, memo } from 'react';
-import { Search, Filter, X, Zap, Briefcase, Info, Clock, RefreshCw, Users, Calendar } from 'lucide-react';
+import { Search, Filter, X, Briefcase, Users, Calendar, UserCircle } from 'lucide-react';
 
 // --- CONFIGURATION ---
 const DRIVER_TYPE_OPTIONS = [
@@ -29,7 +29,12 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     selectedCount = 0,
     onAssignLeads,
     canAssign,
-    teamMembers = []
+    teamMembers = [],
+
+    showMyAssignmentsToggle = false,
+    myAssignmentsOnly = false,
+    onToggleMyAssignments,
+    myAssignmentsLabel = 'My assignments',
 }) {
     const [showFilters, setShowFilters] = useState(false);
 
@@ -49,7 +54,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
     };
 
     const hasActiveFilters = useMemo(() => {
-        return filters && (filters.state || filters.driverType || filters.dob || filters.assignee || filters.dateFilter);
+        return filters && (filters.state || filters.driverType || filters.dob || filters.assignee || filters.dateFilter || filters.myAssignmentsOnly);
     }, [filters]);
 
 
@@ -85,7 +90,20 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                     )}
                 </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
+                    {showMyAssignmentsToggle && (
+                        <button
+                            type="button"
+                            onClick={() => onToggleMyAssignments?.(!myAssignmentsOnly)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${myAssignmentsOnly
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                        >
+                            <UserCircle size={16} />
+                            <span className="hidden sm:inline">{myAssignmentsLabel}</span>
+                        </button>
+                    )}
                     {/* Search Bar */}
                     <div className="relative flex-1 sm:w-64">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

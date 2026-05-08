@@ -72,6 +72,11 @@ exports.syncDriverOnLog = driverSync.syncDriverOnLog;
 exports.syncDriverOnActivity = driverSync.syncDriverOnActivity;
 exports.onCompanyLeadSubmitted = driverSync.onCompanyLeadSubmitted;
 
+// 4c. ATS automated SMS on contact-attempt transitions
+const atsContactSms = require('./atsContactSms');
+exports.onApplicationAtsContactSms = atsContactSms.onApplicationAtsContactSms;
+exports.onLeadAtsContactSms = atsContactSms.onLeadAtsContactSms;
+
 // 4b. Guest Application Submission (Admin SDK — bypasses rules)
 exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
 

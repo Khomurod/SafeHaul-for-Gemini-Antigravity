@@ -21,6 +21,9 @@ import { CheckSquare, Square, ChevronLeft, ChevronRight, Inbox } from 'lucide-re
  *
  * Pagination (optional):
  *  - pagination:        { currentPage, totalPages, onNext, onPrev, label }
+ *
+ * Row styling (optional):
+ *  - getRowClassName:     (item) => extra Tailwind classes for <tr>
  */
 export const ModernDriverTable = memo(function ModernDriverTable({
     data = [],
@@ -38,6 +41,8 @@ export const ModernDriverTable = memo(function ModernDriverTable({
 
     // Pagination
     pagination,
+
+    getRowClassName,
 }) {
     const selectedSet = selectedIds instanceof Set
         ? selectedIds
@@ -134,6 +139,7 @@ export const ModernDriverTable = memo(function ModernDriverTable({
                         ) : (
                             data.map(item => {
                                 const isChecked = selectedSet.has(item.id);
+                                const extraRow = getRowClassName?.(item) || '';
 
                                 return (
                                     <tr
@@ -142,6 +148,7 @@ export const ModernDriverTable = memo(function ModernDriverTable({
                                         className={`
                                             group cursor-pointer transition-colors duration-150
                                             border-b border-slate-50
+                                            ${extraRow}
                                             ${isChecked
                                                 ? 'bg-blue-50/40'
                                                 : 'hover:bg-slate-50'
