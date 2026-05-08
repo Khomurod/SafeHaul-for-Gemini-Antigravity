@@ -7,6 +7,7 @@ import {
     collection,
     query,
     where,
+    orderBy,
     documentId,
     serverTimestamp,
     collectionGroup
@@ -127,6 +128,27 @@ export async function fetchMyApplications(email, userId) {
             return 0;
         };
         return getMillis(b) - getMillis(a); // Newest first
+    });
+}
+
+export async function getDriverApplicationHistory(applicantKey) {
+    if (!applicantKey || typeof applicantKey !== 'string') return [];
+
+    const historyQuery = query(
+        collectionGroup(db, 'applications'),
+        where('applicantKey', '==', applicantKey),
+        orderBy('submittedAt', 'desc')
+    );
+
+    const snapshot = await getDocs(historyQuery);
+    return snapshot.docs.map((appDoc) => {
+        const data = appDoc.data();
+        const companyId = appDoc.ref.parent.parent ? appDoc.ref.parent.parent.id : 'unknown';
+        return {
+            id: appDoc.id,
+            companyId,
+            ...data
+        };
     });
 }
 
