@@ -80,6 +80,12 @@ exports.onLeadAtsContactSms = atsContactSms.onLeadAtsContactSms;
 // 4b. Guest Application Submission (Admin SDK — bypasses rules)
 exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
 
+// 4d. Sandbox applications (Super Admin maintenance)
+const sandboxApplication = require('./sandboxApplication');
+exports.listSandboxTenantCompanies = sandboxApplication.listSandboxTenantCompanies;
+exports.deleteSandboxApplication = sandboxApplication.deleteSandboxApplication;
+exports.transferSandboxApplication = sandboxApplication.transferSandboxApplication;
+
 exports.sendAutomatedEmail = companyAdmin.sendAutomatedEmail;
 
 

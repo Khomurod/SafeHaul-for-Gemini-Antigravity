@@ -38,4 +38,15 @@ describe('assertCompanyAcceptingIntake', () => {
     expect(d.companyName).toBe('Acme');
     expect(d.applicationConfig).toEqual({ a: 1 });
   });
+
+  it('returns synthetic sandbox tenant without reading companies/SANDBOX', async () => {
+    const db = {
+      collection: jest.fn(() => {
+        throw new Error('companies collection should not be queried for SANDBOX shortcut');
+      }),
+    };
+    const d = await assertCompanyAcceptingIntake(db, 'SANDBOX');
+    expect(d.isActive !== false).toBe(true);
+    expect(String(d.companyName)).toContain('Sandbox');
+  });
 });

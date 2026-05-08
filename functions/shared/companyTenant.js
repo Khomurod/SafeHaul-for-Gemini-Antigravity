@@ -11,9 +11,24 @@ const INACTIVE_STATUSES = ['inactive', 'suspended', 'disabled'];
  * @param {string} companyId
  * @returns {Promise<FirebaseFirestore.DocumentData>}
  */
+const SANDBOX_COMPANY_ID = 'SANDBOX';
+
 async function assertCompanyAcceptingIntake(db, companyId) {
   if (!companyId || typeof companyId !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'Invalid company.');
+  }
+
+  // Public ATS sandbox: no real tenant required; guest submit uses this id for test applications.
+  if (companyId === SANDBOX_COMPANY_ID) {
+    return {
+      companyName: 'SafeHaul Sandbox (Testing)',
+      isActive: true,
+      applicationConfig: {
+        cdlUpload: { hidden: false, required: true },
+        medCardUpload: { hidden: false, required: true },
+        showEmergencyContacts: false,
+      },
+    };
   }
 
   const snap = await db.collection('companies').doc(companyId).get();

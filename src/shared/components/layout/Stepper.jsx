@@ -28,7 +28,9 @@ const Stepper = ({
     step, formData, updateFormData, onNavigate,
     onPartialSubmit, onFinalSubmit, submissionStatus,
     handleFileUpload, isUploading,
-    customQuestions = [] // NEW: Custom questions from schema
+    customQuestions = [], // NEW: Custom questions from schema
+    isSandboxMode = false,
+    onMagicFillStep,
 }) => {
 
     // Build dynamic page config with custom questions inserted
@@ -115,6 +117,17 @@ const Stepper = ({
 
     return (
         <>
+            {isSandboxMode && typeof onMagicFillStep === 'function' && (
+                <div className="fixed bottom-6 right-6 z-40">
+                    <button
+                        type="button"
+                        onClick={() => onMagicFillStep()}
+                        className="shadow-lg rounded-full px-4 py-2.5 text-sm font-semibold bg-amber-500 text-white border border-amber-600 hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+                    >
+                        🧪 Magic Fill Step
+                    </button>
+                </div>
+            )}
             <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
                 <h2 id="step-title" className="text-lg font-semibold text-gray-700">{currentTitle}</h2>
                 <div className="w-full bg-gray-200 rounded-full h-2.5 mt-3">

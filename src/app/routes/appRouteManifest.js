@@ -34,6 +34,18 @@ export const PUBLIC_FEATURE_ROUTE_MANIFEST = Object.freeze([
     screen: 'verificationPortal',
     featureName: 'Verification Portal',
   },
+  {
+    id: 'sandboxApply',
+    path: '/sandbox/apply',
+    screen: 'sandboxApplyHandler',
+    featureName: 'Sandbox Application',
+  },
+  {
+    id: 'sandboxTransferSuccess',
+    path: '/sandbox/transfer-success',
+    screen: 'sandboxTransferSuccess',
+    featureName: 'Sandbox Transfer',
+  },
 ]);
 
 export const PROTECTED_FEATURE_ROUTE_MANIFEST = Object.freeze([

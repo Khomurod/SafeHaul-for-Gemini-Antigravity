@@ -172,6 +172,7 @@ service cloud.firestore {
       // SAFETY NET: Verify App Check is present (proves the request comes from a registered app).
       // NOTE: Primary guest submissions now go through the submitGuestApplication Cloud Function,
       // which uses Admin SDK and bypasses rules entirely. This rule is a fallback only.
+      // SANDBOX tenant uses the same checks when companyId == "SANDBOX" (deterministic id + App Check).
       return request.appcheck != null &&
              data.companyId == companyId &&
              data.applicantId is string && data.applicantId.size() > 0;

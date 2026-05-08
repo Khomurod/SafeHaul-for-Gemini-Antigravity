@@ -76,6 +76,14 @@ export const featureScreens = Object.freeze({
     () => import('@features/verification/VerificationPortal'),
     'VerificationPortal',
   ),
+  sandboxApplyHandler: lazyNamed(
+    () => import('@features/sandbox/SandboxApplyHandler'),
+    'SandboxApplyHandler',
+  ),
+  sandboxTransferSuccess: lazyNamed(
+    () => import('@features/sandbox/SandboxTransferSuccess'),
+    'SandboxTransferSuccess',
+  ),
   documentsManager: lazyDefault(() => import('@features/company-admin/views/DocumentsManager')),
 });
 
