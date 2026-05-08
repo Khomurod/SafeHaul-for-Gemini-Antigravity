@@ -12,16 +12,20 @@ let testEnv;
 
 const projectId = 'safehaul-rules-test';
 const rules = readFileSync(resolve(process.cwd(), 'src/firestore.rules'), 'utf8');
+const firestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST || '';
+const hasFirestoreEmulator = firestoreEmulatorHost.includes(':');
+const describeFirestore = hasFirestoreEmulator ? describe : describe.skip;
 
 async function clearFirestore() {
   await testEnv.clearFirestore();
 }
 
-describe('firestore.rules security regressions', () => {
+describeFirestore('firestore.rules security regressions', () => {
   beforeAll(async () => {
+    const [host, portStr] = firestoreEmulatorHost.split(':');
     testEnv = await initializeTestEnvironment({
       projectId,
-      firestore: { rules },
+      firestore: { rules, host, port: Number(portStr) },
     });
   });
 

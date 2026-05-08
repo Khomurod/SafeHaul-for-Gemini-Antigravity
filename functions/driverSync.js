@@ -240,10 +240,10 @@ exports.onApplicationSubmitted = onDocumentCreated({
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         uploadedBy: 'driver_app',
         applicationId: appId,
-        applicantId: afterData.applicantId || null,
-        driverId: afterData.driverId || null,
-        userId: afterData.userId || null,
-        ownerUserIds: [afterData.driverId || afterData.userId || afterData.applicantId || appId],
+        applicantId: data.applicantId || null,
+        driverId: data.driverId || null,
+        userId: data.userId || null,
+        ownerUserIds: [data.driverId || data.userId || data.applicantId || appId],
         isSynced: true,
         sourceField: mapping.field
       }, { merge: true });
@@ -324,10 +324,10 @@ exports.onApplicationUpdated = onDocumentUpdated({
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           uploadedBy: 'driver_app',
           applicationId: appId,
-        applicantId: data.applicantId || null,
-        driverId: data.driverId || null,
-        userId: data.userId || null,
-        ownerUserIds: [data.driverId || data.userId || data.applicantId || appId],
+          applicantId: afterData.applicantId || null,
+          driverId: afterData.driverId || null,
+          userId: afterData.userId || null,
+          ownerUserIds: [afterData.driverId || afterData.userId || afterData.applicantId || appId],
           isSynced: true,
           sourceField: mapping.field
         }, { merge: true });

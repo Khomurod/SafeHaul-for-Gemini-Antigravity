@@ -43,7 +43,7 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         }
 
         const sessionData = sessionSnap.data();
-        const { status, targetIds, config, leadSourceType } = sessionData;
+        const { status, config, leadSourceType } = sessionData;
 
         // 1. Status Check
         if (status !== 'active') {

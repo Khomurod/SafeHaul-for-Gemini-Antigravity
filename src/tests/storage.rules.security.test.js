@@ -11,14 +11,18 @@ import { getMetadata, getStorage, ref, uploadString } from 'firebase/storage';
 const projectId = 'safehaul-storage-rules-test';
 const bucket = `${projectId}.appspot.com`;
 const storageRules = readFileSync(resolve(process.cwd(), 'src/storage.rules'), 'utf8');
+const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST || '';
+const hasStorageEmulator = storageEmulatorHost.includes(':');
+const describeStorage = hasStorageEmulator ? describe : describe.skip;
 
 let testEnv;
 
-describe('storage.rules multi-tenant isolation', () => {
+describeStorage('storage.rules multi-tenant isolation', () => {
   beforeAll(async () => {
+    const [host, portStr] = storageEmulatorHost.split(':');
     testEnv = await initializeTestEnvironment({
       projectId,
-      storage: { rules: storageRules },
+      storage: { rules: storageRules, host, port: Number(portStr) },
     });
   });
 
