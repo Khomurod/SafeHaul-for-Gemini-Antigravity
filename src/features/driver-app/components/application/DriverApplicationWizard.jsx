@@ -1,59 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
-import { db, storage, functions } from '@lib/firebase';
+import { db, storage } from '@lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { httpsCallable } from 'firebase/functions';
 import { uploadApplicationFile, submitDriverApplication } from '../../services/driverService';
 import Stepper from '@shared/components/layout/Stepper';
 import { Loader2, X, Save } from 'lucide-react';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { DraftRecoveryModal } from '../DraftRecoveryModal';
 import { useApplicationSchema } from '@/hooks/useApplicationSchema';
-import { generateApplicationId, generateConfirmationNumber } from '@lib/applicationId';
-import { isValidEmail, isValidPhone } from '@shared/utils/validation';
-import * as Sentry from '@sentry/react';
-import { getMagicFillPatchForStep } from '@features/sandbox/utils/dummyDataGenerator';
-import { SANDBOX_COMPANY_ID } from '@features/sandbox/sandboxConstants';
-import { SandboxActionPanel } from '@features/sandbox/SandboxActionPanel';
 
-const guestFieldConfig = (applicationConfig, fieldId, defaultRequired = true) => {
-  const config = applicationConfig?.[fieldId];
-  return {
-    hidden: Boolean(config?.hidden),
-    required: config !== undefined ? Boolean(config.required) : defaultRequired,
-  };
-};
-
-const guestHasUploadedFile = (value) => {
-  if (!value) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  if (typeof value === 'object') {
-    return Boolean(value.url || value.storagePath || value.name);
-  }
-  return false;
-};
-
-function buildDefaultSandboxPublicProfile() {
-  return {
-    id: SANDBOX_COMPANY_ID,
-    companyName: 'SafeHaul Sandbox (Testing)',
-    appSlug: 'sandbox',
-    customQuestions: [],
-    applicationConfig: {
-      cdlUpload: { hidden: false, required: true },
-      medCardUpload: { hidden: false, required: true },
-      showEmergencyContacts: false,
-    },
-  };
-}
-
-export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, companyId, isSandboxMode = false }) {
-  const { currentUser, setCurrentCompanyProfile, currentCompanyProfile } = useData();
+export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, companyId }) {
+  const { currentUser } = useData();
   const navigate = useNavigate();
   const { companyId: paramCompanyId } = useParams();
-  const [searchParams] = useSearchParams();
   const { showSuccess, showError } = useToast();
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -62,7 +22,6 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   const [isUploading, setIsUploading] = useState(false);
   const [targetCompanyId, setTargetCompanyId] = useState(null);
   const [submissionStatus, setSubmissionStatus] = useState(null);
-  const [sandboxSubmission, setSandboxSubmission] = useState(null);
 
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [draftData, setDraftData] = useState(null);
@@ -83,50 +42,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       setTargetCompanyId(paramCompanyId);
     } else if (companyId) {
       setTargetCompanyId(companyId);
-    } else if (!isSandboxMode) {
+    } else {
       const pending = sessionStorage.getItem('pending_application_company');
       if (pending) setTargetCompanyId(pending);
     }
-  }, [paramCompanyId, companyId, isSandboxMode]);
+  }, [paramCompanyId, companyId]);
 
   useEffect(() => {
-    if (!isSandboxMode) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const snap = await getDoc(doc(db, 'public_profiles', SANDBOX_COMPANY_ID));
-        const profile = snap.exists()
-          ? { id: SANDBOX_COMPANY_ID, ...snap.data() }
-          : buildDefaultSandboxPublicProfile();
-        if (cancelled) return;
-        setCurrentCompanyProfile(profile);
-        try {
-          const savedDraft = localStorage.getItem('draft_sandbox');
-          if (savedDraft) {
-            const parsed = JSON.parse(savedDraft);
-            if (parsed && typeof parsed === 'object') {
-              setFormData(parsed);
-            }
-          }
-        } catch (e) {
-          console.warn('[DriverApplicationWizard] sandbox draft load:', e);
-        }
-        setCurrentStep(0);
-      } catch (err) {
-        console.error('[DriverApplicationWizard] sandbox profile:', err);
-        showError('Could not load sandbox profile.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isSandboxMode, setCurrentCompanyProfile, showError]);
-
-  useEffect(() => {
-    if (isSandboxMode) return;
     const loadDraft = async () => {
       if (!currentUser || !targetCompanyId) {
         setLoading(false);
@@ -163,7 +85,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       }
     };
     loadDraft();
-  }, [currentUser, targetCompanyId, isSandboxMode]);
+  }, [currentUser, targetCompanyId]);
 
   const handleResumeDraft = () => {
     if (draftData) {
@@ -195,7 +117,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
   const saveDraft = useCallback(
     async (newData = {}) => {
-      if (isSandboxMode || !currentUser || !targetCompanyId) return;
+      if (!currentUser || !targetCompanyId) return;
 
       if (isSubmitting.current) {
         return;
@@ -225,7 +147,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
         setIsSaving(false);
       }
     },
-    [isSandboxMode, currentUser, formData, currentStep, targetCompanyId],
+    [currentUser, formData, currentStep, targetCompanyId],
   );
 
   useEffect(() => {
@@ -233,7 +155,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       clearTimeout(saveTimeoutRef.current);
     }
 
-    if (!isSandboxMode && currentUser && Object.keys(formData).length > 0 && !loading) {
+    if (currentUser && Object.keys(formData).length > 0 && !loading) {
       saveTimeoutRef.current = setTimeout(() => {
         if (JSON.stringify(formData) !== JSON.stringify(lastFormDataRef.current)) {
           saveDraft();
@@ -246,7 +168,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [formData, currentUser, loading, saveDraft, isSandboxMode]);
+  }, [formData, currentUser, loading, saveDraft]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -259,26 +181,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [currentUser, formData, currentStep, targetCompanyId]);
 
-  const handleSandboxPartialSave = () => {
-    const { ssn: _ssn, signature: _sig, ...draftPayload } = formData;
-    try {
-      localStorage.setItem('draft_sandbox', JSON.stringify(draftPayload));
-      showSuccess('Progress saved.');
-    } catch (err) {
-      console.warn('[DriverApplicationWizard] sandbox draft save:', err);
-      showError('Could not save progress locally.');
-    }
-  };
-
   const handleUpdateFormData = (name, value) => {
     const newData = { ...formData, [name]: value };
     setFormData(newData);
   };
 
   const handleNavigate = (direction) => {
-    if (!isSandboxMode) {
-      saveDraft();
-    }
+    saveDraft();
     if (direction === 'next') {
       setCurrentStep((prev) => prev + 1);
     } else if (direction === 'back') {
@@ -288,49 +197,20 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     }
   };
 
-  const handleMagicFillStep = useCallback(() => {
-    const patch = getMagicFillPatchForStep(currentStep, {
-      hasCustomQuestions: Boolean(customQuestions?.length > 0),
-    });
-    setFormData((prev) => ({ ...prev, ...patch }));
-  }, [currentStep, customQuestions]);
-
   const handleFileUpload = async (fieldName, file) => {
     if (!file) return null;
     setIsUploading(true);
     try {
-      if (isSandboxMode) {
-        if (!targetCompanyId) {
-          throw new Error('Company context is missing.');
-        }
-        const prepareGuestUpload = httpsCallable(functions, 'getSignedUploadUrl');
-        const {
-          data: { storagePath },
-        } = await prepareGuestUpload({
-          companyId: targetCompanyId,
-          fileName: file.name,
-          fileType: file.type,
-          folder: 'applications',
-        });
-        if (!storagePath) {
-          throw new Error('Upload prepare failed: missing storage path.');
-        }
-        const fileRef = ref(storage, storagePath);
-        const snapshot = await uploadBytes(fileRef, file, { contentType: file.type });
-        const publicUrl = await getDownloadURL(snapshot.ref);
-        const fileData = { name: file.name, url: publicUrl, storagePath };
-        showSuccess('File uploaded successfully.');
-        return fileData;
-      }
-
       const fileData = await uploadApplicationFile(targetCompanyId, currentUser.uid, fieldName, file);
+
       await saveDraft({ [fieldName]: fileData });
       showSuccess('File uploaded successfully.');
+
       return fileData;
     } catch (error) {
       console.error('Upload failed:', error);
       let msg = 'Upload failed. Please try again.';
-      if (error.message && error.message.includes('exceeds 20MB')) msg = 'File is too large (Max 20MB).';
+      if (error.message.includes('exceeds 20MB')) msg = 'File is too large (Max 20MB).';
       showError(msg);
       throw error;
     } finally {
@@ -364,127 +244,6 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   const consentStepIndex = customQuestions && customQuestions.length > 0 ? 9 : 8;
 
   const handleFinalSubmit = async () => {
-    if (isSandboxMode) {
-      const appCfg = currentCompanyProfile?.applicationConfig;
-      const cdlUploadConfig = guestFieldConfig(appCfg, 'cdlUpload', true);
-      const medCardConfig = guestFieldConfig(appCfg, 'medCardUpload', true);
-      const requiredUploadErrors = [];
-      if (!cdlUploadConfig.hidden && cdlUploadConfig.required) {
-        if (!guestHasUploadedFile(formData['cdl-front'])) requiredUploadErrors.push('CDL Front');
-        if (!guestHasUploadedFile(formData['cdl-back'])) requiredUploadErrors.push('CDL Back');
-      }
-      if (!medCardConfig.hidden && medCardConfig.required && !guestHasUploadedFile(formData['medical-card-upload'])) {
-        requiredUploadErrors.push('Medical Card');
-      }
-      if (requiredUploadErrors.length > 0) {
-        showError(`Please upload required documents before submitting: ${requiredUploadErrors.join(', ')}.`);
-        setCurrentStep(2);
-        return;
-      }
-      if (!formData.signature || !formData['final-certification']) {
-        showError('Please complete the electronic signature.');
-        setCurrentStep(consentStepIndex);
-        return;
-      }
-      if (!isValidEmail(formData.email)) {
-        showError('Invalid Email Address.');
-        return;
-      }
-      if (!isValidPhone(formData.phone)) {
-        showError('Invalid Phone Number.');
-        return;
-      }
-      if (formData['agree-electronic'] !== 'agreed' || formData['agree-background-check'] !== 'agreed') {
-        showError('Please complete all required agreements.');
-        setCurrentStep(consentStepIndex);
-        return;
-      }
-
-      if (submissionStatus === 'submitting') return;
-      isSubmitting.current = true;
-      setSubmissionStatus('submitting');
-
-      const email = formData.email || '';
-      const phone = formData.phone || '';
-
-      try {
-        let applicationId;
-        try {
-          applicationId = await generateApplicationId(targetCompanyId, email, phone);
-        } catch (idError) {
-          const prefillLeadId = searchParams.get('prefill') || searchParams.get('leadId');
-          applicationId = prefillLeadId || `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        }
-        const confirmationNumber = generateConfirmationNumber();
-
-        const applicationData = {
-          applicantId: applicationId,
-          applicationId,
-          confirmationNumber,
-          ...formData,
-          firstName: formData.firstName || '',
-          lastName: formData.lastName || '',
-          email,
-          phone,
-          signature: formData.signature,
-          signatureType: formData.signatureType || 'drawn',
-          companyId: targetCompanyId,
-          companyName: currentCompanyProfile?.companyName || 'SafeHaul Sandbox (Testing)',
-          recruiterCode: null,
-          sourceType: 'Sandbox Application',
-          sourceSlug: 'sandbox',
-          status: 'New Application',
-          employers: Array.isArray(formData.employers) ? formData.employers : [],
-          violations: Array.isArray(formData.violations) ? formData.violations : [],
-          accidents: Array.isArray(formData.accidents) ? formData.accidents : [],
-          schools: Array.isArray(formData.schools) ? formData.schools : [],
-          military: Array.isArray(formData.military) ? formData.military : [],
-          lifecycle: {
-            status: 'pending',
-            submittedAt: new Date().toISOString(),
-            clientVersion: 'sandbox',
-            isGuest: true,
-          },
-        };
-
-        Sentry.addBreadcrumb({
-          category: 'submission',
-          message: 'Sandbox guest application submission started',
-          data: { companyId: targetCompanyId },
-          level: 'info',
-        });
-
-        const submitFn = httpsCallable(functions, 'submitGuestApplication');
-        const result = await submitFn({
-          companyId: targetCompanyId,
-          email,
-          phone,
-          signature: formData.signature,
-          formData: applicationData,
-        });
-
-        const serverData = result.data || {};
-        const finalAppId = serverData.applicationId || applicationId;
-        const finalConfirm = serverData.confirmationNumber || confirmationNumber;
-        sessionStorage.setItem('lastConfirmationNumber', finalConfirm);
-        setSandboxSubmission({ applicationId: finalAppId, confirmationNumber: finalConfirm });
-        setSubmissionStatus('sandbox-complete');
-        try {
-          localStorage.removeItem('draft_sandbox');
-        } catch (_) {
-          /* ignore */
-        }
-        showSuccess('Sandbox application saved.');
-      } catch (error) {
-        console.error('Sandbox submission error:', error);
-        setSubmissionStatus('error');
-        showError(error?.message || 'Failed to submit sandbox application.');
-      } finally {
-        isSubmitting.current = false;
-      }
-      return;
-    }
-
     const missingFields = validateForm();
     if (missingFields.length > 0) {
       showError(
@@ -551,22 +310,6 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     }
   };
 
-  if (isSandboxMode && submissionStatus === 'sandbox-complete' && sandboxSubmission) {
-    return (
-      <SandboxActionPanel
-        applicationId={sandboxSubmission.applicationId}
-        confirmationNumber={sandboxSubmission.confirmationNumber}
-        onDeletedRestart={() => {
-          setSubmissionStatus(null);
-          setSandboxSubmission(null);
-          setCurrentStep(0);
-          setFormData({});
-          sessionStorage.removeItem('lastConfirmationNumber');
-        }}
-      />
-    );
-  }
-
   if (loading) {
     if (isOpen) {
       return (
@@ -583,18 +326,6 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       </div>
     );
   }
-
-  const stepperExtra = {
-    isSandboxMode,
-    onMagicFillStep: isSandboxMode ? handleMagicFillStep : undefined,
-  };
-
-  const partialSubmit = isSandboxMode
-    ? handleSandboxPartialSave
-    : () => {
-        saveDraft();
-        showSuccess('Draft saved.');
-      };
 
   if (isOpen) {
     return (
@@ -623,13 +354,15 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
                 formData={formData}
                 updateFormData={handleUpdateFormData}
                 onNavigate={handleNavigate}
-                onPartialSubmit={partialSubmit}
+                onPartialSubmit={() => {
+                  saveDraft();
+                  showSuccess('Draft saved.');
+                }}
                 onFinalSubmit={handleFinalSubmit}
                 handleFileUpload={handleFileUpload}
                 isUploading={isUploading}
                 submissionStatus={submissionStatus}
                 customQuestions={customQuestions}
-                {...stepperExtra}
               />
             </div>
           </div>
@@ -640,47 +373,34 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {!isSandboxMode && (
-        <DraftRecoveryModal
-          isOpen={showDraftModal}
-          draftData={draftData}
-          onResume={handleResumeDraft}
-          onStartFresh={handleStartFresh}
-          onClose={() => setShowDraftModal(false)}
-        />
-      )}
+      <DraftRecoveryModal
+        isOpen={showDraftModal}
+        draftData={draftData}
+        onResume={handleResumeDraft}
+        onStartFresh={handleStartFresh}
+        onClose={() => setShowDraftModal(false)}
+      />
 
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <h1 className="font-bold text-gray-900">
-            {isSandboxMode ? 'Sandbox — Driver Application' : 'Driver Application'}
-          </h1>
-          {!isSandboxMode && isSaving && (
+          <h1 className="font-bold text-gray-900">Driver Application</h1>
+          {isSaving && (
             <span className="flex items-center gap-1 text-xs text-gray-400">
               <Save size={12} className="animate-pulse" />
               Saving...
             </span>
           )}
         </div>
-        {!isSandboxMode && (
-          <button
-            onClick={async () => {
-              await saveDraft();
-              navigate('/driver/dashboard');
-            }}
-            className="text-sm text-gray-500 hover:text-gray-800 font-medium"
-          >
-            Save & Exit
-          </button>
-        )}
+        <button
+          onClick={async () => {
+            await saveDraft();
+            navigate('/driver/dashboard');
+          }}
+          className="text-sm text-gray-500 hover:text-gray-800 font-medium"
+        >
+          Save & Exit
+        </button>
       </div>
-
-      {isSandboxMode && (
-        <div className="bg-amber-50 border-b border-amber-100 px-6 py-2 text-center text-sm text-amber-900">
-          Testing mode — applications are stored under tenant <strong>SANDBOX</strong>. Not visible to real carriers until
-          transferred.
-        </div>
-      )}
 
       <div className="max-w-4xl mx-auto mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <Stepper
@@ -688,13 +408,15 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
           formData={formData}
           updateFormData={handleUpdateFormData}
           onNavigate={handleNavigate}
-          onPartialSubmit={partialSubmit}
+          onPartialSubmit={() => {
+            saveDraft();
+            showSuccess('Draft saved.');
+          }}
           onFinalSubmit={handleFinalSubmit}
           handleFileUpload={handleFileUpload}
           isUploading={isUploading}
           submissionStatus={submissionStatus}
           customQuestions={customQuestions}
-          {...stepperExtra}
         />
       </div>
     </div>

@@ -1,12 +1,12 @@
 import React from 'react';
-import { DriverApplicationWizard } from '@features/driver-app/components/application/DriverApplicationWizard';
-import { SANDBOX_COMPANY_ID } from './sandboxConstants';
+import { PublicApplyHandler } from '@features/driver-app/components/application/PublicApplyHandler';
 
 /**
- * Public sandbox mirror of the guest apply flow: same Stepper + steps as live apply, fixed SANDBOX tenant.
+ * Same implementation as guest `/apply/:slug` — reuses `PublicApplyHandler` so steps,
+ * FMCSA employer autocomplete, submission queue, and uploads always stay in sync.
  */
 export function SandboxApplyHandler() {
-  return <DriverApplicationWizard isSandboxMode companyId={SANDBOX_COMPANY_ID} />;
+  return <PublicApplyHandler sandbox />;
 }
 
 export default SandboxApplyHandler;
