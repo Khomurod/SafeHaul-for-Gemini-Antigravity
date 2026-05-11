@@ -23,14 +23,6 @@ const ALLOWED_MIME_TYPES = [
 exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
     const { companyId, fileName, fileType } = data;
 
-    if (!context.app && !process.env.FUNCTIONS_EMULATOR) {
-        console.error('[getSignedUploadUrl] App Check token missing.');
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            'The function must be called from an App Check verified app. For localhost testing, use a registered App Check debug token.'
-        );
-    }
-
     if (!context.auth) {
         const ip = context.rawRequest?.ip || 'unknown_guest';
         const isAllowed = await checkRateLimit(`upload_guest_${ip}`, 10, 60, 'closed');

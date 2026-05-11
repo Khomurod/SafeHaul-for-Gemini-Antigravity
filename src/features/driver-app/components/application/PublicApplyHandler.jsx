@@ -12,7 +12,6 @@ import { useData } from '@/context/DataContext';
 import { isValidEmail, isValidPhone } from '@shared/utils/validation';
 import * as Sentry from '@sentry/react';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
-import { ensureAppCheckTokenBeforeStorage } from '@lib/firebase/ensureAppCheckToken';
 import { resolveGuestUploadMimeType } from '@shared/utils/guestUploadMime';
 
 // Bulletproof submission imports
@@ -262,12 +261,6 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
         throw new Error('Could not detect file type. Please use PDF, PNG, JPEG, WEBP, or HEIC.');
       }
 
-      // storage.rules require request.appcheck on guest_uploads — warm token before Storage I/O.
-      const acBeforePrepare = await ensureAppCheckTokenBeforeStorage();
-      if (!acBeforePrepare.ok) {
-        console.warn('[PublicApplyHandler] App Check not ready before guest upload:', acBeforePrepare.error);
-      }
-
       const prepareGuestUpload = httpsCallable(functions, 'getSignedUploadUrl');
 
       const { data: { storagePath } } = await prepareGuestUpload({
@@ -282,9 +275,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       }
 
       const fileRef = ref(storage, storagePath);
-      await ensureAppCheckTokenBeforeStorage();
       const snapshot = await uploadBytes(fileRef, file, { contentType: fileType });
-      await ensureAppCheckTokenBeforeStorage();
       const publicUrl = await getDownloadURL(snapshot.ref);
 
       const fileData = { name: file.name, url: publicUrl, storagePath };
@@ -292,14 +283,10 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       return fileData;
     } catch (error) {
       console.error("Upload Error:", error);
-      if (error?.code === 'functions/failed-precondition') {
-        showError("Upload is blocked by App Check. For localhost testing, set VITE_FIREBASE_APPCHECK_DEBUG_TOKEN and register that token in Firebase App Check.");
-      } else if (error?.code === 'functions/resource-exhausted') {
+      if (error?.code === 'functions/resource-exhausted') {
         showError("Too many upload attempts. Please wait a moment and try again.");
       } else if (error?.code === 'storage/unauthorized') {
-        showError(
-          'Upload was denied by Firebase Storage (usually App Check). Refresh and try again. If it persists, confirm this domain is registered in Firebase App Check, production builds include VITE_RECAPTCHA_ENTERPRISE_SITE_KEY, and App Check enforcement for Cloud Storage matches your Functions settings.',
-        );
+        showError("Upload was denied by Firebase Storage. Please refresh and try again.");
       } else {
         showError("Upload failed. Please try again.");
       }

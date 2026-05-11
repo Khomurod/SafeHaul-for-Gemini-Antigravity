@@ -86,15 +86,13 @@ describe('submitGuestApplication', () => {
     rawRequest: { ip: '203.0.113.1' },
   };
 
-  it('rejects when App Check is missing outside emulator', async () => {
-    await expect(submitGuestApplication(validPayload, { ...ctxBase, app: undefined })).rejects.toMatchObject({
-      code: 'failed-precondition',
-    });
-    expect(companyTenant.assertCompanyAcceptingIntake).not.toHaveBeenCalled();
+  it('allows submission when App Check is missing', async () => {
+    const res = await submitGuestApplication(validPayload, { ...ctxBase, app: undefined });
+    expect(res.success).toBe(true);
+    expect(companyTenant.assertCompanyAcceptingIntake).toHaveBeenCalledWith(expect.anything(), 'co1');
   });
 
   it('calls assertCompanyAcceptingIntake before writing', async () => {
-    process.env.FUNCTIONS_EMULATOR = 'true';
     await submitGuestApplication(validPayload, { ...ctxBase, app: undefined });
     expect(companyTenant.assertCompanyAcceptingIntake).toHaveBeenCalledWith(expect.anything(), 'co1');
     expect(mockCreate).toHaveBeenCalled();

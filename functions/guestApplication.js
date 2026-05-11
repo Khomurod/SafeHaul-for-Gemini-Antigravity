@@ -69,12 +69,6 @@ exports.submitGuestApplication = functions
     .runWith({ memory: '256MB', timeoutSeconds: 30 })
     .https.onCall(async (data, context) => {
         const hasAppCheck = !!context.app;
-        if (!hasAppCheck && !process.env.FUNCTIONS_EMULATOR) {
-            throw new functions.https.HttpsError(
-                'failed-precondition',
-                'The function must be called from an App Check verified app.'
-            );
-        }
 
         const { checkRateLimit } = require('./shared/rateLimiter');
         const clientIp = context.rawRequest?.ip || 'unknown';
