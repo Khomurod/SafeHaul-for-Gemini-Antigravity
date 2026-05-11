@@ -184,7 +184,14 @@ export function mapFmcsaRowToEmployerFields(row, statesAllowlist = []) {
   } else if (allow.includes(rawState)) {
     state = rawState;
   }
-  return { companyName, dotNumber, address, city, state };
+
+  const pickStr = (v) =>
+    v === undefined || v === null ? '' : String(v).trim();
+  const phoneRaw = row?.phone ?? row?.telephone ?? row?.cell_phone ?? '';
+  const phone = pickStr(phoneRaw);
+  const companyEmail = pickStr(row?.email_address ?? row?.email ?? '');
+
+  return { companyName, dotNumber, address, city, state, phone, companyEmail };
 }
 
 /**

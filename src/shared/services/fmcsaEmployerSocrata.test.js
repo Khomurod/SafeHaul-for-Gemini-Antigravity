@@ -124,6 +124,8 @@ describe('fmcsaEmployerSocrata', () => {
         phy_street: '1 Main St',
         phy_city: 'Dallas',
         phy_state: 'TX',
+        phone: '214-555-0100',
+        email_address: 'dispatch@acme.com',
       },
       ['TX'],
     );
@@ -133,6 +135,8 @@ describe('fmcsaEmployerSocrata', () => {
       address: '1 Main St',
       city: 'Dallas',
       state: 'TX',
+      phone: '214-555-0100',
+      companyEmail: 'dispatch@acme.com',
     });
   });
 
@@ -150,6 +154,25 @@ describe('fmcsaEmployerSocrata', () => {
     expect(m.state).toBe('Missouri');
     expect(m.city).toBe('St Charles');
     expect(m.companyName).toBe('STL TRUCKERS LLC');
+    expect(m.phone).toBe('');
+    expect(m.companyEmail).toBe('');
+  });
+
+  it('mapFmcsaRowToEmployerFields picks cell_phone and legacy email when primary fields missing', () => {
+    const m = mapFmcsaRowToEmployerFields(
+      {
+        legal_name: 'X',
+        dot_number: '1',
+        phy_street: '',
+        phy_city: '',
+        phy_state: '',
+        cell_phone: '  8001112222  ',
+        email: 'legacy@x.com',
+      },
+      [],
+    );
+    expect(m.phone).toBe('8001112222');
+    expect(m.companyEmail).toBe('legacy@x.com');
   });
 
   describe('fetchFmcsaEmployerSuggestions', () => {

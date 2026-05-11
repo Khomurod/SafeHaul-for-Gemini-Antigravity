@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { FMCSA_SELECT_EXTENDED } from '@shared/services/fmcsaEmployerSocrata';
 import EmployerNameAutocomplete from './EmployerNameAutocomplete';
 
 function ControlledEmployerNameAutocomplete(props) {
@@ -54,6 +55,8 @@ describe('EmployerNameAutocomplete', () => {
               phy_street: '100 Road',
               phy_city: 'Austin',
               phy_state: 'TX',
+              phone: '512-555-0100',
+              email_address: 'fleet@testcarrier.com',
             },
           ]),
       }),
@@ -78,8 +81,10 @@ describe('EmployerNameAutocomplete', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0];
+    const [reqUrl, init] = fetchMock.mock.calls[0];
     expect(init.headers['X-App-Token']).toBe('test-app-token');
+    const decodedUrl = decodeURIComponent(String(reqUrl)).replace(/\+/g, ' ');
+    expect(decodedUrl).toContain(`$select=${FMCSA_SELECT_EXTENDED}`);
 
     const pick = await screen.findByRole('option', { name: /Test Carrier LLC/i });
     fireEvent.click(pick);
@@ -91,6 +96,8 @@ describe('EmployerNameAutocomplete', () => {
         ['address', '100 Road'],
         ['city', 'Austin'],
         ['state', 'TX'],
+        ['phone', '512-555-0100'],
+        ['companyEmail', 'fleet@testcarrier.com'],
       ]),
     );
   });

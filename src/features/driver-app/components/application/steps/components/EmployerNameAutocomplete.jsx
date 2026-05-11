@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
+  FMCSA_SELECT_EXTENDED,
   fetchFmcsaEmployerSuggestions,
   mapFmcsaRowToEmployerFields,
 } from '@shared/services/fmcsaEmployerSocrata';
@@ -43,6 +44,7 @@ export default function EmployerNameAutocomplete({
         const rows = await fetchFmcsaEmployerSuggestions(prefix, {
           signal: controller.signal,
           appToken: token,
+          selectFields: FMCSA_SELECT_EXTENDED,
         });
         if (gen !== fetchGenerationRef.current) return;
         setItems(rows);
@@ -89,6 +91,8 @@ export default function EmployerNameAutocomplete({
       onChange('address', m.address);
       onChange('city', m.city);
       if (m.state) onChange('state', m.state);
+      if (m.phone) onChange('phone', m.phone);
+      if (m.companyEmail) onChange('companyEmail', m.companyEmail);
       setOpen(false);
       setItems([]);
       setHighlightIndex(-1);
