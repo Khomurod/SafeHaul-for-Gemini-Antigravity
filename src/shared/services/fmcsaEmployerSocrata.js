@@ -33,6 +33,11 @@ const FULL_STATE_NAME_TO_ABBR = Object.fromEntries(
   US_STATE_FULL_NAMES.map((name, i) => [name, US_STATE_ABBRS[i]]),
 );
 
+/** FMCSA `phy_state` is usually a 2-letter code; employment `<select>` values use full state names. */
+const FMCSA_ABBR_TO_FULL_STATE_NAME = Object.fromEntries(
+  US_STATE_ABBRS.map((abbr, i) => [abbr, US_STATE_FULL_NAMES[i]]),
+);
+
 /**
  * Normalize driver employment `state` (full name or 2-letter) to FMCSA `phy_state` code.
  * @param {unknown} raw — e.g. "Illinois", "IL", or ""
@@ -165,9 +170,18 @@ export function mapFmcsaRowToEmployerFields(row, statesAllowlist = []) {
   const city = String(row?.phy_city ?? '').trim();
   const rawState = String(row?.phy_state ?? '').trim().toUpperCase();
   let state = '';
+  const allow = Array.isArray(statesAllowlist) ? statesAllowlist : [];
+
   if (/^[A-Z]{2}$/.test(rawState)) {
-    state = rawState;
-  } else if (Array.isArray(statesAllowlist) && statesAllowlist.includes(rawState)) {
+    const fullName = FMCSA_ABBR_TO_FULL_STATE_NAME[rawState] || '';
+    if (fullName && (allow.length === 0 || allow.includes(fullName))) {
+      state = fullName;
+    } else if (allow.includes(rawState)) {
+      state = rawState;
+    } else if (allow.length === 0) {
+      state = rawState;
+    }
+  } else if (allow.includes(rawState)) {
     state = rawState;
   }
   return { companyName, dotNumber, address, city, state };

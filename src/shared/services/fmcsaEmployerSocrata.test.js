@@ -136,6 +136,22 @@ describe('fmcsaEmployerSocrata', () => {
     });
   });
 
+  it('mapFmcsaRowToEmployerFields maps phy_state abbr to full name when allowlist uses full names', () => {
+    const m = mapFmcsaRowToEmployerFields(
+      {
+        dot_number: 2523551,
+        legal_name: 'STL TRUCKERS LLC',
+        phy_street: '100 Industrial Pkwy',
+        phy_city: 'St Charles',
+        phy_state: 'MO',
+      },
+      ['Missouri', 'Texas'],
+    );
+    expect(m.state).toBe('Missouri');
+    expect(m.city).toBe('St Charles');
+    expect(m.companyName).toBe('STL TRUCKERS LLC');
+  });
+
   describe('fetchFmcsaEmployerSuggestions', () => {
     beforeEach(() => {
       vi.stubGlobal(

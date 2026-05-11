@@ -182,8 +182,10 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   }, [currentUser, formData, currentStep, targetCompanyId]);
 
   const handleUpdateFormData = (name, value) => {
-    const newData = { ...formData, [name]: value };
-    setFormData(newData);
+    setFormData((prev) => ({
+      ...prev,
+      [name]: typeof value === 'function' ? value(prev[name]) : value,
+    }));
   };
 
   const handleNavigate = (direction) => {

@@ -7,24 +7,34 @@ const DynamicRow = ({ listKey, formData, updateFormData, renderRow, initialItemS
         return Array.isArray(data) ? data : [];
     }, [formData, listKey]);
 
+    // Functional updates avoid stale `list` when children fire several onChange calls in one tick
+    // (e.g. FMCSA employer pick applies companyName, dotNumber, address, city, state in sequence).
     const handleChange = useCallback((index, fieldName, value) => {
-        const newList = [...list];
-        newList[index] = {
-            ...newList[index],
-            [fieldName]: value,
-        };
-        updateFormData(listKey, newList);
-    }, [list, updateFormData, listKey]);
+        updateFormData(listKey, (currentList) => {
+            const base = Array.isArray(currentList) ? currentList : [];
+            const newList = [...base];
+            newList[index] = {
+                ...newList[index],
+                [fieldName]: value,
+            };
+            return newList;
+        });
+    }, [updateFormData, listKey]);
 
     const handleDelete = useCallback((index) => {
-        const newList = list.filter((_, i) => i !== index);
-        updateFormData(listKey, newList);
-    }, [list, updateFormData, listKey]);
+        updateFormData(listKey, (currentList) => {
+            const base = Array.isArray(currentList) ? currentList : [];
+            return base.filter((_, i) => i !== index);
+        });
+    }, [updateFormData, listKey]);
 
     const handleAdd = useCallback(() => {
         const newItem = { ...initialItemState, id: Date.now() }; // Add unique ID for React keys
-        updateFormData(listKey, [...list, newItem]);
-    }, [list, updateFormData, listKey, initialItemState]);
+        updateFormData(listKey, (currentList) => {
+            const base = Array.isArray(currentList) ? currentList : [];
+            return [...base, newItem];
+        });
+    }, [updateFormData, listKey, initialItemState]);
 
     return (
         <div className="space-y-4">

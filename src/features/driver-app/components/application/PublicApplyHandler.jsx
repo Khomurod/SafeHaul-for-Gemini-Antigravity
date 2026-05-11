@@ -208,7 +208,10 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
 
   // 2. Form Handlers
   const handleUpdateFormData = (name, value) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [name]: typeof value === 'function' ? value(prev[name]) : value,
+    }));
   };
 
   const handleNavigate = (direction) => {
