@@ -28,8 +28,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef(null);
   const lastFormDataRef = useRef({});
+  const formDataRef = useRef(formData);
+  const currentStepRef = useRef(currentStep);
 
   const isSubmitting = useRef(false);
+
+  formDataRef.current = formData;
+  currentStepRef.current = currentStep;
 
   const { schema } = useApplicationSchema(targetCompanyId);
   const customQuestions =
@@ -126,15 +131,16 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       setIsSaving(true);
       try {
         const mergedData = {
-          ...formData,
+          ...formDataRef.current,
           ...newData,
-          lastStep: currentStep,
+          lastStep: currentStepRef.current,
           updatedAt: serverTimestamp(),
           lastSavedAt: new Date().toISOString(),
           companyId: targetCompanyId,
         };
         setFormData(mergedData);
         lastFormDataRef.current = mergedData;
+        formDataRef.current = mergedData;
 
         const { ssn: _ssn, signature: _sig, ...draftPayload } = mergedData;
 
@@ -147,7 +153,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
         setIsSaving(false);
       }
     },
-    [currentUser, formData, currentStep, targetCompanyId],
+    [currentUser, targetCompanyId],
   );
 
   useEffect(() => {
@@ -171,15 +177,22 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   }, [formData, currentUser, loading, saveDraft]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (currentUser && Object.keys(formData).length > 0 && targetCompanyId && !isSubmitting.current) {
-        console.log('[DriverApplicationWizard] Page unload - draft check');
+    const flushDraftOnHide = () => {
+      if (document.visibilityState !== 'hidden') return;
+      if (!currentUser || !targetCompanyId || isSubmitting.current) return;
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
       }
+      const fd = formDataRef.current;
+      if (Object.keys(fd).length === 0) return;
+      if (JSON.stringify(fd) === JSON.stringify(lastFormDataRef.current)) return;
+      void saveDraft();
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentUser, formData, currentStep, targetCompanyId]);
+    document.addEventListener('visibilitychange', flushDraftOnHide);
+    return () => document.removeEventListener('visibilitychange', flushDraftOnHide);
+  }, [currentUser, targetCompanyId, saveDraft]);
 
   const handleUpdateFormData = (name, value) => {
     setFormData((prev) => ({
@@ -226,8 +239,10 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
     schema.sections.forEach((section) => {
       section.fields.forEach((field) => {
-        if (field.required && !formData[field.id]) {
-          if (formData[field.id] !== 0 && formData[field.id] !== false) {
+        const fieldKey = field.key ?? field.id;
+        if (!fieldKey) return;
+        if (field.required && !formData[fieldKey]) {
+          if (formData[fieldKey] !== 0 && formData[fieldKey] !== false) {
             missing.push(field.label);
           }
         }
@@ -235,7 +250,9 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     });
 
     customQuestions.forEach((q) => {
-      if (q.required && !formData[q.id]) {
+      const qKey = q.key ?? q.id;
+      if (!qKey) return;
+      if (q.required && !formData[qKey]) {
         missing.push(q.label || q.question);
       }
     });
@@ -325,6 +342,48 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-600" size={40} />
+      </div>
+    );
+  }
+
+  if (!targetCompanyId) {
+    if (isOpen) {
+      return (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-8 text-center border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Company not selected</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              This application must be tied to a carrier. Open apply from a job post or link that includes the company, then try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof onClose === 'function') onClose();
+                else navigate('/driver/dashboard');
+              }}
+              className="w-full py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white max-w-md w-full rounded-2xl shadow-lg border border-gray-200 p-8 text-center">
+          <h1 className="text-xl font-bold text-gray-900 mb-2">No company for this application</h1>
+          <p className="text-gray-600 text-sm mb-6">
+            Use <span className="font-mono text-xs bg-gray-100 px-1 rounded">/driver/apply/&lt;companyId&gt;</span>, apply from the job board, or start from a recruiter link so a carrier is selected.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/driver/dashboard')}
+            className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+          >
+            Back to dashboard
+          </button>
+        </div>
       </div>
     );
   }

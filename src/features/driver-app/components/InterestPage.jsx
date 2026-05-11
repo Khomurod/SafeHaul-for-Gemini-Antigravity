@@ -73,9 +73,13 @@ export function InterestPage() {
             });
             showSuccess("Interest confirmed! Redirecting to application...");
 
-            // Redirect to Full Application after 1.5s
+            // Redirect to Full Application after 1.5s (omit undefined query parts)
             setTimeout(() => {
-                navigate(`/apply/${slug}?r=${recruiterCode}&prefill=${leadId}`);
+                const params = new URLSearchParams();
+                if (recruiterCode) params.set('r', recruiterCode);
+                if (leadId) params.set('prefill', leadId);
+                const qs = params.toString();
+                navigate(qs ? `/apply/${slug}?${qs}` : `/apply/${slug}`);
             }, 1500);
 
         } catch (err) {

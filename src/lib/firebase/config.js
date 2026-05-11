@@ -70,8 +70,11 @@ if (useDebugAppCheck && typeof self !== 'undefined') {
   self.FIREBASE_APPCHECK_DEBUG_TOKEN = appCheckDebugToken === 'true' ? true : appCheckDebugToken;
 }
 
+/** Set when App Check is active — used to refresh tokens before guest Storage uploads (see ensureAppCheckToken). */
+export let appCheckService = null;
+
 if (recaptchaSiteKey && (!isLocalhost || useDebugAppCheck)) {
-  initializeAppCheck(app, {
+  appCheckService = initializeAppCheck(app, {
     provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
     isTokenAutoRefreshEnabled: true
   });

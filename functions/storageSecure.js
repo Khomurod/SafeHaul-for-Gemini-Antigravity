@@ -8,7 +8,10 @@ const ALLOWED_MIME_TYPES = [
     'application/pdf',
     'image/png',
     'image/jpeg',
-    'image/jpg'
+    'image/jpg',
+    'image/webp',
+    'image/heic',
+    'image/heif',
 ];
 
 /**
