@@ -24,6 +24,8 @@
  *   GITHUB_PUSH_BEFORE / GITHUB_SHA — set by CI on push
  *   DEPLOY_FUNCTIONS_FORCE_FULL=1 — explicit full deploy (sequential script)
  *   DEPLOY_FUNCTIONS_DRY_RUN=1 — print the deploy plan and exit (no firebase invocation)
+ *   DEPLOY_FUNCTIONS_ALWAYS_INCLUDE=parseCdlWithGroq,otherFn — force-include
+ *     one or more export names in the final targeted deploy plan.
  *   --dry-run CLI flag — same as DEPLOY_FUNCTIONS_DRY_RUN=1
  */
 
@@ -40,6 +42,14 @@ const indexPath = join(functionsDir, 'index.js');
 const dryRun =
   process.env.DEPLOY_FUNCTIONS_DRY_RUN === '1' || process.argv.includes('--dry-run');
 const projectId = process.env.FIREBASE_PROJECT_ID;
+
+function parseAlwaysInclude() {
+  const raw = process.env.DEPLOY_FUNCTIONS_ALWAYS_INCLUDE || '';
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 /**
  * Normalize require('./foo') to a repo-relative path under functions/.
@@ -401,8 +411,19 @@ function main() {
     continue;
   }
 
-  const names = [...toDeploy].sort((a, b) => a.localeCompare(b));
-  if (names.length === 0) {
+  const alwaysInclude = parseAlwaysInclude();
+  const unknownAlwaysInclude = alwaysInclude.filter((name) => !exportToFile.has(name));
+  if (unknownAlwaysInclude.length > 0) {
+    console.error(
+      `[incremental] Unknown function export(s) in DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: ${unknownAlwaysInclude.join(', ')}`
+    );
+    process.exit(1);
+  }
+  for (const name of alwaysInclude) {
+    toDeploy.add(name);
+  }
+  const finalNames = [...toDeploy].sort((a, b) => a.localeCompare(b));
+  if (finalNames.length === 0) {
     if (skippedOrphans.length > 0) {
       console.warn(`[incremental] Skipped ${skippedOrphans.length} orphan runtime file(s).`);
     }
@@ -410,14 +431,17 @@ function main() {
     return;
   }
 
-  console.log(`[incremental] Deploying ${names.length} function(s): ${names.join(', ')}`);
+  if (alwaysInclude.length > 0) {
+    console.log(`[incremental] Force-including ${alwaysInclude.length} function(s): ${alwaysInclude.join(', ')}`);
+  }
+  console.log(`[incremental] Deploying ${finalNames.length} function(s): ${finalNames.join(', ')}`);
 
   if (dryRun) {
     console.log('[incremental] DRY RUN — skipping firebase invocation.');
     return;
   }
 
-  const only = names.map((n) => `functions:${n}`).join(',');
+  const only = finalNames.map((n) => `functions:${n}`).join(',');
   const r = spawnSync(
     'npx',
     ['firebase', 'deploy', '--only', only, '--project', projectId, '--non-interactive'],

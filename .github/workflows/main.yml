@@ -253,6 +253,7 @@ jobs:
           GITHUB_PUSH_BEFORE: ${{ github.event.before }}
           GITHUB_SHA: ${{ github.sha }}
           DEPLOY_FUNCTIONS_SLEEP_SEC: '0'
+          DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: parseCdlWithGroq
         run: |
           max_attempts=3
           attempt=1
