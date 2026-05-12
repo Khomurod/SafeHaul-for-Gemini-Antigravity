@@ -66,7 +66,7 @@ const parseIsoFromLooseDate = (raw) => {
   const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
 
-  const mdY = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  const mdY = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (mdY) {
     const m = Number(mdY[1]);
     const d = Number(mdY[2]);
