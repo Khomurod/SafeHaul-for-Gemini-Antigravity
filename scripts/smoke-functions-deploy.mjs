@@ -13,6 +13,7 @@ const required = [
   "retryFailedAttempts",
   "submitGuestApplication",
   "getSignedUploadUrl",
+  "parseCdlWithGroq",
 ];
 
 const raw = execSync(

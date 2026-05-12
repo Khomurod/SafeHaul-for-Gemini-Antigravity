@@ -227,12 +227,19 @@ jobs:
       # Inject runtime env vars consumed by Functions code (process.env.*).
       # Repo-level GitHub Secrets are NOT auto-propagated into Firebase runtime;
       # creating functions/.env ensures firebase deploy uploads these vars.
+      #
+      # Use env + printf (not echo "${{ secrets... }}") so shell metacharacters cannot break the file,
+      # and fail fast if the secret is missing in this workflow context (fork PRs, typos, etc.).
       - name: Write Functions runtime env file
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          {
-            echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}"
-            echo "GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct"
-          } > functions/.env
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "::error::secrets.GROQ_API_KEY is empty or not exposed to this job. Fix the secret name, repo Actions permissions, or avoid deploy workflows from contexts without secrets."
+            exit 1
+          fi
+          printf '%s\n' "GROQ_API_KEY=$GROQ_API_KEY" "GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct" > functions/.env
+          node -e "const fs=require('fs');const t=fs.readFileSync('functions/.env','utf8');const m=t.match(/^GROQ_API_KEY=(.+)$/m);const v=m&&m[1]||'';if(v.length<8){console.error('GROQ_API_KEY in functions/.env is too short');process.exit(1)}console.log('functions/.env: GROQ_API_KEY present (length '+v.length+')');"
 
       # Legacy trigger removed from driverSync.js — Cloud still had it; deploy --non-interactive refuses to delete without confirmation.
       # Safe to ignore failure once the function is already gone (continue-on-error).
