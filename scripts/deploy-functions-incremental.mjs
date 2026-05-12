@@ -24,8 +24,10 @@
  *   GITHUB_PUSH_BEFORE / GITHUB_SHA — set by CI on push
  *   DEPLOY_FUNCTIONS_FORCE_FULL=1 — explicit full deploy (sequential script)
  *   DEPLOY_FUNCTIONS_DRY_RUN=1 — print the deploy plan and exit (no firebase invocation)
- *   DEPLOY_FUNCTIONS_ALWAYS_INCLUDE=parseCdlWithGroq,otherFn — force-include
- *     one or more export names in the final targeted deploy plan.
+ *   DEPLOY_FUNCTIONS_ALWAYS_INCLUDE=parseCdlWithGroq,otherFn — always merge these
+ *     exports into the deploy plan. If the git diff has no changed runtime .js files
+ *     under functions/ (e.g. only workflow or docs changed) but this env is set, we still deploy these
+ *     functions so CI-written secrets (functions/.env) reach runtime.
  *   --dry-run CLI flag — same as DEPLOY_FUNCTIONS_DRY_RUN=1
  */
 
@@ -344,8 +346,43 @@ function main() {
 
   const productionChanges = filterProductionFunctionPaths(changedFiles);
 
+  const alwaysInclude = parseAlwaysInclude();
+  const unknownAlwaysInclude = alwaysInclude.filter((name) => !exportToFile.has(name));
+  if (unknownAlwaysInclude.length > 0) {
+    console.error(
+      `[incremental] Unknown function export(s) in DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: ${unknownAlwaysInclude.join(', ')}`
+    );
+    process.exit(1);
+  }
+
   if (productionChanges.length === 0) {
-    console.log('[incremental] No runtime JS changes under functions/** — skipping deploy.');
+    if (alwaysInclude.length === 0) {
+      console.log('[incremental] No runtime JS changes under functions/** — skipping deploy.');
+      return;
+    }
+    console.log(
+      '[incremental] No runtime JS changes under functions/**; deploying DEPLOY_FUNCTIONS_ALWAYS_INCLUDE only (pins env/config to listed exports).'
+    );
+    const finalNames = [...alwaysInclude].sort((a, b) => a.localeCompare(b));
+    console.log(`[incremental] Deploying ${finalNames.length} function(s): ${finalNames.join(', ')}`);
+    if (dryRun) {
+      console.log('[incremental] DRY RUN — skipping firebase invocation.');
+      return;
+    }
+    const only = finalNames.map((n) => `functions:${n}`).join(',');
+    const r = spawnSync(
+      'npx',
+      ['firebase', 'deploy', '--only', only, '--project', projectId, '--non-interactive'],
+      {
+        cwd: repoRoot,
+        stdio: 'inherit',
+        env: process.env,
+        shell: process.platform === 'win32',
+      }
+    );
+    if (r.status !== 0) {
+      process.exit(r.status ?? 1);
+    }
     return;
   }
 
@@ -411,14 +448,6 @@ function main() {
     continue;
   }
 
-  const alwaysInclude = parseAlwaysInclude();
-  const unknownAlwaysInclude = alwaysInclude.filter((name) => !exportToFile.has(name));
-  if (unknownAlwaysInclude.length > 0) {
-    console.error(
-      `[incremental] Unknown function export(s) in DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: ${unknownAlwaysInclude.join(', ')}`
-    );
-    process.exit(1);
-  }
   for (const name of alwaysInclude) {
     toDeploy.add(name);
   }
