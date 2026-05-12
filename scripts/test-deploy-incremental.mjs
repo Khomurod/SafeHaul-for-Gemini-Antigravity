@@ -10,13 +10,13 @@
  *   2. Closure walker on a known nested chain.
  *   3. fileToEntrypoints includes the schemaConfig.js → systemIntegrity.js edge
  *      that was missing from the deploy plan in production.
- *   4. mustDeployAll trips on shared/, firebaseAdmin.js, package.json, firebase.json.
+ *   4. Strict runtime filter only includes deployable JS sources.
  *   5. resolveRelativeRequire refuses to escape functions/.
  *   6. Simulating today's commit produces a small, correct deploy plan.
  *   7. Touching ONLY schemaConfig.js produces exactly the systemIntegrity exports.
  *   8. Touching ONLY a deeply nested utils/* file deploys all entrypoints that
  *      actually consume it (no over-deploy, no under-deploy).
- *   9. Touching a file that no entrypoint references → correctly falls back.
+ *   9. Touching a file that no entrypoint references is skipped (no full fallback).
  *  10. Touching functions/test/** is ignored.
  */
 
@@ -29,7 +29,7 @@ import {
   resolveRelativeRequire,
   collectClosure,
   buildFileToEntrypoints,
-  mustDeployAll,
+  filterProductionFunctionPaths,
 } from './deploy-functions-incremental.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -65,19 +65,16 @@ for (const [exp, file] of parsed.exportToFile) {
 }
 const fileToEntries = buildFileToEntrypoints(knownTopLevelFiles);
 
-// Simulator: replicates main()'s dispatch loop on a synthetic file list.
-// Returns { kind: 'partial', exports: string[] } or { kind: 'full', reason }.
+// Simulator: replicates main()'s strict dispatch loop on a synthetic file list.
+// Returns { kind: 'partial', exports: string[], skippedOrphans: string[] }.
 function simulateDeployPlan(changedFiles) {
-  const filtered = changedFiles.filter((f) => !f.startsWith('functions/test/'));
-  const fullReason = mustDeployAll(filtered);
-  if (fullReason) return { kind: 'full', reason: fullReason.reason };
+  const filtered = filterProductionFunctionPaths(changedFiles);
 
   const toDeploy = new Set();
+  const skippedOrphans = [];
   for (const cf of filtered) {
     const n = cf.replace(/\\/g, '/');
-    if (n === 'firebase.json') continue;
     if (n === 'functions/index.js') continue;
-    if (!n.startsWith('functions/')) continue;
 
     if (knownTopLevelFiles.has(n)) {
       (fileToExports.get(n) || []).forEach((e) => toDeploy.add(e));
@@ -100,9 +97,9 @@ function simulateDeployPlan(changedFiles) {
       }
       continue;
     }
-    return { kind: 'full', reason: `orphan ${n}` };
+    skippedOrphans.push(n);
   }
-  return { kind: 'partial', exports: [...toDeploy].sort() };
+  return { kind: 'partial', exports: [...toDeploy].sort(), skippedOrphans: skippedOrphans.sort() };
 }
 
 // ───────── 1. Static parser ─────────
@@ -156,14 +153,23 @@ section('3. schemaConfig.js → systemIntegrity.js attribution (the original bug
   }
 }
 
-// ───────── 4. mustDeployAll triggers ─────────
-section('4. Full-deploy escape hatches');
-assert('shared/foo.js → full',  mustDeployAll(['functions/shared/foo.js'])?.reason?.includes('shared'));
-assert('firebaseAdmin.js → full',  mustDeployAll(['functions/firebaseAdmin.js'])?.reason?.includes('manifest'));
-assert('package.json → full',  mustDeployAll(['functions/package.json'])?.reason?.includes('manifest'));
-assert('package-lock.json → full',  mustDeployAll(['functions/package-lock.json'])?.reason?.includes('manifest'));
-assert('firebase.json → full',  mustDeployAll(['firebase.json'])?.reason?.includes('manifest'));
-assert('benign file does NOT trigger full',  mustDeployAll(['functions/companyAdmin.js']) === null);
+// ───────── 4. Strict runtime filter ─────────
+section('4. Strict runtime filter');
+assertEqual(
+  'non-runtime files are excluded',
+  filterProductionFunctionPaths(['functions/.env.example', 'functions/README.md', 'firebase.json']),
+  []
+);
+assertEqual(
+  'test files are excluded',
+  filterProductionFunctionPaths(['functions/test/unit/guestApplication.test.js']),
+  []
+);
+assertEqual(
+  'runtime JS files are included',
+  filterProductionFunctionPaths(['functions/companyAdmin.js', 'functions/shared/schema.js']).sort(),
+  ['functions/companyAdmin.js', 'functions/shared/schema.js']
+);
 
 // ───────── 5. resolveRelativeRequire safety ─────────
 section('5. resolveRelativeRequire path safety');
@@ -204,9 +210,10 @@ section('6. Simulating the commit that triggered the full deploy');
     'functions/index.js',
   ];
   const plan = simulateDeployPlan(changed);
-  assert(`would be a PARTIAL deploy (got: ${plan.kind})`, plan.kind === 'partial', plan.reason);
+  assert(`would be a PARTIAL deploy (got: ${plan.kind})`, plan.kind === 'partial');
   if (plan.kind === 'partial') {
     console.log(`      → would deploy ${plan.exports.length} function(s): ${plan.exports.slice(0, 12).join(', ')}${plan.exports.length > 12 ? ', …' : ''}`);
+    assertEqual('no orphan skips in this scenario', plan.skippedOrphans, []);
     assert('deploy plan is dramatically smaller than 85 functions', plan.exports.length < 30);
     assert('plan includes a systemIntegrity export (from schemaConfig owner)', plan.exports.includes('syncSystemStructure') || plan.exports.includes('runSecurityAudit'));
     assert('plan includes a bulkActions export', plan.exports.some((e) => /Bulk|backfill|checkImport/i.test(e)));
@@ -218,9 +225,10 @@ section('6. Simulating the commit that triggered the full deploy');
 section('7. Touching ONLY schemaConfig.js');
 {
   const plan = simulateDeployPlan(['functions/schemaConfig.js']);
-  assert('plan is partial', plan.kind === 'partial', plan.reason);
+  assert('plan is partial', plan.kind === 'partial');
   if (plan.kind === 'partial') {
     const expected = (fileToExports.get('functions/systemIntegrity.js') || []).slice().sort();
+    assertEqual('no orphan skips', plan.skippedOrphans, []);
     assertEqual('plan equals exactly the systemIntegrity exports', plan.exports, expected);
   }
 }
@@ -232,9 +240,10 @@ section('8. Touching utils/phoneUtils.js');
     const owners = fileToEntries.get('functions/utils/phoneUtils.js');
     assert('utils/phoneUtils is reachable from ≥1 entrypoint', !!(owners && owners.size > 0));
     const plan = simulateDeployPlan(['functions/utils/phoneUtils.js']);
-    assert('utils/phoneUtils → partial deploy', plan.kind === 'partial', plan.reason);
+    assert('utils/phoneUtils → partial deploy', plan.kind === 'partial');
     if (plan.kind === 'partial') {
       console.log(`      → fans out to ${plan.exports.length} export(s): ${plan.exports.slice(0, 8).join(', ')}${plan.exports.length > 8 ? ', …' : ''}`);
+      assertEqual('no orphan skips', plan.skippedOrphans, []);
       // Sanity: must include at least one bulkActions export, since both
       // batchWorker.js and sessionController.js import it.
       assert('plan includes ≥1 bulk export', plan.exports.length > 0);
@@ -245,20 +254,25 @@ section('8. Touching utils/phoneUtils.js');
 }
 
 // ───────── 9. Orphan file ─────────
-section('9. Touching an orphan file → full deploy fallback');
+section('9. Touching an orphan file is skipped');
 {
   // Fake an unreachable file by referencing one that does not exist in any closure.
-  // README.md is outside functions/ so it'd be filtered out earlier; instead use
-  // a synthetic file that the simulator will see as orphaned.
+  // Use a synthetic .js path so it passes runtime filtering, then gets skipped as orphan.
   const plan = simulateDeployPlan(['functions/__definitely_not_required_anywhere.js']);
-  assert('orphan triggers full deploy', plan.kind === 'full', JSON.stringify(plan));
+  assertEqual('orphan does not trigger full deploy', plan.kind, 'partial');
+  assertEqual('no exports selected from orphan', plan.exports, []);
+  assertEqual(
+    'orphan file is reported as skipped',
+    plan.skippedOrphans,
+    ['functions/__definitely_not_required_anywhere.js']
+  );
 }
 
 // ───────── 10. Test files are ignored ─────────
 section('10. functions/test/** is ignored');
 {
   const plan = simulateDeployPlan(['functions/test/unit/guestApplication.test.js']);
-  assertEqual('test-only diff is a no-op partial', plan, { kind: 'partial', exports: [] });
+  assertEqual('test-only diff is a no-op partial', plan, { kind: 'partial', exports: [], skippedOrphans: [] });
 }
 
 console.log('');

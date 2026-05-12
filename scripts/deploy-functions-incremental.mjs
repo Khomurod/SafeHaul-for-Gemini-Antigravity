@@ -1,26 +1,28 @@
 #!/usr/bin/env node
 /**
- * Deploy only Cloud Functions affected by git changes (when safe).
+ * Deploy only Cloud Functions affected by git changes (strict mode).
  *
  * Rules:
  * - Compares DEPLOY_GIT_BASE..DEPLOY_GIT_HEAD (or GITHUB_PUSH_BEFORE + GITHUB_SHA) under functions/.
  * - Parses functions/index.js to map each export name → primary module file (direct require from index).
  * - functions/index.js: diffs export→module mappings vs base commit; only exports whose wiring or backing
- *   file path changed are redeployed (whitespace-only edits deploy nothing). Parse ambiguity → full deploy.
- * - Full deploy if: package files, firebaseAdmin.js, shared/, firebase.json.
- * - Ignores functions/test/** (tests are not deployed and must not trigger unmapped-file full deploy).
+ *   file path changed are redeployed (whitespace-only edits deploy nothing).
+ * - STRICT TARGETED policy: only deploy changed runtime JS under functions/**. Non-runtime files
+ *   (examples, docs, tests, .env.example, etc.) never trigger full deploy.
+ * - Ignores functions/test/** and non-JS files for deployment targeting.
  * - Directory entrypoints (require('./bulkActions') → bulkActions/index.js) and nested files map to deploy unit.
  * - Transitive `require()` graph: any other changed file is attributed to the union of entrypoints whose
  *   closure references it. Example: editing `functions/schemaConfig.js` (required only by
  *   `functions/systemIntegrity.js`) deploys only the `systemIntegrity` exports, not the whole codebase.
- * - Only when a changed file does not appear in ANY entrypoint's closure do we fall back to full deploy.
+ * - If a changed runtime file does not appear in ANY entrypoint's closure, we log and skip it
+ *   (never auto-full-deploy). Use DEPLOY_FUNCTIONS_FORCE_FULL=1 for manual full deploy.
  * - Otherwise: single `firebase deploy --only functions:a,functions:b,...`
  *
  * Env:
  *   FIREBASE_PROJECT_ID (required for real deploys; not needed for dry-run)
  *   DEPLOY_GIT_BASE / DEPLOY_GIT_HEAD — optional explicit SHAs
  *   GITHUB_PUSH_BEFORE / GITHUB_SHA — set by CI on push
- *   DEPLOY_FUNCTIONS_FORCE_FULL=1 — skip incremental, deploy all (sequential script)
+ *   DEPLOY_FUNCTIONS_FORCE_FULL=1 — explicit full deploy (sequential script)
  *   DEPLOY_FUNCTIONS_DRY_RUN=1 — print the deploy plan and exit (no firebase invocation)
  *   --dry-run CLI flag — same as DEPLOY_FUNCTIONS_DRY_RUN=1
  */
@@ -210,7 +212,7 @@ function gitShow(commitColonPath) {
 function diffExportsFromIndexChange(baseSha) {
   const oldSrc = gitShow(`${baseSha}:functions/index.js`);
   if (oldSrc === null) {
-    console.warn('[incremental] Cannot read functions/index.js at base commit — full deploy');
+    console.warn('[incremental] Cannot read functions/index.js at base commit.');
     return null;
   }
 
@@ -219,7 +221,7 @@ function diffExportsFromIndexChange(baseSha) {
   const newParsed = buildExportToFileFromSource(newSrc);
 
   if (!oldParsed.parseOk || !newParsed.parseOk) {
-    console.warn('[incremental] index.js export parse incomplete (base or head) — full deploy');
+    console.warn('[incremental] index.js export parse incomplete (base or head).');
     return null;
   }
 
@@ -235,7 +237,7 @@ function diffExportsFromIndexChange(baseSha) {
 function getChangedFunctionFiles(base, head) {
   const r = spawnSync(
     'git',
-    ['diff', '--name-only', `${base}..${head}`, '--', 'functions/', 'firebase.json'],
+    ['diff', '--name-only', `${base}..${head}`, '--', 'functions/'],
     { cwd: repoRoot, encoding: 'utf8' }
   );
   if (r.status !== 0) {
@@ -249,32 +251,19 @@ function getChangedFunctionFiles(base, head) {
     .map((p) => normalize(p).replace(/\\/g, '/'));
 }
 
-/** Unit/integration tests are not deployed; ignore them for export mapping (avoids full-deploy fallback). */
-function filterProductionFunctionPaths(changedFiles) {
-  return changedFiles.filter((c) => {
-    const n = c.replace(/\\/g, '/');
-    if (n.startsWith('functions/test/')) return false;
-    return true;
-  });
+function isRuntimeFunctionSource(pathLike) {
+  const n = String(pathLike || '').replace(/\\/g, '/');
+  if (!n.startsWith('functions/')) return false;
+  if (!n.endsWith('.js')) return false;
+  if (n.startsWith('functions/test/')) return false;
+  return true;
 }
 
-function mustDeployAll(changedFiles) {
-  const triggers = [
-    'functions/package.json',
-    'functions/package-lock.json',
-    'functions/firebaseAdmin.js',
-    'firebase.json',
-  ];
-  for (const c of changedFiles) {
-    const n = c.replace(/\\/g, '/');
-    if (triggers.some((t) => n === t || n.endsWith('/' + t.split('/').pop()))) {
-      return { reason: `core manifest ${n}` };
-    }
-    if (n.startsWith('functions/shared/')) {
-      return { reason: 'functions/shared/ (shared code)' };
-    }
-  }
-  return null;
+/** Strict mode: only runtime JS sources participate in deploy targeting. */
+function filterProductionFunctionPaths(changedFiles) {
+  return changedFiles.filter((c) => {
+    return isRuntimeFunctionSource(c);
+  });
 }
 
 function resolveGitRange() {
@@ -310,9 +299,9 @@ function main() {
 
   const { exportToFile, parseOk } = buildExportToFile();
   if (!parseOk) {
-    console.warn('[incremental] Could not map every export in index.js to a module — deploy all (sequential)');
-    runSequentialAll();
-    return;
+    console.error('[incremental] Could not map every export in functions/index.js to a module.');
+    console.error('[incremental] Strict mode refuses automatic full deploy. Fix index.js mapping or set DEPLOY_FUNCTIONS_FORCE_FULL=1.');
+    process.exit(1);
   }
 
   const knownTopLevelFiles = new Set(exportToFile.values());
@@ -329,40 +318,30 @@ function main() {
 
   const { base, head } = resolveGitRange();
   if (!base || !head) {
-    console.log('[incremental] Could not resolve git range → deploy all (sequential)');
-    runSequentialAll();
-    return;
+    console.error('[incremental] Could not resolve git range.');
+    console.error('[incremental] Strict mode refuses automatic full deploy. Set DEPLOY_GIT_BASE/DEPLOY_GIT_HEAD or DEPLOY_FUNCTIONS_FORCE_FULL=1.');
+    process.exit(1);
   }
 
   console.log(`[incremental] Comparing ${base.slice(0, 7)}..${head.slice(0, 7)}`);
 
   const changedFiles = getChangedFunctionFiles(base, head);
   if (changedFiles === null) {
-    console.log('[incremental] git diff failed → deploy all (sequential)');
-    runSequentialAll();
-    return;
+    console.error('[incremental] git diff failed.');
+    console.error('[incremental] Strict mode refuses automatic full deploy. Set DEPLOY_FUNCTIONS_FORCE_FULL=1 if needed.');
+    process.exit(1);
   }
 
   const productionChanges = filterProductionFunctionPaths(changedFiles);
 
   if (productionChanges.length === 0) {
-    console.log('[incremental] No production changes under functions/ or firebase.json (tests-only or empty diff) — skipping deploy.');
+    console.log('[incremental] No runtime JS changes under functions/** — skipping deploy.');
     return;
   }
 
   console.log('[incremental] Changed files:', changedFiles.join(', '));
 
-  const nonIndexProductionChanges = productionChanges.filter((c) => {
-    const n = c.replace(/\\/g, '/');
-    return n !== 'functions/index.js';
-  });
-
-  const fullReason = mustDeployAll(productionChanges);
-  if (fullReason) {
-    console.log(`[incremental] Full deploy: ${fullReason.reason}`);
-    runSequentialAll();
-    return;
-  }
+  const nonIndexProductionChanges = productionChanges.filter((c) => c.replace(/\\/g, '/') !== 'functions/index.js');
 
   const indexChanged = productionChanges.some((c) => c.replace(/\\/g, '/') === 'functions/index.js');
 
@@ -371,8 +350,9 @@ function main() {
   if (indexChanged) {
     const fromIndex = diffExportsFromIndexChange(base);
     if (fromIndex === null) {
-      runSequentialAll();
-      return;
+      console.error('[incremental] Cannot safely diff functions/index.js export wiring.');
+      console.error('[incremental] Strict mode refuses automatic full deploy. Fix index.js parseability or set DEPLOY_FUNCTIONS_FORCE_FULL=1.');
+      process.exit(1);
     }
     fromIndex.forEach((e) => toDeploy.add(e));
     if (fromIndex.size > 0) {
@@ -382,11 +362,9 @@ function main() {
     }
   }
 
+  const skippedOrphans = [];
   for (const cf of nonIndexProductionChanges) {
     const n = cf.replace(/\\/g, '/');
-    if (n === 'firebase.json') continue;
-
-    if (!n.startsWith('functions/')) continue;
 
     if (knownTopLevelFiles.has(n)) {
       const exps = fileToExports.get(n) || [];
@@ -418,14 +396,16 @@ function main() {
       continue;
     }
 
-    console.log(`[incremental] Changed file not reachable from any entrypoint: ${n}`);
-    console.log('[incremental] → full deploy (orphan dependency — safest)');
-    runSequentialAll();
-    return;
+    console.warn(`[incremental] Changed runtime file not reachable from any entrypoint (skipping): ${n}`);
+    skippedOrphans.push(n);
+    continue;
   }
 
   const names = [...toDeploy].sort((a, b) => a.localeCompare(b));
   if (names.length === 0) {
+    if (skippedOrphans.length > 0) {
+      console.warn(`[incremental] Skipped ${skippedOrphans.length} orphan runtime file(s).`);
+    }
     console.log('[incremental] No matching exports — skipping.');
     return;
   }
@@ -487,5 +467,6 @@ export {
   resolveRelativeRequire,
   collectClosure,
   buildFileToEntrypoints,
-  mustDeployAll,
+  isRuntimeFunctionSource,
+  filterProductionFunctionPaths,
 };
