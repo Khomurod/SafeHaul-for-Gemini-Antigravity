@@ -177,7 +177,6 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
                     city: data.city || '',
                     state: data.state || '',
                     source: importMethod === 'gsheet' ? 'Company Import (Sheet)' : 'Company Import (File)',
-                    isPlatformLead: false,
                     isEmailPlaceholder: !!data.isEmailPlaceholder,
                     updatedAt: serverTimestamp()
                 };

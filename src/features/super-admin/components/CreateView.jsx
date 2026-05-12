@@ -83,12 +83,9 @@ export function CreateView({ onDataUpdate, setActiveView }) {
         e.preventDefault();
         setLoading(true);
         try {
-            const calculatedQuota = companyForm.planType === 'paid' ? 200 : 50;
-
             // 1. Create Company Doc
             const newCompanyRef = await createNewCompany({
                 ...companyForm,
-                dailyQuota: calculatedQuota,
                 isActive: true,
                 createdAt: new Date()
             });
@@ -192,11 +189,11 @@ export function CreateView({ onDataUpdate, setActiveView }) {
                             <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
                                 <div onClick={() => setCompanyForm({ ...companyForm, planType: 'free' })} className={`p-4 border-2 rounded-xl cursor-pointer flex items-center gap-3 ${companyForm.planType === 'free' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
                                     <div className="p-2 bg-white rounded-full shadow-sm text-gray-600"><Shield size={20} /></div>
-                                    <div><h3 className="font-bold text-gray-800">Free Plan</h3><p className="text-xs text-gray-500">50 Leads Daily Limit</p></div>
+                                    <div><h3 className="font-bold text-gray-800">Free Plan</h3><p className="text-xs text-gray-500">Standard features</p></div>
                                 </div>
                                 <div onClick={() => setCompanyForm({ ...companyForm, planType: 'paid' })} className={`p-4 border-2 rounded-xl cursor-pointer flex items-center gap-3 ${companyForm.planType === 'paid' ? 'border-yellow-500 bg-yellow-50' : 'border-gray-200'}`}>
                                     <div className="p-2 bg-white rounded-full shadow-sm text-yellow-600"><Crown size={20} /></div>
-                                    <div><h3 className="font-bold text-gray-800">Pro Plan</h3><p className="text-xs text-gray-500">200 Leads Daily Limit</p></div>
+                                    <div><h3 className="font-bold text-gray-800">Pro Plan</h3><p className="text-xs text-gray-500">All premium features</p></div>
                                 </div>
                             </div>
 

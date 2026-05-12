@@ -52,7 +52,6 @@ export const QuickAddLeadPage = () => {
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
                 status: 'New',
-                isPlatformLead: false, // This is a company lead
                 source: 'manual_entry',
                 createdBy: currentUser?.uid || 'unknown',
             };

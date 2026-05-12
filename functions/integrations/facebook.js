@@ -200,7 +200,6 @@ async function processLead(value) {
         phone: '',
         email: '',
         source: 'Facebook Ads',
-        isPlatformLead: false, // It's a company lead
         status: 'New Lead',
         createdAt: admin.firestore.Timestamp.fromDate(new Date(leadData.created_time || Date.now())),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),

@@ -87,7 +87,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
         // Apply .select() to only fetch fields needed for in-memory filtering.
         // This prevents crashes from corrupt Timestamp fields in documents.
-        const fieldsNeeded = ['lastBulkMessageAt', 'lastContactedAt', 'phone', 'phoneNumber'];
+        const fieldsNeeded = ['lastBulkMessageAt', 'lastContactedAt', 'phone', 'phoneNumber', 'email'];
         const selectQueries = queries.map(q => typeof q.select === 'function' ? q.select(...fieldsNeeded) : q);
 
         // Execute all queries to get IDs
@@ -108,6 +108,11 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             const idSet = new Set();
             // Map: leadId -> normalizedPhone (for secondary sms_sent_phones check)
             const idPhoneMap = new Map();
+            // BUG-8 FIX: Email parallel of idPhoneMap, used to cross-check
+            // `email_sent_addresses` so email campaigns honor the same 7-day window
+            // that SMS campaigns already enjoy.
+            const idEmailMap = new Map(); // leadId -> normalizedEmail
+            const isEmailCampaign = (config?.method === 'email');
 
             // Filter Setup
             let excludeThreshold = null;
@@ -169,6 +174,12 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                         // AUDIT FIX #2: Accept E.164 format (+1XXXXXXXXXX = length 12)
                         if (normPhone && normPhone.length >= 10 && normPhone.length <= 12) {
                             idPhoneMap.set(d.id, normPhone);
+                        }
+                        if (isEmailCampaign) {
+                            const normEmail = String(data.email || '').trim().toLowerCase();
+                            if (normEmail && normEmail.includes('@')) {
+                                idEmailMap.set(d.id, normEmail);
+                            }
                         }
                     }
                 });
@@ -235,6 +246,63 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                 }
             }
 
+            // --- BUG-8: Email ledger cross-check (mirrors SMS ledger) ---
+            if (isExcludeActive && isEmailCampaign && idEmailMap.size > 0) {
+                try {
+                    const emailEntries = Array.from(idEmailMap.entries()); // [[leadId, email], ...]
+                    const uniqueEmails = [...new Set(emailEntries.map(e => e[1]))];
+
+                    // Email -> base64 doc id (matches batchWorker encoding)
+                    const encode = (e) => Buffer.from(e, 'utf8').toString('base64')
+                        .replace(/=+$/, '')
+                        .replace(/\//g, '_')
+                        .replace(/\+/g, '-');
+
+                    let emailThresholdTs = null;
+                    if (filters.excludeRecentDays === 'forever') {
+                        emailThresholdTs = null;
+                    } else {
+                        const days = parseInt(filters.excludeRecentDays) || 7;
+                        const thresholdDate = new Date();
+                        thresholdDate.setDate(thresholdDate.getDate() - days);
+                        emailThresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
+                    }
+
+                    const recentEmails = new Set();
+                    for (let i = 0; i < uniqueEmails.length; i += 10) {
+                        const chunk = uniqueEmails.slice(i, i + 10);
+                        const docRefs = chunk.map(e =>
+                            db.collection('companies').doc(companyId)
+                                .collection('email_sent_addresses').doc(encode(e))
+                        );
+                        const snaps = await db.getAll(...docRefs);
+                        snaps.forEach((snap, idx) => {
+                            if (!snap.exists) return;
+                            const data = snap.data();
+                            if (!data.lastSentAt) return;
+                            if (emailThresholdTs === null) {
+                                recentEmails.add(chunk[idx]);
+                            } else if (data.lastSentAt >= emailThresholdTs) {
+                                recentEmails.add(chunk[idx]);
+                            }
+                        });
+                    }
+
+                    if (recentEmails.size > 0) {
+                        let emailsFiltered = 0;
+                        for (const [leadId, email] of emailEntries) {
+                            if (recentEmails.has(email) && idSet.has(leadId)) {
+                                idSet.delete(leadId);
+                                emailsFiltered++;
+                            }
+                        }
+                        console.log(`[initBulkSession] Email ledger filter removed ${emailsFiltered} leads (from email_sent_addresses)`);
+                    }
+                } catch (emailFilterErr) {
+                    console.error('[initBulkSession] email_sent_addresses cross-check error (proceeding without):', emailFilterErr);
+                }
+            }
+
             finalTargetIds = Array.from(idSet);
         } catch (qErr) {
             throw new HttpsError('internal', `Query execution failed: ${qErr.message}`);
@@ -263,6 +331,8 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
 
         // Build phone-to-importId mapping for 7-day filter
         const phoneToIdMap = new Map(); // normalizedPhone -> importId
+        const emailToIdMap = new Map(); // normalizedEmail -> importId (BUG-8)
+        const isEmailCampaignImport = (config?.method === 'email');
 
         for (let i = 0; i < rawItems.length; i++) {
             const item = rawItems[i];
@@ -273,6 +343,12 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             const normPhone = normalizePhone(item.phone || item.phoneNumber || '');
             if (normPhone) {
                 phoneToIdMap.set(normPhone, importId);
+            }
+            if (isEmailCampaignImport) {
+                const normEmail = String(item.email || '').trim().toLowerCase();
+                if (normEmail && normEmail.includes('@')) {
+                    emailToIdMap.set(normEmail, importId);
+                }
             }
 
             const targetRef = sessionRef.collection('targets').doc(importId);
@@ -364,6 +440,68 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                 console.error('[initBulkSession] 7-day phone filter error (proceeding without filter):', filterErr);
             }
         }
+
+        // --- BUG-8: 7-Day Email Filter for Imports (parallels phone path) ---
+        if (excludeRecentImport && isEmailCampaignImport && emailToIdMap.size > 0) {
+            try {
+                const thresholdDate = new Date();
+                if (!excludeForever) {
+                    const days = parseInt(filters.excludeRecentDays) || 7;
+                    thresholdDate.setDate(thresholdDate.getDate() - days);
+                } else {
+                    thresholdDate.setTime(0);
+                }
+                const thresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
+
+                const emails = Array.from(emailToIdMap.keys());
+                const encode = (e) => Buffer.from(e, 'utf8').toString('base64')
+                    .replace(/=+$/, '')
+                    .replace(/\//g, '_')
+                    .replace(/\+/g, '-');
+                const recentEmails = new Set();
+
+                for (let i = 0; i < emails.length; i += 10) {
+                    const chunk = emails.slice(i, i + 10);
+                    const docRefs = chunk.map(e =>
+                        db.collection('companies').doc(companyId)
+                            .collection('email_sent_addresses').doc(encode(e))
+                    );
+                    const snapshots = await db.getAll(...docRefs);
+                    snapshots.forEach((snap, idx) => {
+                        if (!snap.exists) return;
+                        const data = snap.data();
+                        if (data.lastSentAt && data.lastSentAt >= thresholdTs) {
+                            recentEmails.add(chunk[idx]);
+                        }
+                    });
+                }
+
+                if (recentEmails.size > 0) {
+                    const idsToRemove = new Set();
+                    recentEmails.forEach(email => {
+                        const importId = emailToIdMap.get(email);
+                        if (importId) idsToRemove.add(importId);
+                    });
+                    finalTargetIds = finalTargetIds.filter(id => !idsToRemove.has(id));
+                    importFilteredCount += idsToRemove.size;
+
+                    const cleanupBatch = db.batch();
+                    let cleanupCount = 0;
+                    idsToRemove.forEach(id => {
+                        cleanupBatch.delete(sessionRef.collection('targets').doc(id));
+                        cleanupCount++;
+                    });
+                    if (cleanupCount > 0) {
+                        cleanupBatch.commit().catch(e =>
+                            console.error('Failed to cleanup email-filtered target docs:', e)
+                        );
+                    }
+                    console.log(`[initBulkSession] 7-day filter removed ${idsToRemove.size} recently-messaged emails from import`);
+                }
+            } catch (emailFilterErr) {
+                console.error('[initBulkSession] 7-day email filter error (proceeding without filter):', emailFilterErr);
+            }
+        }
     }
 
     // Validate count again after import processing
@@ -450,12 +588,27 @@ const updateSessionStatus = async (request, status) => {
     }
     await sessionRef.update(updatePayload);
 
-    // If resuming, kick off worker again
+    // If resuming, kick off worker again.
+    // P2 HARDENING: Defensive reads — older/failed sessions may be missing
+    // `progress` or `targetIds`. Crashing here means a recruiter clicks Resume
+    // and sees an opaque INTERNAL error with no recovery path.
     if (status === 'active') {
         const snap = await sessionRef.get();
-        const sessionData = snap.data();
-        // Check if completed
-        if (sessionData.progress.currentPointer < sessionData.targetIds.length) {
+        if (!snap.exists) {
+            throw new HttpsError('not-found', 'Session not found.');
+        }
+        const sessionData = snap.data() || {};
+        const pointer = sessionData.progress?.currentPointer ?? 0;
+        const total = Array.isArray(sessionData.targetIds) ? sessionData.targetIds.length : 0;
+        if (total === 0) {
+            // Already-empty target list — mark as completed instead of busy-looping a worker.
+            await sessionRef.update({
+                status: 'completed',
+                completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            return { success: true, message: 'No remaining targets — session marked complete.' };
+        }
+        if (pointer < total) {
             await enqueueWorker(companyId, sessionId, 1, sessionData.workerGeneration);
         }
     }

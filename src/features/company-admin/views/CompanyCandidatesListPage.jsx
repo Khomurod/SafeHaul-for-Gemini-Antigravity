@@ -46,7 +46,7 @@ const getOutcomePillStyle = (outcome) => {
 
 // ── Format Firestore timestamp to MM/DD/YYYY ──
 const formatAddedDate = (item) => {
-    const ts = item.submittedAt || item.createdAt || item.distributedAt;
+    const ts = item.submittedAt || item.createdAt;
     if (!ts) return null;
     try {
         const date = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
@@ -136,8 +136,8 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                     aVal = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase();
                     bVal = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase();
                 } else if (sortConfig.key === 'date') {
-                    aVal = a.isPlatformLead ? a.distributedAt?.seconds : (a.submittedAt?.seconds || a.createdAt?.seconds);
-                    bVal = b.isPlatformLead ? b.distributedAt?.seconds : (b.submittedAt?.seconds || b.createdAt?.seconds);
+                    aVal = a.submittedAt?.seconds || a.createdAt?.seconds || 0;
+                    bVal = b.submittedAt?.seconds || b.createdAt?.seconds || 0;
                 } else {
                     aVal = a[sortConfig.key];
                     bVal = b[sortConfig.key];
@@ -267,8 +267,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
             },
         ];
 
-        // Status — hidden for SafeHaul Leads
-
+        // Status pill
         cols.push({
             key: 'status',
             header: 'Status',

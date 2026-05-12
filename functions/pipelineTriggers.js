@@ -1,12 +1,11 @@
 // functions/pipelineTriggers.js
 // Firestore onWrite trigger for the hiring pipeline tracker.
-// Handles: CST timestamp formatting, audit trail, statusChangedAt stamping.
+// Handles: CST timestamp formatting, audit trail, statusChangedAt stamping,
+// AND syncing hiringStage back into the linked applications/leads document so
+// the Company Admin candidates list and Hired counter stay in lockstep.
 
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-
-// Note: This trigger does NOT need a Firestore client instance.
-// It uses event.data.after.ref.update() to write back to the same document,
-// and only needs FieldValue for serverTimestamp().
+const { db } = require("./firebaseAdmin");
 
 // --- Helper: Format current time to CST display string ---
 // Returns: "Mon, 10:45 AM"
@@ -43,6 +42,87 @@ const SERVER_MANAGED_FIELDS = new Set([
     'comments', // H2 FIX: Audit trail comments are server-written
 ]);
 
+// Map pipeline hiringStage -> ATS status used on applications/leads docs.
+// Anything outside this map is left untouched on the source record.
+const STAGE_TO_STATUS = {
+    in_process: 'In Process',
+    on_hold: 'Hold',
+    hired: 'Hired',
+    rejected: 'Rejected',
+};
+
+function normalizePhone(phone) {
+    return String(phone || '').replace(/\D/g, '');
+}
+
+/**
+ * Resolve which application or lead document a pipeline entry refers to.
+ *
+ * Resolution order:
+ *  1. Explicit `linkedAppId` + `linkedAppCollection` fields written by the
+ *     "Add to Pipeline" button on the candidates list / dossier.
+ *  2. Best-effort phone-number match against `applications` first, then
+ *     `leads` (backwards-compat for entries created via the bare
+ *     "Add Driver" button on the pipeline sheet).
+ */
+async function findSourceDoc(companyId, entry) {
+    // P2 HARDENING: Always prefer the explicit link. The dossier "Add to
+    // Pipeline" button writes `linkedAppId` + `linkedAppCollection`, which is
+    // unambiguous. We ONLY fall back to phone lookup for legacy/manual rows.
+    if (entry.linkedAppId && entry.linkedAppCollection) {
+        const ref = db
+            .collection('companies').doc(companyId)
+            .collection(entry.linkedAppCollection).doc(entry.linkedAppId);
+        const snap = await ref.get();
+        if (snap.exists) return ref;
+        // Explicit link but doc is gone — do NOT silently fall back to phone
+        // matching, that could mirror a status onto the wrong driver.
+        console.warn(
+            `[Pipeline] linkedAppId ${entry.linkedAppId} (${entry.linkedAppCollection}) is missing. Refusing to mirror status to a guessed doc.`
+        );
+        return null;
+    }
+
+    const normalized = normalizePhone(entry.phoneNumber);
+    if (!normalized) return null;
+
+    // P2 HARDENING: Resolve via phone, but require an UNAMBIGUOUS match.
+    // We pull limit(2) — if a second doc shares the phone, we abort the
+    // mirror rather than risk overwriting the wrong driver's status. The
+    // recruiter can promote the row to a linked entry via the dossier button.
+    for (const col of ['applications', 'leads']) {
+        const snap = await db
+            .collection('companies').doc(companyId)
+            .collection(col)
+            .where('phoneNormalized', '==', normalized)
+            .limit(2)
+            .get();
+        if (snap.size === 1) return snap.docs[0].ref;
+        if (snap.size > 1) {
+            console.warn(
+                `[Pipeline] Ambiguous phone match (${snap.size}+ ${col} share ${normalized}). Skipping mirror.`
+            );
+            return null;
+        }
+
+        // Fallback: some legacy records only stored raw `phone`
+        const snap2 = await db
+            .collection('companies').doc(companyId)
+            .collection(col)
+            .where('phone', '==', entry.phoneNumber)
+            .limit(2)
+            .get();
+        if (snap2.size === 1) return snap2.docs[0].ref;
+        if (snap2.size > 1) {
+            console.warn(
+                `[Pipeline] Ambiguous legacy phone match (${snap2.size}+ ${col} share ${entry.phoneNumber}). Skipping mirror.`
+            );
+            return null;
+        }
+    }
+    return null;
+}
+
 // --- MAIN TRIGGER ---
 exports.onPipelineEntryWrite = onDocumentWritten(
     {
@@ -51,6 +131,7 @@ exports.onPipelineEntryWrite = onDocumentWritten(
     },
     async (event) => {
         const { FieldValue } = require("firebase-admin/firestore");
+        const companyId = event.params.companyId;
 
         // Skip deletes — no after data
         if (!event.data?.after?.exists) {
@@ -128,6 +209,39 @@ exports.onPipelineEntryWrite = onDocumentWritten(
                 console.log(`[Pipeline] Successfully updated entry ${event.params.entryId}`);
             } catch (error) {
                 console.error(`[Pipeline] Failed to update entry ${event.params.entryId}:`, error);
+            }
+        }
+
+        // --- SYNC SOURCE APPLICATION / LEAD STATUS ---
+        // When the recruiter moves a row to Hired / Rejected / Hold / In Process,
+        // mirror that onto the originating applications/leads doc so the
+        // Company Admin candidates list, Hired counter, and ATS stay consistent.
+        if (hiringStageChanged) {
+            const targetStatus = STAGE_TO_STATUS[afterData.hiringStage];
+            if (targetStatus) {
+                try {
+                    const sourceRef = await findSourceDoc(companyId, afterData);
+                    if (sourceRef) {
+                        await sourceRef.set(
+                            {
+                                status: targetStatus,
+                                statusEnteredAt: FieldValue.serverTimestamp(),
+                                lastSyncedFromPipelineAt: FieldValue.serverTimestamp(),
+                                pipelineEntryId: event.params.entryId,
+                            },
+                            { merge: true }
+                        );
+                        console.log(
+                            `[Pipeline] Mirrored stage ${afterData.hiringStage} -> status "${targetStatus}" on ${sourceRef.path}`
+                        );
+                    } else {
+                        console.log(
+                            `[Pipeline] No source doc found for entry ${event.params.entryId} (phone="${afterData.phoneNumber}"). Skipping mirror.`
+                        );
+                    }
+                } catch (err) {
+                    console.error(`[Pipeline] Source-doc mirror failed:`, err);
+                }
             }
         }
 

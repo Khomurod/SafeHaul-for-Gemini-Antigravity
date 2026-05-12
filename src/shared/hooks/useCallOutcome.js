@@ -132,7 +132,6 @@ export function useCallOutcome(lead, companyId, onUpdate, onClose) {
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     source: 'Search DB Call',
-                    isPlatformLead: true,
                     originalLeadId: lead.id
                 });
             }

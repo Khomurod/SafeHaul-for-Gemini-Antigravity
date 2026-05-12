@@ -20,14 +20,6 @@ export const COMPANY_ROUTE_MANIFEST = Object.freeze([
     nav: { kind: 'group-item', group: 'applications', label: 'Applications', icon: 'FileText' },
   },
   {
-    id: 'safehaulLeads',
-    path: 'drivers/leads/safehaul',
-    screen: 'companyCandidatesListPage',
-    featureName: 'SafeHaul Leads',
-    props: { scope: 'find_driver' },
-    nav: null,
-  },
-  {
     id: 'companyLeads',
     path: 'drivers/leads/company',
     screen: 'companyCandidatesListPage',

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     ArrowLeft, Calendar, Users, MessageSquare,
     BarChart3, Clock, CheckCircle2, AlertCircle, RefreshCw,
-    Pause, XCircle
+    Pause, Play, XCircle
 } from 'lucide-react';
 import { CampaignResultsTable } from './CampaignResultsTable';
 import { useParams } from 'react-router-dom';
@@ -19,6 +19,7 @@ export function CampaignDetails({ campaign, onClose }) {
     // Fallback: Use campaign.companyId -> context -> route
     const effectiveCompanyId = campaign?.companyId || currentCompanyProfile?.id || routeCompanyId;
     const [pausing, setPausing] = useState(false);
+    const [resuming, setResuming] = useState(false);
     const [cancelling, setCancelling] = useState(false);
     const { showSuccess, showError } = useToast();
 
@@ -83,6 +84,24 @@ export function CampaignDetails({ campaign, onClose }) {
         }
     };
 
+    const handleResume = async () => {
+        try {
+            setResuming(true);
+            const resumeFn = httpsCallable(functions, 'resumeBulkSession');
+            const result = await resumeFn({ companyId: effectiveCompanyId, sessionId: campaign.id });
+            if (result?.data?.success === false) {
+                showError(result.data.message || "Could not resume campaign.");
+                return;
+            }
+            showSuccess("Campaign resumed.");
+            onClose();
+        } catch (err) {
+            showError(err.message || 'Failed to resume campaign.');
+        } finally {
+            setResuming(false);
+        }
+    };
+
     const handleCancel = async () => {
         if (!confirm("Are you sure you want to cancel this campaign? This action cannot be undone.")) return;
         try {
@@ -144,8 +163,17 @@ export function CampaignDetails({ campaign, onClose }) {
                         </button>
                     )}
 
-                    {/* Resume Button (Basic implementation using retry Logic or future resume endpoint) */}
-                    {/* Note: Resume usually requires valid resume endpoint, using retry for now if user wants to restart failed */}
+                    {/* Resume Button — wired to resumeBulkSession Cloud Function */}
+                    {isPaused && (
+                        <button
+                            onClick={handleResume}
+                            disabled={resuming}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold uppercase tracking-widest border border-emerald-200 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                        >
+                            <Play size={14} className={resuming ? "animate-pulse" : ""} />
+                            {resuming ? 'Resuming...' : 'Resume'}
+                        </button>
+                    )}
 
                     {/* Cancel Button */}
                     {(isActive || isPaused) && (

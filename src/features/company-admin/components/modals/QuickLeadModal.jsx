@@ -39,7 +39,6 @@ export function QuickLeadModal({ companyId, onClose, onSuccess }) {
                 email: email.trim() || null,
                 status: 'New Lead',
                 source: 'Manual Entry',
-                isPlatformLead: false,
                 createdAt: serverTimestamp(),
                 createdBy: auth.currentUser?.uid || 'unknown',
                 createdByName: auth.currentUser?.displayName || 'Unknown'

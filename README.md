@@ -4,7 +4,7 @@
     <strong>Multi-Tenant Trucking HR & Recruitment Platform</strong>
   </p>
   <p align="center">
-    DOT-Compliant Driver Applications · Lead Distribution Engine · Bulk SMS Campaigns · E-Signatures · Real-Time Analytics
+    DOT-Compliant Driver Applications · Bulk SMS Campaigns · E-Signatures · Real-Time Analytics
   </p>
   <p align="center">
     <a href="https://truckerapp-system.web.app/">Live App</a> ·
@@ -40,24 +40,17 @@
 
 ## Overview
 
-SafeHaul is a **multi-tenant SaaS platform** built for trucking companies to manage the entire driver hiring lifecycle — from lead acquisition and distribution, through DOT-compliant applications, to e-signatures and onboarding. The platform serves three distinct user personas through role-based portals:
+SafeHaul is a **multi-tenant SaaS platform** built for trucking companies to manage the entire driver hiring lifecycle — from lead acquisition, through DOT-compliant applications, to e-signatures and onboarding. The platform serves three distinct user personas through role-based portals:
 
 | Portal | Users | Purpose |
 |--------|-------|---------|
-| **Super Admin** (Mission Control) | Platform operators | Lead pool management, company provisioning, analytics, system health |
+| **Super Admin** (Mission Control) | Platform operators | Company provisioning, analytics, system health |
 | **Company Admin / HR** | Recruiters, HR managers | Application review, pipeline tracking, campaigns, team management |
 | **Driver App** | CDL drivers | Public application submission, document uploads, e-signing |
 
 ---
 
 ## Features
-
-### 🧲 Lead Distribution Engine
-- **Automated daily distribution** at 7:00 AM CT via scheduled Cloud Functions
-- **"Dealer" architecture** — fair round-robin distribution across companies
-- **Ghost lead protection** using Firestore Transactions
-- **Plan-based quotas** — Free (50/day), Paid (200/day), or custom overrides
-- **Supply & demand analytics** with real-time pool health monitoring
 
 ### 📋 DOT-Compliant Driver Applications
 - **9-step wizard** (Contact → Qualifications → License → Violations → Accidents → Employment → General → Review → Consent)

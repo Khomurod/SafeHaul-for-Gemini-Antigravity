@@ -4,6 +4,65 @@ const { assertCompanyAdminStrict } = require("../../shared/companyAccess");
 const { normalizePhone } = require("../../utils/phoneUtils");
 
 /**
+ * Internal: backfill SMS phones for a single company. Does NOT perform auth
+ * checks — callers are responsible. Returns counts.
+ */
+async function _backfillSmsForCompany(companyId) {
+    let totalBackfilled = 0;
+    let sessionsProcessed = 0;
+
+    const sessionsSnap = await db
+        .collection('companies').doc(companyId)
+        .collection('bulk_sessions')
+        .get();
+
+    for (const sessionDoc of sessionsSnap.docs) {
+        const sessionId = sessionDoc.id;
+        const sessionData = sessionDoc.data();
+        const method = sessionData.config?.method || sessionData.messageType || null;
+        if (method && method === 'email') continue;
+
+        const logsSnap = await db
+            .collection('companies').doc(companyId)
+            .collection('bulk_sessions').doc(sessionId)
+            .collection('logs')
+            .where('status', '==', 'delivered')
+            .get();
+        if (logsSnap.empty) continue;
+
+        const batchArray = [];
+        let batch = db.batch();
+        let count = 0;
+        let sessionPhones = 0;
+
+        for (const logDoc of logsSnap.docs) {
+            const logData = logDoc.data();
+            const rawPhone = logData.recipientIdentity;
+            if (!rawPhone || rawPhone === 'N/A' || rawPhone === 'No Phone' || rawPhone === 'No Email') continue;
+            const normPhone = normalizePhone(rawPhone);
+            if (!normPhone || normPhone.length < 10 || normPhone.length > 11) continue;
+
+            const phoneRef = db
+                .collection('companies').doc(companyId)
+                .collection('sms_sent_phones').doc(normPhone);
+            batch.set(phoneRef, {
+                lastSentAt: logData.timestamp || admin.firestore.FieldValue.serverTimestamp(),
+                sessionId,
+                backfilled: true,
+            }, { merge: true });
+
+            count++; totalBackfilled++; sessionPhones++;
+            if (count >= 490) { batchArray.push(batch); batch = db.batch(); count = 0; }
+        }
+        if (count > 0) batchArray.push(batch);
+        for (const b of batchArray) await b.commit();
+        if (sessionPhones > 0) sessionsProcessed++;
+    }
+
+    return { sessionsProcessed, phonesBackfilled: totalBackfilled };
+}
+
+/**
  * One-Time Backfill: Populate `sms_sent_phones` from historical bulk_session logs.
  *
  * This function reads all completed bulk sessions and their delivery logs,
@@ -27,112 +86,83 @@ exports.backfillSmsSentPhones = onCall({ cors: true, timeoutSeconds: 540, memory
 
     console.log(`[Backfill] Starting SMS phone backfill for company: ${companyId}`);
 
-    let totalBackfilled = 0;
-    let sessionsProcessed = 0;
-
     try {
-        // 1. Get all bulk sessions for this company (no status filter — process all)
-        const sessionsSnap = await db
-            .collection('companies').doc(companyId)
-            .collection('bulk_sessions')
-            .get();
-
-        console.log(`[Backfill] Found ${sessionsSnap.size} sessions for company ${companyId}`);
-
-        // 2. Process each session sequentially (to stay within CPU limits)
-        for (const sessionDoc of sessionsSnap.docs) {
-            const sessionId = sessionDoc.id;
-            const sessionData = sessionDoc.data();
-
-            // Skip email-only sessions if the method is explicitly set to 'email'
-            // But DO process sessions where method is missing (historical) or 'sms'
-            const method = sessionData.config?.method || sessionData.messageType || null;
-            if (method && method === 'email') {
-                console.log(`[Backfill] Skipping session ${sessionId} — explicitly email`);
-                continue;
-            }
-
-            // 3. Read ALL delivered logs for this session
-            const logsSnap = await db
-                .collection('companies').doc(companyId)
-                .collection('bulk_sessions').doc(sessionId)
-                .collection('logs')
-                .where('status', '==', 'delivered')
-                .get();
-
-            if (logsSnap.empty) {
-                console.log(`[Backfill] Session ${sessionId}: no delivered logs found`);
-                continue;
-            }
-
-            // 4. Batch-write to sms_sent_phones — only for entries that look like phone numbers
-            const batchArray = [];
-            let batch = db.batch();
-            let count = 0;
-            let sessionPhones = 0;
-
-            for (const logDoc of logsSnap.docs) {
-                const logData = logDoc.data();
-                const rawPhone = logData.recipientIdentity;
-
-                if (!rawPhone || rawPhone === 'N/A' || rawPhone === 'No Phone' || rawPhone === 'No Email') {
-                    continue;
-                }
-
-                // Only write if it normalizes to a valid phone number (10-11 digits)
-                const normPhone = normalizePhone(rawPhone);
-                if (!normPhone || normPhone.length < 10 || normPhone.length > 11) {
-                    // Likely an email address — skip
-                    continue;
-                }
-
-                const phoneRef = db
-                    .collection('companies').doc(companyId)
-                    .collection('sms_sent_phones').doc(normPhone);
-
-                // Use merge: true — safe to re-run, won't overwrite newer real sends
-                batch.set(phoneRef, {
-                    lastSentAt: logData.timestamp || admin.firestore.FieldValue.serverTimestamp(),
-                    sessionId: sessionId,
-                    backfilled: true
-                }, { merge: true });
-
-                count++;
-                totalBackfilled++;
-                sessionPhones++;
-
-                if (count >= 490) { // Firestore batch limit safety margin
-                    batchArray.push(batch);
-                    batch = db.batch();
-                    count = 0;
-                }
-            }
-
-            if (count > 0) batchArray.push(batch);
-
-            // Commit all batches for this session
-            for (const b of batchArray) {
-                await b.commit();
-            }
-
-            if (sessionPhones > 0) {
-                sessionsProcessed++;
-                console.log(`[Backfill] Session ${sessionId}: backfilled ${sessionPhones} phones`);
-            }
-        }
-
-        const summary = `Backfill complete for company ${companyId}. Sessions processed: ${sessionsProcessed}, Phones backfilled: ${totalBackfilled}`;
+        const { sessionsProcessed, phonesBackfilled } = await _backfillSmsForCompany(companyId);
+        const summary = `Backfill complete for company ${companyId}. Sessions processed: ${sessionsProcessed}, Phones backfilled: ${phonesBackfilled}`;
         console.log(`[Backfill] ${summary}`);
-
-        return {
-            success: true,
-            message: summary,
-            sessionsProcessed,
-            phonesBackfilled: totalBackfilled
-        };
-
+        return { success: true, message: summary, sessionsProcessed, phonesBackfilled };
     } catch (err) {
         console.error('[Backfill] Error:', err);
         throw new HttpsError('internal', `Backfill failed: ${err.message}`);
     }
 });
+
+/**
+ * BUG-14 FIX: Server-side "fan-out" version of the SMS backfill. Super Admin only.
+ *
+ * The old workflow asked the browser to loop through every company and fire a
+ * callable per company. If the tab was closed (or even backgrounded long enough
+ * for the JS event loop to be throttled) the loop would silently stall, leaving
+ * the system half-backfilled. This callable does the whole sweep server-side so
+ * the operator can fire-and-forget. Returns aggregated counts.
+ */
+exports.backfillAllSmsSentPhones = onCall(
+    { cors: true, timeoutSeconds: 540, memory: '1GiB' },
+    async (request) => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
+
+        const roles = request.auth.token?.roles || {};
+        if (roles.globalRole !== 'super_admin') {
+            throw new HttpsError('permission-denied', 'Super Admin only.');
+        }
+
+        const startedAt = Date.now();
+        const TIMEOUT_BUDGET_MS = 8 * 60 * 1000; // stop early before Cloud Functions 540s hard kill
+
+        console.log('[Backfill-All] Starting global SMS phone backfill.');
+
+        const companiesSnap = await db.collection('companies').get();
+        const summaries = [];
+        let totalPhones = 0;
+        let totalSessions = 0;
+        let processedCompanies = 0;
+        let failedCompanies = 0;
+        let truncated = false;
+
+        for (const doc of companiesSnap.docs) {
+            if (Date.now() - startedAt > TIMEOUT_BUDGET_MS) {
+                truncated = true;
+                console.warn(`[Backfill-All] Time budget exceeded; deferring remaining ${companiesSnap.size - processedCompanies} companies.`);
+                break;
+            }
+            const companyId = doc.id;
+            try {
+                const result = await _backfillSmsForCompany(companyId);
+                processedCompanies++;
+                totalPhones += result.phonesBackfilled;
+                totalSessions += result.sessionsProcessed;
+                summaries.push({ companyId, ok: true, ...result });
+                console.log(`[Backfill-All] ${companyId}: ${result.phonesBackfilled} phones, ${result.sessionsProcessed} sessions.`);
+            } catch (err) {
+                failedCompanies++;
+                summaries.push({ companyId, ok: false, error: err.message });
+                console.error(`[Backfill-All] FAILED for ${companyId}:`, err);
+            }
+        }
+
+        return {
+            success: true,
+            truncated,
+            totalCompanies: companiesSnap.size,
+            processedCompanies,
+            failedCompanies,
+            sessionsProcessed: totalSessions,
+            phonesBackfilled: totalPhones,
+            summaries,
+            message: truncated
+                ? `Partial backfill: processed ${processedCompanies}/${companiesSnap.size} companies before timeout. Re-run to finish.`
+                : `Backfill complete across ${processedCompanies} companies. ${totalPhones} phones from ${totalSessions} sessions.`,
+        };
+    }
+);
+

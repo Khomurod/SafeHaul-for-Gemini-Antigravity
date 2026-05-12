@@ -63,7 +63,7 @@ export function QualificationsSection({
     const getSourceLabel = () => {
         // Prioritize explicit referral source typed by driver, then system source
         if (appData.referralSource) return appData.referralSource;
-        if (appData.isPlatformLead || appData.sourceType === 'Added by Safehaul') {
+        if (appData.sourceType === 'Added by Safehaul') {
             return 'SafeHaul Network';
         }
         return appData.source || appData.sourceType || 'Direct Application';

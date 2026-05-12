@@ -24,9 +24,9 @@ export function useCompanyDashboard(companyId) {
     const [teamMembers, setTeamMembers] = useState([]);
     const [stats, setStats] = useState({
         applications: 0,
-        platformLeads: 0,
         companyLeads: 0,
-        myLeads: 0
+        myLeads: 0,
+        hired: 0
     });
 
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -64,28 +64,32 @@ export function useCompanyDashboard(companyId) {
         if (!companyId) return;
         try {
             const appsRef = collection(db, "companies", companyId, "applications");
-            const appsSnap = await getCountFromServer(appsRef);
-
             const leadsRef = collection(db, "companies", companyId, "leads");
 
-            const qPlatform = query(leadsRef, where("isPlatformLead", "==", true));
-            const platformSnap = await getCountFromServer(qPlatform);
+            // All applications + Company Leads + My Leads (no platform-lead split since
+            // the Lead Distribution Engine has been removed). Hired/Approved get their
+            // own counter to power the dashboard "Hired" tile (Bug #3 fix).
+            const appsSnapPromise = getCountFromServer(appsRef);
+            const companyLeadsSnapPromise = getCountFromServer(leadsRef);
+            const hiredQuery = query(appsRef, where('status', 'in', ['Hired', 'Approved']));
+            const hiredSnapPromise = getCountFromServer(hiredQuery);
 
-            const qCompany = query(leadsRef, where("isPlatformLead", "==", false));
-            const companySnap = await getCountFromServer(qCompany);
+            const myLeadsSnapPromise = auth.currentUser
+                ? getCountFromServer(query(leadsRef, where('assignedTo', '==', auth.currentUser.uid)))
+                : Promise.resolve({ data: () => ({ count: 0 }) });
 
-            let myCountVal = 0;
-            if (auth.currentUser) {
-                const qMy = query(leadsRef, where("assignedTo", "==", auth.currentUser.uid));
-                const mySnap = await getCountFromServer(qMy);
-                myCountVal = mySnap.data().count;
-            }
+            const [appsSnap, companyLeadsSnap, myLeadsSnap, hiredSnap] = await Promise.all([
+                appsSnapPromise,
+                companyLeadsSnapPromise,
+                myLeadsSnapPromise,
+                hiredSnapPromise,
+            ]);
 
             setStats({
                 applications: appsSnap.data().count,
-                platformLeads: platformSnap.data().count,
-                companyLeads: companySnap.data().count,
-                myLeads: myCountVal
+                companyLeads: companyLeadsSnap.data().count,
+                myLeads: myLeadsSnap.data().count,
+                hired: hiredSnap.data().count,
             });
         } catch (e) {
             console.error("Error fetching stats:", e);
@@ -122,20 +126,14 @@ export function useCompanyDashboard(companyId) {
             if (!isSearchMode && !usesPipelineOrderBy()) {
                 // legacy browse: no orderBy (document-id ordering)
             }
-        } else {
-            if (activeTab === 'find_driver') {
-                constraints.push(where("isPlatformLead", "==", true));
-                if (!isSearchMode) constraints.push(orderBy("distributedAt", "desc"));
-            } else if (activeTab === 'company_leads') {
-                constraints.push(where("isPlatformLead", "==", false));
-                if (!isSearchMode && !usesPipelineOrderBy()) {
-                    constraints.push(orderBy("createdAt", "desc"));
-                }
-            } else if (activeTab === 'my_leads' && auth.currentUser) {
-                constraints.push(where("assignedTo", "==", auth.currentUser.uid));
-                if (!isSearchMode && !usesPipelineOrderBy()) {
-                    constraints.push(orderBy("createdAt", "desc"));
-                }
+        } else if (activeTab === 'company_leads') {
+            if (!isSearchMode && !usesPipelineOrderBy()) {
+                constraints.push(orderBy("createdAt", "desc"));
+            }
+        } else if (activeTab === 'my_leads' && auth.currentUser) {
+            constraints.push(where("assignedTo", "==", auth.currentUser.uid));
+            if (!isSearchMode && !usesPipelineOrderBy()) {
+                constraints.push(orderBy("createdAt", "desc"));
             }
         }
 
@@ -259,7 +257,7 @@ export function useCompanyDashboard(companyId) {
                 const filterDay = filterDate.getDate();
 
                 newData = newData.filter(item => {
-                    const ts = item.submittedAt || item.createdAt || item.distributedAt;
+                    const ts = item.submittedAt || item.createdAt;
                     if (!ts) return false;
                     try {
                         const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
@@ -303,32 +301,11 @@ export function useCompanyDashboard(companyId) {
         }
     }, [listTotalCount, itemsPerPage, debouncedSearch]);
 
+    // NOTE: latestBatchTime previously tracked the most recent Lead Distribution Engine
+    // batch (platform-leads "Dealer" feature). The engine has been removed; keep the
+    // state as `null` so downstream consumers gracefully render no batch label.
     useEffect(() => {
-        const fetchBatchTime = async () => {
-            if (!companyId || activeTab !== 'find_driver') {
-                setLatestBatchTime(null);
-                return;
-            }
-            try {
-                const leadsRef = collection(db, "companies", companyId, "leads");
-                const q = query(
-                    leadsRef,
-                    where("isPlatformLead", "==", true),
-                    orderBy("distributedAt", "desc"),
-                    limit(1)
-                );
-                const snapshot = await getDocs(q);
-                if (!snapshot.empty) {
-                    const d = snapshot.docs[0].data();
-                    setLatestBatchTime(d.distributedAt || d.createdAt);
-                } else {
-                    setLatestBatchTime(null);
-                }
-            } catch (e) {
-                setLatestBatchTime(null);
-            }
-        };
-        fetchBatchTime();
+        setLatestBatchTime(null);
     }, [companyId, activeTab]);
 
     useEffect(() => {

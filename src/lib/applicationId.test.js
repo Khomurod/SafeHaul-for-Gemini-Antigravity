@@ -1,8 +1,12 @@
 /**
  * Unit tests for Application ID Generator
+ *
+ * IDs are fully deterministic: same (companyId, email, phone) -> same 20-char ID.
+ * This is what makes guest re-submissions / offline retries idempotent upserts
+ * instead of duplicate documents.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import {
     generateApplicationId,
@@ -19,15 +23,14 @@ describe('Application ID Generator', () => {
             const id = await generateApplicationId('company-1', 'test@example.com', '555-123-4567');
 
             expect(id).toBeDefined();
-            expect(id).toMatch(/^[a-z0-9]{20}_[a-z0-9]+_[a-z0-9]+$/);
+            expect(id).toMatch(/^[a-z0-9]{20}$/);
         });
 
-        it('should generate distinct IDs for the same inputs (re-applications)', async () => {
+        it('should return the IDENTICAL ID for the same inputs (idempotent re-submissions)', async () => {
             const id1 = await generateApplicationId('company-1', 'john@test.com', '555-111-2222');
             const id2 = await generateApplicationId('company-1', 'john@test.com', '555-111-2222');
 
-            expect(id1).not.toBe(id2);
-            expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
+            expect(id1).toBe(id2);
         });
 
         it('should generate different IDs for different companies', async () => {
@@ -55,28 +58,28 @@ describe('Application ID Generator', () => {
             const id1 = await generateApplicationId('company-1', 'TEST@EXAMPLE.COM', '555-123-4567');
             const id2 = await generateApplicationId('company-1', 'test@example.com', '555-123-4567');
 
-            expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
+            expect(id1).toBe(id2);
         });
 
         it('should normalize phone (ignore formatting)', async () => {
             const id1 = await generateApplicationId('company-1', 'test@test.com', '(555) 123-4567');
             const id2 = await generateApplicationId('company-1', 'test@test.com', '5551234567');
 
-            expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
+            expect(id1).toBe(id2);
         });
 
         it('should work with only email (no phone)', async () => {
             const id = await generateApplicationId('company-1', 'only@email.com', '');
 
             expect(id).toBeDefined();
-            expect(id).toMatch(/^[a-z0-9]{20}_[a-z0-9]+_[a-z0-9]+$/);
+            expect(id).toMatch(/^[a-z0-9]{20}$/);
         });
 
         it('should work with only phone (no email)', async () => {
             const id = await generateApplicationId('company-1', '', '555-123-4567');
 
             expect(id).toBeDefined();
-            expect(id).toMatch(/^[a-z0-9]{20}_[a-z0-9]+_[a-z0-9]+$/);
+            expect(id).toMatch(/^[a-z0-9]{20}$/);
         });
 
         it('should generate anonymous ID when both email and phone are missing', async () => {
@@ -94,11 +97,12 @@ describe('Application ID Generator', () => {
     });
 
     describe('generateApplicationIdSync', () => {
-        it('should preserve deterministic key prefix across re-applications', () => {
+        it('should produce the same 20-char ID for the same inputs', () => {
             const id1 = generateApplicationIdSync('company-1', 'test@example.com', '5551234567');
             const id2 = generateApplicationIdSync('company-1', 'test@example.com', '5551234567');
 
-            expect(id1.split('_')[0]).toBe(id2.split('_')[0]);
+            expect(id1).toBe(id2);
+            expect(id1).toMatch(/^[a-z0-9]{20}$/);
         });
 
         it('should handle missing email/phone with anonymous fallback', () => {
@@ -153,17 +157,17 @@ describe('Application ID Generator', () => {
     });
 
     describe('isValidApplicationId', () => {
-        it('should validate reapplication-safe IDs', () => {
+        it('should validate new deterministic 20-char IDs', () => {
+            expect(isValidApplicationId('1234567890abcdef1234')).toBe(true);
+            expect(isValidApplicationId('abcdef1234567890abcd')).toBe(true);
+        });
+
+        it('should validate legacy reapplication-safe IDs (20-char prefix + suffix)', () => {
             expect(isValidApplicationId('1234567890abcdef1234_madix9_abc123')).toBe(true);
-            expect(isValidApplicationId('abcdef1234567890abcd_madiz1_qwerty')).toBe(true);
         });
 
         it('should validate anonymous IDs', () => {
             expect(isValidApplicationId('anon_abc123_xyz789')).toBe(true);
-        });
-
-        it('should validate sync-format IDs', () => {
-            expect(isValidApplicationId('1234567_test_abc123')).toBe(true);
         });
 
         it('should reject invalid IDs', () => {
@@ -172,6 +176,7 @@ describe('Application ID Generator', () => {
             expect(isValidApplicationId(123)).toBe(false);
             expect(isValidApplicationId('too-short')).toBe(false);
             expect(isValidApplicationId('has spaces in it')).toBe(false);
+            expect(isValidApplicationId('1234567_test_abc123')).toBe(false);
         });
     });
 });

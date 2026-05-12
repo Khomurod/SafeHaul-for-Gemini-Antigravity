@@ -234,12 +234,46 @@ exports.updatePortalUser = onCall({ maxInstances: 2 }, async (request) => {
 
     const { userId, companyId, name, email } = request.data;
 
+    if (!userId) {
+        throw new HttpsError("invalid-argument", "userId is required.");
+    }
+
     const roles = request.auth.token.roles || {};
     const isSuperAdmin = roles.globalRole === "super_admin";
     const isCompanyAdmin = companyId && roles[companyId] === "company_admin";
 
     if (!isSuperAdmin && !isCompanyAdmin) {
         throw new HttpsError("permission-denied", "Permission denied.");
+    }
+
+    // BUG-11 FIX: A Company Admin's `roles[companyId] === 'company_admin'` claim only
+    // proves they're an admin OF that company — it does NOT prove the target user
+    // actually belongs to that company. Without this check, any company admin who
+    // could guess/leak a foreign userId could mutate that user's name + email and
+    // (via Firebase Auth) hijack the account by triggering a password reset to a
+    // new attacker-controlled address. Super Admins skip the check.
+    if (!isSuperAdmin) {
+        const targetUserSnap = await db.collection('users').doc(userId).get();
+        if (!targetUserSnap.exists) {
+            throw new HttpsError('not-found', 'Target user not found.');
+        }
+        const targetUser = targetUserSnap.data() || {};
+        const targetCompanyIds = new Set([
+            targetUser.companyId,
+            ...(Array.isArray(targetUser.companyIds) ? targetUser.companyIds : []),
+            ...(targetUser.companies && typeof targetUser.companies === 'object'
+                ? Object.keys(targetUser.companies)
+                : []),
+        ].filter(Boolean));
+        if (!targetCompanyIds.has(companyId)) {
+            console.warn(
+                `[updatePortalUser] BLOCKED: ${request.auth.uid} (admin of ${companyId}) tried to edit ${userId} which belongs to companies: ${[...targetCompanyIds].join(',') || 'none'}`
+            );
+            throw new HttpsError(
+                'permission-denied',
+                'You can only edit users that belong to your company.'
+            );
+        }
     }
 
     try {
@@ -266,28 +300,9 @@ exports.updatePortalUser = onCall({ maxInstances: 2 }, async (request) => {
     }
 });
 
-// --- 5. JOIN TEAM ---
-// 5. JOIN COMPANY TEAM (Admin Only / Invite System Placeholder)
-exports.joinCompanyTeam = onCall({ maxInstances: 2 }, async (request) => {
-    // SECURITY FIX: This function previously allowed public registration into any company.
-    // It is now disabled until a proper Invite System is implemented.
-
-    // 1. Strict Auth Check
-    if (!request.auth) throw new HttpsError('unauthenticated', 'Login required.');
-
-    // 2. Strict Role Check (Super Admin Only for now)
-    const roles = request.auth.token.roles || {};
-    const globalRole = request.auth.token.globalRole || roles.globalRole;
-
-    if (globalRole !== 'super_admin') {
-        throw new HttpsError('permission-denied', 'This feature is currently disabled for security.');
-    }
-
-    // Original Logic (Commented out for reference/future restoration)
-    /*
-    const { companyId, fullName, email, password } = request.data;
-    // ... impl ...
-    */
-
-    throw new HttpsError('unimplemented', 'Please use the "Add User" feature in the dashboard.');
-});
+// --- 5. JOIN TEAM (REMOVED) ---
+// The `joinCompanyTeam` callable was permanently disabled because it had no
+// real implementation behind it — any client invocation just returned an
+// `unimplemented` HttpsError, and the matching `/join/:companyId` frontend
+// route has been deleted. Use `createPortalUser` from the Super Admin /
+// Company Admin "Add User" flow instead.

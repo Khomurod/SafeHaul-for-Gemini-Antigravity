@@ -36,15 +36,14 @@ export function DriverSearchModal({ onClose }) {
       const dp = driver.driverProfile || {};
 
       const flatLead = {
-          id: driver.id, 
+          id: driver.id,
           firstName: pi.firstName,
           lastName: pi.lastName,
           phone: pi.phone,
           email: pi.email,
           driverType: dp.type,
-          isPlatformLead: true, 
           source: 'Search DB Call',
-          status: 'Attempted' 
+          status: 'Attempted'
       };
       setCallModalData({ lead: flatLead });
   };

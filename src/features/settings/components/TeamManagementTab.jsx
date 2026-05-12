@@ -1,27 +1,13 @@
 import React, { useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
-import { UserPlus, Loader2, Plus, Link as LinkIcon, Copy, CheckCircle } from 'lucide-react';
+import { UserPlus, Loader2, Plus } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
 
 export function TeamManagementTab({ currentCompanyProfile, isCompanyAdmin, onShowManageTeam }) {
     const { showSuccess, showError } = useToast();
     const [newUser, setNewUser] = useState({ fullName: '', email: '', password: '', role: 'hr_user' });
     const [addUserLoading, setAddUserLoading] = useState(false);
-    const [linkCopied, setLinkCopied] = useState(false);
-
-    const inviteLink = `${window.location.origin}/join/${currentCompanyProfile?.id}`;
-
-    const handleCopyInviteLink = async () => {
-        try {
-            await navigator.clipboard.writeText(inviteLink);
-            setLinkCopied(true);
-            showSuccess("Invite link copied to clipboard!");
-            setTimeout(() => setLinkCopied(false), 3000);
-        } catch (err) {
-            showError("Failed to copy link");
-        }
-    };
 
     const handleCreateUser = async (e) => {
         e.preventDefault();
@@ -55,34 +41,6 @@ export function TeamManagementTab({ currentCompanyProfile, isCompanyAdmin, onSho
             <div className="border-b border-gray-200 pb-4 mb-6">
                 <h2 className="text-xl font-bold text-gray-900">Team Management</h2>
                 <p className="text-sm text-gray-500 mt-1">Add new recruiters or admins to your company dashboard.</p>
-            </div>
-
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-blue-900 mb-2 flex items-center gap-2">
-                    <LinkIcon size={20} /> Team Invite Link
-                </h3>
-                <p className="text-sm text-blue-700 mb-4">
-                    Share this link with new team members. They can create their own account and join your company.
-                </p>
-                <div className="flex items-center gap-2">
-                    <input
-                        type="text"
-                        readOnly
-                        value={inviteLink}
-                        className="flex-1 p-3 bg-white border border-blue-300 rounded-lg text-sm text-gray-700 font-mono"
-                    />
-                    <button
-                        onClick={handleCopyInviteLink}
-                        className={`px-4 py-3 font-bold rounded-lg flex items-center gap-2 transition-all ${
-                            linkCopied 
-                                ? 'bg-green-600 text-white' 
-                                : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                    >
-                        {linkCopied ? <CheckCircle size={18} /> : <Copy size={18} />}
-                        {linkCopied ? 'Copied!' : 'Copy'}
-                    </button>
-                </div>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">

@@ -65,14 +65,10 @@ export async function loadCompanyLeads(companyId) {
   const q = query(leadsRef, orderBy("createdAt", "desc"));
   try {
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        isPlatformLead: data.isPlatformLead !== false
-      };
-    });
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
   } catch (error) {
     console.error("Error loading leads:", error);
     return [];

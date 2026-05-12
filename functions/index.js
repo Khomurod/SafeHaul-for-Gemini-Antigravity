@@ -17,6 +17,7 @@ exports.resumeBulkSession = bulkActions.resumeBulkSession;
 exports.pauseBulkSession = bulkActions.pauseBulkSession;
 exports.cancelBulkSession = bulkActions.cancelBulkSession;
 exports.backfillSmsSentPhones = bulkActions.backfillSmsSentPhones;
+exports.backfillAllSmsSentPhones = bulkActions.backfillAllSmsSentPhones;
 exports.checkImportPhones = bulkActions.checkImportPhones;
 
 
@@ -61,7 +62,6 @@ exports.onMembershipWrite = hrAdmin.onMembershipWrite;
 exports.onDriverProfileCreated = require('./userOnboarding').onDriverProfileCreated;
 
 // 3. Company Admin
-exports.joinCompanyTeam = hrAdmin.joinCompanyTeam;
 exports.deleteCompany = companyAdmin.deleteCompany;
 exports.syncPublicProfile = companyAdmin.syncPublicProfile;
 

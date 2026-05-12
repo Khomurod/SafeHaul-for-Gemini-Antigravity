@@ -106,9 +106,13 @@ service cloud.firestore {
     function allowedRecruiterPipelineStatus() {
       return [
         'New',
+        'New Lead',
         'Contact Attempt 1',
         'Contact Attempt 2',
         'Contact Attempt 3',
+        'Contacted',
+        'Attempted',
+        'Disqualified',
         'In Process',
         'Interested',
         'Hired',

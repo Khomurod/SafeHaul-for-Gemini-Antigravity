@@ -158,6 +158,11 @@ export function usePipelineEntries(companyId) {
         }
     }, [companyId]);
 
+    // P2 HARDENING: Pending writes are tracked so we can flush on unmount /
+    // page-hide. Without this, a recruiter typing a note and immediately
+    // closing the modal or tab loses everything they wrote in the last 500ms.
+    const pendingWritesRef = useRef({}); // entryId -> latest value
+
     // --- Update Comments (debounced 500ms) ---
     const updateComments = useCallback((entryId, value) => {
         if (!companyId || !entryId) return;
@@ -167,6 +172,8 @@ export function usePipelineEntries(companyId) {
         setRawEntries(prev => prev.map(e =>
             e.id === entryId ? { ...e, comments: value } : e
         ));
+
+        pendingWritesRef.current[entryId] = value;
 
         // Clear existing debounce timer for this entry
         if (debounceTimers.current[entryId]) {
@@ -181,6 +188,7 @@ export function usePipelineEntries(companyId) {
                     comments: value,
                     lastModifiedAt: serverTimestamp(),
                 });
+                delete pendingWritesRef.current[entryId];
             } catch (error) {
                 console.error('[Pipeline] Failed to save comments:', error);
             }
@@ -210,12 +218,39 @@ export function usePipelineEntries(companyId) {
     const beginEdit = useCallback((entryId) => setEditingId(entryId), []);
     const endEdit = useCallback(() => setEditingId(null), []);
 
-    // --- Cleanup debounce timers on unmount ---
+    // --- Cleanup debounce timers + flush pending writes on unmount ---
+    // P2 HARDENING: We previously only cleared the timers, which dropped any
+    // typed-but-undebounced text. Now we also fire the final write (best-effort)
+    // before the component vanishes. Same on tab hide / pagehide — those fire
+    // before unmount on mobile Safari, where setTimeout can be throttled to 0.
     useEffect(() => {
-        return () => {
-            Object.values(debounceTimers.current).forEach(clearTimeout);
+        const flush = () => {
+            Object.entries(debounceTimers.current).forEach(([entryId, timer]) => {
+                clearTimeout(timer);
+                const value = pendingWritesRef.current[entryId];
+                if (value !== undefined && companyId) {
+                    const docRef = doc(db, 'companies', companyId, 'pipeline_entries', entryId);
+                    // Fire and forget — we don't have time to await on unmount.
+                    updateDoc(docRef, {
+                        comments: value,
+                        lastModifiedAt: serverTimestamp(),
+                    }).catch(err => console.error('[Pipeline] Flush-on-unmount failed:', err));
+                }
+            });
+            debounceTimers.current = {};
+            pendingWritesRef.current = {};
         };
-    }, []);
+
+        const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+        document.addEventListener('visibilitychange', onHide);
+        window.addEventListener('pagehide', flush);
+
+        return () => {
+            document.removeEventListener('visibilitychange', onHide);
+            window.removeEventListener('pagehide', flush);
+            flush();
+        };
+    }, [companyId]);
 
     return {
         entries,

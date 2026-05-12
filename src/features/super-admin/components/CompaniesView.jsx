@@ -41,8 +41,8 @@ export function CompaniesView({
         e.stopPropagation();
         const action = currentStatus ? 'deactivate' : 'activate';
         if (!window.confirm(`${action.toUpperCase()} "${companyName}"?\n\n${currentStatus
-            ? 'This company will stop receiving platform leads.'
-            : 'This company will start receiving platform leads.'}`)) {
+            ? 'This company will be blocked from logging in and using the portal.'
+            : 'This company will regain access to the portal.'}`)) {
             return;
         }
 

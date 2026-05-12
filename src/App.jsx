@@ -18,7 +18,7 @@ import {
 } from '@app/routes/appRouteManifest';
 
 // Keep Auth screens eager-loaded as they are the entry point
-import { LoginScreen, TeamMemberSignup } from '@features/auth';
+import { LoginScreen } from '@features/auth';
 
 function withFeatureBoundary(featureName, element) {
   return (
@@ -71,7 +71,9 @@ function AppRoutes() {
         {/* --- PUBLIC ROUTES (No Login Required) --- */}
         {/* P3-12 FIX: Redirect authenticated users away from login */}
         <Route path="/login" element={<AuthGuardedLogin />} />
-        <Route path="/join/:companyId" element={<TeamMemberSignup />} />
+        {/* /join/:companyId route REMOVED — the underlying joinCompanyTeam
+            Cloud Function was disabled, so this link only produced permission
+            errors. Use the Super Admin "Create Portal User" flow instead. */}
 
         {/* Public feature routes */}
         {PUBLIC_FEATURE_ROUTE_MANIFEST.map((routeDef) => {

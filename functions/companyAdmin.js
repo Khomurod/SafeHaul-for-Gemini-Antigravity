@@ -167,18 +167,15 @@ const migrationLogic = onCall({
         let count = 0;
         let totalUpdated = 0;
 
+        // No-op migration: the legacy dailyQuota backfill targeted the now-deleted
+        // Lead Distribution Engine. Kept as a callable for cloud-function ping diagnostics.
         for (const doc of snapshot.docs) {
-            const data = doc.data();
-            // Idempotent check
-            if (data.dailyQuota === undefined || data.dailyQuota === null) {
-                batch.update(doc.ref, { dailyQuota: 50 });
-                count++;
-                totalUpdated++;
-            }
-            if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
+            // touch nothing; the migration is intentionally empty after engine removal
+            // eslint-disable-next-line no-unused-vars
+            const _data = doc.data();
         }
         if (count > 0) await batch.commit();
-        return { success: true, message: `Updated ${totalUpdated} companies.` };
+        return { success: true, message: `Migration ran (no-op). Scanned ${snapshot.size} companies.` };
     } catch (error) {
         return { success: false, error: error.message };
     }

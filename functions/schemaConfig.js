@@ -11,9 +11,8 @@ const SCHEMA_DEFINITIONS = {
     // 1. COMPANY DOCUMENT SCHEMA
     company: {
         fields: {
-            // Subscription & Quotas
+            // Subscription
             planType: "free",
-            dailyLeadQuota: 50,
 
             // Profile Basics
             companyName: "Untitled Company",
@@ -32,12 +31,9 @@ const SCHEMA_DEFINITIONS = {
         fields: {
             // Status
             status: "active",
-            unavailableUntil: null,
-            visitedCompanyIds: [],
 
             // Source Tracking
             source: "System Import",
-            isPlatformLead: false,
 
             // Timestamps
             createdAt: "TIMESTAMP",

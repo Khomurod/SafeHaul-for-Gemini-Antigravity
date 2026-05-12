@@ -129,38 +129,41 @@ export function useSystemHealth() {
     };
 
     // --- BACKFILL SMS SENT PHONES (ALL COMPANIES) ---
+    // BUG-14 FIX: The entire per-company loop now happens server-side inside
+    // `backfillAllSmsSentPhones`. The browser only fires the trigger and waits
+    // for the aggregate result, so the operator can leave the tab in the
+    // background, switch tabs, or even close it (the function still runs to
+    // completion on the server). Re-run the action if `truncated === true` to
+    // pick up where the previous invocation left off.
     const runSmsBackfill = async () => {
         setSmsBackfillStatus('running');
-        addLog("📱 Starting SMS History Backfill for all companies...", "info");
+        addLog("📱 Starting global SMS History Backfill (server-side)...", "info");
         try {
-            // Fetch all company IDs from Firestore
-            const companiesSnap = await getDocs(collection(db, 'companies'));
-            const companyIds = companiesSnap.docs.map(d => d.id);
-            addLog(`📋 Found ${companyIds.length} companies to backfill.`, "info");
+            // The server-side sweep can run up to 8 minutes — bump the client
+            // callable timeout so we don't see a spurious deadline-exceeded
+            // before the function actually finishes. (Default is 70s.)
+            const backfillAllFn = httpsCallable(functions, 'backfillAllSmsSentPhones', { timeout: 9 * 60 * 1000 });
+            const result = await backfillAllFn({});
+            const data = result.data || {};
 
-            const backfillFn = httpsCallable(functions, 'backfillSmsSentPhones');
-            let totalPhones = 0;
-            let totalSessions = 0;
+            if (!data.success) {
+                throw new Error(data.message || 'Backfill returned an unsuccessful result.');
+            }
 
-            for (let i = 0; i < companyIds.length; i++) {
-                const companyId = companyIds[i];
-                addLog(`⏳ [${i + 1}/${companyIds.length}] Backfilling company: ${companyId}...`, "info");
-                try {
-                    const result = await backfillFn({ companyId });
-                    if (result.data.success) {
-                        totalPhones += result.data.phonesBackfilled || 0;
-                        totalSessions += result.data.sessionsProcessed || 0;
-                        addLog(`  ✅ Done: ${result.data.phonesBackfilled || 0} phones from ${result.data.sessionsProcessed || 0} sessions.`, "success");
-                    } else {
-                        addLog(`  ⚠️ Skipped: ${result.data.error || 'Unknown error'}`, "warning");
-                    }
-                } catch (err) {
-                    addLog(`  ❌ Failed for ${companyId}: ${err.message}`, "error");
+            (data.summaries || []).forEach(s => {
+                if (s.ok) {
+                    addLog(`  ✅ ${s.companyId}: ${s.phonesBackfilled || 0} phones / ${s.sessionsProcessed || 0} sessions.`, 'success');
+                } else {
+                    addLog(`  ❌ ${s.companyId}: ${s.error || 'Unknown error'}`, 'error');
                 }
+            });
+
+            if (data.truncated) {
+                addLog(`⚠️ Partial run: ${data.processedCompanies}/${data.totalCompanies} processed before the server cut-off. Click again to continue.`, 'warning');
             }
 
             setSmsBackfillStatus('success');
-            addLog(`✅ SMS Backfill Complete! ${totalPhones} phones across ${totalSessions} sessions processed.`, "success");
+            addLog(`✅ ${data.message}`, 'success');
         } catch (error) {
             console.error("SMS Backfill failed:", error);
             setSmsBackfillStatus('error');
@@ -243,7 +246,6 @@ export function useSystemHealth() {
                     appSlug: `test-slug-${Date.now()}`,
                     isTestRecord: true,
                     createdAt: serverTimestamp(),
-                    dailyQuota: 50,
                     status: 'active'
                 });
 

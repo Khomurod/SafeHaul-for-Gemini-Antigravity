@@ -171,8 +171,6 @@ export function CallOutcomeModalUI({
 
           <div className="grid grid-cols-2 gap-3">
             {OUTCOMES_CONFIG.map((opt) => {
-              if (opt.id === 'hired_elsewhere' && !lead.isPlatformLead) return null;
-
               const isSelected = outcome === opt.id;
               return (
                 <button

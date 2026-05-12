@@ -17,10 +17,14 @@ function generateApplicantKey(companyId, email, phone) {
     return fullHash.substring(0, 20);
 }
 
+/**
+ * The application ID is now identical to the applicant key — a fully
+ * deterministic 20-char SHA-256 prefix. Same applicant + same company =>
+ * same doc ID. Combined with `set(..., { merge: true })` below, this makes
+ * resubmits / offline-queue retries naturally idempotent.
+ */
 function generateApplicationId(applicantKey) {
-    const nowPart = Date.now().toString(36);
-    const randPart = crypto.randomBytes(3).toString('hex');
-    return `${applicantKey}_${nowPart}_${randPart}`;
+    return applicantKey;
 }
 
 function generateConfirmationNumber() {
@@ -168,8 +172,7 @@ exports.submitGuestApplication = functions
             },
         });
 
-        applicationDoc.submittedAt = now;
-        applicationDoc.createdAt = now;
+        applicationDoc.updatedAt = now;
 
         try {
             const docRef = db
@@ -178,14 +181,52 @@ exports.submitGuestApplication = functions
                 .collection('applications')
                 .doc(applicationId);
 
-            await docRef.create(applicationDoc);
+            // Idempotent upsert. If a previous attempt already wrote this doc
+            // (e.g. offline queue retry, double-tap on Submit), we merge so we
+            // never produce a duplicate Firestore document.
+            const existing = await docRef.get();
+            if (!existing.exists) {
+                applicationDoc.submittedAt = now;
+                applicationDoc.createdAt = now;
+            } else {
+                // Preserve the original confirmation/timestamps so the driver
+                // keeps seeing the same SAF-XXXX-XXXXX they saw the first time.
+                const prev = existing.data() || {};
+                if (prev.confirmationNumber) {
+                    applicationDoc.confirmationNumber = prev.confirmationNumber;
+                }
+                if (prev.submittedAt) applicationDoc.submittedAt = prev.submittedAt;
+                if (prev.createdAt) applicationDoc.createdAt = prev.createdAt;
+                // Never clobber a status that's already been progressed by a recruiter.
+                if (prev.status && prev.status !== 'New Application') {
+                    delete applicationDoc.status;
+                }
+                // P2 HARDENING: Preserve lifecycle progression (onboardingStatus,
+                // recruiter-set lifecycle.status, originalSubmittedAt, etc.) but
+                // still record that a re-submit happened. Without this, an
+                // offline-queue retry one hour after the recruiter advanced the
+                // applicant would silently reset lifecycle.status back to
+                // 'submitted' and re-fire downstream triggers.
+                if (prev.lifecycle && typeof prev.lifecycle === 'object') {
+                    applicationDoc.lifecycle = {
+                        ...prev.lifecycle,
+                        ...applicationDoc.lifecycle,
+                        status: prev.lifecycle.status || applicationDoc.lifecycle.status,
+                        submittedAt: prev.lifecycle.submittedAt || applicationDoc.lifecycle.submittedAt,
+                        lastResubmittedAt: new Date().toISOString(),
+                    };
+                }
+            }
 
-            console.log(`[submitGuestApplication] Wrote application ${applicationId} for company ${companyId}`);
+            await docRef.set(applicationDoc, { merge: true });
+
+            console.log(`[submitGuestApplication] Upserted application ${applicationId} for company ${companyId} (existed=${existing.exists})`);
 
             return {
                 success: true,
                 applicationId,
-                confirmationNumber,
+                confirmationNumber: applicationDoc.confirmationNumber || confirmationNumber,
+                deduplicated: existing.exists,
             };
         } catch (writeError) {
             if (writeError instanceof functions.https.HttpsError) {

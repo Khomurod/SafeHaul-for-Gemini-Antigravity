@@ -55,16 +55,20 @@ The backend uses a `processing_status` collection to track long-running triggers
 
 ---
 
-## 4. "Dealer" Distribution Engine
+## 4. Lead Sourcing
 
-The Lead Distribution system (`functions/leadLogic.js`) operates on a **Dealer Architecture**.
+Leads enter the platform via three channels and live entirely inside the owning
+company's `companies/{companyId}/leads` subcollection:
 
-1.  **Iterative Dealing**: Iterates through companies sequentially to ensure fair distribution.
-2.  **Ghost Lead Protection**: Uses Firestore Transactions to verify a lead exists and is available *before* assigning. If a lead is "sniped" by another process, the dealer skips it without crashing the batch.
-3.  **Plan-Based Quotas**:
-    - `Free`: 50 leads/day.
-    - `Paid`: 200 leads/day.
-    - Custom override: `dailyLeadQuota`.
+1.  **Manual entry / Quick Add** — recruiters add leads from the Company Admin portal.
+2.  **CSV / Google Sheet bulk imports** — staged through `useCompanyLeadUpload`.
+3.  **Facebook Lead Ads webhook** — `functions/integrations/facebook.js` writes
+    incoming leads directly to the matched company subcollection.
+
+> Note: An earlier "Dealer / Lead Distribution Engine" that fanned out platform
+> leads on a daily cron has been **fully removed** from the codebase. There is
+> no `isPlatformLead`, `distributedAt`, `visitedCompanyIds`, or `dailyLeadQuota`
+> field anymore.
 
 ---
 

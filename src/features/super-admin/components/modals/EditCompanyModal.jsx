@@ -114,12 +114,12 @@ export function EditCompanyModal({ companyDoc, onClose, onSave }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${formData.planType === 'free' ? 'bg-white border-blue-500 ring-2 ring-blue-200' : 'bg-white border-gray-200 hover:border-blue-300'}`}>
-                    <span className="text-sm font-medium text-gray-700">Free Plan<br/><span className="text-xs text-gray-500">50 Leads/Day</span></span>
+                    <span className="text-sm font-medium text-gray-700">Free Plan<br/><span className="text-xs text-gray-500">Standard features</span></span>
                     <input type="radio" name="planType" id="planType" value="free" checked={formData.planType === 'free'} onChange={(e) => setFormData({...formData, planType: 'free'})} className="h-4 w-4 text-blue-600" />
                 </label>
 
                 <label className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${formData.planType === 'paid' ? 'bg-white border-green-500 ring-2 ring-green-200' : 'bg-white border-gray-200 hover:border-green-300'}`}>
-                    <span className="text-sm font-medium text-gray-700">Paid Plan<br/><span className="text-xs text-gray-500">200 Leads/Day</span></span>
+                    <span className="text-sm font-medium text-gray-700">Paid Plan<br/><span className="text-xs text-gray-500">All premium features</span></span>
                     <input type="radio" name="planType" id="planType" value="paid" checked={formData.planType === 'paid'} onChange={(e) => setFormData({...formData, planType: 'paid'})} className="h-4 w-4 text-green-600" />
                 </label>
             </div>

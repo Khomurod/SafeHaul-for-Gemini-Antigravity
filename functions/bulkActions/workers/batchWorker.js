@@ -208,8 +208,11 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                 const leadId = batchIds[i];
                 // Note: Lead ID not logged to avoid exposing PII in Cloud Function logs
 
-                // BUG-12 FIX: Tightened from every 10 to every 5 messages (~15s window instead of ~30s).
-                if (i > 0 && i % 5 === 0) {
+                // BUG-12 FIX: Status check is now per-message so cancel/pause halts
+                // the worker within ~3s (one safety-delay window) instead of after a
+                // batch of 5+ sends. Cost: one extra ~10ms doc read per message; trivial
+                // compared to the SMS/email round-trip itself.
+                if (i > 0) {
                     try {
                         const midCheck = await sessionRef.get();
                         if (!midCheck.exists || !['active'].includes(midCheck.data().status)) {
@@ -380,8 +383,10 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                     });
                 }
 
-                // 4.6 Update Phone Ledger (7-Day SMS Dedup for all sources)
-                // AUDIT FIX #7: Log errors to detect dedup gaps
+                // 4.6 Update Send Ledgers (7-Day Dedup) for SMS *and* Email
+                // AUDIT FIX #7 / BUG-8: Log errors to detect dedup gaps. Email now
+                // mirrors the SMS ledger so `sessionController` can skip recently
+                // contacted addresses in BOTH channels.
                 if (success && config.method === 'sms') {
                     const normPhone = normalizePhone(recipientIdentity);
                     if (normPhone) {
@@ -393,6 +398,25 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                             }, { merge: true })
                             .catch(e => {
                                 console.error(`[BatchWorker] Failed to update sms_sent_phones for ${normPhone}:`, e.message);
+                            });
+                    }
+                } else if (success && config.method === 'email') {
+                    const normEmail = String(recipientIdentity || '').trim().toLowerCase();
+                    // Doc IDs cannot contain "/" — Base64 the email to keep it path-safe.
+                    if (normEmail && normEmail.includes('@')) {
+                        const docId = Buffer.from(normEmail, 'utf8').toString('base64')
+                            .replace(/=+$/, '')
+                            .replace(/\//g, '_')
+                            .replace(/\+/g, '-');
+                        db.collection('companies').doc(companyId)
+                            .collection('email_sent_addresses').doc(docId)
+                            .set({
+                                email: normEmail,
+                                lastSentAt: admin.firestore.FieldValue.serverTimestamp(),
+                                sessionId: sessionId
+                            }, { merge: true })
+                            .catch(e => {
+                                console.error(`[BatchWorker] Failed to update email_sent_addresses for ${normEmail}:`, e.message);
                             });
                     }
                 }
