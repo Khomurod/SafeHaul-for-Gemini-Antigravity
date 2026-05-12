@@ -107,7 +107,8 @@ exports.parseCdlWithGroq = functions
             "Required keys: firstName, lastName, dateOfBirth, fullAddress, cdlNumber, expirationDate.",
             "If a value is missing or unreadable, return empty string for that key.",
             "Keep dates exactly as printed on the card when possible.",
-            "Use fullAddress exactly as printed, in one string.",
+            "For fullAddress, prefer USPS-style with commas: street line, city, ST ZIP (ZIP+4 ok).",
+            "If the card prints on one line with no commas, keep that single line; do not invent commas.",
         ].join(" ");
 
         const requestBody = {

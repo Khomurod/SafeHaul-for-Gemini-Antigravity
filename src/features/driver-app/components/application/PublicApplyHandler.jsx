@@ -13,6 +13,7 @@ import { isValidEmail, isValidPhone } from '@shared/utils/validation';
 import * as Sentry from '@sentry/react';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { resolveGuestUploadMimeType } from '@shared/utils/guestUploadMime';
+import { parseAddressPartsFromCdl } from '@shared/utils/parseCdlAddress';
 
 // Bulletproof submission imports
 import {
@@ -51,15 +52,6 @@ const hasUploadedFile = (value) => {
 };
 
 const AUTO_FILL_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
-const US_STATES = new Set([
-  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
-  'DC'
-]);
-
 const parseIsoFromLooseDate = (raw) => {
   const text = String(raw || '').trim();
   if (!text) return '';
@@ -85,31 +77,6 @@ const parseIsoFromLooseDate = (raw) => {
     return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
   return '';
-};
-
-const parseAddressParts = (fullAddress) => {
-  const text = String(fullAddress || '').trim();
-  if (!text) return { street: '', city: '', state: '', zip: '' };
-
-  const compact = text.replace(/\s+/g, ' ').trim();
-  const zipMatch = compact.match(/\b(\d{5}(?:-\d{4})?)\b/);
-  const stateMatch = compact.match(/\b([A-Z]{2})\b/);
-  const state = stateMatch && US_STATES.has(stateMatch[1]) ? stateMatch[1] : '';
-  const zip = zipMatch ? zipMatch[1] : '';
-
-  const parts = compact.split(',').map((p) => p.trim()).filter(Boolean);
-  let street = '';
-  let city = '';
-  if (parts.length >= 3) {
-    street = parts[0];
-    city = parts[1];
-  } else if (parts.length === 2) {
-    street = parts[0];
-    city = parts[1].replace(/\b[A-Z]{2}\b/, '').replace(/\b\d{5}(?:-\d{4})?\b/, '').trim();
-  } else if (parts.length === 1) {
-    street = parts[0].replace(/\b[A-Z]{2}\b/, '').replace(/\b\d{5}(?:-\d{4})?\b/, '').trim();
-  }
-  return { street, city, state, zip };
 };
 
 const fileToDataUrl = (file) => new Promise((resolve, reject) => {
@@ -370,7 +337,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       const fields = data?.fields || {};
       const dobIso = parseIsoFromLooseDate(fields.dateOfBirth);
       const cdlExpIso = parseIsoFromLooseDate(fields.expirationDate);
-      const addr = parseAddressParts(fields.fullAddress);
+      const addr = parseAddressPartsFromCdl(fields.fullAddress);
 
       setFormData((prev) => ({
         ...prev,
