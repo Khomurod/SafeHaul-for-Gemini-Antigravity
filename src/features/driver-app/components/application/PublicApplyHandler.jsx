@@ -394,7 +394,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       console.error('[PublicApplyHandler] CDL auto-fill failed:', err);
       const msg = err?.message || 'Could not auto-fill from CDL. You can continue manually.';
       showError(msg);
-      setIntakeMode('manual');
+      // Keep user on the choice screen when OCR fails so they don't feel
+      // force-routed into the full manual wizard unexpectedly.
+      setIntakeMode(null);
     } finally {
       setIsParsingCdl(false);
     }
