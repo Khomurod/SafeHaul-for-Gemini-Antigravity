@@ -21,7 +21,7 @@ const ALLOWED_MIME_TYPES = [
  * signed URL PUTs to storage.googleapis.com and their bucket CORS pitfalls.
  */
 exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
-    const { companyId, fileName, fileType } = data;
+    const { companyId, fileName, fileType, folder: rawFolder } = data;
 
     if (!context.auth) {
         const ip = context.rawRequest?.ip || 'unknown_guest';
@@ -44,9 +44,12 @@ exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
 
     await assertCompanyAcceptingIntake(db, companyId);
 
+    const folder = ['applications', 'autofill'].includes(String(rawFolder || '').trim())
+        ? String(rawFolder).trim()
+        : 'applications';
     const cleanFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const storagePath = `companies/${companyId}/applications/guest_uploads/${uniqueId}_${cleanFileName}`;
+    const storagePath = `companies/${companyId}/${folder}/guest_uploads/${uniqueId}_${cleanFileName}`;
 
     return { storagePath };
 });

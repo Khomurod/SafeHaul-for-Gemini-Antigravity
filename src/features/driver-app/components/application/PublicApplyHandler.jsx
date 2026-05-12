@@ -5,7 +5,7 @@ import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/
 import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, functions, storage } from '@lib/firebase';
-import { Loader2, AlertCircle, Building2 } from 'lucide-react';
+import { Loader2, AlertCircle, Building2, Wand2, PencilLine } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
@@ -50,6 +50,75 @@ const hasUploadedFile = (value) => {
   return false;
 };
 
+const AUTO_FILL_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+const US_STATES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'DC'
+]);
+
+const parseIsoFromLooseDate = (raw) => {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const mdY = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  if (mdY) {
+    const m = Number(mdY[1]);
+    const d = Number(mdY[2]);
+    let y = Number(mdY[3]);
+    if (y < 100) y += 2000;
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1900 && y <= 2100) {
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+  }
+
+  const written = new Date(text);
+  if (!Number.isNaN(written.getTime())) {
+    const y = written.getFullYear();
+    const m = written.getMonth() + 1;
+    const d = written.getDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  return '';
+};
+
+const parseAddressParts = (fullAddress) => {
+  const text = String(fullAddress || '').trim();
+  if (!text) return { street: '', city: '', state: '', zip: '' };
+
+  const compact = text.replace(/\s+/g, ' ').trim();
+  const zipMatch = compact.match(/\b(\d{5}(?:-\d{4})?)\b/);
+  const stateMatch = compact.match(/\b([A-Z]{2})\b/);
+  const state = stateMatch && US_STATES.has(stateMatch[1]) ? stateMatch[1] : '';
+  const zip = zipMatch ? zipMatch[1] : '';
+
+  const parts = compact.split(',').map((p) => p.trim()).filter(Boolean);
+  let street = '';
+  let city = '';
+  if (parts.length >= 3) {
+    street = parts[0];
+    city = parts[1];
+  } else if (parts.length === 2) {
+    street = parts[0];
+    city = parts[1].replace(/\b[A-Z]{2}\b/, '').replace(/\b\d{5}(?:-\d{4})?\b/, '').trim();
+  } else if (parts.length === 1) {
+    street = parts[0].replace(/\b[A-Z]{2}\b/, '').replace(/\b\d{5}(?:-\d{4})?\b/, '').trim();
+  }
+  return { street, city, state, zip };
+};
+
+const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(new Error('Could not read file.'));
+  reader.readAsDataURL(file);
+});
+
 const buildE2EPublicProfile = (slugValue) => ({
   id: 'e2e-company',
   companyName: 'E2E Logistics',
@@ -80,9 +149,13 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({});
   const [isUploading, setIsUploading] = useState(false);
+  const [intakeMode, setIntakeMode] = useState(null); // null | manual | autofill
+  const [isParsingCdl, setIsParsingCdl] = useState(false);
+  const [autoFillStoragePath, setAutoFillStoragePath] = useState('');
   const [submissionStatus, setSubmissionStatus] = useState(null);
   const [sandboxSubmission, setSandboxSubmission] = useState(null);
   const hasStarted = useRef(false);
+  const cdlAutoFillInputRef = useRef(null);
   const e2eUploadMode = getE2EQueryParam('e2eUpload', 'allow');
 
   // #7 FIX: Derive custom questions from company profile for public applicants
@@ -130,6 +203,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
             sessionStorage.setItem('pending_application_recruiter', recruiter);
           }
           sessionStorage.setItem('pending_application_company', SANDBOX_COMPANY_ID);
+          setIntakeMode('manual');
           setLoading(false);
           return;
         }
@@ -141,6 +215,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
             setCurrentCompanyProfile(mockCompany);
           }
           sessionStorage.setItem('pending_application_company', mockCompany.id);
+          setIntakeMode('manual');
           setLoading(false);
           return;
         }
@@ -228,6 +303,100 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     });
     setFormData((prev) => ({ ...prev, ...patch }));
   }, [currentStep, customQuestions]);
+
+  const handleChooseManual = () => {
+    setIntakeMode('manual');
+  };
+
+  const handleChooseAutoFill = () => {
+    setIntakeMode('autofill');
+    setTimeout(() => cdlAutoFillInputRef.current?.click(), 0);
+  };
+
+  const handleCdlAutoFillFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      // User closed chooser without selecting a file -> return to first choice screen.
+      setIntakeMode(null);
+      return;
+    }
+
+    if (!AUTO_FILL_IMAGE_TYPES.has(file.type)) {
+      showError('Please upload a JPG, PNG, or WEBP image for CDL auto-fill.');
+      setIntakeMode(null);
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showError('CDL image is too large. Please use an image under 8MB.');
+      setIntakeMode(null);
+      return;
+    }
+
+    try {
+      if (!company?.id) {
+        throw new Error('Company is missing. Please refresh and try again.');
+      }
+
+      setIsParsingCdl(true);
+
+      // 1) Upload to temporary guest autofill path (for reliability/audit/debug)
+      const prepareUpload = httpsCallable(functions, 'getSignedUploadUrl');
+      const { data: uploadData } = await prepareUpload({
+        companyId: company.id,
+        fileName: file.name,
+        fileType: file.type,
+        folder: 'autofill',
+      });
+      const storagePath = uploadData?.storagePath;
+      if (!storagePath) {
+        throw new Error('Could not reserve upload path.');
+      }
+      const uploadRef = ref(storage, storagePath);
+      await uploadBytes(uploadRef, file, { contentType: file.type });
+      setAutoFillStoragePath(storagePath);
+
+      // 2) Send image to secure Groq parser callable (no API key in frontend)
+      const imageDataUrl = await fileToDataUrl(file);
+      const parseFn = httpsCallable(functions, 'parseCdlWithGroq', { timeout: 60000 });
+      const { data } = await parseFn({
+        companyId: company.id,
+        imageDataUrl,
+        storagePath,
+      });
+      const fields = data?.fields || {};
+      const dobIso = parseIsoFromLooseDate(fields.dateOfBirth);
+      const cdlExpIso = parseIsoFromLooseDate(fields.expirationDate);
+      const addr = parseAddressParts(fields.fullAddress);
+
+      setFormData((prev) => ({
+        ...prev,
+        firstName: fields.firstName || prev.firstName || '',
+        lastName: fields.lastName || prev.lastName || '',
+        dob: dobIso || prev.dob || '',
+        street: addr.street || prev.street || '',
+        city: addr.city || prev.city || '',
+        state: addr.state || prev.state || '',
+        zip: addr.zip || prev.zip || '',
+        cdlNumber: fields.cdlNumber || prev.cdlNumber || '',
+        cdlExpiration: cdlExpIso || prev.cdlExpiration || '',
+        // Best-effort: when address parsing yields a valid state, mirror to CDL state too.
+        cdlState: addr.state || prev.cdlState || '',
+      }));
+
+      showSuccess('CDL auto-fill complete. Please review your information.');
+      setCurrentStep(0);
+      setIntakeMode('manual');
+    } catch (err) {
+      console.error('[PublicApplyHandler] CDL auto-fill failed:', err);
+      const msg = err?.message || 'Could not auto-fill from CDL. You can continue manually.';
+      showError(msg);
+      setIntakeMode('manual');
+    } finally {
+      setIsParsingCdl(false);
+    }
+  };
 
   const handleFileUpload = async (fieldName, file) => {
     if (!file) return null;
@@ -522,6 +691,82 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   if (loading) return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-4" size={48} /><h2 className="text-lg font-semibold text-gray-700">Loading Application...</h2></div>;
 
   if (error) return <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4"><div className="bg-white p-8 rounded-xl shadow-lg border border-red-100 text-center max-w-md"><AlertCircle size={32} className="text-red-600 mx-auto mb-4" /><h3 className="text-xl font-bold text-gray-900 mb-2">Link Error</h3><p className="text-gray-600">{error}</p></div></div>;
+
+  if (isParsingCdl) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl border border-blue-100 text-center max-w-md w-full">
+          <div className="w-16 h-16 rounded-full bg-blue-100 mx-auto flex items-center justify-center mb-4">
+            <Loader2 className="animate-spin text-blue-600" size={30} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Reading your CDL...</h2>
+          <p className="text-gray-600 mb-3">
+            Our AI is extracting your basic details so you can skip typing.
+          </p>
+          {autoFillStoragePath && (
+            <p className="text-xs text-gray-400 break-all">{autoFillStoragePath}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!intakeMode) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 max-w-2xl w-full">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{company.companyName}</h1>
+            <p className="text-gray-600">
+              How would you like to start your driver application?
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={handleChooseAutoFill}
+              className="rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 p-6 text-left transition"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <Wand2 className="text-blue-600" size={20} />
+                <h3 className="text-lg font-semibold text-gray-900">Upload CDL for Auto-Fill (Fastest)</h3>
+              </div>
+              <p className="text-sm text-gray-600">
+                Upload one CDL photo and we pre-fill your name, date of birth, address, CDL number, and expiration date.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleChooseManual}
+              className="rounded-xl border-2 border-gray-200 bg-white hover:bg-gray-50 p-6 text-left transition"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <PencilLine className="text-gray-700" size={20} />
+                <h3 className="text-lg font-semibold text-gray-900">Fill Out Manually</h3>
+              </div>
+              <p className="text-sm text-gray-600">
+                Start at Step 1 and enter everything by hand, just like the current flow.
+              </p>
+            </button>
+          </div>
+
+          <div className="mt-6 text-center text-xs text-gray-500">
+            You can review and edit everything before submitting.
+          </div>
+
+          <input
+            ref={cdlAutoFillInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            className="hidden"
+            onChange={handleCdlAutoFillFileChange}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (sandbox && sandboxSubmission) {
     return (

@@ -77,7 +77,7 @@ service firebase.storage {
     // Simplified: guest uploads are permitted without App Check for application intake reliability.
     match /companies/{companyId}/{folder}/guest_uploads/{allPaths=**} {
       allow read: if isCompanyAdmin(companyId) || isSuperAdmin() || folder == 'applications';
-      allow create: if folder == 'applications' && isValidFile();
+      allow create: if (folder == 'applications' || folder == 'autofill') && isValidFile();
       // No delete or update permissions for guests
     }
 

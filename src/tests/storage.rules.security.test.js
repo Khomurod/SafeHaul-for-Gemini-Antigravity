@@ -89,5 +89,33 @@ describeStorage('storage.rules multi-tenant isolation', () => {
     await assertSucceeds(getMetadata(ref(storageB, 'companies/co1/leads/app123/dq_files/medical.pdf')));
     await assertFails(getMetadata(ref(storageA, 'companies/co1/leads/app123/dq_files/medical.pdf')));
   });
+
+  it('allows unauthenticated guest write to temporary autofill folder', async () => {
+    const guestApp = testEnv.unauthenticatedContext().app;
+    const guestStorage = getStorage(guestApp, `gs://${bucket}`);
+
+    await assertSucceeds(
+      uploadString(
+        ref(guestStorage, 'companies/co1/autofill/guest_uploads/scan.jpg'),
+        'fake-image-content',
+        'raw',
+        { contentType: 'image/jpeg' }
+      )
+    );
+  });
+
+  it('blocks unauthenticated guest write outside guest_uploads', async () => {
+    const guestApp = testEnv.unauthenticatedContext().app;
+    const guestStorage = getStorage(guestApp, `gs://${bucket}`);
+
+    await assertFails(
+      uploadString(
+        ref(guestStorage, 'companies/co1/applications/driverA/cdl-front/blocked.jpg'),
+        'fake-image-content',
+        'raw',
+        { contentType: 'image/jpeg' }
+      )
+    );
+  });
 });
 
