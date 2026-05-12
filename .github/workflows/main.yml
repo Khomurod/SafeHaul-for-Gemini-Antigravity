@@ -240,14 +240,35 @@ jobs:
         continue-on-error: true
         run: npx firebase functions:delete onLeadSubmitted --region us-central1 --project "$FIREBASE_PROJECT_ID" --non-interactive --force
 
-      # Incremental: only deploy exports tied to changed top-level modules (see scripts/deploy-functions-incremental.mjs).
-      # Falls back to full sequential deploy when shared/, index.js, firebase.json, etc. change.
+      - name: Validate function export wiring parser
+        run: npm run check:function-exports
+
+      - name: Validate incremental deploy planner behavior
+        run: npm run check:deploy-script
+
+      # Incremental strict mode: deploy only changed/mapped runtime functions.
+      # Never auto-full-deploy; explicit full deploy requires DEPLOY_FUNCTIONS_FORCE_FULL=1.
       - name: Deploy Cloud Functions (incremental or full)
         env:
           GITHUB_PUSH_BEFORE: ${{ github.event.before }}
           GITHUB_SHA: ${{ github.sha }}
           DEPLOY_FUNCTIONS_SLEEP_SEC: '0'
-        run: node scripts/deploy-functions-incremental.mjs
+        run: |
+          max_attempts=3
+          attempt=1
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "Deploy attempt $attempt/$max_attempts"
+            if node scripts/deploy-functions-incremental.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "Deploy failed after $max_attempts attempts."
+              exit 1
+            fi
+            echo "Transient deploy failure; retrying in 20 seconds..."
+            sleep 20
+            attempt=$((attempt + 1))
+          done
 
       - name: Post-deploy smoke check
         run: node scripts/smoke-functions-deploy.mjs
