@@ -7,16 +7,22 @@
  * - Parses functions/index.js to map each export name → primary module file (direct require from index).
  * - functions/index.js: diffs export→module mappings vs base commit; only exports whose wiring or backing
  *   file path changed are redeployed (whitespace-only edits deploy nothing). Parse ambiguity → full deploy.
- * - Full deploy if: package files, firebaseAdmin.js, shared/, firebase.json, or unmapped changed files.
+ * - Full deploy if: package files, firebaseAdmin.js, shared/, firebase.json.
  * - Ignores functions/test/** (tests are not deployed and must not trigger unmapped-file full deploy).
  * - Directory entrypoints (require('./bulkActions') → bulkActions/index.js) and nested files map to deploy unit.
+ * - Transitive `require()` graph: any other changed file is attributed to the union of entrypoints whose
+ *   closure references it. Example: editing `functions/schemaConfig.js` (required only by
+ *   `functions/systemIntegrity.js`) deploys only the `systemIntegrity` exports, not the whole codebase.
+ * - Only when a changed file does not appear in ANY entrypoint's closure do we fall back to full deploy.
  * - Otherwise: single `firebase deploy --only functions:a,functions:b,...`
  *
  * Env:
- *   FIREBASE_PROJECT_ID (required)
+ *   FIREBASE_PROJECT_ID (required for real deploys; not needed for dry-run)
  *   DEPLOY_GIT_BASE / DEPLOY_GIT_HEAD — optional explicit SHAs
  *   GITHUB_PUSH_BEFORE / GITHUB_SHA — set by CI on push
  *   DEPLOY_FUNCTIONS_FORCE_FULL=1 — skip incremental, deploy all (sequential script)
+ *   DEPLOY_FUNCTIONS_DRY_RUN=1 — print the deploy plan and exit (no firebase invocation)
+ *   --dry-run CLI flag — same as DEPLOY_FUNCTIONS_DRY_RUN=1
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -29,11 +35,9 @@ const repoRoot = join(root, '..');
 const functionsDir = join(repoRoot, 'functions');
 const indexPath = join(functionsDir, 'index.js');
 
+const dryRun =
+  process.env.DEPLOY_FUNCTIONS_DRY_RUN === '1' || process.argv.includes('--dry-run');
 const projectId = process.env.FIREBASE_PROJECT_ID;
-if (!projectId) {
-  console.error('FIREBASE_PROJECT_ID is required.');
-  process.exit(1);
-}
 
 /**
  * Normalize require('./foo') to a repo-relative path under functions/.
@@ -106,6 +110,91 @@ function buildExportToFileFromSource(src) {
 function buildExportToFile() {
   const src = readFileSync(indexPath, 'utf8');
   return buildExportToFileFromSource(src);
+}
+
+/**
+ * Resolve a relative `require()` specifier (./foo, ../foo/bar, ./foo.js) from
+ * `fromFile` (a repo-relative path like 'functions/companyAdmin.js') to a
+ * repo-relative path of the actual file on disk.
+ *
+ * Returns null if:
+ *   - the specifier escapes the `functions/` tree
+ *   - neither `<resolved>.js` nor `<resolved>/index.js` exists on disk
+ */
+function resolveRelativeRequire(fromFile, rel) {
+  const baseDir = dirname(fromFile);
+  const targetNoExt = normalize(join(baseDir, rel)).replace(/\\/g, '/');
+
+  // Hard guard: never let a relative path walk us out of functions/.
+  if (!targetNoExt.startsWith('functions/')) return null;
+
+  if (targetNoExt.endsWith('.js')) {
+    return existsSync(join(repoRoot, targetNoExt)) ? targetNoExt : null;
+  }
+
+  const asFile = `${targetNoExt}.js`;
+  if (existsSync(join(repoRoot, asFile))) return asFile;
+  const asIndex = `${targetNoExt}/index.js`;
+  if (existsSync(join(repoRoot, asIndex))) return asIndex;
+  return null;
+}
+
+/** Tiny cache so the closure walker re-uses file sources across entrypoints. */
+const fileSourceCache = new Map();
+function readFileCached(repoRelPath) {
+  if (fileSourceCache.has(repoRelPath)) return fileSourceCache.get(repoRelPath);
+  const abs = join(repoRoot, repoRelPath);
+  const src = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+  fileSourceCache.set(repoRelPath, src);
+  return src;
+}
+
+/**
+ * Recursively collect every relative dependency reachable from `entryFile`.
+ * Bare specifiers (e.g. `firebase-admin`, `nodemailer`) are intentionally skipped:
+ * those are npm deps, not in-repo source, so they cannot be affected by a git diff
+ * inside `functions/`.
+ *
+ * Cycles are handled via the `visited` set.
+ * Dynamic requires (template literals, variables) are not analyzable and are skipped;
+ * if a changed file is only referenced dynamically it will fall through to the
+ * full-deploy escape hatch — that's correct, since static analysis can't prove
+ * otherwise.
+ */
+function collectClosure(entryFile, visited = new Set()) {
+  if (visited.has(entryFile)) return visited;
+  visited.add(entryFile);
+
+  const src = readFileCached(entryFile);
+  if (!src) return visited;
+
+  // Only relative requires: ./foo or ../foo/bar (with optional whitespace inside parens).
+  const reReq = /require\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g;
+  let m;
+  while ((m = reReq.exec(src))) {
+    const resolved = resolveRelativeRequire(entryFile, m[1]);
+    if (resolved && !visited.has(resolved)) {
+      collectClosure(resolved, visited);
+    }
+  }
+  return visited;
+}
+
+/**
+ * Invert per-entrypoint closures into a `file → Set<entrypoint>` map.
+ * Lookups in this map answer: "if this file changed, which entrypoint modules
+ * (and therefore which Cloud Function exports) need to be redeployed?"
+ */
+function buildFileToEntrypoints(knownTopLevelFiles) {
+  const fileToEntries = new Map();
+  for (const entry of knownTopLevelFiles) {
+    const closure = collectClosure(entry);
+    for (const dep of closure) {
+      if (!fileToEntries.has(dep)) fileToEntries.set(dep, new Set());
+      fileToEntries.get(dep).add(entry);
+    }
+  }
+  return fileToEntries;
 }
 
 function gitShow(commitColonPath) {
@@ -209,6 +298,10 @@ function resolveGitRange() {
 }
 
 function main() {
+  if (!projectId && !dryRun) {
+    console.error('FIREBASE_PROJECT_ID is required (or set DEPLOY_FUNCTIONS_DRY_RUN=1).');
+    process.exit(1);
+  }
   if (process.env.DEPLOY_FUNCTIONS_FORCE_FULL === '1') {
     console.log('[incremental] DEPLOY_FUNCTIONS_FORCE_FULL=1 → deploy all (sequential)');
     runSequentialAll();
@@ -229,6 +322,10 @@ function main() {
     if (!fileToExports.has(file)) fileToExports.set(file, []);
     fileToExports.get(file).push(exp);
   }
+
+  // Transitive require() graph. Built once per run; cheap thanks to the source cache.
+  const fileToEntries = buildFileToEntrypoints(knownTopLevelFiles);
+  console.log(`[incremental] Built dependency graph: ${fileToEntries.size} files across ${knownTopLevelFiles.size} entrypoint module(s).`);
 
   const { base, head } = resolveGitRange();
   if (!base || !head) {
@@ -304,8 +401,25 @@ function main() {
       continue;
     }
 
-    console.log(`[incremental] Changed file not mapped from index.js top-level requires: ${n}`);
-    console.log('[incremental] → full deploy (nested/shared dependency — safest)');
+    // Third branch: transitive `require()` closure.
+    // If this file is reachable from one or more entrypoint modules, deploy
+    // only the exports owned by those entrypoints — not the whole codebase.
+    const owners = fileToEntries.get(n);
+    if (owners && owners.size > 0) {
+      const ownersList = [...owners].sort();
+      const expanded = new Set();
+      for (const owner of owners) {
+        (fileToExports.get(owner) || []).forEach((e) => expanded.add(e));
+      }
+      expanded.forEach((e) => toDeploy.add(e));
+      console.log(
+        `[incremental] Shared dep ${n} → ${owners.size} entrypoint(s) [${ownersList.join(', ')}] → ${expanded.size} export(s)`
+      );
+      continue;
+    }
+
+    console.log(`[incremental] Changed file not reachable from any entrypoint: ${n}`);
+    console.log('[incremental] → full deploy (orphan dependency — safest)');
     runSequentialAll();
     return;
   }
@@ -317,6 +431,11 @@ function main() {
   }
 
   console.log(`[incremental] Deploying ${names.length} function(s): ${names.join(', ')}`);
+
+  if (dryRun) {
+    console.log('[incremental] DRY RUN — skipping firebase invocation.');
+    return;
+  }
 
   const only = names.map((n) => `functions:${n}`).join(',');
   const r = spawnSync(
@@ -336,6 +455,10 @@ function main() {
 }
 
 function runSequentialAll() {
+  if (dryRun) {
+    console.log('[incremental] DRY RUN — would deploy ALL functions sequentially.');
+    process.exit(0);
+  }
   const seq = join(root, 'deploy-functions-sequential.mjs');
   if (!existsSync(seq)) {
     console.error('Missing scripts/deploy-functions-sequential.mjs');
@@ -349,4 +472,20 @@ function runSequentialAll() {
   process.exit(r.status ?? 1);
 }
 
-main();
+// CLI guard: only run main() when this file is executed directly, not when imported by tests.
+const isDirectInvocation =
+  process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isDirectInvocation) {
+  main();
+}
+
+// Named exports for tests. Production behavior is unaffected.
+export {
+  modulePathToFile,
+  resolveNestedUnderDirectoryModules,
+  buildExportToFileFromSource,
+  resolveRelativeRequire,
+  collectClosure,
+  buildFileToEntrypoints,
+  mustDeployAll,
+};
