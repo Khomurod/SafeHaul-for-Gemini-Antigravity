@@ -149,7 +149,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({});
   const [isUploading, setIsUploading] = useState(false);
-  const [intakeMode, setIntakeMode] = useState(null); // null | manual | autofill
+  const [intakeMode, setIntakeMode] = useState(null); // null | manual
   const [isParsingCdl, setIsParsingCdl] = useState(false);
   const [autoFillStoragePath, setAutoFillStoragePath] = useState('');
   const [submissionStatus, setSubmissionStatus] = useState(null);
@@ -309,8 +309,10 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   };
 
   const handleChooseAutoFill = () => {
-    setIntakeMode('autofill');
-    setTimeout(() => cdlAutoFillInputRef.current?.click(), 0);
+    // Keep the user on the choice screen until a file is actually selected.
+    // This prevents an accidental fallback into the manual wizard when the
+    // picker is dismissed or blocked by the browser.
+    cdlAutoFillInputRef.current?.click();
   };
 
   const handleCdlAutoFillFileChange = async (event) => {

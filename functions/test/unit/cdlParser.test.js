@@ -31,18 +31,22 @@ describe('parseCdlWithGroq', () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        choices: [
+        output: [
           {
-            message: {
-              content: JSON.stringify({
-                firstName: 'John',
-                lastName: 'Doe',
-                dateOfBirth: '01/01/1990',
-                fullAddress: '123 Main St, Dallas, TX 75001',
-                cdlNumber: 'D1234567',
-                expirationDate: '12/31/2030',
-              }),
-            },
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({
+                  firstName: 'John',
+                  lastName: 'Doe',
+                  dateOfBirth: '01/01/1990',
+                  fullAddress: '123 Main St, Dallas, TX 75001',
+                  cdlNumber: 'D1234567',
+                  expirationDate: '12/31/2030',
+                }),
+              },
+            ],
           },
         ],
       }),
@@ -71,7 +75,7 @@ describe('parseCdlWithGroq', () => {
     expect(checkRateLimit).toHaveBeenCalled();
     expect(assertCompanyAcceptingIntake).toHaveBeenCalledWith(expect.anything(), 'co1');
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.groq.com/openai/v1/chat/completions',
+      'https://api.groq.com/openai/v1/responses',
       expect.objectContaining({ method: 'POST' })
     );
   });

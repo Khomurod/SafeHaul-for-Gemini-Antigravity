@@ -4,7 +4,7 @@ const { checkRateLimit } = require("./shared/rateLimiter");
 const { assertCompanyAcceptingIntake } = require("./shared/companyTenant");
 
 const DEFAULT_GROQ_MODEL = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
-const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/responses";
 
 const STRICT_JSON_SCHEMA = {
     type: "object",
@@ -59,6 +59,20 @@ function extractJsonObject(text) {
     }
 }
 
+function extractAssistantTextFromResponses(payload) {
+    const output = Array.isArray(payload?.output) ? payload.output : [];
+    for (const item of output) {
+        if (item?.type !== "message") continue;
+        const content = Array.isArray(item.content) ? item.content : [];
+        for (const part of content) {
+            if (part?.type === "output_text" && typeof part.text === "string" && part.text.trim()) {
+                return part.text;
+            }
+        }
+    }
+    return "";
+}
+
 exports.parseCdlWithGroq = functions
     .runWith({ memory: "512MB", timeoutSeconds: 60 })
     .https.onCall(async (data, context) => {
@@ -99,14 +113,20 @@ exports.parseCdlWithGroq = functions
         const requestBody = {
             model: DEFAULT_GROQ_MODEL,
             temperature: 0,
-            max_tokens: 300,
-            response_format: { type: "json_object" },
-            messages: [
+            max_output_tokens: 450,
+            text: {
+                format: {
+                    type: "json_schema",
+                    name: "cdl_extraction",
+                    schema: STRICT_JSON_SCHEMA,
+                },
+            },
+            input: [
                 {
                     role: "user",
                     content: [
-                        { type: "text", text: prompt },
-                        { type: "image_url", image_url: { url: imageDataUrl } },
+                        { type: "input_text", text: prompt },
+                        { type: "input_image", image_url: imageDataUrl },
                     ],
                 },
             ],
@@ -134,7 +154,7 @@ exports.parseCdlWithGroq = functions
         }
 
         const raw = await response.json();
-        const content = raw?.choices?.[0]?.message?.content || "";
+        const content = extractAssistantTextFromResponses(raw);
         const parsed = extractJsonObject(content);
 
         if (!parsed) {
@@ -162,5 +182,6 @@ exports.parseCdlWithGroq = functions
 exports.__private = {
     normalizeOutput,
     extractJsonObject,
+    extractAssistantTextFromResponses,
 };
 
