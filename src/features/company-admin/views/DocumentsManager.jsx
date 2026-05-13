@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '@lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, onSnapshot, orderBy, deleteDoc, doc, serverTimestamp, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, deleteDoc, doc, updateDoc, getDocs, Timestamp, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { useData } from '@/context/DataContext';
 import EnvelopeCreator from '@features/signing/EnvelopeCreator';
 import EnvelopeHistory from '@features/signing/components/EnvelopeHistory';
@@ -16,7 +16,7 @@ import {
 } from '@features/signing/utils/prefillEngine';
 import DateTripletField from '@shared/components/form/DateTripletField';
 import { GlobalLoadingState } from '@shared/components/feedback';
-import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2, Mail, Phone, Copy, MessageSquare, Edit3 } from 'lucide-react';
+import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2, Mail, Phone, Copy, MessageSquare, Edit3, ArrowUp, ArrowDown, Save } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
 
@@ -51,6 +51,8 @@ export default function DocumentsManager() {
     // Template pre-fill: grouped keys share one control; plain text fields stay per-slot
     const [prefillValues, setPrefillValues] = useState({});
     const [prefillValuesByGroupKey, setPrefillValuesByGroupKey] = useState({});
+    const [postSubmitTemplateIds, setPostSubmitTemplateIds] = useState([]);
+    const [savingPostSubmitTemplates, setSavingPostSubmitTemplates] = useState(false);
 
     if (currentCompanyProfile?.features?.eDocs === false) {
         return <FeatureLockedModal featureName="E-Docs" onClose={() => navigate('/company/dashboard')} />;
@@ -65,6 +67,25 @@ export default function DocumentsManager() {
             setTemplatesLoading(false);
         });
     }, [currentCompanyProfile?.id]);
+
+    useEffect(() => {
+        const raw = Array.isArray(currentCompanyProfile?.postApplicationTemplates)
+            ? currentCompanyProfile.postApplicationTemplates
+            : [];
+        const ids = raw
+            .map((item) => {
+                if (typeof item === 'string') return item.trim();
+                if (!item || typeof item !== 'object') return '';
+                return String(item.templateId || item.id || '').trim();
+            })
+            .filter(Boolean);
+        setPostSubmitTemplateIds(ids);
+    }, [currentCompanyProfile?.postApplicationTemplates]);
+
+    useEffect(() => {
+        if (!templates.length) return;
+        setPostSubmitTemplateIds((prev) => prev.filter((id) => templates.some((t) => t.id === id)));
+    }, [templates]);
 
     // Fetch Drivers for Picker
     useEffect(() => {
@@ -238,6 +259,7 @@ export default function DocumentsManager() {
     const handleDeleteTemplate = async (id) => {
         if (!window.confirm("Delete template?")) return;
         await deleteDoc(doc(db, 'companies', currentCompanyProfile.id, 'templates', id));
+        setPostSubmitTemplateIds((prev) => prev.filter((templateId) => templateId !== id));
     };
 
     const handleEditTemplate = (template) => {
@@ -245,6 +267,54 @@ export default function DocumentsManager() {
         setEditTemplateId(template.id);
         setCreatorInitialMode('template');
         setViewMode('create');
+    };
+
+    const isTemplateEnabledPostSubmit = (templateId) => postSubmitTemplateIds.includes(templateId);
+
+    const togglePostSubmitTemplate = (templateId) => {
+        setPostSubmitTemplateIds((prev) => {
+            if (prev.includes(templateId)) return prev.filter((id) => id !== templateId);
+            return [...prev, templateId];
+        });
+    };
+
+    const movePostSubmitTemplate = (templateId, direction) => {
+        setPostSubmitTemplateIds((prev) => {
+            const index = prev.indexOf(templateId);
+            if (index < 0) return prev;
+            const target = direction === 'up' ? index - 1 : index + 1;
+            if (target < 0 || target >= prev.length) return prev;
+            const next = [...prev];
+            [next[index], next[target]] = [next[target], next[index]];
+            return next;
+        });
+    };
+
+    const handleSavePostSubmitTemplates = async () => {
+        try {
+            setSavingPostSubmitTemplates(true);
+            const mapped = postSubmitTemplateIds
+                .map((templateId) => {
+                    const template = templates.find((item) => item.id === templateId);
+                    if (!template) return null;
+                    return {
+                        templateId,
+                        title: String(template.title || 'Complete Form').trim(),
+                        enabled: true,
+                    };
+                })
+                .filter(Boolean);
+
+            await updateDoc(doc(db, 'companies', currentCompanyProfile.id), {
+                postApplicationTemplates: mapped,
+            });
+            showSuccess('Post-submission forms updated.');
+        } catch (error) {
+            console.error('[DocumentsManager] Failed saving post-submission forms:', error);
+            showError('Could not save post-submission forms. Please try again.');
+        } finally {
+            setSavingPostSubmitTemplates(false);
+        }
     };
 
     if (loading) return <GlobalLoadingState />;
@@ -314,7 +384,61 @@ export default function DocumentsManager() {
                     {activeTab === 'list' ? (
                         <EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="space-y-5">
+                            <div className="bg-white border border-blue-100 rounded-2xl p-5">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-blue-900">Post-Application Success Page Forms</h3>
+                                        <p className="text-xs text-blue-700">
+                                            Choose which templates appear right after a driver submits the application.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={handleSavePostSubmitTemplates}
+                                        disabled={savingPostSubmitTemplates}
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
+                                    >
+                                        {savingPostSubmitTemplates ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                        Save Forms
+                                    </button>
+                                </div>
+                                {postSubmitTemplateIds.length === 0 ? (
+                                    <p className="text-xs text-gray-500">No follow-up forms enabled yet.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {postSubmitTemplateIds.map((templateId, idx) => {
+                                            const template = templates.find((item) => item.id === templateId);
+                                            if (!template) return null;
+                                            return (
+                                                <div key={templateId} className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                                                    <span className="text-sm text-blue-900 font-medium truncate">{template.title || 'Complete Form'}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => movePostSubmitTemplate(templateId, 'up')}
+                                                            disabled={idx === 0}
+                                                            className="p-1 rounded hover:bg-white disabled:opacity-40"
+                                                            aria-label="Move up"
+                                                        >
+                                                            <ArrowUp size={14} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => movePostSubmitTemplate(templateId, 'down')}
+                                                            disabled={idx === postSubmitTemplateIds.length - 1}
+                                                            className="p-1 rounded hover:bg-white disabled:opacity-40"
+                                                            aria-label="Move down"
+                                                        >
+                                                            <ArrowDown size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {templatesLoading ? <div className="col-span-full flex justify-center py-12"><Loader2 className="animate-spin text-gray-300" /></div> :
                                 templates.length === 0 ? <div className="col-span-full bg-white border-2 border-dashed rounded-2xl p-12 text-center text-gray-400">No templates saved yet.</div> :
                                     templates.map(tmp => (
@@ -325,6 +449,14 @@ export default function DocumentsManager() {
                                             </div>
                                             <h3 className="font-bold text-gray-900 mb-1 truncate">{tmp.title}</h3>
                                             <p className="text-[10px] text-gray-400 uppercase font-bold mb-4">{tmp.fields?.length || 0} Fields</p>
+                                            <label className="flex items-center gap-2 text-xs text-gray-600 mb-3 cursor-pointer select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isTemplateEnabledPostSubmit(tmp.id)}
+                                                    onChange={() => togglePostSubmitTemplate(tmp.id)}
+                                                />
+                                                Show on post-submit success page
+                                            </label>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <button onClick={() => handleUseTemplate(tmp)} className="w-full py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2 transition-all shadow-sm">
                                                     <Send size={14} /> Use
@@ -336,6 +468,7 @@ export default function DocumentsManager() {
                                         </div>
                                     ))
                             }
+                        </div>
                         </div>
                     )}
                 </div>

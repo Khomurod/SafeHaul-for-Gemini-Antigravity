@@ -215,6 +215,11 @@ exports.backfillPublicProfiles = onCall({
                 logoUrl: data.companyLogoUrl || null,
                 brandColor: data.brandColor || "#1e40af",
                 isActive: data.isActive ?? true,
+                applicationConfig: data.applicationConfig || {},
+                customQuestions: Array.isArray(data.customQuestions) ? data.customQuestions : [],
+                postApplicationTemplates: Array.isArray(data.postApplicationTemplates)
+                    ? data.postApplicationTemplates
+                    : [],
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             };
 
@@ -263,6 +268,11 @@ exports.syncPublicProfile = onDocumentWritten("companies/{companyId}", async (ev
         logoUrl: newData.companyLogoUrl || null,
         brandColor: newData.brandColor || "#1e40af",
         isActive: newData.isActive ?? true,
+        applicationConfig: newData.applicationConfig || {},
+        customQuestions: Array.isArray(newData.customQuestions) ? newData.customQuestions : [],
+        postApplicationTemplates: Array.isArray(newData.postApplicationTemplates)
+            ? newData.postApplicationTemplates
+            : [],
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 

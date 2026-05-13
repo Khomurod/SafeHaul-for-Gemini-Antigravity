@@ -80,6 +80,7 @@ exports.onLeadAtsContactSms = atsContactSms.onLeadAtsContactSms;
 // 4b. Guest Application Submission (Admin SDK — bypasses rules)
 exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
 exports.parseCdlWithGroq = require('./cdlParser').parseCdlWithGroq;
+exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').createPostApplicationSigningRequest;
 
 // 4d. Sandbox applications (Super Admin maintenance)
 const sandboxApplication = require('./sandboxApplication');

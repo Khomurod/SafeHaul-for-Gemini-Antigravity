@@ -92,6 +92,9 @@ export async function saveCompanySettings(companyId, settingsData) {
 
   // NEW: Save hiring positions structure
   if (settingsData.hiringPositions) payload.hiringPositions = settingsData.hiringPositions;
+  if (settingsData.postApplicationTemplates) {
+    payload.postApplicationTemplates = settingsData.postApplicationTemplates;
+  }
 
   return await updateDoc(companyRef, payload);
 }

@@ -5,7 +5,7 @@ import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/
 import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, functions, storage } from '@lib/firebase';
-import { Loader2, AlertCircle, Building2, Wand2, PencilLine } from 'lucide-react';
+import { Loader2, AlertCircle, Building2, Wand2, PencilLine, FileSignature, ArrowRight } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
@@ -52,6 +52,27 @@ const hasUploadedFile = (value) => {
 };
 
 const AUTO_FILL_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+const normalizePostApplicationTemplates = (raw) => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === 'string') {
+        const templateId = item.trim();
+        if (!templateId) return null;
+        return { templateId, title: 'Complete Form', enabled: true };
+      }
+      if (!item || typeof item !== 'object') return null;
+      const templateId = String(item.templateId || item.id || '').trim();
+      if (!templateId) return null;
+      return {
+        templateId,
+        title: String(item.title || 'Complete Form').trim(),
+        enabled: item.enabled !== false,
+      };
+    })
+    .filter((item) => item && item.enabled !== false);
+};
+
 const parseIsoFromLooseDate = (raw) => {
   const text = String(raw || '').trim();
   if (!text) return '';
@@ -96,6 +117,7 @@ const buildE2EPublicProfile = (slugValue) => ({
     medCardUpload: { hidden: false, required: true },
     showEmergencyContacts: false,
   },
+  postApplicationTemplates: [],
 });
 
 /**
@@ -120,6 +142,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const [isParsingCdl, setIsParsingCdl] = useState(false);
   const [autoFillStoragePath, setAutoFillStoragePath] = useState('');
   const [submissionStatus, setSubmissionStatus] = useState(null);
+  const [submittedApplicationId, setSubmittedApplicationId] = useState('');
+  const [submittedConfirmationNumber, setSubmittedConfirmationNumber] = useState('');
+  const [openingTemplateId, setOpeningTemplateId] = useState('');
   const [sandboxSubmission, setSandboxSubmission] = useState(null);
   const hasStarted = useRef(false);
   const cdlAutoFillInputRef = useRef(null);
@@ -127,6 +152,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
 
   // #7 FIX: Derive custom questions from company profile for public applicants
   const customQuestions = company?.customQuestions || [];
+  const postApplicationTemplates = normalizePostApplicationTemplates(company?.postApplicationTemplates);
   // #8 FIX: Dynamic consent step index based on whether custom questions exist
   const consentStepIndex = customQuestions.length > 0 ? 9 : 8;
   const cdlUploadConfig = getFieldConfig(company?.applicationConfig, 'cdlUpload', true);
@@ -489,6 +515,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     if (isE2ETestMode && !sandbox) {
       const confirmationNumber = generateConfirmationNumber();
       sessionStorage.setItem('lastConfirmationNumber', confirmationNumber);
+      setSubmittedConfirmationNumber(confirmationNumber);
       localStorage.removeItem(`draft_${slug}`);
       sessionStorage.removeItem('pending_application_recruiter');
       setSubmissionStatus('success');
@@ -616,6 +643,8 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
 
           const finalConfirm = serverData.confirmationNumber || confirmationNumber;
           sessionStorage.setItem('lastConfirmationNumber', finalConfirm);
+          setSubmittedApplicationId(serverData.applicationId || applicationId);
+          setSubmittedConfirmationNumber(finalConfirm);
 
           if (sandbox) {
             setSandboxSubmission({
@@ -656,6 +685,41 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       console.error("Submission error:", error);
       setSubmissionStatus('error');
       showError("Failed to submit application. Please try again.");
+    }
+  };
+
+  const handleOpenPostApplicationTemplate = async (template) => {
+    if (!template?.templateId || !company?.id || !submittedApplicationId) {
+      showError('Could not open this form yet. Please refresh and try again.');
+      return;
+    }
+
+    const confirmationNumber = submittedConfirmationNumber || sessionStorage.getItem('lastConfirmationNumber') || '';
+    if (!confirmationNumber) {
+      showError('Missing confirmation number. Please refresh and try again.');
+      return;
+    }
+
+    try {
+      setOpeningTemplateId(template.templateId);
+      const createSigningRequest = httpsCallable(functions, 'createPostApplicationSigningRequest', { timeout: 60000 });
+      const { data } = await createSigningRequest({
+        companyId: company.id,
+        applicationId: submittedApplicationId,
+        confirmationNumber,
+        templateId: template.templateId,
+        appBaseUrl: window.location.origin,
+      });
+
+      if (!data?.requestId || !data?.accessToken) {
+        throw new Error('Could not generate signing link.');
+      }
+      navigate(`/sign/${company.id}/${data.requestId}?token=${data.accessToken}`);
+    } catch (error) {
+      console.error('[PublicApplyHandler] Post-application e-doc launch failed:', error);
+      showError(error?.message || 'Could not open this form. Please try again.');
+    } finally {
+      setOpeningTemplateId('');
     }
   };
 
@@ -768,6 +832,37 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Confirmation Number</p>
               <p className="text-lg font-bold font-mono text-gray-800">{confirmNum}</p>
               <p className="text-xs text-gray-400 mt-1">Save this number for your records.</p>
+            </div>
+          )}
+          {postApplicationTemplates.length > 0 && submittedApplicationId && (
+            <div className="text-left border border-blue-100 bg-blue-50 rounded-xl p-4 mb-4">
+              <div className="flex items-start gap-2 mb-3">
+                <FileSignature size={18} className="text-blue-700 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-bold text-blue-900">Optional onboarding forms</h3>
+                  <p className="text-xs text-blue-700">
+                    You can complete these now, or skip and do them later.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {postApplicationTemplates.map((template) => (
+                  <button
+                    key={template.templateId}
+                    type="button"
+                    onClick={() => handleOpenPostApplicationTemplate(template)}
+                    disabled={openingTemplateId === template.templateId}
+                    className="w-full rounded-lg border border-blue-200 bg-white hover:bg-blue-100 disabled:opacity-60 disabled:cursor-not-allowed px-3 py-2 text-left flex items-center justify-between"
+                  >
+                    <span className="text-sm text-blue-900 font-medium">{template.title || 'Complete Form'}</span>
+                    {openingTemplateId === template.templateId ? (
+                      <Loader2 className="animate-spin text-blue-700" size={16} />
+                    ) : (
+                      <ArrowRight className="text-blue-700" size={16} />
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <button onClick={() => navigate('/')} className="text-blue-600 hover:underline text-sm font-medium">Go to home</button>

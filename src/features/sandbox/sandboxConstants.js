@@ -16,5 +16,6 @@ export function buildDefaultSandboxPublicProfile() {
       medCardUpload: { hidden: false, required: true },
       showEmergencyContacts: false,
     },
+    postApplicationTemplates: [],
   };
 }
