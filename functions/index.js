@@ -65,6 +65,12 @@ exports.onDriverProfileCreated = require('./userOnboarding').onDriverProfileCrea
 exports.deleteCompany = companyAdmin.deleteCompany;
 exports.syncPublicProfile = companyAdmin.syncPublicProfile;
 
+// 4a. Employer dashboard counter rollups (internal_stats — server writes only)
+const dashboardStatsRollup = require('./dashboardStatsRollup');
+exports.onApplicationWrittenDashboardRollup = dashboardStatsRollup.onApplicationWrittenDashboardRollup;
+exports.onLeadWrittenDashboardRollup = dashboardStatsRollup.onLeadWrittenDashboardRollup;
+exports.reconcileCompanyDashboardStats = dashboardStatsRollup.reconcileCompanyDashboardStats;
+
 // 4. Applications & Driver Sync
 exports.onApplicationSubmitted = driverSync.onApplicationSubmitted;
 exports.onApplicationUpdated = driverSync.onApplicationUpdated;  // NEW: Sync files on update

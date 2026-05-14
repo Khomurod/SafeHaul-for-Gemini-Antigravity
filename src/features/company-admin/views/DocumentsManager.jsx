@@ -65,6 +65,9 @@ export default function DocumentsManager() {
         return onSnapshot(q, (snap) => {
             setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
             setTemplatesLoading(false);
+        }, (err) => {
+            console.error('[DocumentsManager] templates snapshot', err);
+            setTemplatesLoading(false);
         });
     }, [currentCompanyProfile?.id]);
 

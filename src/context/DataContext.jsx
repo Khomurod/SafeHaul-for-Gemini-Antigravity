@@ -37,16 +37,37 @@ export function DataProvider({ children }) {
   // Prevent stale async auth callbacks from overriding state.
   const authVersionRef = useRef(0);
 
-  const loginToCompany = useCallback(async (companyId, _role, isAutoLogin = false) => {
+  /** Short TTL cache to avoid duplicate full company reads when navigating quickly. */
+  const companyProfileCacheRef = useRef({ companyId: null, data: null, fetchedAt: 0 });
+  const COMPANY_PROFILE_CACHE_MS = 60_000;
+
+  const loginToCompany = useCallback(async (companyId, _role, isAutoLogin = false, options = {}) => {
+    const forceRefresh = options?.forceRefresh === true;
     if (!isAutoLogin) setLoading(true);
     try {
+      const now = Date.now();
+      const cache = companyProfileCacheRef.current;
+      if (
+        !forceRefresh &&
+        cache.companyId === companyId &&
+        cache.data &&
+        now - cache.fetchedAt < COMPANY_PROFILE_CACHE_MS
+      ) {
+        setCurrentCompanyProfile(cache.data);
+        localStorage.setItem(SESSION_KEYS.SELECTED_COMPANY_ID, companyId);
+        setShowCompanyChooser(false);
+        return;
+      }
+
       const companyDoc = await getDoc(doc(db, 'companies', companyId));
       if (companyDoc.exists()) {
         const companyData = { id: companyDoc.id, ...companyDoc.data() };
+        companyProfileCacheRef.current = { companyId, data: companyData, fetchedAt: Date.now() };
         setCurrentCompanyProfile(companyData);
         localStorage.setItem(SESSION_KEYS.SELECTED_COMPANY_ID, companyId);
         setShowCompanyChooser(false);
       } else {
+        companyProfileCacheRef.current = { companyId: null, data: null, fetchedAt: 0 };
         console.warn('Saved company ID no longer exists.');
         localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
         if (isAutoLogin) setShowCompanyChooser(true);
@@ -273,6 +294,7 @@ export function DataProvider({ children }) {
 
   const handleLogout = async () => {
     try {
+      companyProfileCacheRef.current = { companyId: null, data: null, fetchedAt: 0 };
       await auth.signOut();
       localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
       localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
@@ -283,6 +305,7 @@ export function DataProvider({ children }) {
   };
 
   const returnToCompanyChooser = () => {
+    companyProfileCacheRef.current = { companyId: null, data: null, fetchedAt: 0 };
     setCurrentCompanyProfile(null);
     localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
     setShowCompanyChooser(true);

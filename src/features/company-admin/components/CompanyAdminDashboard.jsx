@@ -92,6 +92,18 @@ export function CompanyAdminDashboard() {
 
                 {/* KPI Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    {dashboard.statsFetchError && (
+                        <div className="md:col-span-2 lg:col-span-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2" role="status">
+                            <span>Some dashboard numbers could not load: {dashboard.statsFetchError}</span>
+                            <button
+                                type="button"
+                                className="font-semibold text-amber-950 underline"
+                                onClick={() => dashboard.refreshData()}
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    )}
                     <StatCard
                         id="stat-card-applications"
                         title="Applications"

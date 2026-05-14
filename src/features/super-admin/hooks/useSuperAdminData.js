@@ -15,6 +15,18 @@ import {
     startAfter
 } from 'firebase/firestore';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { SESSION_KEYS } from '@/context/dataContext/sessionKeys';
+
+function readCachedPlatformCompanyCount() {
+    try {
+        const raw = localStorage.getItem(SESSION_KEYS.PLATFORM_STATS);
+        if (!raw) return 0;
+        const parsed = JSON.parse(raw);
+        return typeof parsed.companies === 'number' ? parsed.companies : 0;
+    } catch {
+        return 0;
+    }
+}
 
 export function useSuperAdminData() {
     const { showError } = useToast();
@@ -44,7 +56,7 @@ export function useSuperAdminData() {
     });
 
     const [stats, setStats] = useState({
-        companyCount: 0,
+        companyCount: readCachedPlatformCompanyCount(),
         userCount: 0,
         appCount: 0
     });

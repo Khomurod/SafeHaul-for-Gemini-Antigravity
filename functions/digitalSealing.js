@@ -23,6 +23,8 @@ exports.sealDocument = functions.runWith({
             return null;
         }
 
+        const sealStartedAt = Date.now();
+
         // pdf-lib is guaranteed to exist (fail-fast at cold start)
 
         const { companyId, requestId } = context.params;
@@ -265,6 +267,7 @@ exports.sealDocument = functions.runWith({
             console.error("Sealing Failed:", err);
             await change.after.ref.update({ status: 'error_sealing', errorLog: err.message });
         } finally {
+            console.log(`[sealDocument] wall_ms=${Date.now() - sealStartedAt} companyId=${context.params.companyId} requestId=${context.params.requestId}`);
             try {
                 if (fs.existsSync(tempPdfPath)) fs.unlinkSync(tempPdfPath);
                 if (fs.existsSync(outputPdfPath)) fs.unlinkSync(outputPdfPath);

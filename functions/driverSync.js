@@ -296,6 +296,17 @@ exports.onApplicationUpdated = onDocumentUpdated({
   const appRef = db.collection("companies").doc(companyId).collection("applications").doc(appId);
   const dqRef = appRef.collection('dq_files');
 
+  const fileFieldsUnchanged = fileMappings.every((mapping) => {
+    const beforeFile = beforeData[mapping.field];
+    const afterFile = afterData[mapping.field];
+    const bUrl = beforeFile && beforeFile.url;
+    const aUrl = afterFile && afterFile.url;
+    return bUrl === aUrl;
+  });
+  if (fileFieldsUnchanged) {
+    return;
+  }
+
   let syncCount = 0;
 
   for (const mapping of fileMappings) {

@@ -269,6 +269,12 @@ service cloud.firestore {
         allow read: if isCompanyTeam(companyId) || isSuperAdmin();
       }
 
+      // INTERNAL STATS: Server-maintained dashboard rollups (KPI tiles). Client read-only.
+      match /internal_stats/{docId} {
+        allow read: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow write: if false;
+      }
+
       // NOTIFICATIONS: Company activity notifications
       match /notifications/{notificationId} {
         allow read: if isCompanyTeam(companyId) || isSuperAdmin();

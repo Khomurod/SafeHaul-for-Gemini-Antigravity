@@ -495,6 +495,24 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                     )}
                 </div>
 
+                {(dashboard.error || dashboard.statsFetchError || dashboard.listCountError) && (
+                    <div
+                        className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2"
+                        role="alert"
+                    >
+                        <span>
+                            {dashboard.error || dashboard.statsFetchError || dashboard.listCountError}
+                        </span>
+                        <button
+                            type="button"
+                            className="font-semibold text-amber-950 underline shrink-0"
+                            onClick={() => dashboard.refreshData()}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+
                 {/* Modern Table */}
                 <div className="flex-1 overflow-hidden">
                     <ModernDriverTable

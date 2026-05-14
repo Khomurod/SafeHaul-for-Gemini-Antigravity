@@ -9,16 +9,21 @@ import {
     startAfter,
     getDocs,
     where,
-    getCountFromServer
+    getCountFromServer,
+    getDoc,
+    doc,
 } from 'firebase/firestore';
 import { db, auth } from '@lib/firebase';
 import { normalizePhone } from '@shared/utils/helpers';
+import { shouldPreferDashboardRollup } from '@lib/runtime/dashboardRollup';
 
 /** applications: all | hired | terminated | declined — leads: all | attempting | in_process | interested */
 export function useCompanyDashboard(companyId) {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [statsFetchError, setStatsFetchError] = useState('');
+    const [listCountError, setListCountError] = useState('');
 
     const [latestBatchTime, setLatestBatchTime] = useState(null);
     const [teamMembers, setTeamMembers] = useState([]);
@@ -52,7 +57,7 @@ export function useCompanyDashboard(companyId) {
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedSearch(searchQuery);
-        }, 800);
+        }, 400);
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
@@ -62,27 +67,41 @@ export function useCompanyDashboard(companyId) {
 
     const fetchStats = useCallback(async () => {
         if (!companyId) return;
+        setStatsFetchError('');
         try {
             const appsRef = collection(db, "companies", companyId, "applications");
             const leadsRef = collection(db, "companies", companyId, "leads");
-
-            // All applications + Company Leads + My Leads (no platform-lead split since
-            // the Lead Distribution Engine has been removed). Hired/Approved get their
-            // own counter to power the dashboard "Hired" tile (Bug #3 fix).
-            const appsSnapPromise = getCountFromServer(appsRef);
-            const companyLeadsSnapPromise = getCountFromServer(leadsRef);
-            const hiredQuery = query(appsRef, where('status', 'in', ['Hired', 'Approved']));
-            const hiredSnapPromise = getCountFromServer(hiredQuery);
 
             const myLeadsSnapPromise = auth.currentUser
                 ? getCountFromServer(query(leadsRef, where('assignedTo', '==', auth.currentUser.uid)))
                 : Promise.resolve({ data: () => ({ count: 0 }) });
 
+            if (shouldPreferDashboardRollup()) {
+                const rollSnap = await getDoc(doc(db, 'companies', companyId, 'internal_stats', 'dashboard'));
+                const roll = rollSnap.exists() ? rollSnap.data() : null;
+                const rollupOk = roll && roll.schemaVersion === 1
+                    && typeof roll.applicationsTotal === 'number'
+                    && typeof roll.leadsTotal === 'number'
+                    && typeof roll.hiredTotal === 'number';
+
+                if (rollupOk) {
+                    const myLeadsSnap = await myLeadsSnapPromise;
+                    setStats({
+                        applications: roll.applicationsTotal,
+                        companyLeads: roll.leadsTotal,
+                        myLeads: myLeadsSnap.data().count,
+                        hired: roll.hiredTotal,
+                    });
+                    return;
+                }
+            }
+
+            const hiredQuery = query(appsRef, where('status', 'in', ['Hired', 'Approved']));
             const [appsSnap, companyLeadsSnap, myLeadsSnap, hiredSnap] = await Promise.all([
-                appsSnapPromise,
-                companyLeadsSnapPromise,
+                getCountFromServer(appsRef),
+                getCountFromServer(leadsRef),
                 myLeadsSnapPromise,
-                hiredSnapPromise,
+                getCountFromServer(hiredQuery),
             ]);
 
             setStats({
@@ -93,6 +112,7 @@ export function useCompanyDashboard(companyId) {
             });
         } catch (e) {
             console.error("Error fetching stats:", e);
+            setStatsFetchError(e?.message || 'Could not load dashboard counts.');
         }
     }, [companyId]);
 
@@ -167,6 +187,7 @@ export function useCompanyDashboard(companyId) {
 
     const fetchListTotalCount = useCallback(async () => {
         if (!companyId || debouncedSearch) return;
+        setListCountError('');
         try {
             const collectionName = activeTab === 'applications' ? 'applications' : 'leads';
             const baseRef = collection(db, "companies", companyId, collectionName);
@@ -176,6 +197,7 @@ export function useCompanyDashboard(companyId) {
         } catch (e) {
             console.error('fetchListTotalCount', e);
             setListTotalCount(0);
+            setListCountError(e?.message || 'Could not load total count.');
         }
     }, [companyId, activeTab, debouncedSearch, buildConstraints]);
 
@@ -366,10 +388,15 @@ export function useCompanyDashboard(companyId) {
         error,
 
         refreshData: () => {
+            setStatsFetchError('');
+            setListCountError('');
             fetchStats();
             fetchListTotalCount();
             fetchData();
         },
+
+        statsFetchError,
+        listCountError,
 
         currentPage,
         itemsPerPage,
