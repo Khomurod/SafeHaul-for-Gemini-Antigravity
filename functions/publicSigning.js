@@ -29,6 +29,17 @@ function safeCompare(a, b) {
     }
 }
 
+/** Coerce pageNumber to a number so clients never fail strict page filters. */
+function normalizePublicFields(fields) {
+    if (!Array.isArray(fields)) return [];
+    return fields
+        .filter((f) => f != null)
+        .map((f) => ({
+            ...f,
+            pageNumber: Number(f.pageNumber) || 1,
+        }));
+}
+
 // 1. GET PUBLIC DOCUMENT (Read Only)
 exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
     if (!request.data) throw new HttpsError('invalid-argument', 'Missing data payload.');
@@ -95,7 +106,7 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
                 title: data.title,
                 recipientName: data.recipientName,
                 // recipientEmail intentionally omitted — never expose PII on public endpoint
-                fields: data.fields || [],
+                fields: normalizePublicFields(data.fields),
                 pdfUrl: url,
                 status: data.status
             };
@@ -128,13 +139,14 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
         throw new HttpsError('invalid-argument', 'fieldValues must be an object.');
     }
 
-    try {
-        const docRef = db.collection('companies').doc(companyId).collection('signing_requests').doc(requestId);
-        const normalizedFieldValues = (fieldValues && typeof fieldValues === 'object' && !Array.isArray(fieldValues))
-            ? fieldValues
-            : {};
-        let requestData = null;
+    const docRef = db.collection('companies').doc(companyId).collection('signing_requests').doc(requestId);
+    const normalizedFieldValues = (fieldValues && typeof fieldValues === 'object' && !Array.isArray(fieldValues))
+        ? fieldValues
+        : {};
+    let requestData = null;
+    let claimCommitted = false;
 
+    try {
         // ESIGN-19 FIX: Use a transaction to atomically verify the status hasn't changed and
         // update it, preventing double-submission race conditions.
         await db.runTransaction(async (txn) => {
@@ -158,13 +170,14 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
                 throw new HttpsError('deadline-exceeded', 'This signing link has expired. Please request a new one.');
             }
 
-            // ESIGN-19 FIX: Idempotency guard — reject if already submitted
-            if (data.status !== 'sent') {
+            // Allow fresh submissions and self-healing retries over a hung 'processing' claim
+            if (data.status !== 'sent' && data.status !== 'processing') {
                 throw new HttpsError('failed-precondition', 'This document has already been submitted or is no longer available.');
             }
 
             // Claim the slot atomically
             txn.update(docRef, { status: 'processing' });
+            claimCommitted = true;
         });
 
         const fields = Array.isArray(requestData?.fields)
@@ -225,7 +238,6 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
         }
 
         // ESIGN-2 FIX: Override the client-supplied IP with the actual server-observed IP.
-        // The client hardcoded '127.0.0.1'; we now use the real forwarded IP from the request.
         const signerIp =
             request.rawRequest?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ||
             request.rawRequest?.ip ||
@@ -237,12 +249,14 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
             signedAt: admin.firestore.FieldValue.serverTimestamp(),
             auditTrail: {
                 ...auditData,
-                // ESIGN-2 FIX: Use server-observed IP, not client-supplied value
                 ip: signerIp,
                 timestamp: new Date().toISOString(),
                 method: 'Public Secure Link'
             }
         });
+
+        // Submission succeeded — do not roll back on token invalidation failure
+        claimCommitted = false;
 
         // BUG-2 FIX: Delete the secrets sub-doc to invalidate the token
         await docRef.collection('secrets').doc('token').delete();
@@ -250,6 +264,18 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
         return { success: true };
 
     } catch (error) {
+        if (claimCommitted) {
+            try {
+                await docRef.update({
+                    status: 'sent',
+                    lastError: error.message || String(error),
+                    errorTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            } catch (rollbackErr) {
+                console.error('Self-healing rollback failed:', rollbackErr);
+            }
+        }
+
         // ESIGN-10 FIX: Never leak internal error details to the public signer
         if (error instanceof HttpsError) throw error;
         console.error("Submit Error:", error);

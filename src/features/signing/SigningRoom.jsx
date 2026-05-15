@@ -330,6 +330,14 @@ export default function SigningRoom() {
         </div>
     );
 
+    const TOUCH_MIN = '44px';
+
+    const handleInputFocus = (e) => {
+        setTimeout(() => {
+            e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+    };
+
     const renderField = (field) => {
         // FIX: Handle both legacy pixels and new percentages safely
         // We assume if it's < 100, it's a percentage (safe bet for typical layouts)
@@ -347,6 +355,12 @@ export default function SigningRoom() {
             transform: 'translate(0, 0)'
         };
 
+        const interactiveStyle = {
+            ...style,
+            minHeight: TOUCH_MIN,
+            minWidth: TOUCH_MIN,
+        };
+
         if (request.status === 'signed') return null;
 
         switch (field.type) {
@@ -361,9 +375,10 @@ export default function SigningRoom() {
                     );
                 }
                 return (
-                    <input style={style}
+                    <input style={interactiveStyle}
                         className="border-2 border-blue-400 bg-blue-50/90 px-2 text-sm rounded"
                         placeholder="Type here..." value={fieldValues[field.id] || ''}
+                        onFocus={handleInputFocus}
                         onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
             }
             case 'date': {
@@ -377,18 +392,30 @@ export default function SigningRoom() {
                     );
                 }
                 return (
-                    <input type="date" style={style}
+                    <input type="date" style={interactiveStyle}
                         className="border-2 border-green-400 bg-green-50/90 px-2 text-sm rounded"
-                        value={fieldValues[field.id] || ''} onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
+                        value={fieldValues[field.id] || ''}
+                        onFocus={handleInputFocus}
+                        onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
             }
             case 'checkbox': return (
-                <input type="checkbox" style={style}
-                    className="accent-purple-600 cursor-pointer" checked={!!fieldValues[field.id]}
-                    onChange={(e) => handleFieldChange(field.id, e.target.checked)} />);
+                <label
+                    style={interactiveStyle}
+                    className="flex items-center justify-center cursor-pointer accent-purple-600"
+                >
+                    <input
+                        type="checkbox"
+                        style={{ width: 20, height: 20, margin: 0, flexShrink: 0 }}
+                        className="accent-purple-600 cursor-pointer"
+                        checked={!!fieldValues[field.id]}
+                        onChange={(e) => handleFieldChange(field.id, e.target.checked)}
+                    />
+                </label>
+            );
             case 'signature': {
                 const isSigned = !!fieldValues[field.id];
                 return (
-                    <div style={style}
+                    <div style={interactiveStyle}
                         onClick={() => setActiveSignatureField(field.id)}
                         className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-2 shadow-sm transition ${isSigned ? 'bg-yellow-100 border-yellow-600' : 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse'}`}>
                         {isSigned ? <div className="text-yellow-800 font-bold text-xs flex items-center gap-1"><CheckCircle size={14} /> Signed</div> : <div className="text-yellow-700 font-medium text-xs flex items-center gap-1"><PenTool size={14} /> Sign</div>}
@@ -398,7 +425,7 @@ export default function SigningRoom() {
             case 'initial': {
                 const isInitialed = !!fieldValues[field.id];
                 return (
-                    <div style={style}
+                    <div style={interactiveStyle}
                         onClick={() => setActiveSignatureField(field.id)}
                         className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-1 shadow-sm transition ${isInitialed ? 'bg-orange-100 border-orange-600' : 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse'}`}>
                         {isInitialed ? <div className="text-orange-800 font-bold text-[10px] flex items-center gap-1"><CheckCircle size={12} /> Initialed</div> : <div className="text-orange-700 font-medium text-[10px] flex items-center gap-1"><Fingerprint size={12} /> Initial</div>}
