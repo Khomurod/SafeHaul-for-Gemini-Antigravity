@@ -188,4 +188,37 @@ describe('submitPublicEnvelope', () => {
     expect(res.success).toBe(true);
     expect(firebaseAdmin.docRefStub.update).toHaveBeenCalled();
   });
+
+  it('accepts locked required date when client sends empty string; merges defaultValue', async () => {
+    mockTxnEnvelope({
+      expired: false,
+      fields: [
+        {
+          id: 'date_signed',
+          type: 'date',
+          label: 'Date Signed',
+          required: true,
+          readOnly: true,
+          prefillPolicy: 'locked',
+          defaultValue: 'May 7, 2026',
+        },
+      ],
+    });
+
+    const res = await submitPublicEnvelope({
+      ...baseReq,
+      data: {
+        ...baseReq.data,
+        fieldValues: { date_signed: '' },
+      },
+    });
+
+    expect(res.success).toBe(true);
+    expect(firebaseAdmin.docRefStub.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'pending_seal',
+        fieldValues: expect.objectContaining({ date_signed: 'May 7, 2026' }),
+      }),
+    );
+  });
 });

@@ -40,6 +40,11 @@ function normalizePublicFields(fields) {
         }));
 }
 
+/** Treat blank client strings for locked/read-only fields as missing so Firestore defaultValue wins. */
+function isLockedFieldForSubmit(field) {
+    return field.prefillPolicy === 'locked' || field.readOnly === true;
+}
+
 // 1. GET PUBLIC DOCUMENT (Read Only)
 exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
     if (!request.data) throw new HttpsError('invalid-argument', 'Missing data payload.');
@@ -211,9 +216,21 @@ exports.submitPublicEnvelope = onCall({ cors: true }, async (request) => {
         for (const field of fields) {
             if (!field.required) continue;
 
-            const submitted = Object.prototype.hasOwnProperty.call(finalValues, field.id)
+            let submitted = Object.prototype.hasOwnProperty.call(finalValues, field.id)
                 ? finalValues[field.id]
                 : field.defaultValue;
+
+            if (
+                field.type !== 'checkbox' &&
+                isLockedFieldForSubmit(field) &&
+                submitted !== null &&
+                submitted !== undefined &&
+                typeof submitted === 'string' &&
+                submitted.trim() === ''
+            ) {
+                submitted = field.defaultValue;
+                finalValues[field.id] = submitted;
+            }
 
             if (field.type === 'checkbox') {
                 if (submitted !== true) missingRequired.push(field.label || field.id);

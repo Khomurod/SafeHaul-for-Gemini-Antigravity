@@ -94,8 +94,14 @@ export default function SigningRoom() {
                             return;
                         }
 
-                        if ((f.type === 'text' || f.type === 'date') && !isFieldLocked(f) && f.defaultValue) {
-                            initial[f.id] = String(f.defaultValue);
+                        if (f.type === 'text' || f.type === 'date') {
+                            if (isFieldLocked(f)) {
+                                initial[f.id] = String(f.defaultValue ?? '');
+                            } else if (f.defaultValue) {
+                                initial[f.id] = String(f.defaultValue);
+                            } else {
+                                initial[f.id] = '';
+                            }
                             return;
                         }
 
@@ -178,8 +184,7 @@ export default function SigningRoom() {
         }
 
         // Validate
-        // BUG FIX: Exclude readOnly fields from validation - they are pre-filled via defaultValue
-        // and rendered as non-editable divs, so fieldValues[f.id] will always be '' for them.
+        // Locked fields are seeded from defaultValue in state so payloads match the UI; server also merges empty strings for locked fields.
         // SAFETY: Guard against null/undefined elements in the fields array from corrupted Firestore data.
         const missing = (request?.fields || []).filter(f => f && f.required && !isFieldLocked(f) && !fieldValues[f.id]);
         if (missing.length > 0) {
