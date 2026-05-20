@@ -70,7 +70,7 @@ export function DriverOfferModal({ application, onClose, onUpdate }) {
 
                 {/* Header */}
                 <div className="bg-blue-600 p-6 text-white text-center relative">
-                    <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-white/20 rounded-full transition"><X size={20} /></button>
+                    <button onClick={onClose} aria-label="Close offer modal" className="absolute top-4 right-4 p-1 hover:bg-white/20 rounded-full transition"><X size={20} /></button>
                     <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-md">
                         <FileSignature size={32} className="text-white" />
                     </div>

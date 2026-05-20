@@ -121,6 +121,7 @@ const MessageNode = memo(({ data, selected }) => {
                     <motion.button
                         className="p-2 rounded-lg hover:bg-white/10"
                         onClick={() => setIsExpanded(!isExpanded)}
+                        aria-label={isExpanded ? "Collapse message details" : "Expand message details"}
                         animate={{ rotate: isExpanded ? 180 : 0 }}
                     >
                         <ChevronDown className="w-5 h-5 text-slate-400" />
@@ -269,6 +270,7 @@ const MessageNode = memo(({ data, selected }) => {
                         <button
                             onClick={saveTemplate}
                             disabled={isSaving || !templateName.trim()}
+                            aria-label="Save template"
                             className="px-4 py-2 rounded-xl bg-purple-500/30 text-purple-300 text-sm font-medium disabled:opacity-50"
                         >
                             <Save className="w-4 h-4" />

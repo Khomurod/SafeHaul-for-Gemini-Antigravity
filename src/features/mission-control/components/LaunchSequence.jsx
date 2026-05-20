@@ -85,6 +85,7 @@ const LaunchSequence = ({
                         <div className="glass-card p-8 text-center">
                             <button
                                 onClick={onClose}
+                                aria-label="Close launch sequence"
                                 className="absolute top-4 right-4 p-2 rounded-lg hover:bg-white/5 text-slate-400"
                             >
                                 <X className="w-5 h-5" />

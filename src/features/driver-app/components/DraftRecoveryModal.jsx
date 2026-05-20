@@ -67,6 +67,7 @@ export function DraftRecoveryModal({ isOpen, draftData, onResume, onStartFresh, 
                     </div>
                     <button
                         onClick={onClose}
+                        aria-label="Close draft recovery"
                         className="absolute top-4 right-4 p-1 text-white/70 hover:text-white transition-colors"
                     >
                         <X size={20} />
