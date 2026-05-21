@@ -103,6 +103,7 @@ exports.sendAutomatedEmail = companyAdmin.sendAutomatedEmail;
 exports.syncSystemStructure = systemIntegrity.syncSystemStructure;
 exports.runSecurityAudit = systemIntegrity.runSecurityAudit;
 exports.getSignedUploadUrl = require('./storageSecure').getSignedUploadUrl;
+exports.getSignedGuestUploadUrl = require('./getSignedGuestUploadUrl').getSignedGuestUploadUrl;
 
 // NEW: Email Testing
 exports.testEmailConnection = require('./testEmailConnection').testEmailConnection;

@@ -39,7 +39,7 @@ This runbook defines operations ownership, alerting responses, quota controls, a
 
 - SMS/test SMS: per-company and per-user rate limits (server-side).
 - Public verification endpoints: fail-closed rate limiting.
-- Guest upload/submit: App Check required + request throttling.
+- Guest upload/submit: callable rate limits + path validation (see [security-posture.md](security-posture.md); App Check not used).
 
 ## Post-Incident Review
 

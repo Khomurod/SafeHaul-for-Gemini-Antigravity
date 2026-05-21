@@ -74,11 +74,10 @@ service firebase.storage {
     }
 
     // 3. Application Attachments (Guest Uploads)
-    // Guests may upload only (App Check required). Reads via signed URLs / company admin paths.
+    // Guests may upload only. Reads via getSignedGuestUploadUrl callable / company admin paths.
     match /companies/{companyId}/{folder}/guest_uploads/{allPaths=**} {
       allow read: if isCompanyAdmin(companyId) || isSuperAdmin();
-      allow create: if request.app != null &&
-                       (folder == 'applications' || folder == 'autofill') &&
+      allow create: if (folder == 'applications' || folder == 'autofill') &&
                        isValidFile();
       // No delete or update permissions for guests
     }

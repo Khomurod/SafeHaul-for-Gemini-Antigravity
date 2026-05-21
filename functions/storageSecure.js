@@ -20,17 +20,8 @@ const ALLOWED_MIME_TYPES = [
  * Firebase Storage SDK (uploadBytes → firebasestorage.googleapis.com), avoiding
  * signed URL PUTs to storage.googleapis.com and their bucket CORS pitfalls.
  */
-exports.getSignedUploadUrl = functions
-    .runWith({ enforceAppCheck: true })
-    .https.onCall(async (data, context) => {
+exports.getSignedUploadUrl = functions.https.onCall(async (data, context) => {
     const { companyId, fileName, fileType, folder: rawFolder } = data;
-
-    if (!context.auth && !context.app) {
-        throw new functions.https.HttpsError(
-            'unauthenticated',
-            'App Check token required for guest uploads.'
-        );
-    }
 
     if (!context.auth) {
         const ip = context.rawRequest?.ip || 'unknown_guest';

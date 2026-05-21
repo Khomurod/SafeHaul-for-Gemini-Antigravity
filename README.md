@@ -114,7 +114,6 @@ SafeHaul is a **multi-tenant SaaS platform** built for trucking companies to man
 | Firebase Auth | — | Authentication with custom claims (RBAC) |
 | Firebase Storage | — | File uploads (CDL, medical cards, etc.) |
 | Firebase Hosting | — | Static site hosting |
-| App Check | — | Bot mitigation via reCAPTCHA Enterprise |
 | Nodemailer | 7.0 | Email delivery |
 | Sentry Node | 10.32 | Server-side error tracking |
 | Joi | 18.0 | Request validation |
@@ -262,7 +261,6 @@ cd functions && npm install && cd ..
 | `VITE_FIREBASE_STORAGE_BUCKET` | Cloud Storage bucket |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | FCM sender ID |
 | `VITE_FIREBASE_APP_ID` | Firebase app ID |
-| `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY` | reCAPTCHA Enterprise site key (App Check) |
 | `VITE_SENTRY_DSN` | Sentry error tracking DSN |
 | `VITE_FACEBOOK_APP_ID` | Facebook Lead Ads integration |
 | `VITE_SUPER_ADMIN_EMAIL` | Super admin fallback email |
@@ -345,9 +343,9 @@ Custom Claims Structure:
 | `company_admin` | Company | Manage team, settings, templates, applications |
 | `hr_user` / `recruiter` | Company | Read/write leads, applications, campaigns |
 | `driver` | Self | Own profile, own applications |
-| Guest (unauthenticated) | Limited | Submit applications via App Check |
+| Guest (unauthenticated) | Limited | Submit via callables; see [docs/security-posture.md](docs/security-posture.md) |
 
-> Security rules are defined in [`src/firestore.rules`](src/firestore.rules).
+> Security rules are defined in [`src/firestore.rules`](src/firestore.rules). Guest security model: [docs/security-posture.md](docs/security-posture.md).
 
 ---
 
@@ -416,7 +414,6 @@ npm run lint
 | **RingCentral** | SMS sending (primary) | Encrypted in Firestore (`companies/{id}/integrations/sms_provider`) |
 | **8x8** | SMS sending (alternate) | Encrypted in Firestore |
 | **Sentry** | Error monitoring (frontend + backend) | `VITE_SENTRY_DSN` / `SENTRY_DSN` |
-| **reCAPTCHA Enterprise** | Bot mitigation (App Check) | `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY` |
 | **Facebook Lead Ads** | Lead ingestion | `VITE_FACEBOOK_APP_ID` |
 | **Nodemailer** | Email delivery | Company-specific SMTP settings |
 
@@ -434,7 +431,7 @@ All critical, high, medium, and low issues from previous audits have been addres
 | Phase | Issues Fixed | Key Fixes |
 |-------|-------------|-----------|
 | **Phase 1** | AF2, #1, #2, #3, #4, #11, #12, #16, #19, #22, AF5, AF7, AF8, L2, L5 | Timestamp handling, confirmation numbers, phone validation, gitignore, SSN masking, auth checks, placeholder domains, email pooling, rate-limit TTL |
-| **Phase 2** | AF1, AF3, AF4, AF6, M1, M2, M4, M6, #5, #6, #7, #8, #9, #10, #13, #14, #15, #17, #18, #20, #21, L1, L3, L4 | Payload normalization, array/file rendering, signature validation, SHA-256 checksums, guest storage access, phone normalization, SSN/consent in review, custom questions for guests, step navigation, dead code removal, upload instructions, leads scoping, activity_logs security, ARCHITECTURE.md updates, App Check tracking, segment rules export, auto-save guard, internal field filtering |
+| **Phase 2** | AF1, AF3, AF4, AF6, M1, M2, M4, M6, #5, #6, #7, #8, #9, #10, #13, #14, #15, #17, #18, #20, #21, L1, L3, L4 | Payload normalization, array/file rendering, signature validation, SHA-256 checksums, guest storage access, phone normalization, SSN/consent in review, custom questions for guests, step navigation, dead code removal, upload instructions, leads scoping, activity_logs security, ARCHITECTURE.md updates, guest signed-URL previews, segment rules export, auto-save guard, internal field filtering |
 
 ---
 

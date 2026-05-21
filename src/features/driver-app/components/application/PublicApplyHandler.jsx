@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes } from 'firebase/storage';
 import { db, functions, storage } from '@lib/firebase';
 import { Loader2, AlertCircle, Building2, Wand2, PencilLine, FileSignature, ArrowRight } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
@@ -483,10 +483,15 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       }
 
       const fileRef = ref(storage, storagePath);
-      const snapshot = await uploadBytes(fileRef, file, { contentType: fileType });
-      const publicUrl = await getDownloadURL(snapshot.ref);
+      await uploadBytes(fileRef, file, { contentType: fileType });
 
-      const fileData = { name: file.name, url: publicUrl, storagePath };
+      const getGuestReadUrl = httpsCallable(functions, 'getSignedGuestUploadUrl');
+      const { data: readData } = await getGuestReadUrl({ companyId: company.id, storagePath });
+      if (!readData?.url) {
+        throw new Error('Upload preview URL failed.');
+      }
+
+      const fileData = { name: file.name, url: readData.url, storagePath };
       showSuccess("File uploaded successfully.");
       return fileData;
     } catch (error) {

@@ -7,7 +7,7 @@ Run on **staging** after automated tiers 1–4 pass on CI. Record date, tester, 
 | ID | Scenario | UI check | Backend check | Pass | Tester / Date |
 |----|----------|----------|---------------|------|---------------|
 | G1 | Real device, Slow 3G, full apply | No duplicate confirmations | One `applications` doc per applicant | ☐ | |
-| G2 | iOS Safari + Android Chrome | Date triplet, file picker, signature canvas | Uploads in `guest_uploads` | ☐ | |
+| G2 | iOS Safari + Android Chrome | Date triplet, file picker, signature canvas; upload preview via signed URL callable | Uploads in `guest_uploads` (no App Check) | ☐ | |
 | G3 | Invalid slug `/apply/bad-slug` | Clear error, no wizard crash | No writes | ☐ | |
 | G4 | Company inactive | Friendly block before submit | `assertCompanyAcceptingIntake` error | ☐ | |
 | G5 | Post-application E-Doc | All field types fillable; locked fields read-only | `signing_requests` → `pending_seal` → `signed` | ☐ | |

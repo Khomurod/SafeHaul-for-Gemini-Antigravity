@@ -7,7 +7,6 @@ import {
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 const rawFirebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -57,36 +56,6 @@ const firebaseConfig = canUsePlaceholderConfig
 
 // Initialize Firebase with HMR safety
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// App Check bootstrapping
-// Production: initialize whenever site key is present.
-// Localhost: initialize only when debug token is explicitly provided.
-const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY;
-const appCheckDebugToken = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN;
-const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-const useDebugAppCheck = Boolean(isLocalhost && appCheckDebugToken);
-
-if (useDebugAppCheck && typeof self !== 'undefined') {
-  self.FIREBASE_APPCHECK_DEBUG_TOKEN = appCheckDebugToken === 'true' ? true : appCheckDebugToken;
-}
-
-/** Set when App Check is active — used to refresh tokens before guest Storage uploads (see ensureAppCheckToken). */
-export let appCheckService = null;
-
-if (recaptchaSiteKey && (!isLocalhost || useDebugAppCheck)) {
-  appCheckService = initializeAppCheck(app, {
-    provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
-    isTokenAutoRefreshEnabled: true
-  });
-
-  if (useDebugAppCheck) {
-    console.info('[firebase] App Check initialized in localhost debug mode.');
-  }
-} else if (isLocalhost) {
-  console.info('[firebase] App Check skipped on localhost. Set VITE_FIREBASE_APPCHECK_DEBUG_TOKEN to test protected uploads.');
-} else {
-  console.warn('[firebase] App Check not initialized: VITE_RECAPTCHA_ENTERPRISE_SITE_KEY is missing.');
-}
 
 export const auth = getAuth(app);
 

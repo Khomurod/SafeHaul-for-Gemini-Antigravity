@@ -84,14 +84,15 @@ describe('submitGuestApplication', () => {
   };
 
   const ctxBase = {
-    app: { token: 'appcheck' },
     rawRequest: { ip: '203.0.113.1' },
   };
 
-  it('rejects submission when App Check is missing', async () => {
-    await expect(
-      submitGuestApplication(validPayload, { ...ctxBase, app: undefined })
-    ).rejects.toMatchObject({ code: 'unauthenticated' });
+  it('submits without App Check token', async () => {
+    mockGet
+      .mockResolvedValueOnce({ exists: false, data: () => null })
+      .mockResolvedValueOnce({ exists: false, data: () => null });
+    const res = await submitGuestApplication(validPayload, ctxBase);
+    expect(res.success).toBe(true);
   });
 
   it('calls assertCompanyAcceptingIntake before writing', async () => {

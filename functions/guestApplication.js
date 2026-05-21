@@ -73,16 +73,8 @@ function hasUploadedFile(value) {
 }
 
 exports.submitGuestApplication = functions
-    .runWith({ memory: '256MB', timeoutSeconds: 30, enforceAppCheck: true })
+    .runWith({ memory: '256MB', timeoutSeconds: 30 })
     .https.onCall(async (data, context) => {
-        if (!context.app) {
-            throw new functions.https.HttpsError(
-                'unauthenticated',
-                'App Check token required.'
-            );
-        }
-        const hasAppCheck = true;
-
         const { checkRateLimit } = require('./shared/rateLimiter');
         const clientIp = context.rawRequest?.ip || 'unknown';
         const allowed = await checkRateLimit(`guest_submit_${clientIp}`, 5, 60, 'closed');
@@ -192,7 +184,6 @@ exports.submitGuestApplication = functions
                 clientVersion: normalizedFormData?.lifecycle?.clientVersion || '2.0-bulletproof',
                 isGuest: true,
                 processedViaFunction: true,
-                appCheckVerified: hasAppCheck,
             },
         });
 

@@ -36,9 +36,13 @@ describe('getSignedUploadUrl (guest upload path reservation)', () => {
   });
 
   const authedCtx = {
-    app: { token: 'appcheck' },
     auth: { uid: 'driver1' },
     rawRequest: { ip: '1.2.3.4' },
+  };
+
+  const guestCtx = {
+    auth: null,
+    rawRequest: { ip: '9.9.9.9' },
   };
 
   it('validates tenant and returns a guest_uploads storage path', async () => {
@@ -52,13 +56,12 @@ describe('getSignedUploadUrl (guest upload path reservation)', () => {
     expect(data.url).toBeUndefined();
   });
 
-  it('rejects unauthenticated guest requests without App Check', async () => {
-    await expect(
-      getSignedUploadUrl(
-        { companyId: 'co99', fileName: 'doc.pdf', fileType: 'application/pdf' },
-        { auth: null, app: undefined, rawRequest: { ip: '9.9.9.9' } }
-      )
-    ).rejects.toMatchObject({ code: 'unauthenticated' });
+  it('allows unauthenticated guest to reserve a guest_uploads path', async () => {
+    const data = await getSignedUploadUrl(
+      { companyId: 'co99', fileName: 'doc.pdf', fileType: 'application/pdf' },
+      guestCtx
+    );
+    expect(data.storagePath).toMatch(/^companies\/co99\/applications\/guest_uploads\//);
   });
 
   it('does not return a path when tenant check fails', async () => {

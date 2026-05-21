@@ -90,22 +90,8 @@ describeStorage('storage.rules multi-tenant isolation', () => {
     await assertFails(getMetadata(ref(storageA, 'companies/co1/leads/app123/dq_files/medical.pdf')));
   });
 
-  it('blocks unauthenticated guest write without App Check', async () => {
+  it('allows unauthenticated guest write without App Check to guest_uploads', async () => {
     const guestApp = testEnv.unauthenticatedContext().app;
-    const guestStorage = getStorage(guestApp, `gs://${bucket}`);
-
-    await assertFails(
-      uploadString(
-        ref(guestStorage, 'companies/co1/autofill/guest_uploads/scan.jpg'),
-        'fake-image-content',
-        'raw',
-        { contentType: 'image/jpeg' }
-      )
-    );
-  });
-
-  it('allows guest write with App Check to guest_uploads', async () => {
-    const guestApp = testEnv.unauthenticatedContext({ appCheck: true }).app;
     const guestStorage = getStorage(guestApp, `gs://${bucket}`);
 
     await assertSucceeds(
@@ -119,7 +105,7 @@ describeStorage('storage.rules multi-tenant isolation', () => {
   });
 
   it('blocks unauthenticated read of guest_uploads', async () => {
-    const guestApp = testEnv.unauthenticatedContext({ appCheck: true }).app;
+    const guestApp = testEnv.unauthenticatedContext().app;
     const guestStorage = getStorage(guestApp, `gs://${bucket}`);
 
     await assertFails(

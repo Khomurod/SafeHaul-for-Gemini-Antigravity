@@ -182,12 +182,9 @@ service cloud.firestore {
     // Guest Applications must have companyId and personalInfo logic
     function isValidGuestApplication(companyId) {
       let data = request.resource.data;
-      // SAFETY NET: Verify App Check is present (proves the request comes from a registered app).
-      // NOTE: Primary guest submissions now go through the submitGuestApplication Cloud Function,
-      // which uses Admin SDK and bypasses rules entirely. This rule is a fallback only.
-      // SANDBOX tenant uses the same checks when companyId == "SANDBOX" (deterministic id + App Check).
-      return request.appcheck != null &&
-             data.companyId == companyId &&
+      // NOTE: Primary guest submissions go through submitGuestApplication (Admin SDK).
+      // This rule is a fallback only for direct client writes.
+      return data.companyId == companyId &&
              data.applicantId is string && data.applicantId.size() > 0;
     }
 
@@ -354,7 +351,7 @@ service cloud.firestore {
       match /applications/{applicationId} {
         // CREATE: 
         // 1. Auth User (Driver) -> Submitting their own app (MUST use deterministic ID)
-        // 2. Guest -> Submitting via public link (MUST use deterministic ID + App Check)
+        // 2. Guest -> Submitting via public link (MUST use deterministic ID)
         // 3. Super Admin / Company Team (Manual Entry — bypasses ID check)
         allow create: if (isSignedIn() && isValidAuthenticatedApplication() && isDeterministicApplicationId(companyId, applicationId)) || 
                          (isValidGuestApplication(companyId) && isDeterministicApplicationId(companyId, applicationId)) || 
