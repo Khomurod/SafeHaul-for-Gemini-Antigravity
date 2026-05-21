@@ -14,7 +14,10 @@ function generateApplicantKey(companyId, email, phone) {
     const normalizedPhone = (phone || '').replace(/\D/g, '').trim();
     const input = `${companyId}:${normalizedEmail}:${normalizedPhone}`;
     const fullHash = crypto.createHash('sha256').update(input).digest('hex');
-    return fullHash.substring(0, 20);
+    return {
+        applicantKey: fullHash.substring(0, 20),
+        applicantKeyFull: fullHash,
+    };
 }
 
 /**
@@ -70,9 +73,15 @@ function hasUploadedFile(value) {
 }
 
 exports.submitGuestApplication = functions
-    .runWith({ memory: '256MB', timeoutSeconds: 30 })
+    .runWith({ memory: '256MB', timeoutSeconds: 30, enforceAppCheck: true })
     .https.onCall(async (data, context) => {
-        const hasAppCheck = !!context.app;
+        if (!context.app) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'App Check token required.'
+            );
+        }
+        const hasAppCheck = true;
 
         const { checkRateLimit } = require('./shared/rateLimiter');
         const clientIp = context.rawRequest?.ip || 'unknown';
@@ -89,6 +98,20 @@ exports.submitGuestApplication = functions
 
         if (!companyId || typeof companyId !== 'string') {
             throw new functions.https.HttpsError('invalid-argument', 'Missing or invalid companyId.');
+        }
+
+        if (data?.companyId && data.companyId !== companyId) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'companyId in payload must match submission target.'
+            );
+        }
+
+        if (normalizedFormData.companyId && normalizedFormData.companyId !== companyId) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'companyId in payload must match submission target.'
+            );
         }
 
         if (!email && !phone) {
@@ -134,8 +157,8 @@ exports.submitGuestApplication = functions
             );
         }
 
-        const applicantKey = generateApplicantKey(companyId, email, phone);
-        const applicationId = generateApplicationId(applicantKey);
+        const { applicantKey, applicantKeyFull } = generateApplicantKey(companyId, email, phone);
+        let applicationId = generateApplicationId(applicantKey);
         const confirmationNumber = generateConfirmationNumber();
 
         const now = FieldValue.serverTimestamp();
@@ -146,6 +169,7 @@ exports.submitGuestApplication = functions
             driverId: applicationId,
             userId: applicationId,
             applicantKey,
+            applicantKeyFull,
             confirmationNumber,
             email: (email || '').toLowerCase().trim(),
             phone: phone || '',
@@ -185,13 +209,49 @@ exports.submitGuestApplication = functions
             // (e.g. offline queue retry, double-tap on Submit), we merge so we
             // never produce a duplicate Firestore document.
             const existing = await docRef.get();
-            if (!existing.exists) {
+            if (existing.exists) {
+                const prev = existing.data() || {};
+                if (prev.applicantKeyFull && prev.applicantKeyFull !== applicantKeyFull) {
+                    let suffix = 2;
+                    let candidateId = `${applicationId}_${suffix}`;
+                    while (suffix < 100) {
+                        const collisionSnap = await db
+                            .collection('companies')
+                            .doc(companyId)
+                            .collection('applications')
+                            .doc(candidateId)
+                            .get();
+                        if (!collisionSnap.exists) break;
+                        const collisionData = collisionSnap.data() || {};
+                        if (!collisionData.applicantKeyFull || collisionData.applicantKeyFull === applicantKeyFull) break;
+                        suffix += 1;
+                        candidateId = `${applicationId}_${suffix}`;
+                    }
+                    console.error(
+                        `[submitGuestApplication] Hash collision for ${applicationId}, using ${candidateId}`
+                    );
+                    applicationId = candidateId;
+                    applicationDoc.applicationId = applicationId;
+                    applicationDoc.applicantId = applicationId;
+                    applicationDoc.driverId = applicationId;
+                    applicationDoc.userId = applicationId;
+                }
+            }
+
+            const finalDocRef = db
+                .collection('companies')
+                .doc(companyId)
+                .collection('applications')
+                .doc(applicationId);
+
+            const existingFinal = await finalDocRef.get();
+            if (!existingFinal.exists) {
                 applicationDoc.submittedAt = now;
                 applicationDoc.createdAt = now;
             } else {
                 // Preserve the original confirmation/timestamps so the driver
                 // keeps seeing the same SAF-XXXX-XXXXX they saw the first time.
-                const prev = existing.data() || {};
+                const prev = existingFinal.data() || {};
                 if (prev.confirmationNumber) {
                     applicationDoc.confirmationNumber = prev.confirmationNumber;
                 }
@@ -218,15 +278,15 @@ exports.submitGuestApplication = functions
                 }
             }
 
-            await docRef.set(applicationDoc, { merge: true });
+            await finalDocRef.set(applicationDoc, { merge: true });
 
-            console.log(`[submitGuestApplication] Upserted application ${applicationId} for company ${companyId} (existed=${existing.exists})`);
+            console.log(`[submitGuestApplication] Upserted application ${applicationId} for company ${companyId} (existed=${existingFinal.exists})`);
 
             return {
                 success: true,
                 applicationId,
                 confirmationNumber: applicationDoc.confirmationNumber || confirmationNumber,
-                deduplicated: existing.exists,
+                deduplicated: existingFinal.exists,
             };
         } catch (writeError) {
             if (writeError instanceof functions.https.HttpsError) {

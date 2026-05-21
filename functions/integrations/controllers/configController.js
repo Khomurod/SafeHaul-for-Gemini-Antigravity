@@ -457,9 +457,8 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
             throw new HttpsError('invalid-argument', `JWT verification failed: ${verifyError.message}. Please ensure the JWT is valid and associated with this phone number.`);
         }
 
-        // 2. Sanitize phone number for document ID
-        const rawSanitized = phoneNumber.replace(/[^0-9+]/g, '');
-        const sanitizedPhone = rawSanitized.startsWith('+') ? rawSanitized : `+${rawSanitized}`;
+        const { normalizePhoneForKeychain } = require('../../utils/phoneUtils');
+        const sanitizedPhone = normalizePhoneForKeychain(phoneNumber);
 
         // 3. Store encrypted JWT + Per-Line Credentials in Private Keychain (subcollection)
         const keychainRef = providerDocRef.collection('keychain').doc(sanitizedPhone);
@@ -585,7 +584,8 @@ exports.removePhoneLine = onCall(encryptedCallOptions, async (request) => {
     }
 
     const db = admin.firestore();
-    const sanitizedPhone = phoneNumber.replace(/[^0-9+]/g, '');
+    const { normalizePhoneForKeychain } = require('../../utils/phoneUtils');
+    const sanitizedPhone = normalizePhoneForKeychain(phoneNumber);
     const providerDocRef = db.collection('companies').doc(companyId).collection('integrations').doc('sms_provider');
     const keychainRef = providerDocRef.collection('keychain').doc(sanitizedPhone);
 

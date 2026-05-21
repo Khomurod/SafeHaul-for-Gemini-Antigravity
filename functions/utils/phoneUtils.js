@@ -1,18 +1,14 @@
 /**
- * Server-side phone normalization utility.
- * P2-1 FIX: Delegates to shared/normalizePhone.js for consistent E.164 formatting.
- * This ensures blacklist lookups, bulk messaging, and all phone comparisons
- * use the same canonical format (+1XXXXXXXXXX).
+ * Normalize phone numbers for keychain document IDs and inventory matching.
+ * @param {string} phoneNumber
+ * @returns {string} E.164-like string (e.g. +15551234567)
  */
-const { normalizePhone: normalizeToE164 } = require('../shared/normalizePhone');
-
-/**
- * Normalizes a phone number to E.164 format for consistent storage/comparison.
- * @param {string} phone - The phone number to normalize
- * @returns {string} Normalized phone in E.164 (+1XXXXXXXXXX) or empty string if invalid
- */
-function normalizePhone(phone) {
-    return normalizeToE164(phone) || "";
+function normalizePhoneForKeychain(phoneNumber) {
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+        throw new Error('Invalid phone number');
+    }
+    const rawSanitized = phoneNumber.replace(/[^0-9+]/g, '');
+    return rawSanitized.startsWith('+') ? rawSanitized : `+${rawSanitized}`;
 }
 
-module.exports = { normalizePhone };
+module.exports = { normalizePhoneForKeychain };

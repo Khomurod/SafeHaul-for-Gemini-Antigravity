@@ -88,19 +88,22 @@ describe('submitGuestApplication', () => {
     rawRequest: { ip: '203.0.113.1' },
   };
 
-  it('allows submission when App Check is missing', async () => {
-    const res = await submitGuestApplication(validPayload, { ...ctxBase, app: undefined });
-    expect(res.success).toBe(true);
-    expect(companyTenant.assertCompanyAcceptingIntake).toHaveBeenCalledWith(expect.anything(), 'co1');
+  it('rejects submission when App Check is missing', async () => {
+    await expect(
+      submitGuestApplication(validPayload, { ...ctxBase, app: undefined })
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
   });
 
   it('calls assertCompanyAcceptingIntake before writing', async () => {
-    await submitGuestApplication(validPayload, { ...ctxBase, app: undefined });
+    await submitGuestApplication(validPayload, ctxBase);
     expect(companyTenant.assertCompanyAcceptingIntake).toHaveBeenCalledWith(expect.anything(), 'co1');
     expect(mockSet).toHaveBeenCalled();
   });
 
   it('writes a deterministic 20-char applicationId using set+merge', async () => {
+    mockGet
+      .mockResolvedValueOnce({ exists: false, data: () => null })
+      .mockResolvedValueOnce({ exists: false, data: () => null });
     const res = await submitGuestApplication(validPayload, ctxBase);
     expect(res.success).toBe(true);
     expect(res.applicationId).toMatch(/^[a-z0-9]{20}$/);
@@ -112,28 +115,31 @@ describe('submitGuestApplication', () => {
   });
 
   it('upserts (deduplicates) when the same identity submits twice', async () => {
-    // First submission: doc does NOT exist
-    mockGet.mockResolvedValueOnce({ exists: false, data: () => null });
+    const existingData = () => ({
+      confirmationNumber: 'SAF-2026-ORIG01',
+      submittedAt: 'orig-ts',
+      createdAt: 'orig-ts',
+      status: 'New Application',
+    });
+
+    // First submission: doc does NOT exist (initial + final get)
+    mockGet
+      .mockResolvedValueOnce({ exists: false, data: () => null })
+      .mockResolvedValueOnce({ exists: false, data: () => null });
     const first = await submitGuestApplication(validPayload, ctxBase);
 
-    // Second submission: doc DOES exist with original confirmation/timestamps
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({
-        confirmationNumber: first.confirmationNumber,
-        submittedAt: 'orig-ts',
-        createdAt: 'orig-ts',
-        status: 'New Application',
-      }),
-    });
+    // Second submission: doc exists on both reads
+    mockGet
+      .mockResolvedValueOnce({ exists: true, data: existingData })
+      .mockResolvedValueOnce({ exists: true, data: existingData });
     const second = await submitGuestApplication(validPayload, ctxBase);
 
     expect(first.success).toBe(true);
     expect(second.success).toBe(true);
     // Same deterministic ID
     expect(first.applicationId).toBe(second.applicationId);
-    // Same confirmation surfaced both times (server preserves original)
-    expect(second.confirmationNumber).toBe(first.confirmationNumber);
+    // Server preserves original confirmation from existing doc on resubmit
+    expect(second.confirmationNumber).toBe('SAF-2026-ORIG01');
     expect(second.deduplicated).toBe(true);
     // Both writes use set+merge (never .create())
     expect(mockSet).toHaveBeenCalledTimes(2);
@@ -142,19 +148,46 @@ describe('submitGuestApplication', () => {
     }
   });
 
+  it('uses suffixed applicationId when applicantKeyFull collides on existing doc', async () => {
+    mockGet
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ applicantKeyFull: 'different-full-hash-value' }),
+      })
+      .mockResolvedValueOnce({ exists: false, data: () => null })
+      .mockResolvedValueOnce({ exists: false, data: () => null });
+
+    const res = await submitGuestApplication(validPayload, ctxBase);
+    expect(res.success).toBe(true);
+    expect(res.applicationId).toMatch(/_[2-9]$/);
+    expect(mockSet).toHaveBeenCalled();
+  });
+
+  it('rejects payload companyId mismatch in formData', async () => {
+    await expect(
+      submitGuestApplication(
+        {
+          ...validPayload,
+          formData: { ...validPayload.formData, companyId: 'other-co' },
+        },
+        ctxBase,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
   it('never clobbers a progressed status on a retry', async () => {
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({
-        confirmationNumber: 'SAF-2026-AAAAA',
-        submittedAt: 'orig-ts',
-        createdAt: 'orig-ts',
-        status: 'Hired',
-      }),
+    const progressed = () => ({
+      confirmationNumber: 'SAF-2026-AAAAA',
+      submittedAt: 'orig-ts',
+      createdAt: 'orig-ts',
+      status: 'Hired',
     });
+    mockGet
+      .mockResolvedValueOnce({ exists: true, data: progressed })
+      .mockResolvedValueOnce({ exists: true, data: progressed });
 
     await submitGuestApplication(validPayload, ctxBase);
-    const writtenDoc = mockSet.mock.calls[0][0];
+    const writtenDoc = mockSet.mock.calls[mockSet.mock.calls.length - 1][0];
     expect(writtenDoc.status).toBeUndefined();
   });
 });

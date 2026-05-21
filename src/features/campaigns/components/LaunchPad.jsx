@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Rocket, Loader2, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
@@ -9,10 +9,14 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     const navigate = useNavigate();
     const { showSuccess, showError } = useToast();
     const [isLaunching, setIsLaunching] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
+    const launchLockRef = useRef(false);
 
     const handleLaunch = async () => {
         if (!companyId) return showError("Company ID missing");
+        if (launchLockRef.current || isLaunching) return;
 
+        launchLockRef.current = true;
         setIsLaunching(true);
         try {
             const initBulkSession = httpsCallable(functions, 'initBulkSession');
@@ -49,6 +53,8 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
             showError(friendlyMsg);
         } finally {
             setIsLaunching(false);
+            launchLockRef.current = false;
+            setShowConfirm(false);
         }
     };
 
@@ -104,13 +110,46 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
                 <div className="flex gap-4">
                     <button
                         disabled={!isValid || isLaunching}
-                        onClick={handleLaunch}
+                        onClick={() => setShowConfirm(true)}
                         className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-black text-lg shadow-lg shadow-blue-200 flex items-center justify-center gap-3 transition-all"
                     >
                         {isLaunching ? <Loader2 size={24} className="animate-spin" /> : <Rocket size={24} />}
                         Launch Immediately
                     </button>
                 </div>
+
+                {showConfirm && (
+                    <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl text-left">
+                            <h3 className="text-lg font-bold text-slate-900 mb-2">Confirm campaign launch</h3>
+                            <p className="text-sm text-slate-600 mb-4">
+                                Send to <strong>{campaign.matchCount || 0}</strong> recipients via{' '}
+                                <strong>{campaign.messageConfig?.method === 'email' ? 'Email' : 'SMS'}</strong>?
+                            </p>
+                            <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg mb-4 line-clamp-4">
+                                {(campaign.messageConfig?.message || '').slice(0, 280)}
+                                {(campaign.messageConfig?.message || '').length > 280 ? '…' : ''}
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirm(false)}
+                                    className="flex-1 py-2 border border-slate-200 rounded-lg font-semibold text-slate-600"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isLaunching}
+                                    onClick={handleLaunch}
+                                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50"
+                                >
+                                    Confirm Launch
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

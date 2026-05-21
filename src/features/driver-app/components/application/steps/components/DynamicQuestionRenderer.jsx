@@ -11,7 +11,9 @@ const DynamicQuestionRenderer = ({
     handleFileUpload
 }) => {
     const ty = new Date().getFullYear();
-    const answer = (formData.customAnswers && formData.customAnswers[question.id || question]) || '';
+    const questionKey = (q, idx) => q.id || q.key || `custom-question-${idx}`;
+    const qKey = typeof question === 'string' ? question : questionKey(question, index);
+    const answer = (formData.customAnswers && formData.customAnswers[qKey]) || '';
 
     if (typeof question === 'string') {
         return (
@@ -22,7 +24,7 @@ const DynamicQuestionRenderer = ({
                 <textarea
                     className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
                     value={answer}
-                    onChange={(e) => onAnswerChange(question, e.target.value)}
+                    onChange={(e) => onAnswerChange(qKey, e.target.value)}
                     required
                 />
             </div>
@@ -30,11 +32,12 @@ const DynamicQuestionRenderer = ({
     }
 
     const q = question;
+    const key = qKey;
 
     switch (q.type) {
         case 'paragraph':
             return (
-                <div key={q.id} className="space-y-2">
+                <div key={key} className="space-y-2">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -43,7 +46,7 @@ const DynamicQuestionRenderer = ({
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                         rows={4}
                         value={answer}
-                        onChange={(e) => onAnswerChange(q.id, e.target.value)}
+                        onChange={(e) => onAnswerChange(key, e.target.value)}
                         required={q.required}
                     />
                 </div>
@@ -51,7 +54,7 @@ const DynamicQuestionRenderer = ({
 
         case 'shortAnswer':
             return (
-                <div key={q.id} className="space-y-2">
+                <div key={key} className="space-y-2">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -60,7 +63,7 @@ const DynamicQuestionRenderer = ({
                         type="text"
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                         value={answer}
-                        onChange={(e) => onAnswerChange(q.id, e.target.value)}
+                        onChange={(e) => onAnswerChange(key, e.target.value)}
                         required={q.required}
                     />
                 </div>
@@ -68,7 +71,7 @@ const DynamicQuestionRenderer = ({
 
         case 'multipleChoice':
             return (
-                <div key={q.id} className="space-y-3">
+                <div key={key} className="space-y-3">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -78,10 +81,10 @@ const DynamicQuestionRenderer = ({
                             <label key={i} className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-gray-50">
                                 <input
                                     type="radio"
-                                    name={q.id}
+                                    name={key}
                                     value={opt}
                                     checked={answer === opt}
-                                    onChange={(e) => onAnswerChange(q.id, e.target.value)}
+                                    onChange={(e) => onAnswerChange(key, e.target.value)}
                                     required={q.required}
                                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                                 />
@@ -95,7 +98,7 @@ const DynamicQuestionRenderer = ({
         case 'checkboxes': {
             const selectedOptions = Array.isArray(answer) ? answer : [];
             return (
-                <div key={q.id} className="space-y-3">
+                <div key={key} className="space-y-3">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -106,7 +109,7 @@ const DynamicQuestionRenderer = ({
                                 <input
                                     type="checkbox"
                                     checked={selectedOptions.includes(opt)}
-                                    onChange={() => onCheckboxChange(q.id, opt)}
+                                    onChange={() => onCheckboxChange(key, opt)}
                                     className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                                 />
                                 <span className="text-sm text-gray-700">{opt}</span>
@@ -119,7 +122,7 @@ const DynamicQuestionRenderer = ({
 
         case 'dropdown':
             return (
-                <div key={q.id} className="space-y-2">
+                <div key={key} className="space-y-2">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -127,7 +130,7 @@ const DynamicQuestionRenderer = ({
                     <select
                         className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                         value={answer}
-                        onChange={(e) => onAnswerChange(q.id, e.target.value)}
+                        onChange={(e) => onAnswerChange(key, e.target.value)}
                         required={q.required}
                     >
                         <option value="">Select an option...</option>
@@ -140,17 +143,17 @@ const DynamicQuestionRenderer = ({
 
         case 'date':
             return (
-                <div key={q.id} className="space-y-2">
+                <div key={key} className="space-y-2">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
                     {q.helpText && <p className="text-xs text-gray-500">{q.helpText}</p>}
                     <DateTripletField
                         label=""
-                        idPrefix={`dyn-q-${q.id}`}
-                        name={String(q.id)}
+                        idPrefix={`dyn-q-${key}`}
+                        name={String(key)}
                         value={answer}
-                        onChange={(_, v) => onAnswerChange(q.id, v)}
+                        onChange={(_, v) => onAnswerChange(key, v)}
                         required={q.required}
                         maxToday={false}
                         minYear={ty - 100}
@@ -162,7 +165,7 @@ const DynamicQuestionRenderer = ({
 
         case 'time':
             return (
-                <div key={q.id} className="space-y-2">
+                <div key={key} className="space-y-2">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -173,7 +176,7 @@ const DynamicQuestionRenderer = ({
                             type="time"
                             className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={answer}
-                            onChange={(e) => onAnswerChange(q.id, e.target.value)}
+                            onChange={(e) => onAnswerChange(key, e.target.value)}
                             required={q.required}
                         />
                     </div>
@@ -182,7 +185,7 @@ const DynamicQuestionRenderer = ({
 
         case 'fileUpload':
             return (
-                <div key={q.id} className="space-y-2">
+                <div key={key} className="space-y-2">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -191,15 +194,15 @@ const DynamicQuestionRenderer = ({
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 text-center hover:bg-gray-100 transition-colors">
                         <input
                             type="file"
-                            id={`file-${q.id}`}
+                            id={`file-${key}`}
                             className="hidden"
                             required={q.required && !answer}
                             onChange={(e) => {
-                                if (handleFileUpload) handleFileUpload(q.id, e.target.files[0]);
-                                onAnswerChange(q.id, e.target.files[0]?.name || '');
+                                if (handleFileUpload) handleFileUpload(key, e.target.files[0]);
+                                onAnswerChange(key, e.target.files[0]?.name || '');
                             }}
                         />
-                        <label htmlFor={`file-${q.id}`} className="cursor-pointer flex flex-col items-center">
+                        <label htmlFor={`file-${key}`} className="cursor-pointer flex flex-col items-center">
                             <UploadCloud size={24} className="text-blue-500 mb-2" />
                             <span className="text-sm text-blue-600 font-medium">Click to upload file</span>
                             {answer && <span className="text-xs text-gray-500 mt-2">Selected: {answer}</span>}
@@ -208,9 +211,12 @@ const DynamicQuestionRenderer = ({
                 </div>
             );
 
-        case 'linearScale':
+        case 'linearScale': {
+            const min = q.min ?? 1;
+            const max = q.max ?? 5;
+            const scaleValues = Array.from({ length: max - min + 1 }, (_, i) => min + i);
             return (
-                <div key={q.id} className="space-y-3">
+                <div key={key} className="space-y-3">
                     <label className="block text-sm font-bold text-gray-800">
                         {q.label} {q.required && <span className="text-red-500">*</span>}
                     </label>
@@ -219,14 +225,14 @@ const DynamicQuestionRenderer = ({
                     <div className="flex items-center justify-between gap-4 max-w-md mx-auto py-2">
                         <span className="text-xs text-gray-500 font-medium">{q.minLabel || 'Min'}</span>
                         <div className="flex gap-4">
-                            {[1, 2, 3, 4, 5].map(val => (
+                            {scaleValues.map(val => (
                                 <label key={val} className="flex flex-col items-center gap-1 cursor-pointer">
                                     <input
                                         type="radio"
-                                        name={q.id}
+                                        name={key}
                                         value={val}
                                         checked={Number(answer) === val}
-                                        onChange={(e) => onAnswerChange(q.id, Number(e.target.value))}
+                                        onChange={(e) => onAnswerChange(key, Number(e.target.value))}
                                         required={q.required}
                                         className="h-4 w-4 text-blue-600 focus:ring-blue-500"
                                     />
@@ -238,6 +244,7 @@ const DynamicQuestionRenderer = ({
                     </div>
                 </div>
             );
+        }
 
         default:
             return null;

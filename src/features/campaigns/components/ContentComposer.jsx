@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { MessageSquare, Mail, Zap, Info } from 'lucide-react';
 import { DeviceMockup } from './DeviceMockup';
 
 export function ContentComposer({ messageConfig, onChange }) {
+    const messageRef = useRef(null);
+    const subjectRef = useRef(null);
 
     const handleChange = (key, value) => {
         onChange({ ...messageConfig, [key]: value });
@@ -10,7 +12,23 @@ export function ContentComposer({ messageConfig, onChange }) {
 
     const insertVariable = (variable) => {
         const field = messageConfig.method === 'email' && activeField === 'subject' ? 'subject' : 'message';
+        const el = field === 'subject' ? subjectRef.current : messageRef.current;
         const current = messageConfig[field] || '';
+
+        if (el && typeof el.selectionStart === 'number') {
+            const start = el.selectionStart;
+            const end = el.selectionEnd ?? start;
+            const insertion = ` ${variable} `;
+            const next = `${current.slice(0, start)}${insertion}${current.slice(end)}`;
+            handleChange(field, next);
+            const caret = start + insertion.length;
+            requestAnimationFrame(() => {
+                el.focus();
+                el.setSelectionRange(caret, caret);
+            });
+            return;
+        }
+
         handleChange(field, current + ` ${variable} `);
     };
 
@@ -57,6 +75,7 @@ export function ContentComposer({ messageConfig, onChange }) {
                             <div className="mb-4">
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Subject Line</label>
                                 <input
+                                    ref={subjectRef}
                                     type="text"
                                     value={messageConfig.subject || ''}
                                     onChange={(e) => handleChange('subject', e.target.value)}
@@ -69,6 +88,7 @@ export function ContentComposer({ messageConfig, onChange }) {
 
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Message Body</label>
                         <textarea
+                            ref={messageRef}
                             value={messageConfig.message || ''}
                             onChange={(e) => handleChange('message', e.target.value)}
                             onFocus={() => setActiveField('message')}

@@ -16,6 +16,7 @@ vi.mock('@shared/components/feedback/ToastProvider', () => ({
 describe('CampaignDetails', () => {
     const mockCampaign = {
         id: '123',
+        companyId: 'company123',
         name: 'Test Campaign',
         status: 'active',
         createdAt: { toDate: () => new Date('2023-01-01') },
@@ -39,6 +40,12 @@ describe('CampaignDetails', () => {
         expect(screen.getByText('50 / 100 leads processed')).toBeInTheDocument();
         expect(screen.getByText('Hello World')).toBeInTheDocument();
         expect(screen.getByText('SMS')).toBeInTheDocument();
+    });
+
+    it('blocks actions when campaign company mismatches workspace', () => {
+        const mismatched = { ...mockCampaign, companyId: 'other-co' };
+        render(<CampaignDetails campaign={mismatched} onClose={() => { }} />);
+        expect(screen.getByText(/belongs to a different company/i)).toBeInTheDocument();
     });
 
     it('calls onClose when close button is clicked', () => {

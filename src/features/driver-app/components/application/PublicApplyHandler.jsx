@@ -117,7 +117,13 @@ const buildE2EPublicProfile = (slugValue) => ({
     medCardUpload: { hidden: false, required: true },
     showEmergencyContacts: false,
   },
-  postApplicationTemplates: [],
+  postApplicationTemplates: [
+    {
+      templateId: 'e2e-post-template',
+      title: 'Post-Application Form',
+      enabled: true,
+    },
+  ],
 });
 
 /**
@@ -147,6 +153,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const [openingTemplateId, setOpeningTemplateId] = useState('');
   const [sandboxSubmission, setSandboxSubmission] = useState(null);
   const hasStarted = useRef(false);
+  const isSubmittingRef = useRef(false);
   const cdlAutoFillInputRef = useRef(null);
   const e2eUploadMode = getE2EQueryParam('e2eUpload', 'allow');
 
@@ -208,7 +215,23 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
             setCurrentCompanyProfile(mockCompany);
           }
           sessionStorage.setItem('pending_application_company', mockCompany.id);
-          setIntakeMode('manual');
+          if (getE2EQueryParam('e2eIntake', 'manual') !== 'choice') {
+            setIntakeMode('manual');
+          }
+          try {
+            const savedDraft = localStorage.getItem(`draft_${slug}`);
+            if (savedDraft) {
+              const parsed = JSON.parse(savedDraft);
+              if (parsed && typeof parsed === 'object') {
+                setFormData((prev) => ({ ...prev, ...parsed }));
+                if (typeof parsed.lastStep === 'number') {
+                  setCurrentStep(parsed.lastStep);
+                }
+              }
+            }
+          } catch (draftErr) {
+            console.warn('[PublicApplyHandler] E2E draft restore failed:', draftErr);
+          }
           setLoading(false);
           return;
         }
@@ -283,10 +306,29 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     }));
   };
 
+  const persistLocalDraft = (stepIndex) => {
+    if (!slug || sandbox) return;
+    const { ssn: _ssn, signature: _sig, ...draftPayload } = formData;
+    try {
+      localStorage.setItem(
+        `draft_${slug}`,
+        JSON.stringify({ ...draftPayload, lastStep: stepIndex }),
+      );
+    } catch (draftErr) {
+      console.warn('[PublicApplyHandler] Local draft save failed:', draftErr);
+    }
+  };
+
   const handleNavigate = (direction) => {
-    if (direction === 'next') setCurrentStep(prev => prev + 1);
-    else if (direction === 'back') setCurrentStep(prev => Math.max(0, prev - 1));
-    else if (typeof direction === 'number') setCurrentStep(direction);
+    let nextStep = currentStep;
+    if (direction === 'next') nextStep = currentStep + 1;
+    else if (direction === 'back') nextStep = Math.max(0, currentStep - 1);
+    else if (typeof direction === 'number') nextStep = direction;
+
+    setCurrentStep(nextStep);
+    if (isE2ETestMode) {
+      persistLocalDraft(nextStep);
+    }
     window.scrollTo(0, 0);
   };
 
@@ -508,14 +550,15 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       return;
     }
 
-    // Prevent double submission
-    if (submissionStatus === 'submitting') return;
+    if (isSubmittingRef.current || submissionStatus === 'submitting') return;
+    isSubmittingRef.current = true;
     setSubmissionStatus('submitting');
 
     if (isE2ETestMode && !sandbox) {
       const confirmationNumber = generateConfirmationNumber();
       sessionStorage.setItem('lastConfirmationNumber', confirmationNumber);
       setSubmittedConfirmationNumber(confirmationNumber);
+      setSubmittedApplicationId('e2e-application-id');
       localStorage.removeItem(`draft_${slug}`);
       sessionStorage.removeItem('pending_application_recruiter');
       setSubmissionStatus('success');
@@ -685,6 +728,8 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       console.error("Submission error:", error);
       setSubmissionStatus('error');
       showError("Failed to submit application. Please try again.");
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -702,6 +747,10 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
 
     try {
       setOpeningTemplateId(template.templateId);
+      if (isE2ETestMode) {
+        navigate(`/sign/${company.id}/e2e-post-app-req?token=e2e-token&e2eSign=mock`);
+        return;
+      }
       const createSigningRequest = httpsCallable(functions, 'createPostApplicationSigningRequest', { timeout: 60000 });
       const { data } = await createSigningRequest({
         companyId: company.id,

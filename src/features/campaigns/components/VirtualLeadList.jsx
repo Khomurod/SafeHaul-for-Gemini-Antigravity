@@ -49,7 +49,7 @@ export default function VirtualLeadList({ companyId, filters, excludedIds = [], 
             setLastDocId(newLastId);
 
             // If we got fewer than requested, we hit the end
-            setHasMore(!!newLastId && newLeads.length === 50);
+            setHasMore(Boolean(newLastId) && newLeads.length > 0);
 
         } catch (err) {
             console.error("Failed to load leads:", err);

@@ -1,5 +1,5 @@
-jest.mock('firebase-functions/v1', () => ({
-  https: {
+jest.mock('firebase-functions/v1', () => {
+  const https = {
     onCall: (fn) => fn,
     HttpsError: class extends Error {
       constructor(code, message) {
@@ -7,8 +7,12 @@ jest.mock('firebase-functions/v1', () => ({
         this.code = code;
       }
     },
-  },
-}));
+  };
+  return {
+    https,
+    runWith: () => ({ https }),
+  };
+});
 
 jest.mock('../../firebaseAdmin', () => ({
   db: {},
@@ -46,6 +50,15 @@ describe('getSignedUploadUrl (guest upload path reservation)', () => {
     expect(data.storagePath).toMatch(/^companies\/co99\/applications\/guest_uploads\//);
     expect(data.storagePath).toContain('_doc.pdf');
     expect(data.url).toBeUndefined();
+  });
+
+  it('rejects unauthenticated guest requests without App Check', async () => {
+    await expect(
+      getSignedUploadUrl(
+        { companyId: 'co99', fileName: 'doc.pdf', fileType: 'application/pdf' },
+        { auth: null, app: undefined, rawRequest: { ip: '9.9.9.9' } }
+      )
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
   });
 
   it('does not return a path when tenant check fails', async () => {

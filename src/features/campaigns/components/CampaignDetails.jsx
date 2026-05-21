@@ -5,25 +5,44 @@ import {
     Pause, Play, XCircle
 } from 'lucide-react';
 import { CampaignResultsTable } from './CampaignResultsTable';
-import { useParams } from 'react-router-dom';
 import { functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
 
 export function CampaignDetails({ campaign, onClose }) {
-    const { companyId: routeCompanyId } = useParams();
     const { currentCompanyProfile } = useData();
     const [retrying, setRetrying] = useState(false);
 
-    // Fallback: Use campaign.companyId -> context -> route
-    const effectiveCompanyId = campaign?.companyId || currentCompanyProfile?.id || routeCompanyId;
+    const effectiveCompanyId = campaign?.companyId || currentCompanyProfile?.id;
+    const tenantMismatch = Boolean(
+        campaign?.companyId &&
+        currentCompanyProfile?.id &&
+        campaign.companyId !== currentCompanyProfile.id
+    );
     const [pausing, setPausing] = useState(false);
     const [resuming, setResuming] = useState(false);
     const [cancelling, setCancelling] = useState(false);
     const { showSuccess, showError } = useToast();
 
     if (!campaign) return null;
+
+    if (tenantMismatch) {
+        return (
+            <div className="p-6 text-center text-red-600">
+                <p className="font-semibold">This campaign belongs to a different company.</p>
+                <p className="text-sm mt-2">Close this view and open campaigns from your active company workspace.</p>
+            </div>
+        );
+    }
+
+    if (!effectiveCompanyId) {
+        return (
+            <div className="p-6 text-center text-amber-700">
+                <p className="font-semibold">Company context is missing for this campaign.</p>
+            </div>
+        );
+    }
 
     const getStatusColor = (status) => {
         switch (status) {

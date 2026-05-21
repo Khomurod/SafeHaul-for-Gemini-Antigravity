@@ -143,6 +143,15 @@ service cloud.firestore {
               request.resource.data.status in allowedRecruiterPipelineStatus());
     }
 
+    // Path-bound tenant: companyId in document must match companies/{companyId} path.
+    function tenantCompanyIdMatches(companyId) {
+      return request.resource.data.companyId == companyId;
+    }
+
+    function tenantCompanyIdImmutable() {
+      return request.resource.data.companyId == resource.data.companyId;
+    }
+
     function canReadApplicationSubcollectionDoc(fileData) {
       return isSignedIn() && (
         fileData.driverId == request.auth.uid ||
@@ -362,12 +371,13 @@ service cloud.firestore {
         // UPDATE:
         // Company Team: operational updates; status must stay within ATS / legacy funnel enums.
         // Driver owner: profile/offers/uploads/etc., but not reassignment or identity fields.
-        allow update: if isSuperAdmin() ||
+        allow update: if tenantCompanyIdImmutable() &&
+                      (isSuperAdmin() ||
                       (isCompanyTeam(companyId) && applicationCompanyTeamUpdateAllowed()) ||
                       (isSignedIn() &&
                        (resource.data.applicantId == request.auth.uid || resource.data.driverId == request.auth.uid) &&
                        applicationDriverSelfUpdateAllowed() &&
-                       applicationDriverSelfStatusTransitionAllowed());
+                       applicationDriverSelfStatusTransitionAllowed()));
 
         allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
 
@@ -388,8 +398,12 @@ service cloud.firestore {
       // LEADS (Company Specific)
       match /leads/{leadId} {
         allow read: if isCompanyTeam(companyId) || isSuperAdmin();
-        allow create: if (isCompanyTeam(companyId) || isSuperAdmin()) && (isSuperAdmin() || leadCompanyTeamWriteAllowed());
-        allow update: if (isCompanyTeam(companyId) || isSuperAdmin()) && (isSuperAdmin() || leadCompanyTeamWriteAllowed());
+        allow create: if (isCompanyTeam(companyId) || isSuperAdmin()) &&
+                         tenantCompanyIdMatches(companyId) &&
+                         (isSuperAdmin() || leadCompanyTeamWriteAllowed());
+        allow update: if tenantCompanyIdImmutable() &&
+                         (isCompanyTeam(companyId) || isSuperAdmin()) &&
+                         (isSuperAdmin() || leadCompanyTeamWriteAllowed());
         allow delete: if isCompanyTeam(companyId) || isSuperAdmin();
         match /activity_logs/{logId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
         match /activities/{activityId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }

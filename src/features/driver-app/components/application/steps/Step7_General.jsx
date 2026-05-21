@@ -4,9 +4,6 @@ import RadioGroup from '@shared/components/form/RadioGroup';
 import { useUtils } from '@shared/hooks/useUtils';
 import { useData } from '@/context/DataContext';
 import { YES_NO_OPTIONS, MILES_DRIVEN_OPTIONS, EXPERIENCE_OPTIONS } from '@/config/form-options';
-import { Circle } from 'lucide-react';
-
-import DynamicQuestionRenderer from './components/DynamicQuestionRenderer';
 import BusinessInfoSection from './components/BusinessInfoSection';
 import VehicleExperienceSection from './components/VehicleExperienceSection';
 import EmergencyContactsSection from './components/EmergencyContactsSection';
@@ -32,53 +29,9 @@ const Step7_General = ({ formData, updateFormData, onNavigate, handleFileUpload,
         onNavigate('next');
     };
 
-    const handleCustomAnswerChange = (questionIdOrLabel, answer) => {
-        const currentAnswers = formData.customAnswers || {};
-        const updatedAnswers = { ...currentAnswers, [questionIdOrLabel]: answer };
-        updateFormData('customAnswers', updatedAnswers);
-    };
-
-    const handleCheckboxChange = (questionId, option) => {
-        const currentAnswers = formData.customAnswers || {};
-        const currentSelection = Array.isArray(currentAnswers[questionId]) ? currentAnswers[questionId] : [];
-
-        let newSelection;
-        if (currentSelection.includes(option)) {
-            newSelection = currentSelection.filter(item => item !== option);
-        } else {
-            newSelection = [...currentSelection, option];
-        }
-
-        handleCustomAnswerChange(questionId, newSelection);
-    };
-
     return (
         <div id="page-7" className="form-step space-y-6">
-            <h3 className="text-xl font-semibold text-gray-800">Step 7 of 9: Custom Applicant Questions</h3>
-
-            {currentCompany?.customQuestions?.length > 0 && (
-                <fieldset className="border border-blue-200 bg-blue-50/30 rounded-lg p-6 space-y-6 shadow-sm">
-                    <legend className="text-lg font-bold text-blue-900 px-2 flex items-center gap-2">
-                        <Circle size={16} fill="currentColor" className="text-blue-200" />
-                        {currentCompany.companyName || 'Company'} Specific Questions
-                    </legend>
-                    <p className="text-sm text-blue-700 px-1 mb-4 border-b border-blue-100 pb-2">
-                        Please answer the following questions required by the carrier.
-                    </p>
-
-                    {currentCompany.customQuestions.map((question, index) => (
-                        <DynamicQuestionRenderer
-                            key={question.id || index}
-                            question={question}
-                            index={index}
-                            formData={formData}
-                            onAnswerChange={handleCustomAnswerChange}
-                            onCheckboxChange={handleCheckboxChange}
-                            handleFileUpload={handleFileUpload}
-                        />
-                    ))}
-                </fieldset>
-            )}
+            <h3 className="text-xl font-semibold text-gray-800">Step 7 of 9: General Questions</h3>
 
             {(formData.positionType === 'ownerOperator' || formData.positionType === 'leaseOperator') && (
                 <BusinessInfoSection

@@ -208,20 +208,16 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                 const leadId = batchIds[i];
                 // Note: Lead ID not logged to avoid exposing PII in Cloud Function logs
 
-                // BUG-12 FIX: Status check is now per-message so cancel/pause halts
-                // the worker within ~3s (one safety-delay window) instead of after a
-                // batch of 5+ sends. Cost: one extra ~10ms doc read per message; trivial
-                // compared to the SMS/email round-trip itself.
-                if (i > 0) {
-                    try {
-                        const midCheck = await sessionRef.get();
-                        if (!midCheck.exists || !['active'].includes(midCheck.data().status)) {
-                            console.log(`[BatchWorker] Mid-batch cancel detected at item ${i}/${batchIds.length}. Breaking.`);
-                            break;
-                        }
-                    } catch (checkErr) {
-                        console.warn('[BatchWorker] Mid-batch status check failed (continuing):', checkErr.message);
+                // Status check before every send (including first) so pause/cancel
+                // cannot slip a message through on batch start.
+                try {
+                    const midCheck = await sessionRef.get();
+                    if (!midCheck.exists || !['active'].includes(midCheck.data().status)) {
+                        console.log(`[BatchWorker] Mid-batch cancel detected at item ${i}/${batchIds.length}. Breaking.`);
+                        break;
                     }
+                } catch (checkErr) {
+                    console.warn('[BatchWorker] Mid-batch status check failed (continuing):', checkErr.message);
                 }
 
                 const loopStart = Date.now();

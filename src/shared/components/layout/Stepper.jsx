@@ -11,17 +11,33 @@ import Step9_Consent from '../../../features/driver-app/components/application/s
 import { DynamicQuestionsStep } from '../../../features/driver-app/components/application/steps/DynamicQuestionsStep';
 import { initializeSignatureCanvas, clearCanvas } from '@/lib/signature';
 
+export function buildSemanticStepOrder(hasCustomQuestions) {
+    const order = ['contact', 'qualifications', 'license', 'violations', 'accidents', 'employment', 'general'];
+    if (hasCustomQuestions) order.push('custom_questions');
+    order.push('review', 'consent');
+    return order;
+}
+
+export function resolveWizardStepIndex(semanticStep, hasCustomQuestions) {
+    const order = buildSemanticStepOrder(hasCustomQuestions);
+    if (typeof semanticStep === 'number' && semanticStep >= 0 && semanticStep < order.length) {
+        return semanticStep;
+    }
+    const idx = order.indexOf(semanticStep);
+    return idx >= 0 ? idx : 0;
+}
+
 // Base page config (without custom questions)
 const basePageConfig = [
-    { title: "Step 1: Personal Information", component: Step1_Contact },
-    { title: "Step 2: Qualification Information", component: Step2_Qualifications },
-    { title: "Step 3: License Information", component: Step3_License },
-    { title: "Step 4: Motor Vehicle Record", component: Step4_Violations },
-    { title: "Step 5: Accident History", component: Step5_Accidents },
-    { title: "Step 6: Employment History", component: Step6_Employment },
-    { title: "Step 7: General Questions", component: Step7_General },
-    { title: "Step 8: Review Information", component: Step8_Review },
-    { title: "Step 9: Agreements & Signature", component: Step9_Consent },
+    { title: "Step 1: Personal Information", component: Step1_Contact, semanticId: 'contact' },
+    { title: "Step 2: Qualification Information", component: Step2_Qualifications, semanticId: 'qualifications' },
+    { title: "Step 3: License Information", component: Step3_License, semanticId: 'license' },
+    { title: "Step 4: Motor Vehicle Record", component: Step4_Violations, semanticId: 'violations' },
+    { title: "Step 5: Accident History", component: Step5_Accidents, semanticId: 'accidents' },
+    { title: "Step 6: Employment History", component: Step6_Employment, semanticId: 'employment' },
+    { title: "Step 7: General Questions", component: Step7_General, semanticId: 'general' },
+    { title: "Step 8: Review Information", component: Step8_Review, semanticId: 'review' },
+    { title: "Step 9: Agreements & Signature", component: Step9_Consent, semanticId: 'consent' },
 ];
 
 const Stepper = ({
@@ -61,6 +77,7 @@ const Stepper = ({
                     title: `Step 8 of ${totalSteps}: Additional Questions`,
                     component: DynamicQuestionsStep,
                     isCustomStep: true,
+                    semanticId: 'custom_questions',
                     customQuestions: customQuestions
                 });
                 // Then Review becomes Step 9

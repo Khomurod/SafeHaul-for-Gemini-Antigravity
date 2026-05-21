@@ -4,11 +4,16 @@ import { useData } from '@/context/DataContext';
 import { db, storage } from '@lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { uploadApplicationFile, submitDriverApplication } from '../../services/driverService';
-import Stepper from '@shared/components/layout/Stepper';
+import Stepper, { buildSemanticStepOrder, resolveWizardStepIndex } from '@shared/components/layout/Stepper';
 import { Loader2, X, Save } from 'lucide-react';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { DraftRecoveryModal } from '../DraftRecoveryModal';
 import { useApplicationSchema } from '@/hooks/useApplicationSchema';
+import { isE2ETestMode } from '@lib/runtime/e2eMode';
+
+function e2eDraftKey(uid, companyId) {
+  return `e2e_driver_draft_${uid}_${companyId}`;
+}
 
 export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, companyId }) {
   const { currentUser } = useData();
@@ -60,6 +65,37 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
         return;
       }
 
+      if (isE2ETestMode) {
+        try {
+          const saved = localStorage.getItem(e2eDraftKey(currentUser.uid, targetCompanyId));
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.lastStep > 0 || parsed.firstName || parsed.email) {
+              setDraftData(parsed);
+              setShowDraftModal(true);
+            } else {
+              setFormData(parsed);
+            }
+          } else {
+            setFormData({
+              email: currentUser.email || 'driver@safehaul.local',
+              phone: currentUser.phoneNumber || '',
+              firstName: currentUser.displayName?.split(' ')[0] || 'E2E',
+              lastName: currentUser.displayName?.split(' ').slice(1).join(' ') || 'Driver',
+            });
+          }
+        } catch {
+          setFormData({
+            email: currentUser.email || 'driver@safehaul.local',
+            phone: '',
+            firstName: 'E2E',
+            lastName: 'Driver',
+          });
+        }
+        setLoading(false);
+        return;
+      }
+
       try {
         const draftId = `app_${targetCompanyId}`;
         const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
@@ -73,7 +109,12 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
             setShowDraftModal(true);
           } else {
             setFormData(data);
-            if (data.lastStep) setCurrentStep(data.lastStep);
+            const hasCustom = customQuestions.length > 0;
+            if (data.lastSemanticStep) {
+              setCurrentStep(resolveWizardStepIndex(data.lastSemanticStep, hasCustom));
+            } else if (data.lastStep !== undefined) {
+              setCurrentStep(resolveWizardStepIndex(data.lastStep, hasCustom));
+            }
           }
         } else {
           setFormData({
@@ -95,7 +136,12 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   const handleResumeDraft = () => {
     if (draftData) {
       setFormData(draftData);
-      if (draftData.lastStep) setCurrentStep(draftData.lastStep);
+      const hasCustom = customQuestions.length > 0;
+      if (draftData.lastSemanticStep) {
+        setCurrentStep(resolveWizardStepIndex(draftData.lastSemanticStep, hasCustom));
+      } else if (draftData.lastStep !== undefined) {
+        setCurrentStep(resolveWizardStepIndex(draftData.lastStep, hasCustom));
+      }
     }
     setShowDraftModal(false);
   };
@@ -134,6 +180,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
           ...formDataRef.current,
           ...newData,
           lastStep: currentStepRef.current,
+          lastSemanticStep: buildSemanticStepOrder(customQuestions.length > 0)[currentStepRef.current],
           updatedAt: serverTimestamp(),
           lastSavedAt: new Date().toISOString(),
           companyId: targetCompanyId,
@@ -144,6 +191,14 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
 
         const { ssn: _ssn, signature: _sig, ...draftPayload } = mergedData;
 
+        if (isE2ETestMode) {
+          localStorage.setItem(
+            e2eDraftKey(currentUser.uid, targetCompanyId),
+            JSON.stringify(draftPayload),
+          );
+          return;
+        }
+
         const draftId = `app_${targetCompanyId}`;
         const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
         await setDoc(draftRef, draftPayload, { merge: true });
@@ -153,7 +208,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
         setIsSaving(false);
       }
     },
-    [currentUser, targetCompanyId],
+    [currentUser, targetCompanyId, customQuestions.length],
   );
 
   useEffect(() => {
@@ -166,7 +221,7 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
         if (JSON.stringify(formData) !== JSON.stringify(lastFormDataRef.current)) {
           saveDraft();
         }
-      }, 5000);
+      }, isE2ETestMode ? 400 : 5000);
     }
 
     return () => {
@@ -194,6 +249,18 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
     return () => document.removeEventListener('visibilitychange', flushDraftOnHide);
   }, [currentUser, targetCompanyId, saveDraft]);
 
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      if (currentUser && targetCompanyId && !isSubmitting.current) {
+        void saveDraft();
+      }
+    };
+  }, [currentUser, targetCompanyId, saveDraft]);
+
   const handleUpdateFormData = (name, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -202,14 +269,17 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
   };
 
   const handleNavigate = (direction) => {
-    saveDraft();
+    let nextStep = currentStepRef.current;
     if (direction === 'next') {
-      setCurrentStep((prev) => prev + 1);
+      nextStep = currentStepRef.current + 1;
     } else if (direction === 'back') {
-      setCurrentStep((prev) => Math.max(0, prev - 1));
+      nextStep = Math.max(0, currentStepRef.current - 1);
     } else if (typeof direction === 'number') {
-      setCurrentStep(direction);
+      nextStep = direction;
     }
+    currentStepRef.current = nextStep;
+    setCurrentStep(nextStep);
+    void saveDraft();
   };
 
   const handleFileUpload = async (fieldName, file) => {
@@ -295,9 +365,13 @@ export function DriverApplicationWizard({ isOpen, onClose, onSuccess, job, compa
       const activeCompanyId = targetCompanyId;
       const result = await submitDriverApplication(currentUser, formData, activeCompanyId, job);
 
-      const draftId = `app_${activeCompanyId}`;
-      const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
-      await deleteDoc(draftRef);
+      if (!isE2ETestMode) {
+        const draftId = `app_${activeCompanyId}`;
+        const draftRef = doc(db, 'drivers', currentUser.uid, 'drafts', draftId);
+        await deleteDoc(draftRef);
+      } else {
+        localStorage.removeItem(e2eDraftKey(currentUser.uid, activeCompanyId));
+      }
 
       sessionStorage.removeItem('pending_application_company');
 

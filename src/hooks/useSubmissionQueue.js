@@ -141,6 +141,7 @@ export function useSubmissionQueue() {
         if (!isSupported() || !isInitialized.current) return { processed: 0 };
         if (processingRef.current) return { processed: 0 };
 
+        const runProcessing = async () => {
         processingRef.current = true;
         setIsProcessing(true);
         setError(null);
@@ -178,6 +179,12 @@ export function useSubmissionQueue() {
             setIsProcessing(false);
             processingRef.current = false;
         }
+        };
+
+        if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+            return navigator.locks.request('safehaul-submission-queue', runProcessing);
+        }
+        return runProcessing();
     }, [submitToFirestore]);
 
     // Auto-process when coming back online

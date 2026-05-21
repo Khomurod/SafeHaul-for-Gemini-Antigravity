@@ -90,8 +90,22 @@ describeStorage('storage.rules multi-tenant isolation', () => {
     await assertFails(getMetadata(ref(storageA, 'companies/co1/leads/app123/dq_files/medical.pdf')));
   });
 
-  it('allows unauthenticated guest write to temporary autofill folder', async () => {
+  it('blocks unauthenticated guest write without App Check', async () => {
     const guestApp = testEnv.unauthenticatedContext().app;
+    const guestStorage = getStorage(guestApp, `gs://${bucket}`);
+
+    await assertFails(
+      uploadString(
+        ref(guestStorage, 'companies/co1/autofill/guest_uploads/scan.jpg'),
+        'fake-image-content',
+        'raw',
+        { contentType: 'image/jpeg' }
+      )
+    );
+  });
+
+  it('allows guest write with App Check to guest_uploads', async () => {
+    const guestApp = testEnv.unauthenticatedContext({ appCheck: true }).app;
     const guestStorage = getStorage(guestApp, `gs://${bucket}`);
 
     await assertSucceeds(
@@ -102,6 +116,49 @@ describeStorage('storage.rules multi-tenant isolation', () => {
         { contentType: 'image/jpeg' }
       )
     );
+  });
+
+  it('blocks unauthenticated read of guest_uploads', async () => {
+    const guestApp = testEnv.unauthenticatedContext({ appCheck: true }).app;
+    const guestStorage = getStorage(guestApp, `gs://${bucket}`);
+
+    await assertFails(
+      getMetadata(ref(guestStorage, 'companies/co1/applications/guest_uploads/secret.pdf'))
+    );
+  });
+
+  it('allows company admin read/write on secure_documents templates', async () => {
+    const adminCo1 = testEnv.authenticatedContext('admin-co1', {
+      roles: { co1: 'company_admin' },
+    }).app;
+    const storageCo1 = getStorage(adminCo1, `gs://${bucket}`);
+
+    await assertSucceeds(
+      uploadString(
+        ref(storageCo1, 'secure_documents/co1/templates/offer-letter.pdf'),
+        'template-pdf',
+        'raw',
+        { contentType: 'application/pdf' },
+      ),
+    );
+    await assertSucceeds(getMetadata(ref(storageCo1, 'secure_documents/co1/templates/offer-letter.pdf')));
+  });
+
+  it('blocks unauthenticated read of secure_documents', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminStorage = getStorage(context.app, `gs://${bucket}`);
+      await uploadString(
+        ref(adminStorage, 'secure_documents/co1/templates/seed.pdf'),
+        'seed',
+        'raw',
+        { contentType: 'application/pdf' },
+      );
+    });
+
+    const guestApp = testEnv.unauthenticatedContext().app;
+    const guestStorage = getStorage(guestApp, `gs://${bucket}`);
+
+    await assertFails(getMetadata(ref(guestStorage, 'secure_documents/co1/templates/seed.pdf')));
   });
 
   it('blocks unauthenticated guest write outside guest_uploads', async () => {

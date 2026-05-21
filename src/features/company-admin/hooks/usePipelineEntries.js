@@ -7,6 +7,7 @@ import {
     serverTimestamp
 } from 'firebase/firestore';
 import { db } from '@lib/firebase';
+import { useToast } from '@shared/components/feedback/ToastProvider';
 
 // --- Sorting priority: 0 = top, 2 = bottom ---
 const STAGE_PRIORITY = { hired: 0, rejected: 0, on_hold: 1, in_process: 2 };
@@ -38,6 +39,7 @@ function sortEntries(entries) {
 }
 
 export function usePipelineEntries(companyId) {
+    const { showError } = useToast();
     const [rawEntries, setRawEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingId, setEditingId] = useState(null);
@@ -134,6 +136,8 @@ export function usePipelineEntries(companyId) {
 
         const isStageChange = field === 'hiringStage';
 
+        const previous = rawEntriesRef.current.find((e) => e.id === entryId);
+
         // Optimistic local update
         setRawEntries(prev => prev.map(e => {
             if (e.id !== entryId) return e;
@@ -155,8 +159,12 @@ export function usePipelineEntries(companyId) {
             await updateDoc(docRef, payload);
         } catch (error) {
             console.error('[Pipeline] Failed to update field:', error);
+            if (previous) {
+                setRawEntries((prev) => prev.map((e) => (e.id === entryId ? previous : e)));
+            }
+            showError('Failed to save changes. Please try again.');
         }
-    }, [companyId]);
+    }, [companyId, showError]);
 
     // P2 HARDENING: Pending writes are tracked so we can flush on unmount /
     // page-hide. Without this, a recruiter typing a note and immediately
@@ -166,6 +174,8 @@ export function usePipelineEntries(companyId) {
     // --- Update Comments (debounced 500ms) ---
     const updateComments = useCallback((entryId, value) => {
         if (!companyId || !entryId) return;
+
+        const previous = rawEntriesRef.current.find((e) => e.id === entryId);
 
         // Optimistic local update (immediate) — do NOT update _localLastModifiedAt
         // because that would trigger a re-sort and unmount the editing cell
@@ -191,10 +201,14 @@ export function usePipelineEntries(companyId) {
                 delete pendingWritesRef.current[entryId];
             } catch (error) {
                 console.error('[Pipeline] Failed to save comments:', error);
+                if (previous) {
+                    setRawEntries((prev) => prev.map((e) => (e.id === entryId ? previous : e)));
+                }
+                showError('Failed to save comment. Please try again.');
             }
             delete debounceTimers.current[entryId];
         }, 500);
-    }, [companyId]);
+    }, [companyId, showError]);
 
     // --- Delete Entry ---
     const deleteEntry = useCallback(async (entryId) => {

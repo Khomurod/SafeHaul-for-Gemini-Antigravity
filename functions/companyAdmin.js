@@ -209,19 +209,7 @@ exports.backfillPublicProfiles = onCall({
 
         for (const doc of snapshot.docs) {
             const data = doc.data();
-            const publicData = {
-                companyName: data.companyName || "Untitled Company",
-                appSlug: data.appSlug || null,
-                logoUrl: data.companyLogoUrl || null,
-                brandColor: data.brandColor || "#1e40af",
-                isActive: data.isActive ?? true,
-                applicationConfig: data.applicationConfig || {},
-                customQuestions: Array.isArray(data.customQuestions) ? data.customQuestions : [],
-                postApplicationTemplates: Array.isArray(data.postApplicationTemplates)
-                    ? data.postApplicationTemplates
-                    : [],
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            };
+            const publicData = buildPublicProfileDto(data);
 
             batch.set(db.collection('public_profiles').doc(doc.id), publicData, { merge: true });
             count++;
@@ -244,6 +232,31 @@ exports.backfillPublicProfiles = onCall({
 });
 
 
+/** Whitelisted applicationConfig keys exposed on public apply pages. */
+const PUBLIC_APPLICATION_CONFIG_KEYS = [
+    'cdlUpload', 'medCardUpload', 'showEmergencyContacts',
+    'ssn', 'dob', 'previousAddresses', 'employers', 'violations', 'accidents',
+];
+
+function buildPublicProfileDto(companyData) {
+    const rawConfig = companyData.applicationConfig || {};
+    const applicationConfig = {};
+    for (const key of PUBLIC_APPLICATION_CONFIG_KEYS) {
+        if (rawConfig[key] !== undefined) {
+            applicationConfig[key] = rawConfig[key];
+        }
+    }
+    return {
+        companyName: companyData.companyName || 'Untitled Company',
+        appSlug: companyData.appSlug || null,
+        logoUrl: companyData.companyLogoUrl || null,
+        brandColor: companyData.brandColor || '#1e40af',
+        applicationConfig,
+        customQuestions: Array.isArray(companyData.customQuestions) ? companyData.customQuestions : [],
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+}
+
 /**
  * SYNC PUBLIC PROFILE
  * Trigger: onWrite /companies/{companyId}
@@ -261,20 +274,7 @@ exports.syncPublicProfile = onDocumentWritten("companies/{companyId}", async (ev
         return;
     }
 
-    // SELECT ONLY SAFE FIELDS
-    const publicData = {
-        companyName: newData.companyName || "Untitled Company",
-        appSlug: newData.appSlug || null,
-        logoUrl: newData.companyLogoUrl || null,
-        brandColor: newData.brandColor || "#1e40af",
-        isActive: newData.isActive ?? true,
-        applicationConfig: newData.applicationConfig || {},
-        customQuestions: Array.isArray(newData.customQuestions) ? newData.customQuestions : [],
-        postApplicationTemplates: Array.isArray(newData.postApplicationTemplates)
-            ? newData.postApplicationTemplates
-            : [],
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
+    const publicData = buildPublicProfileDto(newData);
 
     await db.collection("public_profiles").doc(companyId).set(publicData, { merge: true });
     console.log(`[syncPublicProfile] Synced public profile for ${companyId}`);

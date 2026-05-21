@@ -15,6 +15,7 @@ import {
 import { db, storage } from '@lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as Sentry from '@sentry/react';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 // Queue and ID generation for bulletproof submissions
 import {
@@ -200,6 +201,15 @@ export async function getSavedJobs(driverId) {
 export async function uploadApplicationFile(companyId, userId, fieldName, file) {
     if (!file) return null;
 
+    if (isE2ETestMode) {
+        return {
+            name: file.name,
+            url: `https://e2e.local/${fieldName}/${file.name}`,
+            storagePath: `companies/${companyId}/applications/${userId}/${fieldName}/e2e_${file.name}`,
+            uploadedAt: new Date().toISOString(),
+        };
+    }
+
     // 1. Size Check (20MB)
     if (file.size > 20 * 1024 * 1024) {
         throw new Error("File exceeds 20MB limit.");
@@ -286,6 +296,24 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
     const email = formData.email || currentUser?.email || '';
     const phone = formData.phone || '';
     if (!activeCompanyId) throw new Error('Company ID is required. Global lead pool is discontinued.');
+
+    if (isE2ETestMode) {
+        const applicationId = await generateApplicationId(activeCompanyId, email, phone).catch(
+            () => currentUser.uid,
+        );
+        const confirmationNumber = generateConfirmationNumber();
+        if (getE2EQueryParam('e2eForceQueue', '') === '1') {
+            return {
+                success: false,
+                queued: true,
+                applicationId,
+                confirmationNumber,
+                queueId: 'e2e-queue-1',
+                error: 'Submission failed but your application is saved. It will be automatically submitted when connection is restored.',
+            };
+        }
+        return { success: true, applicationId, confirmationNumber };
+    }
     const companyId = activeCompanyId;
 
     // Sentry breadcrumb for debugging

@@ -11,6 +11,7 @@
 import React from 'react';
 import { Shield, UploadCloud, Clock } from 'lucide-react';
 import DateTripletField from '@shared/components/form/DateTripletField';
+import { useToast } from '@shared/components/feedback/ToastProvider';
 
 export function DynamicQuestionsStep({
     questions = [],
@@ -19,7 +20,42 @@ export function DynamicQuestionsStep({
     onNavigate,
     handleFileUpload // Optional file upload handler from parent
 }) {
+    const { showError } = useToast();
     const ty = new Date().getFullYear();
+
+    const questionKey = (field, index) =>
+        field.id || field.key || `custom-question-${index}`;
+
+    const getAnswer = (field, index) => {
+        const key = questionKey(field, index);
+        if (formData.customAnswers && formData.customAnswers[key] !== undefined) {
+            return formData.customAnswers[key];
+        }
+        return formData[key];
+    };
+
+    const isEmptyAnswer = (field, value) => {
+        if (field.type === 'checkboxes') {
+            return !Array.isArray(value) || value.length === 0;
+        }
+        if (field.type === 'fileUpload') {
+            return !value || (typeof value === 'string' && !value.trim());
+        }
+        return value === undefined || value === null || value === '';
+    };
+
+    const handleContinue = () => {
+        for (let i = 0; i < questions.length; i++) {
+            const field = questions[i];
+            if (!field.required) continue;
+            const value = getAnswer(field, i);
+            if (isEmptyAnswer(field, value)) {
+                showError(`Please answer required question: ${field.label || 'Additional question'}`);
+                return;
+            }
+        }
+        onNavigate('next');
+    };
     if (!questions || questions.length === 0) {
         return (
             <div className="text-center py-12 text-gray-500">
@@ -29,21 +65,24 @@ export function DynamicQuestionsStep({
     }
 
     const handleChange = (key, value) => {
-        updateFormData(key, value);
+        const currentAnswers = formData.customAnswers || {};
+        updateFormData('customAnswers', { ...currentAnswers, [key]: value });
     };
 
     const handleCheckboxChange = (key, optValue) => {
-        const current = formData[key] || [];
+        const currentAnswers = formData.customAnswers || {};
+        const current = currentAnswers[key] || [];
         const currentArray = Array.isArray(current) ? current : [];
         const isChecked = currentArray.includes(optValue);
         const newValues = isChecked
             ? currentArray.filter(v => v !== optValue)
             : [...currentArray, optValue];
-        updateFormData(key, newValues);
+        handleChange(key, newValues);
     };
 
-    const renderField = (field) => {
-        const value = formData[field.key] || '';
+    const renderField = (field, index) => {
+        const key = questionKey(field, index);
+        const value = getAnswer(field, index) || '';
         const baseInputClass = "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all";
 
         switch (field.type) {
@@ -54,7 +93,7 @@ export function DynamicQuestionsStep({
                         className={baseInputClass}
                         rows={4}
                         value={value}
-                        onChange={(e) => handleChange(field.key, e.target.value)}
+                        onChange={(e) => handleChange(key, e.target.value)}
                         placeholder={field.placeholder || 'Enter your response...'}
                         required={field.required}
                     />
@@ -71,9 +110,9 @@ export function DynamicQuestionsStep({
                                 <label key={i} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
                                     <input
                                         type="radio"
-                                        name={field.key}
+                                        name={key}
                                         checked={value === optValue}
-                                        onChange={() => handleChange(field.key, optValue)}
+                                        onChange={() => handleChange(key, optValue)}
                                         className="w-4 h-4 text-blue-600"
                                         required={field.required}
                                     />
@@ -97,7 +136,7 @@ export function DynamicQuestionsStep({
                                     <input
                                         type="checkbox"
                                         checked={isChecked}
-                                        onChange={() => handleCheckboxChange(field.key, optValue)}
+                                        onChange={() => handleCheckboxChange(key, optValue)}
                                         className="w-4 h-4 text-blue-600 rounded"
                                     />
                                     <span className="text-gray-700">{optLabel}</span>
@@ -113,7 +152,7 @@ export function DynamicQuestionsStep({
                     <select
                         className={baseInputClass}
                         value={value}
-                        onChange={(e) => handleChange(field.key, e.target.value)}
+                        onChange={(e) => handleChange(key, e.target.value)}
                         required={field.required}
                     >
                         <option value="">Select an option...</option>
@@ -129,10 +168,10 @@ export function DynamicQuestionsStep({
                 return (
                     <DateTripletField
                         label=""
-                        idPrefix={`custom-q-${field.key}`}
-                        name={field.key}
+                        idPrefix={`custom-q-${key}`}
+                        name={key}
                         value={value}
-                        onChange={(_, v) => handleChange(field.key, v)}
+                        onChange={(_, v) => handleChange(key, v)}
                         required={field.required}
                         maxToday={false}
                         minYear={ty - 100}
@@ -149,7 +188,7 @@ export function DynamicQuestionsStep({
                             type="time"
                             className={`${baseInputClass} pl-10`}
                             value={value}
-                            onChange={(e) => handleChange(field.key, e.target.value)}
+                            onChange={(e) => handleChange(key, e.target.value)}
                             required={field.required}
                         />
                     </div>
@@ -161,7 +200,7 @@ export function DynamicQuestionsStep({
                         type="number"
                         className={baseInputClass}
                         value={value}
-                        onChange={(e) => handleChange(field.key, e.target.value)}
+                        onChange={(e) => handleChange(key, e.target.value)}
                         placeholder={field.placeholder}
                         required={field.required}
                     />
@@ -172,19 +211,19 @@ export function DynamicQuestionsStep({
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 text-center hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer">
                         <input
                             type="file"
-                            id={`file-${field.key}`}
+                            id={`file-${key}`}
                             className="hidden"
                             required={field.required && !value}
                             accept={field.accept || "image/*,application/pdf"}
                             onChange={(e) => {
                                 const file = e.target.files[0];
                                 if (file && handleFileUpload) {
-                                    handleFileUpload(field.key, file);
+                                    handleFileUpload(key, file);
                                 }
-                                handleChange(field.key, file?.name || '');
+                                handleChange(key, file?.name || '');
                             }}
                         />
-                        <label htmlFor={`file-${field.key}`} className="cursor-pointer flex flex-col items-center">
+                        <label htmlFor={`file-${key}`} className="cursor-pointer flex flex-col items-center">
                             <UploadCloud size={28} className="text-blue-500 mb-2" />
                             <span className="text-sm text-blue-600 font-medium">Click to upload file</span>
                             <span className="text-xs text-gray-400 mt-1">PDF, PNG, JPG accepted</span>
@@ -212,10 +251,10 @@ export function DynamicQuestionsStep({
                                     <label key={val} className="flex flex-col items-center gap-1.5 cursor-pointer group">
                                         <input
                                             type="radio"
-                                            name={field.key}
+                                            name={key}
                                             value={val}
                                             checked={Number(value) === val}
-                                            onChange={(e) => handleChange(field.key, Number(e.target.value))}
+                                            onChange={(e) => handleChange(key, Number(e.target.value))}
                                             required={field.required}
                                             className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                         />
@@ -238,7 +277,7 @@ export function DynamicQuestionsStep({
                         type="text"
                         className={baseInputClass}
                         value={value}
-                        onChange={(e) => handleChange(field.key, e.target.value)}
+                        onChange={(e) => handleChange(key, e.target.value)}
                         placeholder={field.placeholder || 'Enter your response...'}
                         required={field.required}
                     />
@@ -254,7 +293,7 @@ export function DynamicQuestionsStep({
             </div>
 
             {questions.map((field, index) => (
-                <div key={field.key || index} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                <div key={questionKey(field, index)} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                     <label className="block mb-3">
                         <span className="flex items-center gap-2 text-sm font-bold text-gray-700">
                             {field.label}
@@ -269,7 +308,7 @@ export function DynamicQuestionsStep({
                             <span className="block text-xs text-gray-500 mt-1">{field.helpText}</span>
                         )}
                     </label>
-                    {renderField(field)}
+                    {renderField(field, index)}
                 </div>
             ))}
 
@@ -282,7 +321,8 @@ export function DynamicQuestionsStep({
                     Back
                 </button>
                 <button
-                    onClick={() => onNavigate('next')}
+                    type="button"
+                    onClick={handleContinue}
                     className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-md transition-all"
                 >
                     Continue

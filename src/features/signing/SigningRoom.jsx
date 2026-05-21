@@ -4,6 +4,11 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
 import { isFieldLocked } from '@features/signing/utils/prefillEngine';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+
+const E2E_MOCK_PDF_URL =
+    'data:application/pdf;base64,' +
+    btoa('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n');
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Loader2, CheckCircle, PenTool, X, ChevronDown, AlertTriangle, ShieldCheck, FileText, Ban, Fingerprint } from 'lucide-react';
 
@@ -59,6 +64,30 @@ export default function SigningRoom() {
         async function load() {
             if (!accessToken) {
                 setError("Invalid Link: No access token provided.");
+                setLoading(false);
+                return;
+            }
+
+            if (isE2ETestMode && getE2EQueryParam('e2eSign', '') === 'mock') {
+                const mockFields = [
+                    { id: 'text1', type: 'text', pageNumber: 1, required: true, x: 10, y: 10, width: 20, height: 5 },
+                    { id: 'date1', type: 'date', pageNumber: 1, required: true, x: 10, y: 20, width: 20, height: 5 },
+                    { id: 'check1', type: 'checkbox', pageNumber: 1, required: true, x: 10, y: 30, width: 10, height: 5 },
+                    { id: 'sig1', type: 'signature', pageNumber: 1, required: true, x: 10, y: 40, width: 20, height: 8 },
+                ];
+                setRequest({
+                    title: 'E2E Test Document',
+                    recipientName: 'E2E Signer',
+                    status: 'sent',
+                    pdfUrl: E2E_MOCK_PDF_URL,
+                    fields: mockFields,
+                });
+                setFieldValues({
+                    text1: 'Jane Doe',
+                    date1: '2026-05-21',
+                    check1: true,
+                    sig1: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+                });
                 setLoading(false);
                 return;
             }
@@ -196,6 +225,11 @@ export default function SigningRoom() {
 
         setSubmitting(true);
         try {
+            if (isE2ETestMode && getE2EQueryParam('e2eSign', '') === 'mock') {
+                setSuccess(true);
+                return;
+            }
+
             // The server-side publicSigning.js overrides the IP from the actual request context.
             // We still send userAgent for browser fingerprinting in the audit trail.
             const auditData = {

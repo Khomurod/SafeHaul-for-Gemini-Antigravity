@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@lib/firebase';
+import { isE2ETestMode } from '@lib/runtime/e2eMode';
 import { getMergedSchema, getFieldsForStep, validateStep, isFieldVisible } from '@/config/questionMerger';
 
 const GLOBAL_SCHEMA_PATH = 'system_settings';
@@ -23,6 +24,13 @@ export function useApplicationSchema(companyId) {
     const fetchSchemas = useCallback(async () => {
         setLoading(true);
         setError(null);
+
+        if (isE2ETestMode) {
+            setGlobalSchema({ sections: [] });
+            setCompanyOverrides({});
+            setLoading(false);
+            return;
+        }
 
         try {
             // Fetch global schema

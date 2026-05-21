@@ -167,4 +167,104 @@ describeFirestore('firestore.rules security regressions', () => {
       }),
     );
   });
+
+  it('blocks lead create with mismatched companyId in document body', async () => {
+    const adminDb = testEnv.authenticatedContext('admin-a', {
+      roles: { 'company-a': 'company_admin' },
+    }).firestore();
+
+    await assertFails(
+      setDoc(doc(adminDb, 'companies', 'company-a', 'leads', 'lead1'), {
+        companyId: 'company-b',
+        firstName: 'Cross',
+        lastName: 'Tenant',
+        status: 'New Lead',
+      }),
+    );
+  });
+
+  it('allows company team to create signing_requests and secrets token', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'company-a'), { companyName: 'Co A' });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-a', {
+      roles: { 'company-a': 'company_admin' },
+    }).firestore();
+
+    await assertSucceeds(
+      setDoc(doc(adminDb, 'companies', 'company-a', 'signing_requests', 'req1'), {
+        companyId: 'company-a',
+        status: 'sent',
+        recipientName: 'Signer',
+        title: 'Test Doc',
+      }),
+    );
+
+    await assertSucceeds(
+      setDoc(doc(adminDb, 'companies', 'company-a', 'signing_requests', 'req1', 'secrets', 'token'), {
+        accessToken: 'secret-token-value',
+      }),
+    );
+  });
+
+  it('blocks client read of signing request secrets token', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'company-a', 'signing_requests', 'req1', 'secrets', 'token'), {
+        accessToken: 'secret-token-value',
+      });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-a', {
+      roles: { 'company-a': 'company_admin' },
+    }).firestore();
+
+    await assertFails(
+      getDoc(doc(adminDb, 'companies', 'company-a', 'signing_requests', 'req1', 'secrets', 'token')),
+    );
+  });
+
+  it('blocks driver from updating another users signing request', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'company-a', 'signing_requests', 'req1'), {
+        companyId: 'company-a',
+        status: 'sent',
+        recipientId: 'driver-b',
+        recipientName: 'Driver B',
+      });
+    });
+
+    const driverADb = testEnv.authenticatedContext('driver-a', { roles: {} }).firestore();
+
+    await assertFails(
+      updateDoc(doc(driverADb, 'companies', 'company-a', 'signing_requests', 'req1'), {
+        status: 'signed',
+        signatureData: { signed: true },
+      }),
+    );
+  });
+
+  it('blocks lead update that changes companyId', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'company-a', 'leads', 'lead1'), {
+        companyId: 'company-a',
+        firstName: 'Alice',
+        status: 'New Lead',
+      });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-a', {
+      roles: { 'company-a': 'company_admin' },
+    }).firestore();
+
+    await assertFails(
+      updateDoc(doc(adminDb, 'companies', 'company-a', 'leads', 'lead1'), {
+        companyId: 'company-b',
+      }),
+    );
+  });
 });

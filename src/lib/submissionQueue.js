@@ -21,6 +21,11 @@ const INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 60000; // 1 minute max
 const ORPHAN_TIMEOUT_MS = 5 * 60 * 1000; // BUG-4 FIX: 5 minutes before recovering 'processing' entries
 
+/** Tab-scoped session id for cross-tab claim detection */
+const PROCESSING_SESSION_ID = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
 /** @type {IDBDatabase | null} */
 let db = null;
 
@@ -254,9 +259,11 @@ function calculateBackoff(attempt) {
  * @returns {Promise<{success: boolean, error?: Error}>}
  */
 export async function processEntry(entry, submitFn) {
-    if (!entry || entry.status !== 'pending') {
+    const fresh = await getQueueEntry(entry?.id);
+    if (!fresh || fresh.status !== 'pending') {
         return { success: false, error: new Error('Invalid entry or not pending') };
     }
+    entry = fresh;
 
     // Check if it's time to retry
     if (entry.nextRetryAt && Date.now() < entry.nextRetryAt) {
@@ -272,12 +279,18 @@ export async function processEntry(entry, submitFn) {
         return { success: false, error: new Error('Max retries exceeded') };
     }
 
-    // Mark as processing
+    // Mark as processing with tab session claim
     await updateQueueEntry(entry.id, {
         status: 'processing',
+        processingSessionId: PROCESSING_SESSION_ID,
         lastAttemptAt: Date.now(),
         attempts: entry.attempts + 1,
     });
+
+    const claimed = await getQueueEntry(entry.id);
+    if (!claimed || claimed.processingSessionId !== PROCESSING_SESSION_ID) {
+        return { success: false, error: new Error('Entry claimed by another tab') };
+    }
 
     try {
         // Attempt submission

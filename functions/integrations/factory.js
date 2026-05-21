@@ -1,5 +1,6 @@
 const admin = require('firebase-admin');
 const { decrypt } = require('./encryption');
+const { normalizePhoneForKeychain } = require('../utils/phoneUtils');
 const RingCentralAdapter = require('./adapters/ringcentral');
 const EightByEightAdapter = require('./adapters/eightbyeight');
 
@@ -27,7 +28,7 @@ class SMSAdapterFactory {
      * @returns {Promise<{jwt: string, clientId?: string, clientSecret?: string, isSandbox?: boolean}>}
      */
     static async getKeychainEntry(companyId, phoneNumber) {
-        const sanitizedPhone = phoneNumber.replace(/[^0-9+]/g, '');
+        const sanitizedPhone = normalizePhoneForKeychain(phoneNumber);
 
         const keychainRef = admin.firestore()
             .collection('companies').doc(companyId)
@@ -54,6 +55,10 @@ class SMSAdapterFactory {
             console.error(`[CRITICAL] Keychain decryption failed for ${phoneNumber}:`, e.message);
             // This specific error helps the user identify that they need to rotate the key for this specific line
             throw new Error(`Configuration encryption error - The credentials for ${phoneNumber} are encrypted with an old or invalid key. Please go to the 'SMS Integration' settings, remove the line '${phoneNumber}', and add it again to fix this.`);
+        }
+
+        if (!entry.jwt || typeof entry.jwt !== 'string' || !entry.jwt.trim()) {
+            throw new Error(`Keychain entry for ${phoneNumber} is missing a valid JWT. Re-provision this line.`);
         }
 
         return entry;
@@ -127,8 +132,14 @@ class SMSAdapterFactory {
                         console.log(`[Factory] Using global credentials for ${phoneToLookup}`);
                     }
                 } catch (keychainError) {
+                    const normalizedLookup = normalizePhoneForKeychain(phoneToLookup);
+                    const lineProvisioned = (config.inventory || []).some(
+                        (item) => item.phoneNumber === normalizedLookup
+                    );
+                    if (targetPhoneNumber || lineProvisioned) {
+                        throw keychainError;
+                    }
                     console.warn(`Keychain lookup failed for ${phoneToLookup}:`, keychainError.message);
-                    // Fall through to legacy JWT/credentials if available
                     if (!config.jwt) {
                         throw keychainError;
                     }

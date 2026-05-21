@@ -66,8 +66,6 @@ class EightByEightAdapter extends BaseAdapter {
             }
 
             console.log(`[8x8] Sending SMS to ${to} from source "${source}" via subaccount "${subAccountId}"`);
-            console.log(`[8x8] Full URL: ${this.smsBaseUrl}/subaccounts/${subAccountId}/messages`);
-            console.log(`[8x8] API Key (first 10 chars): ${apiKey.substring(0, 10)}...`);
 
             const response = await axios.post(
                 `${this.smsBaseUrl}/subaccounts/${subAccountId}/messages`,
@@ -86,7 +84,6 @@ class EightByEightAdapter extends BaseAdapter {
 
             // Log full response for debugging
             console.log(`[8x8] Response status: ${response.status}`);
-            console.log(`[8x8] Response data:`, JSON.stringify(response.data));
 
             if (response.status === 200 || response.status === 201 || response.status === 202) {
                 return {
