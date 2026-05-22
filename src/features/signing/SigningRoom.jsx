@@ -4,6 +4,8 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
 import { isFieldLocked } from '@features/signing/utils/prefillEngine';
+import { normalizeSignerField } from '@features/signing/utils/signerFieldStyle';
+import { SignerFieldOverlay } from '@features/signing/components/SignerFieldOverlay';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 const E2E_MOCK_PDF_URL =
@@ -56,7 +58,11 @@ export default function SigningRoom() {
 
     // RACE FIX: Reset numPages when pdfUrl changes to prevent stale page rendering
     useEffect(() => {
-        setNumPages(null);
+        if (request?.pdfUrl === E2E_MOCK_PDF_URL) {
+            setNumPages(1);
+        } else {
+            setNumPages(null);
+        }
     }, [request?.pdfUrl]);
 
     // 1. Load Document via Public API
@@ -70,11 +76,11 @@ export default function SigningRoom() {
 
             if (isE2ETestMode && getE2EQueryParam('e2eSign', '') === 'mock') {
                 const mockFields = [
-                    { id: 'text1', type: 'text', pageNumber: 1, required: true, x: 10, y: 10, width: 20, height: 5 },
-                    { id: 'date1', type: 'date', pageNumber: 1, required: true, x: 10, y: 20, width: 20, height: 5 },
-                    { id: 'check1', type: 'checkbox', pageNumber: 1, required: true, x: 10, y: 30, width: 10, height: 5 },
-                    { id: 'sig1', type: 'signature', pageNumber: 1, required: true, x: 10, y: 40, width: 20, height: 8 },
-                ];
+                    { id: 'text1', type: 'text', pageNumber: 1, required: true, xPosition: 10, yPosition: 10, width: 20, height: 5 },
+                    { id: 'date1', type: 'date', pageNumber: 1, required: true, xPosition: 10, yPosition: 20, width: 20, height: 5 },
+                    { id: 'check1', type: 'checkbox', pageNumber: 1, required: true, xPosition: 10, yPosition: 30, width: 4, height: 3 },
+                    { id: 'sig1', type: 'signature', pageNumber: 1, required: true, xPosition: 10, yPosition: 40, width: 20, height: 8 },
+                ].map(normalizeSignerField);
                 setRequest({
                     title: 'E2E Test Document',
                     recipientName: 'E2E Signer',
@@ -106,10 +112,7 @@ export default function SigningRoom() {
                 // Firestore sometimes stores numbers as strings, causing strict === to fail
                 // in the per-page field filter and making fields invisible.
                 if (data.fields) {
-                    data.fields = data.fields.filter(f => f != null).map(f => ({
-                        ...f,
-                        pageNumber: Number(f.pageNumber) || 1,
-                    }));
+                    data.fields = data.fields.filter(f => f != null).map(normalizeSignerField);
                 }
 
                 setRequest(data);
@@ -369,110 +372,157 @@ export default function SigningRoom() {
         </div>
     );
 
-    const TOUCH_MIN = '44px';
-
     const handleInputFocus = (e) => {
         setTimeout(() => {
             e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 300);
     };
 
+    const fillClass = 'w-full h-full min-w-0 min-h-0 box-border';
+    const pdfRenderWidth = Math.min(windowWidth - 40, 800);
+    const isE2EMockShell =
+        isE2ETestMode &&
+        getE2EQueryParam('e2eSign', '') === 'mock' &&
+        request?.pdfUrl === E2E_MOCK_PDF_URL;
+
     const renderField = (field) => {
-        // FIX: Handle both legacy pixels and new percentages safely
-        // We assume if it's < 100, it's a percentage (safe bet for typical layouts)
-        const isPercent = field.width < 100;
-        const widthVal = field.width || (isPercent ? 25 : 160);
-        const heightVal = field.height || (isPercent ? 5 : 40);
-
-        const style = {
-            left: `${field.xPosition}%`,
-            top: `${field.yPosition}%`,
-            width: `${widthVal}${isPercent ? '%' : 'px'}`,
-            height: `${heightVal}${isPercent ? '%' : 'px'}`,
-            position: 'absolute',
-            zIndex: 20,
-            transform: 'translate(0, 0)'
-        };
-
-        const interactiveStyle = {
-            ...style,
-            minHeight: TOUCH_MIN,
-            minWidth: TOUCH_MIN,
-        };
-
         if (request.status === 'signed') return null;
 
         switch (field.type) {
             case 'text': {
-                // PHASE 5: Read-only text fields render as styled divs
                 if (isFieldLocked(field)) {
                     return (
-                        <div style={style}
-                            className="border-2 border-blue-300 bg-blue-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium">
-                            {field.defaultValue || ''}
-                        </div>
+                        <SignerFieldOverlay field={field} interactive={false}>
+                            <div className={`${fillClass} border-2 border-blue-300 bg-blue-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium overflow-hidden`}>
+                                {field.defaultValue || ''}
+                            </div>
+                        </SignerFieldOverlay>
                     );
                 }
                 return (
-                    <input style={interactiveStyle}
-                        className="border-2 border-blue-400 bg-blue-50/90 px-2 text-sm rounded"
-                        placeholder="Type here..." value={fieldValues[field.id] || ''}
-                        onFocus={handleInputFocus}
-                        onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
+                    <SignerFieldOverlay field={field}>
+                        <input
+                            className={`${fillClass} border-2 border-blue-400 bg-blue-50/90 px-2 text-sm rounded`}
+                            placeholder="Type here..."
+                            value={fieldValues[field.id] || ''}
+                            onFocus={handleInputFocus}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                        />
+                    </SignerFieldOverlay>
+                );
             }
             case 'date': {
-                // PHASE 5: Read-only date fields render as styled divs
                 if (isFieldLocked(field)) {
                     return (
-                        <div style={style}
-                            className="border-2 border-green-300 bg-green-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium">
-                            {field.defaultValue || ''}
-                        </div>
+                        <SignerFieldOverlay field={field} interactive={false}>
+                            <div className={`${fillClass} border-2 border-green-300 bg-green-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium overflow-hidden`}>
+                                {field.defaultValue || ''}
+                            </div>
+                        </SignerFieldOverlay>
                     );
                 }
                 return (
-                    <input type="date" style={interactiveStyle}
-                        className="border-2 border-green-400 bg-green-50/90 px-2 text-sm rounded"
-                        value={fieldValues[field.id] || ''}
-                        onFocus={handleInputFocus}
-                        onChange={(e) => handleFieldChange(field.id, e.target.value)} />);
+                    <SignerFieldOverlay field={field}>
+                        <input
+                            type="date"
+                            className={`${fillClass} border-2 border-green-400 bg-green-50/90 px-2 text-sm rounded`}
+                            value={fieldValues[field.id] || ''}
+                            onFocus={handleInputFocus}
+                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                        />
+                    </SignerFieldOverlay>
+                );
             }
-            case 'checkbox': return (
-                <label
-                    style={interactiveStyle}
-                    className="flex items-center justify-center cursor-pointer accent-purple-600"
-                >
-                    <input
-                        type="checkbox"
-                        style={{ width: 20, height: 20, margin: 0, flexShrink: 0 }}
-                        className="accent-purple-600 cursor-pointer"
-                        checked={!!fieldValues[field.id]}
-                        onChange={(e) => handleFieldChange(field.id, e.target.checked)}
-                    />
-                </label>
-            );
+            case 'checkbox':
+                return (
+                    <SignerFieldOverlay field={field}>
+                        <label className={`${fillClass} flex items-center justify-center cursor-pointer m-0`}>
+                            <input
+                                type="checkbox"
+                                className="w-full h-full max-w-full max-h-full min-w-0 min-h-0 accent-purple-600 cursor-pointer m-0"
+                                checked={!!fieldValues[field.id]}
+                                onChange={(e) => handleFieldChange(field.id, e.target.checked)}
+                            />
+                        </label>
+                    </SignerFieldOverlay>
+                );
             case 'signature': {
                 const isSigned = !!fieldValues[field.id];
                 return (
-                    <div style={interactiveStyle}
-                        onClick={() => setActiveSignatureField(field.id)}
-                        className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-2 shadow-sm transition ${isSigned ? 'bg-yellow-100 border-yellow-600' : 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse'}`}>
-                        {isSigned ? <div className="text-yellow-800 font-bold text-xs flex items-center gap-1"><CheckCircle size={14} /> Signed</div> : <div className="text-yellow-700 font-medium text-xs flex items-center gap-1"><PenTool size={14} /> Sign</div>}
-                    </div>);
+                    <SignerFieldOverlay field={field}>
+                        <button
+                            type="button"
+                            onClick={() => setActiveSignatureField(field.id)}
+                            className={`${fillClass} cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-2 shadow-sm transition ${isSigned ? 'bg-yellow-100 border-yellow-600' : 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse'}`}
+                        >
+                            {isSigned ? (
+                                <span className="text-yellow-800 font-bold text-xs flex items-center gap-1">
+                                    <CheckCircle size={14} /> Signed
+                                </span>
+                            ) : (
+                                <span className="text-yellow-700 font-medium text-xs flex items-center gap-1">
+                                    <PenTool size={14} /> Sign
+                                </span>
+                            )}
+                        </button>
+                    </SignerFieldOverlay>
+                );
             }
-            // PHASE 5: Initial type - same as signature but visually smaller
             case 'initial': {
                 const isInitialed = !!fieldValues[field.id];
                 return (
-                    <div style={interactiveStyle}
-                        onClick={() => setActiveSignatureField(field.id)}
-                        className={`cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-1 shadow-sm transition ${isInitialed ? 'bg-orange-100 border-orange-600' : 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse'}`}>
-                        {isInitialed ? <div className="text-orange-800 font-bold text-[10px] flex items-center gap-1"><CheckCircle size={12} /> Initialed</div> : <div className="text-orange-700 font-medium text-[10px] flex items-center gap-1"><Fingerprint size={12} /> Initial</div>}
-                    </div>);
+                    <SignerFieldOverlay field={field}>
+                        <button
+                            type="button"
+                            onClick={() => setActiveSignatureField(field.id)}
+                            className={`${fillClass} cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-1 shadow-sm transition ${isInitialed ? 'bg-orange-100 border-orange-600' : 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse'}`}
+                        >
+                            {isInitialed ? (
+                                <span className="text-orange-800 font-bold text-[10px] flex items-center gap-1">
+                                    <CheckCircle size={12} /> Initialed
+                                </span>
+                            ) : (
+                                <span className="text-orange-700 font-medium text-[10px] flex items-center gap-1">
+                                    <Fingerprint size={12} /> Initial
+                                </span>
+                            )}
+                        </button>
+                    </SignerFieldOverlay>
+                );
             }
-            default: return null;
+            default:
+                return null;
         }
     };
+
+    const renderSigningPages = () =>
+        numPages > 0 &&
+        Array.from(new Array(numPages), (el, index) => (
+            <div
+                key={index}
+                ref={(el) => { pageRefs.current[index + 1] = el; }}
+                className="relative shadow-xl border border-gray-300 bg-white inline-block transition-all duration-300"
+                style={
+                    isE2EMockShell
+                        ? { width: pdfRenderWidth, height: Math.round(pdfRenderWidth * 1.294) }
+                        : undefined
+                }
+            >
+                {!isE2EMockShell && (
+                    <Page
+                        pageNumber={index + 1}
+                        width={pdfRenderWidth}
+                        renderAnnotationLayer={false}
+                        renderTextLayer={false}
+                    />
+                )}
+                {(request?.fields || [])
+                    .filter((f) => Number(f?.pageNumber) === index + 1)
+                    .map((field) => (
+                        <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>
+                    ))}
+            </div>
+        ));
 
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
@@ -502,27 +552,17 @@ export default function SigningRoom() {
             </header>
 
             <main className="flex-1 overflow-y-auto p-8 flex justify-center bg-gray-200/50">
-                <Document file={request.pdfUrl} onLoadSuccess={({ numPages }) => setNumPages(numPages)} className="flex flex-col gap-6">
-                    {numPages > 0 && Array.from(new Array(numPages), (el, index) => (
-                        // FIX: 'inline-block' is CRITICAL here. 
-                        // It forces the div to shrink to the PDF image size, making the coordinate system accurate.
-                        <div
-                            key={index}
-                            ref={(el) => { pageRefs.current[index + 1] = el; }}
-                            className="relative shadow-xl border border-gray-300 bg-white inline-block transition-all duration-300"
-                        >
-                            <Page
-                                pageNumber={index + 1}
-                                // Responsive width but max 800px
-                                width={Math.min(windowWidth - 40, 800)}
-                                renderAnnotationLayer={false}
-                                renderTextLayer={false}
-                            />
-                            {/* PROD-FIX: Use Number() cast for type-safe comparison - prevents string/number mismatch */}
-                            {(request?.fields || []).filter(f => Number(f?.pageNumber) === index + 1).map(field => <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>)}
-                        </div>
-                    ))}
-                </Document>
+                {isE2EMockShell ? (
+                    <div className="flex flex-col gap-6">{renderSigningPages()}</div>
+                ) : (
+                    <Document
+                        file={request.pdfUrl}
+                        onLoadSuccess={({ numPages: pages }) => setNumPages(pages)}
+                        className="flex flex-col gap-6"
+                    >
+                        {renderSigningPages()}
+                    </Document>
+                )}
             </main>
 
             {/* PROD-FIX: Floating "Jump to next field" button - only shows when there are incomplete required fields */}

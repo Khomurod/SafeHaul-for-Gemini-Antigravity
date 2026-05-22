@@ -88,30 +88,36 @@ const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHei
     const yPx = (field.y / 100) * safePageHeight;
 
     const [size, setSize] = useState({ width: wPx, height: hPx });
+    const sizeRef = useRef({ width: wPx, height: hPx });
 
     useEffect(() => {
-        setSize({ width: wPx, height: hPx });
+        const next = { width: wPx, height: hPx };
+        setSize(next);
+        sizeRef.current = next;
     }, [wPx, hPx]);
 
     const handleMouseDown = (e) => {
         e.stopPropagation();
         const startX = e.clientX;
         const startY = e.clientY;
-        const startWidth = size.width;
-        const startHeight = size.height;
+        const startWidth = sizeRef.current.width;
+        const startHeight = sizeRef.current.height;
 
         const doDrag = (dragEvent) => {
-            setSize({
+            const next = {
                 // PRECISION FIX: Minimum size reduced to 8px
                 width: Math.max(8, startWidth + dragEvent.clientX - startX),
-                height: Math.max(8, startHeight + dragEvent.clientY - startY)
-            });
+                height: Math.max(8, startHeight + dragEvent.clientY - startY),
+            };
+            sizeRef.current = next;
+            setSize(next);
         };
 
         const stopDrag = () => {
             window.removeEventListener('mousemove', doDrag);
             window.removeEventListener('mouseup', stopDrag);
-            onResize(field.id, (size.width / pageWidth) * 100, (size.height / safePageHeight) * 100);
+            const { width, height } = sizeRef.current;
+            onResize(field.id, (width / pageWidth) * 100, (height / safePageHeight) * 100);
         };
 
         window.addEventListener('mousemove', doDrag);

@@ -84,6 +84,29 @@ describe('getPublicEnvelope', () => {
     expect(mockGetSignedUrl).toHaveBeenCalled();
   });
 
+  it('normalizes legacy x/y field coordinates to xPosition/yPosition', async () => {
+    mockGet.mockResolvedValue({
+      exists: true,
+      data: () =>
+        baseEnvelope({
+          fields: [
+            {
+              id: 'f1',
+              type: 'checkbox',
+              pageNumber: 1,
+              x: 12,
+              y: 34,
+              width: 4,
+              height: 3,
+            },
+          ],
+        }),
+    });
+    const result = await getPublicEnvelope(validRequest);
+    expect(result.fields[0].xPosition).toBe(12);
+    expect(result.fields[0].yPosition).toBe(34);
+  });
+
   it('returns signed status without PDF when already signed', async () => {
     mockGet.mockResolvedValue({
       exists: true,

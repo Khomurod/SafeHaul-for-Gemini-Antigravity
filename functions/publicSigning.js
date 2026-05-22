@@ -37,6 +37,8 @@ function normalizePublicFields(fields) {
         .map((f) => ({
             ...f,
             pageNumber: Number(f.pageNumber) || 1,
+            xPosition: f.xPosition ?? f.x ?? 10,
+            yPosition: f.yPosition ?? f.y ?? 10,
         }));
 }
 
