@@ -21,6 +21,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
 
 import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 export default function DocumentsManager() {
     const { currentCompanyProfile, loading } = useData();
@@ -53,6 +54,7 @@ export default function DocumentsManager() {
     const [prefillValuesByGroupKey, setPrefillValuesByGroupKey] = useState({});
     const [postSubmitTemplateIds, setPostSubmitTemplateIds] = useState([]);
     const [savingPostSubmitTemplates, setSavingPostSubmitTemplates] = useState(false);
+    const isE2EEdocMock = isE2ETestMode && getE2EQueryParam('e2eEdoc', '') === 'mock';
 
     if (currentCompanyProfile?.features?.eDocs === false) {
         return <FeatureLockedModal featureName="E-Docs" onClose={() => navigate('/company/dashboard')} />;
@@ -61,6 +63,21 @@ export default function DocumentsManager() {
     // Fetch Templates
     useEffect(() => {
         if (!currentCompanyProfile?.id) return;
+        if (isE2EEdocMock) {
+            setTemplates([
+                {
+                    id: 'tpl_e2e_mock',
+                    title: 'E2E Test Document',
+                    storagePath: 'secure_documents/e2e/mock.pdf',
+                    fields: [
+                        { id: 'full_name', label: 'Full Name', type: 'text', required: true, defaultValue: '' },
+                        { id: 'sig1', label: 'Signature', type: 'signature', required: true, defaultValue: '' },
+                    ],
+                },
+            ]);
+            setTemplatesLoading(false);
+            return () => {};
+        }
         const q = query(collection(db, 'companies', currentCompanyProfile.id, 'templates'), orderBy('updatedAt', 'desc'));
         return onSnapshot(q, (snap) => {
             setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -69,7 +86,7 @@ export default function DocumentsManager() {
             console.error('[DocumentsManager] templates snapshot', err);
             setTemplatesLoading(false);
         });
-    }, [currentCompanyProfile?.id]);
+    }, [currentCompanyProfile?.id, isE2EEdocMock]);
 
     useEffect(() => {
         const raw = Array.isArray(currentCompanyProfile?.postApplicationTemplates)
@@ -93,6 +110,18 @@ export default function DocumentsManager() {
     // Fetch Drivers for Picker
     useEffect(() => {
         if (showDriverPicker && currentCompanyProfile?.id) {
+            if (isE2EEdocMock) {
+                setDrivers([
+                    {
+                        id: 'lead_e2e_1',
+                        firstName: 'E2E',
+                        lastName: 'Driver',
+                        email: 'driver@safehaul.local',
+                        phone: '5551112222',
+                    },
+                ]);
+                return;
+            }
             const fetchDrivers = async () => {
                 const q = query(collection(db, 'companies', currentCompanyProfile.id, 'leads'));
                 const snap = await getDocs(q);
@@ -100,7 +129,7 @@ export default function DocumentsManager() {
             };
             fetchDrivers();
         }
-    }, [showDriverPicker, currentCompanyProfile?.id]);
+    }, [showDriverPicker, currentCompanyProfile?.id, isE2EEdocMock]);
 
     const handleUseTemplate = (template) => {
         setSelectedTemplate(template);
@@ -146,6 +175,13 @@ export default function DocumentsManager() {
 
         setSending(true);
         try {
+            if (isE2EEdocMock) {
+                setShowDriverPicker(false);
+                showSuccess('Document created! Email delivery in progress...');
+                navigate(`/sign/${currentCompanyProfile.id}/e2e-edoc-send-req?token=e2e-token&e2eSign=mock`);
+                return;
+            }
+
             const accessToken = uuidv4();
 
             const resolvedRecipientName = manualName.trim();

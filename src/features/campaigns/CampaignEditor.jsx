@@ -5,6 +5,7 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@lib/firebase';
 import { useCampaignDraft } from './hooks/useCampaignDraft';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 // Lazy load sub-components
 const AudienceBuilder = React.lazy(() => import('./components/AudienceBuilder').then(m => ({ default: m.AudienceBuilder })));
@@ -25,6 +26,7 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
         messageConfig: { method: 'sms', message: '' },
         status: 'draft'
     });
+    const isE2ECampaignMock = isE2ETestMode && getE2EQueryParam('e2eCampaign', '') === 'mock';
 
     const { saveDraft, isSaving } = useCampaignDraft(companyId);
 
@@ -34,6 +36,17 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
 
     // 1. Sync Logic (Read)
     useEffect(() => {
+        if (isE2ECampaignMock) {
+            setCampaignData({
+                name: 'E2E Mock Campaign',
+                filters: { mode: 'all' },
+                messageConfig: { method: 'sms', message: 'E2E mock campaign message.' },
+                status: 'draft',
+                matchCount: 12,
+            });
+            isInitializedRef.current = true;
+            return () => {};
+        }
         if (!companyId || !campaignId) return;
         const unsub = onSnapshot(doc(db, 'companies', companyId, 'campaign_drafts', campaignId), (snap) => {
             if (snap.exists()) {
@@ -52,7 +65,7 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
             }
         });
         return () => unsub();
-    }, [companyId, campaignId]);
+    }, [companyId, campaignId, isE2ECampaignMock]);
 
     // 2. Auto-Save Logic (Write)
     // We debounce the save to avoid thrashing Firestore

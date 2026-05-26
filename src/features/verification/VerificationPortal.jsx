@@ -10,6 +10,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import {
     Loader2, CheckCircle, AlertTriangle, Clock, ShieldCheck,
     Send, FileText, Phone, Mail, User, Briefcase, ChevronDown, Info
@@ -122,6 +123,7 @@ function SignaturePad({ onSignatureChange }) {
 // ============================================================
 export function VerificationPortal() {
     const { token } = useParams();
+    const isE2EVerifyMock = isE2ETestMode && getE2EQueryParam('e2eVerify', '') === 'mock';
 
     // Page state
     const [loading, setLoading] = useState(true);
@@ -167,6 +169,18 @@ export function VerificationPortal() {
     useEffect(() => {
         async function loadVerification() {
             try {
+                if (isE2EVerifyMock) {
+                    setVerificationData({
+                        status: 'pending',
+                        applicantName: 'E2E Driver',
+                        employerName: 'E2E Previous Employer',
+                        companyName: 'SafeHaul E2E Carrier',
+                        employmentStartDate: '2021-01-01',
+                        employmentEndDate: '2024-01-01',
+                        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                    });
+                    return;
+                }
                 const getVerification = httpsCallable(functions, 'getVerificationRequest');
                 const result = await getVerification({ token });
                 const data = result.data;
@@ -191,7 +205,7 @@ export function VerificationPortal() {
         }
         if (token) loadVerification();
         else { setError('No verification token provided.'); setLoading(false); }
-    }, [token]);
+    }, [token, isE2EVerifyMock]);
 
     // Form field updater
     const updateField = (field, value) => {
@@ -233,6 +247,11 @@ export function VerificationPortal() {
 
         setSubmitting(true);
         try {
+            if (isE2EVerifyMock) {
+                setCompleted(true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
             const submitFn = httpsCallable(functions, 'submitVerificationResponse');
             await submitFn({ token, response: formData });
             setCompleted(true);
@@ -720,6 +739,15 @@ export function VerificationPortal() {
                                     Electronic Signature <span className="text-red-500">*</span>
                                 </label>
                                 <p className="text-xs text-gray-500 mb-2">Draw your signature below. By signing, you certify that the information provided is true and accurate.</p>
+                                {isE2EVerifyMock && (
+                                    <button
+                                        type="button"
+                                        onClick={() => updateField('signatureData', 'data:image/png;base64,e2e-signature')}
+                                        className="mb-2 px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200"
+                                    >
+                                        Use Test Signature
+                                    </button>
+                                )}
                                 <SignaturePad onSignatureChange={(data) => updateField('signatureData', data)} />
                                 {formErrors.signatureData && <p className="text-red-500 text-xs mt-1">{formErrors.signatureData}</p>}
                             </div>

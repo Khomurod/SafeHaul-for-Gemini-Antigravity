@@ -12,6 +12,7 @@ import DetailedReportModal from './components/DetailedReportModal';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 export function CampaignsDashboard({ companyId }) {
     const { currentCompanyProfile } = useData();
@@ -24,10 +25,29 @@ export function CampaignsDashboard({ companyId }) {
     const [viewingSession, setViewingSession] = useState(null);
     const [selectedReportSessionId, setSelectedReportSessionId] = useState(null);
     const { showSuccess, showError } = useToast();
+    const isE2ECampaignMock = isE2ETestMode && getE2EQueryParam('e2eCampaign', '') === 'mock';
+    const e2eNow = {
+        toDate: () => new Date(),
+        toMillis: () => Date.now(),
+    };
 
     // 1. Fetch Drafts
     useEffect(() => {
         if (!companyId || !isCampaignsEnabled) return;
+        if (isE2ECampaignMock) {
+            setCampaigns([
+                {
+                    id: 'camp_e2e_seed',
+                    name: 'E2E Seed Campaign',
+                    status: 'draft',
+                    updatedAt: e2eNow,
+                    matchCount: 6,
+                    messageConfig: { method: 'sms', message: 'E2E seeded outreach message.' },
+                },
+            ]);
+            setLoading(false);
+            return () => {};
+        }
         const q = query(
             collection(db, 'companies', companyId, 'campaign_drafts'),
             orderBy('updatedAt', 'desc')
@@ -37,11 +57,26 @@ export function CampaignsDashboard({ companyId }) {
             setLoading(false);
         });
         return () => unsub();
-    }, [companyId, isCampaignsEnabled]);
+    }, [companyId, isCampaignsEnabled, isE2ECampaignMock]);
 
     // 1b. Fetch Live/Past Sessions
     useEffect(() => {
         if (!companyId || !isCampaignsEnabled) return;
+        if (isE2ECampaignMock) {
+            setSessions([
+                {
+                    id: 'session_e2e_seed',
+                    name: 'E2E Completed Session',
+                    status: 'completed',
+                    progress: { processedCount: 12, totalCount: 12 },
+                    config: { method: 'sms', message: 'Completed seed campaign' },
+                    createdAt: e2eNow,
+                    updatedAt: e2eNow,
+                    matchCount: 12,
+                },
+            ]);
+            return () => {};
+        }
         const q = query(
             collection(db, 'companies', companyId, 'bulk_sessions'),
             orderBy('createdAt', 'desc')
@@ -63,7 +98,7 @@ export function CampaignsDashboard({ companyId }) {
             }));
         });
         return () => unsub();
-    }, [companyId, isCampaignsEnabled]);
+    }, [companyId, isCampaignsEnabled, isE2ECampaignMock]);
 
     if (!isCampaignsEnabled) {
         return (
@@ -85,6 +120,10 @@ export function CampaignsDashboard({ companyId }) {
     // 2. Create New Campaign Draft
     const handleNewCampaign = async () => {
         if (!companyId) return;
+        if (isE2ECampaignMock) {
+            setSelectedCampaignId('camp_e2e_mock');
+            return;
+        }
         const newId = `camp_${Date.now()}`;
         try {
             await setDoc(doc(db, 'companies', companyId, 'campaign_drafts', newId), {

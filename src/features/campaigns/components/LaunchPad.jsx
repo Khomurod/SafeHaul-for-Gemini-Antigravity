@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
 export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     const navigate = useNavigate();
@@ -11,6 +12,7 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     const [isLaunching, setIsLaunching] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const launchLockRef = useRef(false);
+    const isE2ECampaignMock = isE2ETestMode && getE2EQueryParam('e2eCampaign', '') === 'mock';
 
     const handleLaunch = async () => {
         if (!companyId) return showError("Company ID missing");
@@ -19,6 +21,12 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
         launchLockRef.current = true;
         setIsLaunching(true);
         try {
+            if (isE2ECampaignMock) {
+                showSuccess(`Campaign launched! Targeting ${campaign.matchCount || 0} drivers.`);
+                if (onLaunchSuccess) onLaunchSuccess();
+                return;
+            }
+
             const initBulkSession = httpsCallable(functions, 'initBulkSession');
 
             // Extract rawData if present in filters (passed from AudienceBuilder)
