@@ -1,4 +1,11 @@
-const { normalizePhoneForKeychain } = require('../../utils/phoneUtils');
+const { normalizePhoneForKeychain, normalizePhone } = require('../../utils/phoneUtils');
+
+describe('phoneUtils exports', () => {
+  it('re-exports normalizePhone from shared module', () => {
+    expect(typeof normalizePhone).toBe('function');
+    expect(normalizePhone('(555) 123-4567')).toBe('+15551234567');
+  });
+});
 
 describe('normalizePhoneForKeychain', () => {
   it('normalizes US numbers to E.164 with plus prefix', () => {

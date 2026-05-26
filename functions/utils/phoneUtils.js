@@ -1,3 +1,5 @@
+const { normalizePhone } = require('../shared/normalizePhone');
+
 /**
  * Normalize phone numbers for keychain document IDs and inventory matching.
  * @param {string} phoneNumber
@@ -11,4 +13,4 @@ function normalizePhoneForKeychain(phoneNumber) {
     return rawSanitized.startsWith('+') ? rawSanitized : `+${rawSanitized}`;
 }
 
-module.exports = { normalizePhoneForKeychain };
+module.exports = { normalizePhoneForKeychain, normalizePhone };
