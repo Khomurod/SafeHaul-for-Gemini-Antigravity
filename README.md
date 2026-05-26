@@ -269,8 +269,13 @@ cd functions && npm install && cd ..
 
 | Variable | Description |
 |----------|-------------|
+| `PROCESS_BULK_BATCH_URL` | Cloud Run URL for `processBulkBatch` (required for bulk campaigns) |
+| `BULK_WORKER_SECRET` | Shared secret for bulk worker HTTP auth (same on `initBulkSession` and `processBulkBatch`) |
+| `GROQ_API_KEY` | Groq vision API for CDL parsing |
 | `SMS_ENCRYPTION_KEY` | AES key for encrypting SMS provider credentials |
 | `SENTRY_DSN` | Sentry DSN for server-side error tracking |
+
+> **Bulk campaigns:** See [docs/production-readiness-runbook.md](docs/production-readiness-runbook.md#bulk-sms--email-campaigns) for Cloud Tasks queue setup and verification.
 
 > **Note**: Firebase Cloud Functions also use runtime configuration for service-specific keys. See `firebase functions:config:get` for current values.
 

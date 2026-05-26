@@ -47,9 +47,12 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
         } catch (err) {
             console.error("Launch Error:", err);
             // Extract user-friendly message from Firebase error
-            const friendlyMsg = err.message?.includes('bulk-actions-queue')
+            const msg = err.message || '';
+            const friendlyMsg = msg.includes('bulk-actions-queue')
                 ? "Campaign infrastructure not ready. Please contact support."
-                : (err.message || "Failed to launch campaign");
+                : msg.includes('PROCESS_BULK_BATCH_URL')
+                    ? "Campaign worker URL is not configured on the server. Please contact support."
+                    : (msg || "Failed to launch campaign");
             showError(friendlyMsg);
         } finally {
             setIsLaunching(false);

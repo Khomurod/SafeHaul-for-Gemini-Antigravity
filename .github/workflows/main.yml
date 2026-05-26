@@ -22,6 +22,7 @@ env:
   VITE_DRIVER_APP_URL: ${{ secrets.VITE_DRIVER_APP_URL }}
   VITE_SOCRATA_APP_TOKEN: ${{ secrets.VITE_SOCRATA_APP_TOKEN }}
   PROCESS_BULK_BATCH_URL: ${{ secrets.PROCESS_BULK_BATCH_URL }}
+  BULK_WORKER_SECRET: ${{ secrets.BULK_WORKER_SECRET }}
 
 jobs:
   secret-scan:
@@ -232,13 +233,28 @@ jobs:
       - name: Write Functions runtime env file
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PROCESS_BULK_BATCH_URL: ${{ secrets.PROCESS_BULK_BATCH_URL }}
+          BULK_WORKER_SECRET: ${{ secrets.BULK_WORKER_SECRET }}
         run: |
           if [ -z "$GROQ_API_KEY" ]; then
             echo "::error::secrets.GROQ_API_KEY is empty or not exposed to this job. Fix the secret name, repo Actions permissions, or avoid deploy workflows from contexts without secrets."
             exit 1
           fi
-          printf '%s\n' "GROQ_API_KEY=$GROQ_API_KEY" "GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct" > functions/.env
-          node -e "const fs=require('fs');const t=fs.readFileSync('functions/.env','utf8');const m=t.match(/^GROQ_API_KEY=(.+)$/m);const v=m&&m[1]||'';if(v.length<8){console.error('GROQ_API_KEY in functions/.env is too short');process.exit(1)}console.log('functions/.env: GROQ_API_KEY present (length '+v.length+')');"
+          if [ -z "$PROCESS_BULK_BATCH_URL" ]; then
+            echo "::error::secrets.PROCESS_BULK_BATCH_URL is empty. Bulk campaigns require the processBulkBatch Cloud Run URL (see docs/production-readiness-runbook.md)."
+            exit 1
+          fi
+          if [ -z "$BULK_WORKER_SECRET" ]; then
+            echo "::error::secrets.BULK_WORKER_SECRET is empty. Set a strong shared secret for processBulkBatch worker auth."
+            exit 1
+          fi
+          printf '%s\n' \
+            "GROQ_API_KEY=$GROQ_API_KEY" \
+            "GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct" \
+            "PROCESS_BULK_BATCH_URL=$PROCESS_BULK_BATCH_URL" \
+            "BULK_WORKER_SECRET=$BULK_WORKER_SECRET" \
+            > functions/.env
+          node -e "const fs=require('fs');const t=fs.readFileSync('functions/.env','utf8');const groq=t.match(/^GROQ_API_KEY=(.+)$/m);if(!groq||groq[1].length<8){console.error('GROQ_API_KEY in functions/.env is too short');process.exit(1)}const url=t.match(/^PROCESS_BULK_BATCH_URL=(.+)$/m);if(!url||!url[1].startsWith('https://')){console.error('PROCESS_BULK_BATCH_URL must be a https URL');process.exit(1)}const sec=t.match(/^BULK_WORKER_SECRET=(.+)$/m);if(!sec||sec[1].length<16){console.error('BULK_WORKER_SECRET must be at least 16 characters');process.exit(1)}console.log('functions/.env: GROQ_API_KEY, PROCESS_BULK_BATCH_URL, BULK_WORKER_SECRET present');"
 
       # Legacy trigger removed from driverSync.js — Cloud still had it; deploy --non-interactive refuses to delete without confirmation.
       # Safe to ignore failure once the function is already gone (continue-on-error).
@@ -259,7 +275,7 @@ jobs:
           GITHUB_PUSH_BEFORE: ${{ github.event.before }}
           GITHUB_SHA: ${{ github.sha }}
           DEPLOY_FUNCTIONS_SLEEP_SEC: '0'
-          DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: parseCdlWithGroq
+          DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: parseCdlWithGroq,initBulkSession,processBulkBatch
         run: |
           max_attempts=3
           attempt=1
