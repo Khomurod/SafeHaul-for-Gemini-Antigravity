@@ -4,8 +4,6 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 
 **CI contract:** [`scripts/check-callable-contract.mjs`](../scripts/check-callable-contract.mjs) verifies every `httpsCallable(functions, …)` name is exported from `functions/index.js`.
 
-**Note:** `applicationService.js` and `companyService.js` import `httpsCallable` but do not invoke any callables (dead imports as of this survey).
-
 ---
 
 ## Callable exports with SPA callers
@@ -18,38 +16,38 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `backfillCompanyStats` | [`StatsBackfillPanel.jsx`](../src/features/super-admin/components/StatsBackfillPanel.jsx) | Admin: stats backfill one company |
 | `backfillEmployerFields` | [`BackfillEmployersButton.jsx`](../src/features/super-admin/components/BackfillEmployersButton.jsx), [`SuperAdminDashboard.jsx`](../src/features/super-admin/components/SuperAdminDashboard.jsx) | Migrate employer fields on applications |
 | `backfillPublicProfiles` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Sync all companies → `public_profiles` |
-| `cancelBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx), [`MissionReport.jsx`](../src/features/mission-control/timeline/MissionReport.jsx) | Stop bulk campaign |
+| `cancelBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx) | Stop bulk campaign |
 | `checkImportPhones` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js) | CSV import phone dedup check |
 | `confirmDriverInterest` | [`InterestPage.jsx`](../src/features/driver-app/components/InterestPage.jsx) | Lead interest confirmation |
 | `connectFacebookPage` | [`IntegrationsTab.jsx`](../src/features/settings/components/IntegrationsTab.jsx) | Facebook Lead Ads OAuth |
 | `createPortalUser` | [`CreateView.jsx`](../src/features/super-admin/components/CreateView.jsx), [`TeamManagementTab.jsx`](../src/features/settings/components/TeamManagementTab.jsx), [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Provision HR/recruiter/driver user |
 | `createPostApplicationSigningRequest` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Post-submit e-doc envelope |
-| `deleteCompany` | [`DeleteCompanyModal.jsx`](../src/shared/components/modals/DeleteCompanyModal.jsx), [`super-admin/.../DeleteCompanyModal.jsx`](../src/features/super-admin/components/modals/DeleteCompanyModal.jsx) | Remove tenant |
-| `deletePortalUser` | [`DeleteUserModal.jsx`](../src/shared/components/modals/DeleteUserModal.jsx), [`ManageTeamModal.jsx`](../src/shared/components/modals/ManageTeamModal.jsx), [`EditUserNameForm.jsx`](../src/features/super-admin/components/users/EditUserNameForm.jsx), super-admin modal duplicate | Delete portal account |
+| `deleteCompany` | [`DeleteCompanyModal.jsx`](../src/features/super-admin/components/modals/DeleteCompanyModal.jsx) | Remove tenant |
+| `deletePortalUser` | [`DeleteUserModal.jsx`](../src/features/super-admin/components/modals/DeleteUserModal.jsx), [`ManageTeamModal.jsx`](../src/shared/components/modals/ManageTeamModal.jsx), [`EditUserNameForm.jsx`](../src/features/super-admin/components/users/EditUserNameForm.jsx) | Delete portal account |
 | `deleteSandboxApplication` | [`SandboxActionPanel.jsx`](../src/features/sandbox/SandboxActionPanel.jsx) | Sandbox cleanup |
 | `getEmailSettingsMeta` | [`EmailSettingsTab.jsx`](../src/features/settings/components/EmailSettingsTab.jsx) | Load SMTP meta (no password) |
 | `getFilteredLeadsPage` | [`VirtualLeadList.jsx`](../src/features/campaigns/components/VirtualLeadList.jsx) | Paginated campaign audience |
-| `getFilterCount` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js), [`AudienceNode.jsx`](../src/features/mission-control/campaign-builder/nodes/AudienceNode.jsx) | Audience size preview |
+| `getFilterCount` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js) | Audience size preview |
 | `getPublicEnvelope` | [`SigningRoom.jsx`](../src/features/signing/SigningRoom.jsx) | Public e-sign load |
 | `getSignedGuestUploadUrl` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Guest file read URL |
 | `getSignedPevUrl` | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) | Signed URL for PEV PDF |
 | `getSignedUploadUrl` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Auth/guest upload URL |
 | `getSigningLink` | [`EnvelopeHistory.jsx`](../src/features/signing/components/EnvelopeHistory.jsx) | Resolve link with secret token |
 | `getVerificationRequest` | [`VerificationPortal.jsx`](../src/features/verification/VerificationPortal.jsx) | PEV portal load |
-| `initBulkSession` | [`LaunchPad.jsx`](../src/features/campaigns/components/LaunchPad.jsx), [`CampaignBuilder.jsx`](../src/features/mission-control/campaign-builder/CampaignBuilder.jsx) | Start bulk SMS/email session |
+| `initBulkSession` | [`LaunchPad.jsx`](../src/features/campaigns/components/LaunchPad.jsx) | Start bulk SMS/email session |
 | `listSandboxTenantCompanies` | [`SandboxActionPanel.jsx`](../src/features/sandbox/SandboxActionPanel.jsx) | List sandbox tenants |
 | `parseCdlWithGroq` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | CDL image OCR |
-| `pauseBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx), [`MissionReport.jsx`](../src/features/mission-control/timeline/MissionReport.jsx) | Pause campaign |
+| `pauseBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx) | Pause campaign |
 | `removePhoneLine` | [`LineManager.jsx`](../src/features/super-admin/components/integrations/LineManager.jsx) | Remove SMS line |
-| `resumeBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx), [`MissionReport.jsx`](../src/features/mission-control/timeline/MissionReport.jsx) | Resume campaign |
-| `retryFailedAttempts` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx), [`DetailedReportModal.jsx`](../src/features/campaigns/components/DetailedReportModal.jsx), [`MissionReport.jsx`](../src/features/mission-control/timeline/MissionReport.jsx) | Retry failed bulk sends |
+| `resumeBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx) | Resume campaign |
+| `retryFailedAttempts` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx), [`DetailedReportModal.jsx`](../src/features/campaigns/components/DetailedReportModal.jsx) | Retry failed bulk sends |
 | `runMigration` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Data migration tool |
 | `runSecurityAudit` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Security audit |
 | `saveEmailSettings` | [`EmailSettingsTab.jsx`](../src/features/settings/components/EmailSettingsTab.jsx) | Persist SMTP config |
 | `saveIntegrationConfig` | [`IntegrationManager.jsx`](../src/features/super-admin/components/integrations/IntegrationManager.jsx) | Save encrypted SMS credentials |
-| `sendAutomatedEmail` | [`ContactTab.jsx`](../src/features/companies/components/ContactTab.jsx), [`useCallOutcome.js`](../src/shared/hooks/useCallOutcome.js) | Template email from dossier/call flow |
+| `sendAutomatedEmail` | [`useCallOutcome.js`](../src/shared/hooks/useCallOutcome.js) | Template email from dossier/call flow |
 | `sendDriverInvite` | [`DriverProfileView.jsx`](../src/features/drivers/components/DriverProfileView.jsx) | Invite driver to portal |
-| `sendSMS` | [`ContactTab.jsx`](../src/features/companies/components/ContactTab.jsx), [`DocumentsManager.jsx`](../src/features/company-admin/views/DocumentsManager.jsx), [`EnvelopeCreator.jsx`](../src/features/signing/EnvelopeCreator.jsx) | Outbound SMS |
+| `sendSMS` | [`DocumentsManager.jsx`](../src/features/company-admin/views/DocumentsManager.jsx), [`EnvelopeCreator.jsx`](../src/features/signing/EnvelopeCreator.jsx) | Outbound SMS |
 | `sendTestSMS` | [`SMSDiagnosticModal.jsx`](../src/features/settings/components/SMSDiagnosticModal.jsx), [`IntegrationManager.jsx`](../src/features/super-admin/components/integrations/IntegrationManager.jsx) | SMS connectivity test |
 | `sendVerificationRequest` | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) | Start PEV request |
 | `submitGuestApplication` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx), [`useSubmissionQueue.js`](../src/hooks/useSubmissionQueue.js) | Guest/auth application submit |
@@ -73,7 +71,7 @@ These are exported and may be used by **scripts**, **future UI**, **legacy clien
 |----------|-------|
 | `backfillSmsSentPhones` | Per-company SMS phone backfill; only `backfillAllSmsSentPhones` is wired in UI |
 | `executeReactivationBatch` | SMS reactivation batch; referenced in bulk session comments, no `src/` caller |
-| `migrateEmailSettings` | One-time migration; run via [`scripts/migrateEmailSettings.cjs`](../scripts/migrateEmailSettings.cjs) or callable manually |
+| `migrateEmailSettings` | One-time migration; invoke callable manually (ops) |
 | `reconcileCompanyDashboardStats` | KPI reconciliation callable ([`dashboardStatsRollup.js`](../functions/dashboardStatsRollup.js)) |
 | `updateBulkSessionStatus` | Legacy compat; pause/resume/cancel now also use direct Firestore writes per [`functions/index.js`](../functions/index.js) comment |
 

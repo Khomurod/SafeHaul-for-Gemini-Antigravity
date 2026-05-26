@@ -9,8 +9,7 @@ import {
   where,
   documentId
 } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { db, functions } from '@lib/firebase';
+import { db } from '@lib/firebase';
 import { sanitizeQuestionPayload } from '@shared/utils/sanitizeUserContent';
 
 export async function loadCompanies() {

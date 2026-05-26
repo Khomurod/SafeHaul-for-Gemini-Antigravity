@@ -21,7 +21,6 @@ export default defineConfig({
       '@features': path.resolve(__dirname, './src/features'),
       '@shared': path.resolve(__dirname, './src/shared'),
       '@lib': path.resolve(__dirname, './src/lib'),
-      '@assets': path.resolve(__dirname, './attached_assets'),
     },
   },
   optimizeDeps: {

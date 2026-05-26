@@ -190,7 +190,6 @@ SafeHaul/
 │   │   ├── company-admin/        # HR portal (leads, uploads, pipeline)
 │   │   ├── driver-app/           # Public driver application wizard
 │   │   ├── drivers/              # Driver profiles & management
-│   │   ├── mission-control/      # Super admin dashboard
 │   │   ├── onboarding/           # New user onboarding flow
 │   │   ├── settings/             # User & company settings
 │   │   ├── signing/              # E-signature system

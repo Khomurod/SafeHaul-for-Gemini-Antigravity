@@ -64,7 +64,7 @@ exports.deleteCompany = onCall({
     }
 });
 
-// REMOVED: moveApplication - now handled via direct Firestore Transaction in applicationService.js
+// REMOVED: moveApplication callable — client uses Firestore directly (useAppActions / super-admin flows).
 
 
 // --- FEATURE 4: SEND AUTOMATED EMAIL ---
