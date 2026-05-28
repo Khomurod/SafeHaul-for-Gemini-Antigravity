@@ -24,6 +24,12 @@ service firebase.storage {
           request.auth.token.keys().hasAny(['roles']) && 
           request.auth.token.roles.keys().hasAny([companyId]) && 
           request.auth.token.roles[companyId] == 'company_admin'
+        ) ||
+        (
+          request.auth.token.keys().hasAny(['companyId']) &&
+          request.auth.token.keys().hasAny(['companyRole']) &&
+          request.auth.token.companyId == companyId &&
+          request.auth.token.companyRole == 'company_admin'
         )
       );
     }
@@ -44,11 +50,21 @@ service firebase.storage {
              : null;
     }
 
+    function isDriverOwnerFromExistingMetadata() {
+      return isSignedIn() &&
+             metadataDriverId() != null &&
+             request.auth.uid == metadataDriverId();
+    }
+
     function isDriverOwnedByMetadata() {
       return isSignedIn() && (
-        (metadataDriverId() != null && request.auth.uid == metadataDriverId()) ||
+        isDriverOwnerFromExistingMetadata() ||
         (incomingDriverId() != null && request.auth.uid == incomingDriverId())
       );
+    }
+
+    function isLeadDqPath(collection, fileCategory) {
+      return collection == 'leads' && fileCategory == 'dq_files';
     }
     
     // VALIDATION
@@ -94,8 +110,15 @@ service firebase.storage {
     }
 
     // Metadata-owned files for non-driver-keyed paths (defense in depth).
+    // Lead DQ files remain strict owner/admin only.
     match /companies/{companyId}/{collection}/{applicationId}/{fileCategory}/{allPaths=**} {
-      allow read: if isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnedByMetadata();
+      allow read: if (
+                    isLeadDqPath(collection, fileCategory) &&
+                    (isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata())
+                  ) || (
+                    !isLeadDqPath(collection, fileCategory) &&
+                    (isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata())
+                  );
       allow create, update: if isSuperAdmin() ||
                               (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata()) && isValidFile());
       allow delete: if isSuperAdmin() ||
