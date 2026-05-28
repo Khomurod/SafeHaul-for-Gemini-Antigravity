@@ -130,19 +130,33 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Cache Firebase emulator jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
+
       - name: Install Dependencies
         run: npm ci
 
       - name: Run Firestore/Storage rules tests with emulators (5x flake guard)
         env:
-          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
-          FIREBASE_STORAGE_EMULATOR_HOST: 127.0.0.1:9199
-        run: |
-          set -euo pipefail
-          for run in 1 2 3 4 5; do
-            echo "Rules regression run ${run}/5"
-            npx firebase emulators:exec --only firestore,storage "npm test -- --run src/tests/firestore.rules.security.test.js src/tests/storage.rules.security.test.js"
-          done
+          RULES_STRESS_LOOPS: '5'
+        run: npm run test:rules:stress
+
+      - name: Upload emulator logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rules-emulator-logs
+          if-no-files-found: ignore
+          path: |
+            firestore-debug.log
+            firebase-debug.log
+            storage-debug.log
+            ui-debug.log
 
   deploy-hosting:
     name: Deploy Firebase Hosting and Rules

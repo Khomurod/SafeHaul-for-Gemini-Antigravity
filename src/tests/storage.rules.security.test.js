@@ -17,12 +17,17 @@ const describeStorage = hasStorageEmulator ? describe : describe.skip;
 
 let testEnv;
 let runCounter = 0;
+let authCounter = 0;
 let paths;
 
-function teamClaims(companyId, role = 'company_admin') {
-  return {
+function teamClaims(companyId, role = 'company_admin', { includeCompanyTeamIds = true } = {}) {
+  const claims = {
     roles: { [companyId]: role },
   };
+  if (includeCompanyTeamIds) {
+    claims.companyTeamIds = [companyId];
+  }
+  return claims;
 }
 
 function superAdminClaims() {
@@ -38,6 +43,11 @@ function authedStorage(uid, claims = {}) {
 
 function guestStorage() {
   return testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
+}
+
+function nextUid(prefix) {
+  authCounter += 1;
+  return `${prefix}-${runCounter}-${authCounter}`;
 }
 
 function testPath(runId, relativePath) {
@@ -134,6 +144,7 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
 
   beforeEach(async () => {
     runCounter += 1;
+    authCounter = 0;
     paths = buildSeedPaths(runCounter);
     await clearTestBucket();
     await seedStorageData(paths);
@@ -206,21 +217,24 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
   });
 
   it('blocks driver from reading another driver file and cross-tenant file', async () => {
-    const driverA = authedStorage('driverA');
-    await assertFails(getMetadata(ref(driverA, paths.co1DriverBLicense)));
-    await assertFails(getMetadata(ref(driverA, paths.co2DriverCLicense)));
+    const nonOwnerSameTenant = authedStorage(nextUid('driver-read-same-tenant'));
+    const nonOwnerCrossTenant = authedStorage(nextUid('driver-read-cross-tenant'));
+    await assertFails(getMetadata(ref(nonOwnerSameTenant, paths.co1DriverBLicense)));
+    await assertFails(getMetadata(ref(nonOwnerCrossTenant, paths.co2DriverCLicense)));
   });
 
   it('blocks non-team drivers from non-driver-keyed company files (leads + pev)', async () => {
-    const driverA = authedStorage('driverA');
-    await assertFails(getMetadata(ref(driverA, paths.co1DriverBLeadDq)));
-    await assertFails(getMetadata(ref(driverA, paths.co1DriverBLeadGeneral)));
-    await assertFails(getMetadata(ref(driverA, paths.co1PevResult)));
+    const nonTeamDriverA = authedStorage(nextUid('driver-lead-dq'));
+    const nonTeamDriverB = authedStorage(nextUid('driver-lead-general'));
+    const nonTeamDriverC = authedStorage(nextUid('driver-pev'));
+    await assertFails(getMetadata(ref(nonTeamDriverA, paths.co1DriverBLeadDq)));
+    await assertFails(getMetadata(ref(nonTeamDriverB, paths.co1DriverBLeadGeneral)));
+    await assertFails(getMetadata(ref(nonTeamDriverC, paths.co1PevResult)));
   });
 
-  it('allows company_admin same-company read/write/delete and blocks cross-tenant access', async () => {
-    const co1Admin = authedStorage('admin-co1', teamClaims('co1', 'company_admin'));
-    const co2Admin = authedStorage('admin-co2', teamClaims('co2', 'company_admin'));
+  it('allows company_admin same-company read/write/delete and blocks cross-tenant reads', async () => {
+    const co1Admin = authedStorage(nextUid('admin-co1'), teamClaims('co1', 'company_admin'));
+    const co2AdminRead = authedStorage(nextUid('admin-co2-read'), teamClaims('co2', 'company_admin'));
     const adminUpload = testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/admin-upload.pdf');
 
     await assertSucceeds(getMetadata(ref(co1Admin, paths.co1DriverBLicense)));
@@ -234,10 +248,14 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
     );
     await assertSucceeds(deleteObject(ref(co1Admin, adminUpload)));
 
-    await assertFails(getMetadata(ref(co2Admin, paths.co1DriverBLicense)));
+    await assertFails(getMetadata(ref(co2AdminRead, paths.co1DriverBLicense)));
+  });
+
+  it('blocks company_admin cross-tenant writes', async () => {
+    const co2AdminWrite = authedStorage(nextUid('admin-co2-write'), teamClaims('co2', 'company_admin'));
     await assertFails(
       uploadString(
-        ref(co2Admin, testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/cross-tenant.pdf')),
+        ref(co2AdminWrite, testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/cross-tenant.pdf')),
         'cross-tenant',
         'raw',
         { contentType: 'application/pdf' },
@@ -245,18 +263,42 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
     );
   });
 
-  it('allows hr_user and recruiter same-company access, but blocks cross-tenant', async () => {
-    const co1Hr = authedStorage('hr-co1', teamClaims('co1', 'hr_user'));
-    const co1Recruiter = authedStorage('rec-co1', teamClaims('co1', 'recruiter'));
-    const co2Hr = authedStorage('hr-co2', teamClaims('co2', 'hr_user'));
+  it('allows hr_user and recruiter same-company access, but blocks cross-tenant reads', async () => {
+    const co1Hr = authedStorage(nextUid('hr-co1'), teamClaims('co1', 'hr_user'));
+    const co1Recruiter = authedStorage(nextUid('rec-co1'), teamClaims('co1', 'recruiter'));
+    const co2HrRead = authedStorage(nextUid('hr-co2-read'), teamClaims('co2', 'hr_user'));
+    const co2RecruiterRead = authedStorage(nextUid('rec-co2-read'), teamClaims('co2', 'recruiter'));
 
     await assertSucceeds(getMetadata(ref(co1Hr, paths.co1DriverBLicense)));
     await assertSucceeds(getMetadata(ref(co1Recruiter, paths.co1DriverBLeadDq)));
-    await assertFails(getMetadata(ref(co2Hr, paths.co1DriverBLicense)));
+    await assertFails(getMetadata(ref(co2HrRead, paths.co1DriverBLicense)));
+    await assertFails(getMetadata(ref(co2RecruiterRead, paths.co1DriverBLicense)));
+  });
+
+  it('blocks hr_user and recruiter cross-tenant writes', async () => {
+    const co2HrWrite = authedStorage(nextUid('hr-co2-write'), teamClaims('co2', 'hr_user'));
+    const co2RecruiterWrite = authedStorage(nextUid('rec-co2-write'), teamClaims('co2', 'recruiter'));
+
+    await assertFails(
+      uploadString(
+        ref(co2HrWrite, testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/hr-cross-tenant.pdf')),
+        'cross-tenant',
+        'raw',
+        { contentType: 'application/pdf' },
+      ),
+    );
+    await assertFails(
+      uploadString(
+        ref(co2RecruiterWrite, testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/recruiter-cross-tenant.pdf')),
+        'cross-tenant',
+        'raw',
+        { contentType: 'application/pdf' },
+      ),
+    );
   });
 
   it('allows team access to non-driver-keyed paths (leads + pev_results)', async () => {
-    const co1Admin = authedStorage('admin-co1', teamClaims('co1', 'company_admin'));
+    const co1Admin = authedStorage(nextUid('admin-co1'), teamClaims('co1', 'company_admin'));
     await assertSucceeds(getMetadata(ref(co1Admin, paths.co1DriverBLeadDq)));
     await assertSucceeds(getMetadata(ref(co1Admin, paths.co1DriverBLeadGeneral)));
     await assertSucceeds(getMetadata(ref(co1Admin, paths.co1PevResult)));
@@ -264,7 +306,7 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
 
   it('keeps secure_documents private from guests while allowing company team access', async () => {
     const guest = guestStorage();
-    const co1Admin = authedStorage('admin-co1', teamClaims('co1', 'company_admin'));
+    const co1Admin = authedStorage(nextUid('admin-co1'), teamClaims('co1', 'company_admin'));
     const secureWrite = testPath(runCounter, 'secure_documents/co1/templates/offer-letter.pdf');
 
     await assertFails(getMetadata(ref(guest, paths.co1SecureTemplate)));
@@ -280,8 +322,24 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
   });
 
   it('allows super_admin cross-tenant reads for operational support', async () => {
-    const superAdmin = authedStorage('super-admin-1', superAdminClaims());
+    const superAdmin = authedStorage(nextUid('super-admin'), superAdminClaims());
     await assertSucceeds(getMetadata(ref(superAdmin, paths.co1DriverBLicense)));
     await assertSucceeds(getMetadata(ref(superAdmin, paths.co2DriverCLicense)));
+  });
+
+  it('denies team-style roles when companyTeamIds claim is missing', async () => {
+    const malformedAdmin = authedStorage(
+      nextUid('malformed-admin'),
+      teamClaims('co1', 'company_admin', { includeCompanyTeamIds: false }),
+    );
+    await assertFails(getMetadata(ref(malformedAdmin, paths.co1DriverBLicense)));
+    await assertFails(
+      uploadString(
+        ref(malformedAdmin, testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/malformed-admin.pdf')),
+        'blocked',
+        'raw',
+        { contentType: 'application/pdf' },
+      ),
+    );
   });
 });

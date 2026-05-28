@@ -94,6 +94,7 @@ exports.onMembershipWrite = onDocumentWritten({
     if (!userId) return;
 
     const newClaims = { roles: {} };
+    const teamRoleCompanyIds = new Set();
     let isGlobalAdmin = false;
 
     try {
@@ -119,8 +120,15 @@ exports.onMembershipWrite = onDocumentWritten({
         // Add company-specific roles
         if (m.companyId && m.role) {
             newClaims.roles[m.companyId] = m.role;
+            if (["company_admin", "hr_user", "recruiter"].includes(m.role)) {
+                teamRoleCompanyIds.add(m.companyId);
+            }
         }
     });
+
+    if (teamRoleCompanyIds.size > 0) {
+        newClaims.companyTeamIds = Array.from(teamRoleCompanyIds).sort();
+    }
 
     // Apply the Global Role if found
     if (isGlobalAdmin) {

@@ -14,18 +14,17 @@ service firebase.storage {
       );
     }
 
-    function hasCompanyTeamRole(companyId) {
-      return request.auth.token.keys().hasAny(['roles']) &&
-             request.auth.token.roles is map &&
-             (companyId in request.auth.token.roles) &&
-             request.auth.token.roles.get(companyId, '') in ['company_admin', 'hr_user', 'recruiter'];
+    function hasCompanyTeamId(companyId) {
+      return request.auth.token.keys().hasAny(['companyTeamIds']) &&
+             request.auth.token.companyTeamIds is list &&
+             request.auth.token.companyTeamIds.hasAny([companyId]);
     }
 
     // Company team = company_admin/hr_user/recruiter/super_admin.
     function isCompanyTeam(companyId) {
       return isSignedIn() && (
         isSuperAdmin() ||
-        hasCompanyTeamRole(companyId)
+        hasCompanyTeamId(companyId)
       );
     }
 
