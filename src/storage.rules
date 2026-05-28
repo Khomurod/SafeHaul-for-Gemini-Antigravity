@@ -14,26 +14,18 @@ service firebase.storage {
       );
     }
 
-    function hasCompanyRoleClaim(companyId) {
+    function hasCompanyTeamRole(companyId) {
       return request.auth.token.keys().hasAny(['roles']) &&
-             request.auth.token.roles.keys().hasAny([companyId]) &&
-             request.auth.token.roles[companyId] in ['company_admin', 'hr_user', 'recruiter'];
-    }
-
-    // Legacy fallback for older claim shape.
-    function hasLegacyCompanyRoleClaim(companyId) {
-      return request.auth.token.keys().hasAny(['companyId']) &&
-             request.auth.token.keys().hasAny(['companyRole']) &&
-             request.auth.token.companyId == companyId &&
-             request.auth.token.companyRole in ['company_admin', 'hr_user', 'recruiter'];
+             request.auth.token.roles is map &&
+             (companyId in request.auth.token.roles) &&
+             request.auth.token.roles.get(companyId, '') in ['company_admin', 'hr_user', 'recruiter'];
     }
 
     // Company team = company_admin/hr_user/recruiter/super_admin.
     function isCompanyTeam(companyId) {
       return isSignedIn() && (
         isSuperAdmin() ||
-        hasCompanyRoleClaim(companyId) ||
-        hasLegacyCompanyRoleClaim(companyId)
+        hasCompanyTeamRole(companyId)
       );
     }
 

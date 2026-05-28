@@ -22,8 +22,6 @@ let paths;
 function teamClaims(companyId, role = 'company_admin') {
   return {
     roles: { [companyId]: role },
-    companyId,
-    companyRole: role,
   };
 }
 
