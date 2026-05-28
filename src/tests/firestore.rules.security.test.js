@@ -43,6 +43,7 @@ describeFirestore('firestore.rules security regressions', () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();
       await setDoc(doc(adminDb, 'companies', 'co1', 'applications', 'app1'), {
+        companyId: 'co1',
         applicantId: 'driver-1',
         driverId: 'driver-1',
         status: 'New Application',
@@ -111,6 +112,7 @@ describeFirestore('firestore.rules security regressions', () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();
       await setDoc(doc(adminDb, 'companies', 'co1', 'applications', 'app1'), {
+        companyId: 'co1',
         applicantId: 'driver-1',
         driverId: 'driver-1',
         status: 'New Application',
@@ -142,6 +144,7 @@ describeFirestore('firestore.rules security regressions', () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();
       await setDoc(doc(adminDb, 'companies', 'co1', 'applications', 'app1'), {
+        companyId: 'co1',
         applicantId: 'driver-1',
         driverId: 'driver-1',
         status: 'New Application',

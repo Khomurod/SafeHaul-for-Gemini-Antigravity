@@ -269,7 +269,7 @@ describe('employmentVerification callables', () => {
         employmentStartDate: '2022-01-01',
         employmentEndDate: '2023-01-01',
         createdAt: createTs(),
-        expiresAt: createTs(Date.now() + 60_000),
+        expiresAt: createTs(Date.now() + 60000),
       });
 
       const result = await getVerificationRequest({ data: { token: 'pending-token' } });
