@@ -43,7 +43,9 @@ function guestStorage() {
 }
 
 function testPath(runId, relativePath) {
-  return `security_rules_runs/${runId}/${relativePath}`;
+  // Keep paths rooted at real rule prefixes (companies/*, secure_documents/*),
+  // but make each test object name unique to avoid cross-test collisions.
+  return relativePath.replace(/([^/]+)$/, `${runId}_$1`);
 }
 
 function buildSeedPaths(runId) {
@@ -285,4 +287,3 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
     await assertSucceeds(getMetadata(ref(superAdmin, paths.co2DriverCLicense)));
   });
 });
-
