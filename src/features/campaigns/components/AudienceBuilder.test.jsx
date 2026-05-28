@@ -19,12 +19,25 @@ vi.mock('@/context/DataContext', () => ({
 }));
 
 const mockSetFilters = vi.fn();
+let mockCsvData = [];
 
 vi.mock('../hooks/useCampaignTargeting', () => ({
     useCampaignTargeting: () => ({
         matchCount: 10,
         isLoading: false,
         excludedPhones: new Set(),
+    })
+}));
+
+vi.mock('@/shared/hooks/useBulkImport', () => ({
+    useBulkImport: () => ({
+        csvData: mockCsvData,
+        processingSheet: false,
+        handleFileChange: vi.fn(),
+        handleSheetImport: vi.fn(),
+        sheetUrl: '',
+        setSheetUrl: vi.fn(),
+        reset: vi.fn(),
     })
 }));
 
@@ -54,6 +67,7 @@ vi.mock('./VirtualLeadList', () => ({
 describe('AudienceBuilder', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockCsvData = [];
     });
 
     it('renders and handles exclusions', () => {
@@ -101,5 +115,92 @@ describe('AudienceBuilder', () => {
 
         // Check if "excluded manually" text appears
         expect(screen.getByText('1 manually excluded')).toBeInTheDocument();
+    });
+
+    it('resets manual skips when upload list fingerprint changes', () => {
+        mockCsvData = [
+            { normalizedPhone: '+15550000001', firstName: 'Alice', lastName: 'One' },
+            { normalizedPhone: '+15550000002', firstName: 'Bob', lastName: 'Two' },
+        ];
+        const handleChange = vi.fn();
+        const filters = { leadType: 'import', excludedLeadIds: [] };
+        const props = { companyId: '123', filters, onChange: handleChange, campaignScopeKey: 'cmp-a' };
+
+        const { rerender } = render(<AudienceBuilder {...props} />);
+
+        const checkboxes = screen.getAllByRole('checkbox');
+        fireEvent.click(checkboxes[0]); // exclude lead1
+
+        expect(handleChange).toHaveBeenCalledWith(
+            expect.objectContaining({ excludedLeadIds: ['lead1'] }),
+            10
+        );
+
+        mockCsvData = [
+            { normalizedPhone: '+15559999991', firstName: 'Carol', lastName: 'Three' },
+            { normalizedPhone: '+15559999992', firstName: 'Dan', lastName: 'Four' },
+        ];
+        rerender(<AudienceBuilder {...props} />);
+
+        const lastCall = handleChange.mock.calls.at(-1);
+        expect(lastCall[0].excludedLeadIds || []).toEqual([]);
+    });
+
+    it('resets manual skips when campaign scope changes', () => {
+        mockCsvData = [{ normalizedPhone: '+15550000001', firstName: 'Alice' }];
+        const handleChange = vi.fn();
+        const filters = { leadType: 'import', excludedLeadIds: [] };
+        const { rerender } = render(
+            <AudienceBuilder
+                companyId="123"
+                filters={filters}
+                onChange={handleChange}
+                campaignScopeKey="cmp-a"
+            />
+        );
+
+        const checkboxes = screen.getAllByRole('checkbox');
+        fireEvent.click(checkboxes[0]); // exclude lead1
+        expect(handleChange).toHaveBeenCalledWith(
+            expect.objectContaining({ excludedLeadIds: ['lead1'] }),
+            10
+        );
+
+        rerender(
+            <AudienceBuilder
+                companyId="123"
+                filters={filters}
+                onChange={handleChange}
+                campaignScopeKey="cmp-b"
+            />
+        );
+
+        const lastCall = handleChange.mock.calls.at(-1);
+        expect(lastCall[0].excludedLeadIds || []).toEqual([]);
+    });
+
+    it('keeps manual skips for normal filter tweaks in same campaign/list', () => {
+        mockCsvData = [{ normalizedPhone: '+15550000001', firstName: 'Alice' }];
+        const handleChange = vi.fn();
+        const filters = { leadType: 'import', excludedLeadIds: [], excludeRecentDays: '7' };
+
+        render(
+            <AudienceBuilder
+                companyId="123"
+                filters={filters}
+                onChange={handleChange}
+                campaignScopeKey="cmp-a"
+            />
+        );
+
+        const checkboxes = screen.getAllByRole('checkbox');
+        fireEvent.click(checkboxes[0]); // exclude lead1
+
+        const excludeSelect = screen.getAllByRole('combobox').at(-1);
+        fireEvent.change(excludeSelect, { target: { value: '30' } });
+
+        const lastCall = handleChange.mock.calls.at(-1);
+        expect(lastCall[0].excludedLeadIds || []).toEqual(['lead1']);
+        expect(lastCall[0].excludeRecentDays).toBe('30');
     });
 });

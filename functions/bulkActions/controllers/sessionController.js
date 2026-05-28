@@ -3,8 +3,12 @@ const { admin, db } = require("../../firebaseAdmin");
 const { assertCompanyAdmin } = require("../helpers/auth");
 const { buildLeadQueries } = require("../helpers/queryBuilder");
 const { enqueueWorker } = require("../services/queueService");
-const { normalizePhone } = require("../../utils/phoneUtils");
 const { checkRateLimit } = require("../../shared/rateLimiter");
+const {
+    derivePhoneLedgerKeys,
+    buildSmsLedgerThreshold,
+    findRecentlyMessagedCanonicalPhones,
+} = require("../helpers/phoneLedger");
 
 /**
  * 1. Initialize Bulk Session
@@ -106,7 +110,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             }
 
             const idSet = new Set();
-            // Map: leadId -> normalizedPhone (for secondary sms_sent_phones check)
+            // Map: leadId -> canonical phone (for secondary sms_sent_phones check)
             const idPhoneMap = new Map();
             // BUG-8 FIX: Email parallel of idPhoneMap, used to cross-check
             // `email_sent_addresses` so email campaigns honor the same 7-day window
@@ -170,11 +174,8 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                         idSet.add(d.id);
                         // Track phone for secondary sms_sent_phones check
                         const rawPhone = data.phone || data.phoneNumber || '';
-                        const normPhone = normalizePhone(rawPhone);
-                        // AUDIT FIX #2: Accept E.164 format (+1XXXXXXXXXX = length 12)
-                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 12) {
-                            idPhoneMap.set(d.id, normPhone);
-                        }
+                        const { canonical } = derivePhoneLedgerKeys(rawPhone);
+                        if (canonical) idPhoneMap.set(d.id, canonical);
                         if (isEmailCampaign) {
                             const normEmail = String(data.email || '').trim().toLowerCase();
                             if (normEmail && normEmail.includes('@')) {
@@ -191,49 +192,20 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             // that didn't set lastBulkMessageAt on the lead document.
             if (isExcludeActive && idPhoneMap.size > 0) {
                 try {
-                    const phoneEntries = Array.from(idPhoneMap.entries()); // [[leadId, phone], ...]
-                    const phonesToCheck = [...new Set(phoneEntries.map(e => e[1]))]; // unique phones
-                    const recentPhones = new Set();
-
-                    // Calculate threshold for sms_sent_phones check
-                    let phoneThresholdTs = null;
-                    if (filters.excludeRecentDays === 'forever') {
-                        phoneThresholdTs = null; // null means exclude all
-                    } else {
-                        const days = parseInt(filters.excludeRecentDays) || 7;
-                        const thresholdDate = new Date();
-                        thresholdDate.setDate(thresholdDate.getDate() - days);
-                        phoneThresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
-                    }
-
-                    // Query sms_sent_phones in batches of 10 (Firestore getAll limit)
-                    for (let i = 0; i < phonesToCheck.length; i += 10) {
-                        const chunk = phonesToCheck.slice(i, i + 10);
-                        const docRefs = chunk.map(p =>
-                            db.collection('companies').doc(companyId)
-                                .collection('sms_sent_phones').doc(p)
-                        );
-                        const phoneSnaps = await db.getAll(...docRefs);
-                        phoneSnaps.forEach(snap => {
-                            if (!snap.exists) return;
-                            const data = snap.data();
-                            if (!data.lastSentAt) return;
-
-                            if (phoneThresholdTs === null) {
-                                // 'forever': exclude any phone that exists
-                                recentPhones.add(snap.id);
-                            } else if (data.lastSentAt >= phoneThresholdTs) {
-                                // Time-based: exclude if sent within the threshold
-                                recentPhones.add(snap.id);
-                            }
-                        });
-                    }
+                    const phoneEntries = Array.from(idPhoneMap.entries()); // [[leadId, canonical], ...]
+                    const phoneThresholdTs = buildSmsLedgerThreshold(filters.excludeRecentDays);
+                    const recentCanonicals = await findRecentlyMessagedCanonicalPhones({
+                        db,
+                        companyId,
+                        canonicalPhones: phoneEntries.map((e) => e[1]),
+                        thresholdTs: phoneThresholdTs,
+                    });
 
                     // Remove leads whose phone was found in sms_sent_phones
-                    if (recentPhones.size > 0) {
+                    if (recentCanonicals.size > 0) {
                         let phonesFiltered = 0;
                         for (const [leadId, phone] of phoneEntries) {
-                            if (recentPhones.has(phone) && idSet.has(leadId)) {
+                            if (recentCanonicals.has(phone) && idSet.has(leadId)) {
                                 idSet.delete(leadId);
                                 phonesFiltered++;
                             }
@@ -330,7 +302,7 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
         let count = 0;
 
         // Build phone-to-importId mapping for 7-day filter
-        const phoneToIdMap = new Map(); // normalizedPhone -> importId
+        const phoneToIdMap = new Map(); // canonical phone -> Set(importId)
         const emailToIdMap = new Map(); // normalizedEmail -> importId (BUG-8)
         const isEmailCampaignImport = (config?.method === 'email');
 
@@ -340,9 +312,10 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
             finalTargetIds.push(importId);
 
             // Track phone mapping for dedup filter
-            const normPhone = normalizePhone(item.phone || item.phoneNumber || '');
-            if (normPhone) {
-                phoneToIdMap.set(normPhone, importId);
+            const { canonical } = derivePhoneLedgerKeys(item.phone || item.phoneNumber || '');
+            if (canonical) {
+                if (!phoneToIdMap.has(canonical)) phoneToIdMap.set(canonical, new Set());
+                phoneToIdMap.get(canonical).add(importId);
             }
             if (isEmailCampaignImport) {
                 const normEmail = String(item.email || '').trim().toLowerCase();
@@ -383,37 +356,21 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
                 }
                 const thresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
 
-                // Query sms_sent_phones in batches of 10 (Firestore 'in' query limit)
-                const phoneNumbers = Array.from(phoneToIdMap.keys());
-                const recentPhones = new Set();
-
-                for (let i = 0; i < phoneNumbers.length; i += 10) {
-                    const chunk = phoneNumbers.slice(i, i + 10);
-                    // Get docs by ID (phone numbers are doc IDs)
-                    const docRefs = chunk.map(p =>
-                        db.collection('companies').doc(companyId)
-                            .collection('sms_sent_phones').doc(p)
-                    );
-                    const snapshots = await db.getAll(...docRefs);
-
-                    snapshots.forEach(snap => {
-                        if (snap.exists) {
-                            const data = snap.data();
-                            if (data.lastSentAt && data.lastSentAt >= thresholdTs) {
-                                recentPhones.add(snap.id);
-                            }
-                        }
-                    });
-                }
+                const canonicalPhones = Array.from(phoneToIdMap.keys());
+                const recentPhones = await findRecentlyMessagedCanonicalPhones({
+                    db,
+                    companyId,
+                    canonicalPhones,
+                    thresholdTs,
+                });
 
                 // Remove recently-messaged contacts from finalTargetIds
                 if (recentPhones.size > 0) {
                     const idsToRemove = new Set();
-                    recentPhones.forEach(phone => {
-                        const importId = phoneToIdMap.get(phone);
-                        if (importId) {
-                            idsToRemove.add(importId);
-                        }
+                    recentPhones.forEach((phone) => {
+                        const importIds = phoneToIdMap.get(phone);
+                        if (!importIds) return;
+                        importIds.forEach((importId) => idsToRemove.add(importId));
                     });
 
                     // Filter out the IDs

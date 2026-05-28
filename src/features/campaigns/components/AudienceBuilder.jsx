@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCampaignTargeting } from '../hooks/useCampaignTargeting';
 import { useCompanyTeam } from '@/shared/hooks/useCompanyTeam';
 import { useData } from '@/context/DataContext';
@@ -7,7 +7,18 @@ import { Filter, Users, RefreshCw, CheckCircle2, UploadCloud, FileSpreadsheet } 
 import { useBulkImport } from '@/shared/hooks/useBulkImport';
 import VirtualLeadList from './VirtualLeadList';
 
-export function AudienceBuilder({ companyId, filters, onChange }) {
+const getUploadFingerprint = (rows) => {
+    if (!Array.isArray(rows) || rows.length === 0) return 'empty';
+    const sample = rows.slice(0, 5).map((row) => [
+        row.normalizedPhone || row.phone || '',
+        row.email || '',
+        row.firstName || '',
+        row.lastName || '',
+    ].join('|')).join('||');
+    return `${rows.length}:${sample}`;
+};
+
+export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey = 'default' }) {
     const { currentUser } = useData();
     const { team } = useCompanyTeam(companyId);
 
@@ -35,11 +46,28 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
         setSheetUrl,
         reset: resetImport
     } = useBulkImport();
+    const lastUploadFingerprintRef = useRef('empty');
+    const lastCampaignScopeRef = useRef(campaignScopeKey);
+
+    useEffect(() => {
+        if (lastCampaignScopeRef.current === campaignScopeKey) return;
+        lastCampaignScopeRef.current = campaignScopeKey;
+        lastUploadFingerprintRef.current = 'empty';
+        setLocalFilters(prev => ({ ...prev, excludedLeadIds: [] }));
+    }, [campaignScopeKey]);
 
     // Effect: Keep localFilters in sync with active tab and imported data
     useEffect(() => {
         if (activeTab === 'upload') {
-            setLocalFilters(prev => ({ ...prev, leadType: 'import', rawData: csvData }));
+            const uploadFingerprint = getUploadFingerprint(csvData);
+            const shouldResetExclusions = uploadFingerprint !== lastUploadFingerprintRef.current;
+            if (shouldResetExclusions) lastUploadFingerprintRef.current = uploadFingerprint;
+            setLocalFilters(prev => ({
+                ...prev,
+                leadType: 'import',
+                rawData: csvData,
+                excludedLeadIds: shouldResetExclusions ? [] : (prev.excludedLeadIds || [])
+            }));
         } else {
             // Switching back to CRM: clear import-specific keys
             setLocalFilters(prev => {
@@ -52,7 +80,7 @@ export function AudienceBuilder({ companyId, filters, onChange }) {
     // Effect: Sync filters + count to parent
     useEffect(() => {
         onChange(localFilters, matchCount);
-    }, [localFilters, matchCount]);
+    }, [localFilters, matchCount, onChange]);
 
 
 

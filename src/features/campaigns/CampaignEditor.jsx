@@ -158,6 +158,7 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
                         <AudienceBuilder
                             companyId={companyId}
                             filters={campaignData.filters || {}}
+                            campaignScopeKey={`${companyId || 'no-company'}:${campaignId || 'new-campaign'}`}
                             onChange={(newFilters, count) => {
                                 setCampaignData(prev => ({ ...prev, filters: newFilters, matchCount: count }));
                             }}

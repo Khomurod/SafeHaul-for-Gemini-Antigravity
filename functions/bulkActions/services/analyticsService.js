@@ -2,7 +2,11 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
 const { buildLeadQueries } = require("../helpers/queryBuilder");
 const { assertCompanyAdmin } = require("../helpers/auth");
-const { normalizePhone } = require("../../utils/phoneUtils");
+const {
+    derivePhoneLedgerKeys,
+    buildSmsLedgerThreshold,
+    findRecentlyMessagedCanonicalPhones,
+} = require("../helpers/phoneLedger");
 
 /**
  * Safely convert a Firestore Timestamp, Date, string, or number to an ISO string.
@@ -49,7 +53,7 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
             let totalDocs = 0;
             let excludedByTimestamp = 0;
             const idSet = new Set();
-            const idPhoneMap = new Map(); // leadId -> normalizedPhone
+            const idPhoneMap = new Map(); // leadId -> canonical phone
             snapshots.forEach(snap => {
                 snap.docs.forEach(d => {
                     totalDocs++;
@@ -74,11 +78,8 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
                         idSet.add(d.id);
                         // Track phone for secondary check
                         const rawPhone = data.phone || data.phoneNumber || '';
-                        const normPhone = normalizePhone(rawPhone);
-                        // AUDIT FIX #2: Accept E.164 format (+1XXXXXXXXXX = length 12)
-                        if (normPhone && normPhone.length >= 10 && normPhone.length <= 12) {
-                            idPhoneMap.set(d.id, normPhone);
-                        }
+                        const { canonical } = derivePhoneLedgerKeys(rawPhone);
+                        if (canonical) idPhoneMap.set(d.id, canonical);
                     }
                 });
             });
@@ -88,39 +89,17 @@ exports.getFilterCount = onCall({ cors: true, memory: '512MiB' }, async (request
             if (idPhoneMap.size > 0) {
                 try {
                     const phoneEntries = Array.from(idPhoneMap.entries());
-                    const phonesToCheck = [...new Set(phoneEntries.map(e => e[1]))];
-                    const recentPhones = new Set();
+                    const phoneThresholdTs = buildSmsLedgerThreshold(filters.excludeRecentDays);
+                    const recentCanonicals = await findRecentlyMessagedCanonicalPhones({
+                        db,
+                        companyId,
+                        canonicalPhones: phoneEntries.map((e) => e[1]),
+                        thresholdTs: phoneThresholdTs,
+                    });
 
-                    let phoneThresholdTs = null;
-                    if (filters.excludeRecentDays !== 'forever') {
-                        const days = parseInt(filters.excludeRecentDays) || 7;
-                        const thresholdDate = new Date();
-                        thresholdDate.setDate(thresholdDate.getDate() - days);
-                        phoneThresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
-                    }
-
-                    for (let i = 0; i < phonesToCheck.length; i += 10) {
-                        const chunk = phonesToCheck.slice(i, i + 10);
-                        const docRefs = chunk.map(p =>
-                            db.collection('companies').doc(companyId)
-                                .collection('sms_sent_phones').doc(p)
-                        );
-                        const phoneSnaps = await db.getAll(...docRefs);
-                        phoneSnaps.forEach(snap => {
-                            if (!snap.exists) return;
-                            const data = snap.data();
-                            if (!data.lastSentAt) return;
-                            if (phoneThresholdTs === null) {
-                                recentPhones.add(snap.id);
-                            } else if (data.lastSentAt >= phoneThresholdTs) {
-                                recentPhones.add(snap.id);
-                            }
-                        });
-                    }
-
-                    if (recentPhones.size > 0) {
+                    if (recentCanonicals.size > 0) {
                         for (const [leadId, phone] of phoneEntries) {
-                            if (recentPhones.has(phone) && idSet.has(leadId)) {
+                            if (recentCanonicals.has(phone) && idSet.has(leadId)) {
                                 idSet.delete(leadId);
                             }
                         }
@@ -232,53 +211,27 @@ exports.getFilteredLeadsPage = onCall({ cors: true, memory: '512MiB' }, async (r
         if ((excludeForever || excludeThreshold) && candidates.length > 0) {
             try {
                 // Build phone map for candidates
-                const candidatePhoneMap = new Map(); // index -> normalizedPhone
+                const candidatePhoneMap = new Map(); // index -> canonical phone
                 candidates.forEach((lead, idx) => {
                     const rawPhone = lead.phone || '';
-                    const normPhone = normalizePhone(rawPhone);
-                    // AUDIT FIX #2: Accept E.164 format (+1XXXXXXXXXX = length 12)
-                    if (normPhone && normPhone.length >= 10 && normPhone.length <= 12) {
-                        candidatePhoneMap.set(idx, normPhone);
-                    }
+                    const { canonical } = derivePhoneLedgerKeys(rawPhone);
+                    if (canonical) candidatePhoneMap.set(idx, canonical);
                 });
 
                 if (candidatePhoneMap.size > 0) {
-                    const phonesToCheck = [...new Set(candidatePhoneMap.values())];
-                    const sentPhones = new Set();
-
-                    let phoneThresholdTs = null;
-                    if (!excludeForever && filters.excludeRecentDays !== 'forever') {
-                        const days = parseInt(filters.excludeRecentDays) || 7;
-                        const thresholdDate = new Date();
-                        thresholdDate.setDate(thresholdDate.getDate() - days);
-                        phoneThresholdTs = admin.firestore.Timestamp.fromDate(thresholdDate);
-                    }
-
-                    // Batch check phones in chunks of 10
-                    for (let i = 0; i < phonesToCheck.length; i += 10) {
-                        const chunk = phonesToCheck.slice(i, i + 10);
-                        const docRefs = chunk.map(p =>
-                            db.collection('companies').doc(companyId)
-                                .collection('sms_sent_phones').doc(p)
-                        );
-                        const phoneSnaps = await db.getAll(...docRefs);
-                        phoneSnaps.forEach(s => {
-                            if (!s.exists) return;
-                            const sData = s.data();
-                            if (!sData.lastSentAt) return;
-                            if (phoneThresholdTs === null) {
-                                sentPhones.add(s.id);
-                            } else if (sData.lastSentAt >= phoneThresholdTs) {
-                                sentPhones.add(s.id);
-                            }
-                        });
-                    }
+                    const phoneThresholdTs = buildSmsLedgerThreshold(filters.excludeRecentDays);
+                    const sentCanonicals = await findRecentlyMessagedCanonicalPhones({
+                        db,
+                        companyId,
+                        canonicalPhones: [...candidatePhoneMap.values()],
+                        thresholdTs: phoneThresholdTs,
+                    });
 
                     // Remove candidates whose phone was found in sms_sent_phones
-                    if (sentPhones.size > 0) {
+                    if (sentCanonicals.size > 0) {
                         const excludeIndices = new Set();
                         for (const [idx, phone] of candidatePhoneMap.entries()) {
-                            if (sentPhones.has(phone)) {
+                            if (sentCanonicals.has(phone)) {
                                 excludeIndices.add(idx);
                             }
                         }
@@ -320,48 +273,33 @@ exports.checkImportPhones = onCall({ cors: true, memory: '256MiB' }, async (requ
     if (!Array.isArray(phones) || phones.length === 0) return { excludedPhones: [] };
     if (!excludeRecentDays || excludeRecentDays === 'off') return { excludedPhones: [] };
 
-    // Build threshold timestamp (same logic as sessionController.js)
-    let thresholdTs = null; // null = 'forever' — exclude ANY previously messaged phone
-    if (excludeRecentDays !== 'forever') {
-        const days = parseInt(excludeRecentDays);
-        if (!isNaN(days) && days > 0) {
-            const date = new Date();
-            date.setDate(date.getDate() - days);
-            thresholdTs = admin.firestore.Timestamp.fromDate(date);
-        }
+    const thresholdTs = buildSmsLedgerThreshold(excludeRecentDays);
+
+    const inputToCanonical = new Map();
+    phones.forEach((phone) => {
+        const { canonical } = derivePhoneLedgerKeys(phone);
+        if (canonical) inputToCanonical.set(phone, canonical);
+    });
+    if (inputToCanonical.size === 0) return { excludedPhones: [] };
+
+    try {
+        const excludedCanonicals = await findRecentlyMessagedCanonicalPhones({
+            db,
+            companyId,
+            canonicalPhones: [...new Set(inputToCanonical.values())],
+            thresholdTs,
+        });
+
+        const excludedPhones = [...new Set(
+            phones.filter((phone) => {
+                const canonical = inputToCanonical.get(phone);
+                return canonical && excludedCanonicals.has(canonical);
+            })
+        )];
+
+        return { excludedPhones };
+    } catch (chunkErr) {
+        console.error('[checkImportPhones] Chunk lookup error:', chunkErr);
+        return { excludedPhones: [] };
     }
-
-    const excludedPhones = [];
-
-    // Query sms_sent_phones in batches of 10 (Firestore getAll limit per call is fine, but keep chunks manageable)
-    for (let i = 0; i < phones.length; i += 10) {
-        const chunk = phones.slice(i, i + 10);
-        const docRefs = chunk.map(p =>
-            db.collection('companies').doc(companyId).collection('sms_sent_phones').doc(p)
-        );
-
-        try {
-            const snapshots = await db.getAll(...docRefs);
-            snapshots.forEach(snap => {
-                if (!snap.exists) return;
-                const data = snap.data();
-                if (!data.lastSentAt) return;
-
-                if (thresholdTs === null) {
-                    // 'forever' mode: exclude any phone that has ever been messaged
-                    excludedPhones.push(snap.id);
-                } else {
-                    // Time-based: exclude if messaged on or after the threshold
-                    if (data.lastSentAt >= thresholdTs) {
-                        excludedPhones.push(snap.id);
-                    }
-                }
-            });
-        } catch (chunkErr) {
-            console.error('[checkImportPhones] Chunk lookup error:', chunkErr);
-            // Non-fatal: skip this chunk, don't block the user
-        }
-    }
-
-    return { excludedPhones };
 });

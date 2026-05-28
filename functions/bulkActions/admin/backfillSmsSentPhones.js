@@ -2,6 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
 const { assertCompanyAdminStrict } = require("../../shared/companyAccess");
 const { normalizePhone } = require("../../utils/phoneUtils");
+const { isCanonicalPhoneLedgerKey } = require("../helpers/phoneLedger");
 
 /**
  * Internal: backfill SMS phones for a single company. Does NOT perform auth
@@ -40,7 +41,7 @@ async function _backfillSmsForCompany(companyId) {
             const rawPhone = logData.recipientIdentity;
             if (!rawPhone || rawPhone === 'N/A' || rawPhone === 'No Phone' || rawPhone === 'No Email') continue;
             const normPhone = normalizePhone(rawPhone);
-            if (!normPhone || normPhone.length < 10 || normPhone.length > 11) continue;
+            if (!isCanonicalPhoneLedgerKey(normPhone)) continue;
 
             const phoneRef = db
                 .collection('companies').doc(companyId)
