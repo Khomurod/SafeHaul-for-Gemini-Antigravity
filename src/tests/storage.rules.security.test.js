@@ -236,6 +236,10 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
     const co1Admin = authedStorage(nextUid('admin-co1'), teamClaims('co1', 'company_admin'));
     const co2AdminRead = authedStorage(nextUid('admin-co2-read'), teamClaims('co2', 'company_admin'));
     const adminUpload = testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/admin-upload.pdf');
+    const crossTenantReadTarget = paths.co1DriverBLeadGeneral;
+
+    // Run deny assertion before any successful read on the same object path.
+    await assertFails(getMetadata(ref(co2AdminRead, crossTenantReadTarget)));
 
     await assertSucceeds(getMetadata(ref(co1Admin, paths.co1DriverBLicense)));
     await assertSucceeds(
@@ -247,8 +251,6 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
       ),
     );
     await assertSucceeds(deleteObject(ref(co1Admin, adminUpload)));
-
-    await assertFails(getMetadata(ref(co2AdminRead, paths.co1DriverBLicense)));
   });
 
   it('blocks company_admin cross-tenant writes', async () => {
@@ -268,11 +270,14 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
     const co1Recruiter = authedStorage(nextUid('rec-co1'), teamClaims('co1', 'recruiter'));
     const co2HrRead = authedStorage(nextUid('hr-co2-read'), teamClaims('co2', 'hr_user'));
     const co2RecruiterRead = authedStorage(nextUid('rec-co2-read'), teamClaims('co2', 'recruiter'));
+    const crossTenantReadTarget = paths.co1PevResult;
+
+    // Run deny assertions before any successful read on the same object path.
+    await assertFails(getMetadata(ref(co2HrRead, crossTenantReadTarget)));
+    await assertFails(getMetadata(ref(co2RecruiterRead, crossTenantReadTarget)));
 
     await assertSucceeds(getMetadata(ref(co1Hr, paths.co1DriverBLicense)));
     await assertSucceeds(getMetadata(ref(co1Recruiter, paths.co1DriverBLeadDq)));
-    await assertFails(getMetadata(ref(co2HrRead, paths.co1DriverBLicense)));
-    await assertFails(getMetadata(ref(co2RecruiterRead, paths.co1DriverBLicense)));
   });
 
   it('blocks hr_user and recruiter cross-tenant writes', async () => {
