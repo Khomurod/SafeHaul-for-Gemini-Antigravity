@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { getMetadata, ref, uploadString } from 'firebase/storage';
+import { deleteObject, getMetadata, ref, uploadString } from 'firebase/storage';
 
 const projectId = 'safehaul-storage-rules-test';
 const bucket = `${projectId}.appspot.com`;
@@ -208,9 +208,12 @@ describeStorage('storage.rules multi-tenant isolation', () => {
         { contentType: 'application/pdf' },
       ),
     );
+    await assertSucceeds(
+      deleteObject(ref(storageCo1, 'companies/co1/applications/driverB/cdl-front/admin-upload.pdf'))
+    );
   });
 
-  it('blocks cross-tenant admin write on foreign company application files', async () => {
+  it('blocks cross-tenant admin write/delete on foreign company application files', async () => {
     const storageCo2 = testEnv.authenticatedContext('admin-co2', {
       ...companyAdminClaims('co2'),
     }).storage(`gs://${bucket}`);
@@ -222,6 +225,9 @@ describeStorage('storage.rules multi-tenant isolation', () => {
         'raw',
         { contentType: 'application/pdf' },
       ),
+    );
+    await assertFails(
+      deleteObject(ref(storageCo2, 'companies/co1/applications/driverB/cdl-front/license.pdf'))
     );
   });
 
@@ -258,6 +264,18 @@ describeStorage('storage.rules multi-tenant isolation', () => {
     const storageOwner = testEnv.authenticatedContext('driverB').storage(`gs://${bucket}`);
     await assertSucceeds(
       getMetadata(ref(storageOwner, 'companies/co1/leads/app123/general_documents/notes.pdf'))
+    );
+  });
+
+  it('blocks guest upload with invalid content type even in guest_uploads', async () => {
+    const guestStorage = testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
+    await assertFails(
+      uploadString(
+        ref(guestStorage, 'companies/co1/autofill/guest_uploads/invalid.txt'),
+        'not-an-image',
+        'raw',
+        { contentType: 'text/plain' },
+      ),
     );
   });
 });

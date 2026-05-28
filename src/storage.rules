@@ -37,6 +37,7 @@ service firebase.storage {
     function metadataDriverId() {
       return resource != null &&
              resource.metadata != null &&
+             resource.metadata.keys().hasAny(['driverId']) &&
              resource.metadata.driverId is string
              ? resource.metadata.driverId
              : null;
@@ -45,6 +46,7 @@ service firebase.storage {
     function incomingDriverId() {
       return request.resource != null &&
              request.resource.metadata != null &&
+             request.resource.metadata.keys().hasAny(['driverId']) &&
              request.resource.metadata.driverId is string
              ? request.resource.metadata.driverId
              : null;
@@ -63,10 +65,6 @@ service firebase.storage {
       );
     }
 
-    function isLeadDqPath(collection, fileCategory) {
-      return collection == 'leads' && fileCategory == 'dq_files';
-    }
-    
     // VALIDATION
     function isValidFile() {
       // Allow images and PDFs, max 20MB (increased for high-quality envelopes)
@@ -109,20 +107,25 @@ service firebase.storage {
                        (isSignedIn() && (isOwner(driverId) || isCompanyAdmin(companyId)));
     }
 
-    // Metadata-owned files for non-driver-keyed paths (defense in depth).
-    // Lead DQ files remain strict owner/admin only.
-    match /companies/{companyId}/{collection}/{applicationId}/{fileCategory}/{allPaths=**} {
-      allow read: if (
-                    isLeadDqPath(collection, fileCategory) &&
-                    (isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata())
-                  ) || (
-                    !isLeadDqPath(collection, fileCategory) &&
-                    (isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata())
-                  );
+    // Lead DQ files: strict owner/admin read access.
+    match /companies/{companyId}/leads/{applicationId}/dq_files/{allPaths=**} {
+      allow read: if isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata();
       allow create, update: if isSuperAdmin() ||
                               (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata()) && isValidFile());
       allow delete: if isSuperAdmin() ||
                        (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata()));
+    }
+
+    // Other lead attachment categories: metadata owner/admin access.
+    match /companies/{companyId}/leads/{applicationId}/{fileCategory}/{allPaths=**} {
+      allow read: if fileCategory != 'dq_files' &&
+                    (isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata());
+      allow create, update: if fileCategory != 'dq_files' &&
+                              (isSuperAdmin() ||
+                               (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata()) && isValidFile()));
+      allow delete: if fileCategory != 'dq_files' &&
+                       (isSuperAdmin() ||
+                        (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata())));
     }
 
     // 4. Secure Documents (E-Signature Envelopes and Templates)
