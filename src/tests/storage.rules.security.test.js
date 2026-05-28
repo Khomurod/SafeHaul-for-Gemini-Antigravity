@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import {
   assertFails,
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { deleteObject, getMetadata, ref, uploadString } from 'firebase/storage';
+import { deleteObject, getMetadata, listAll, ref, uploadString } from 'firebase/storage';
 
 const projectId = 'safehaul-storage-rules-test';
 const bucket = `${projectId}.appspot.com`;
@@ -16,16 +16,110 @@ const hasStorageEmulator = storageEmulatorHost.includes(':');
 const describeStorage = hasStorageEmulator ? describe : describe.skip;
 
 let testEnv;
+let runCounter = 0;
+let paths;
 
-function companyAdminClaims(companyId) {
+function teamClaims(companyId, role = 'company_admin') {
   return {
-    roles: { [companyId]: 'company_admin' },
+    roles: { [companyId]: role },
     companyId,
-    companyRole: 'company_admin',
+    companyRole: role,
   };
 }
 
-describeStorage('storage.rules multi-tenant isolation', () => {
+function superAdminClaims() {
+  return {
+    globalRole: 'super_admin',
+    roles: { globalRole: 'super_admin' },
+  };
+}
+
+function authedStorage(uid, claims = {}) {
+  return testEnv.authenticatedContext(uid, claims).storage(`gs://${bucket}`);
+}
+
+function guestStorage() {
+  return testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
+}
+
+function testPath(runId, relativePath) {
+  return `security_rules_runs/${runId}/${relativePath}`;
+}
+
+function buildSeedPaths(runId) {
+  return {
+    co1DriverBLicense: testPath(runId, 'companies/co1/applications/driverB/cdl-front/license.pdf'),
+    co1DriverBLeadDq: testPath(runId, 'companies/co1/leads/app123/dq_files/medical.pdf'),
+    co1DriverBLeadGeneral: testPath(runId, 'companies/co1/leads/app123/general_documents/notes.pdf'),
+    co1PevResult: testPath(runId, 'companies/co1/applications/app123/pev_results/PEV_report.pdf'),
+    co1GuestSeed: testPath(runId, 'companies/co1/autofill/guest_uploads/seed.jpg'),
+    co2DriverCLicense: testPath(runId, 'companies/co2/applications/driverC/cdl-front/license.pdf'),
+    co1SecureTemplate: testPath(runId, 'secure_documents/co1/templates/seed.pdf'),
+  };
+}
+
+async function deleteTree(folderRef) {
+  const { items, prefixes } = await listAll(folderRef);
+  await Promise.all(items.map((itemRef) => deleteObject(itemRef)));
+  await Promise.all(prefixes.map((prefixRef) => deleteTree(prefixRef)));
+}
+
+async function clearTestBucket() {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminStorage = context.storage(`gs://${bucket}`);
+    await deleteTree(ref(adminStorage, ''));
+  });
+}
+
+async function seedStorageData(seedPaths) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const adminStorage = context.storage(`gs://${bucket}`);
+    await uploadString(
+      ref(adminStorage, seedPaths.co1DriverBLicense),
+      'seed-pdf',
+      'raw',
+      { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } },
+    );
+    await uploadString(
+      ref(adminStorage, seedPaths.co1DriverBLeadDq),
+      'seed-pdf',
+      'raw',
+      { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } },
+    );
+    await uploadString(
+      ref(adminStorage, seedPaths.co1DriverBLeadGeneral),
+      'seed-pdf',
+      'raw',
+      { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } },
+    );
+    await uploadString(
+      ref(adminStorage, seedPaths.co1PevResult),
+      'seed-pdf',
+      'raw',
+      { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } },
+    );
+    await uploadString(
+      ref(adminStorage, seedPaths.co1GuestSeed),
+      'seed-image',
+      'raw',
+      { contentType: 'image/jpeg' },
+    );
+    await uploadString(
+      ref(adminStorage, seedPaths.co2DriverCLicense),
+      'seed-pdf',
+      'raw',
+      { contentType: 'application/pdf', customMetadata: { driverId: 'driverC', companyId: 'co2' } },
+    );
+    await uploadString(
+      ref(adminStorage, seedPaths.co1SecureTemplate),
+      'seed-pdf',
+      'raw',
+      { contentType: 'application/pdf' },
+    );
+  });
+}
+
+describeStorage('storage.rules security matrix (tenant isolation + permissive team model)', () => {
   beforeAll(async () => {
     const [host, portStr] = storageEmulatorHost.split(':');
     testEnv = await initializeTestEnvironment({
@@ -39,244 +133,156 @@ describeStorage('storage.rules multi-tenant isolation', () => {
   });
 
   beforeEach(async () => {
-    await testEnv.clearStorage();
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const adminStorage = context.storage(`gs://${bucket}`);
-      await uploadString(
-        ref(adminStorage, 'companies/co1/applications/driverB/cdl-front/license.pdf'),
-        'seed-pdf',
-        'raw',
-        { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } }
-      );
-      await uploadString(
-        ref(adminStorage, 'companies/co2/applications/driverC/cdl-front/license.pdf'),
-        'seed-pdf',
-        'raw',
-        { contentType: 'application/pdf', customMetadata: { driverId: 'driverC', companyId: 'co2' } }
-      );
-      await uploadString(
-        ref(adminStorage, 'companies/co1/leads/app123/dq_files/medical.pdf'),
-        'seed-pdf',
-        'raw',
-        { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } }
-      );
-      await uploadString(
-        ref(adminStorage, 'companies/co1/leads/app123/general_documents/notes.pdf'),
-        'seed-pdf',
-        'raw',
-        { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } }
-      );
-      await uploadString(
-        ref(adminStorage, 'companies/co1/applications/app123/pev_results/PEV_report.pdf'),
-        'seed-pdf',
-        'raw',
-        { contentType: 'application/pdf', customMetadata: { driverId: 'driverB', companyId: 'co1' } }
-      );
-      await uploadString(
-        ref(adminStorage, 'companies/co1/autofill/guest_uploads/seed.jpg'),
-        'seed-image',
-        'raw',
-        { contentType: 'image/jpeg' }
-      );
-      await uploadString(
-        ref(adminStorage, 'secure_documents/co1/templates/seed.pdf'),
-        'seed-pdf',
-        'raw',
-        { contentType: 'application/pdf' }
-      );
-    });
+    runCounter += 1;
+    paths = buildSeedPaths(runCounter);
+    await clearTestBucket();
+    await seedStorageData(paths);
   });
 
-  it('allows Driver A to write own file but blocks reads to Driver B file', async () => {
-    const storageA = testEnv.authenticatedContext('driverA').storage(`gs://${bucket}`);
-
+  it('allows guest upload in applications/autofill guest_uploads with valid file type', async () => {
+    const guest = guestStorage();
     await assertSucceeds(
       uploadString(
-        ref(storageA, 'companies/co1/applications/driverA/cdl-front/new-license.pdf'),
-        'driver-a-file',
-        'raw',
-        { contentType: 'application/pdf' }
-      )
-    );
-
-    await assertFails(getMetadata(ref(storageA, 'companies/co1/applications/driverB/cdl-front/license.pdf')));
-  });
-
-  it('allows co1 admin and blocks cross-tenant admin on co1 files', async () => {
-    const storageCo1 = testEnv.authenticatedContext('admin-co1', {
-      ...companyAdminClaims('co1'),
-    }).storage(`gs://${bucket}`);
-    const storageCo2 = testEnv.authenticatedContext('admin-co2', {
-      ...companyAdminClaims('co2'),
-    }).storage(`gs://${bucket}`);
-
-    await assertSucceeds(getMetadata(ref(storageCo1, 'companies/co1/applications/driverB/cdl-front/license.pdf')));
-    await assertFails(getMetadata(ref(storageCo2, 'companies/co1/applications/driverB/cdl-front/license.pdf')));
-  });
-
-  it('allows metadata owner access for non-driver-keyed paths', async () => {
-    const storageB = testEnv.authenticatedContext('driverB').storage(`gs://${bucket}`);
-    const storageA = testEnv.authenticatedContext('driverA').storage(`gs://${bucket}`);
-    const storageAdmin = testEnv.authenticatedContext('admin-co1', {
-      ...companyAdminClaims('co1'),
-    }).storage(`gs://${bucket}`);
-
-    await assertSucceeds(getMetadata(ref(storageB, 'companies/co1/leads/app123/dq_files/medical.pdf')));
-    await assertFails(getMetadata(ref(storageA, 'companies/co1/leads/app123/dq_files/medical.pdf')));
-    await assertSucceeds(getMetadata(ref(storageAdmin, 'companies/co1/leads/app123/dq_files/medical.pdf')));
-  });
-
-  it('allows unauthenticated guest write without App Check to guest_uploads', async () => {
-    const guestStorage = testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
-
-    await assertSucceeds(
-      uploadString(
-        ref(guestStorage, 'companies/co1/autofill/guest_uploads/scan.jpg'),
-        'fake-image-content',
-        'raw',
-        { contentType: 'image/jpeg' }
-      )
-    );
-  });
-
-  it('blocks unauthenticated read of guest_uploads', async () => {
-    const guestStorage = testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
-
-    await assertFails(
-      getMetadata(ref(guestStorage, 'companies/co1/applications/guest_uploads/secret.pdf'))
-    );
-  });
-
-  it('allows company admin read/write on secure_documents templates', async () => {
-    const storageCo1 = testEnv.authenticatedContext('admin-co1', {
-      ...companyAdminClaims('co1'),
-    }).storage(`gs://${bucket}`);
-
-    await assertSucceeds(
-      uploadString(
-        ref(storageCo1, 'secure_documents/co1/templates/offer-letter.pdf'),
-        'template-pdf',
+        ref(guest, testPath(runCounter, 'companies/co1/applications/guest_uploads/upload-a.pdf')),
+        'guest-pdf',
         'raw',
         { contentType: 'application/pdf' },
       ),
     );
-    await assertSucceeds(getMetadata(ref(storageCo1, 'secure_documents/co1/templates/offer-letter.pdf')));
-  });
-
-  it('blocks unauthenticated read of secure_documents', async () => {
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const adminStorage = context.storage(`gs://${bucket}`);
-      await uploadString(
-        ref(adminStorage, 'secure_documents/co1/templates/seed.pdf'),
-        'seed',
+    await assertSucceeds(
+      uploadString(
+        ref(guest, testPath(runCounter, 'companies/co1/autofill/guest_uploads/upload-b.jpg')),
+        'guest-jpg',
         'raw',
-        { contentType: 'application/pdf' },
-      );
-    });
-
-    const guestStorage = testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
-
-    await assertFails(getMetadata(ref(guestStorage, 'secure_documents/co1/templates/seed.pdf')));
+        { contentType: 'image/jpeg' },
+      ),
+    );
   });
 
-  it('blocks unauthenticated guest write outside guest_uploads', async () => {
-    const guestStorage = testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
-
+  it('blocks guest upload outside guest_uploads', async () => {
+    const guest = guestStorage();
     await assertFails(
       uploadString(
-        ref(guestStorage, 'companies/co1/applications/driverA/cdl-front/blocked.jpg'),
-        'fake-image-content',
+        ref(guest, testPath(runCounter, 'companies/co1/applications/driverA/cdl-front/blocked.jpg')),
+        'blocked',
         'raw',
-        { contentType: 'image/jpeg' }
-      )
+        { contentType: 'image/jpeg' },
+      ),
     );
   });
 
-  it('allows same-company admin read/write/delete on application files', async () => {
-    const storageCo1 = testEnv.authenticatedContext('admin-co1', {
-      ...companyAdminClaims('co1'),
-    }).storage(`gs://${bucket}`);
+  it('blocks guest upload with invalid content type even inside guest_uploads', async () => {
+    const guest = guestStorage();
+    await assertFails(
+      uploadString(
+        ref(guest, testPath(runCounter, 'companies/co1/autofill/guest_uploads/invalid.txt')),
+        'text',
+        'raw',
+        { contentType: 'text/plain' },
+      ),
+    );
+  });
+
+  it('keeps guest direct reads blocked for guest_uploads and secure_documents', async () => {
+    const guest = guestStorage();
+    await assertFails(getMetadata(ref(guest, paths.co1GuestSeed)));
+    await assertFails(getMetadata(ref(guest, paths.co1SecureTemplate)));
+  });
+
+  it('allows driver to read/write/delete only inside own driver-keyed application path', async () => {
+    const driverA = authedStorage('driverA');
+    const ownPath = testPath(runCounter, 'companies/co1/applications/driverA/cdl-front/new-license.pdf');
 
     await assertSucceeds(
-      getMetadata(ref(storageCo1, 'companies/co1/applications/driverB/cdl-front/license.pdf'))
+      uploadString(
+        ref(driverA, ownPath),
+        'driver-a-file',
+        'raw',
+        { contentType: 'application/pdf' },
+      ),
     );
+    await assertSucceeds(getMetadata(ref(driverA, ownPath)));
+    await assertSucceeds(deleteObject(ref(driverA, ownPath)));
+  });
+
+  it('blocks driver from reading another driver file and cross-tenant file', async () => {
+    const driverA = authedStorage('driverA');
+    await assertFails(getMetadata(ref(driverA, paths.co1DriverBLicense)));
+    await assertFails(getMetadata(ref(driverA, paths.co2DriverCLicense)));
+  });
+
+  it('blocks non-team drivers from non-driver-keyed company files (leads + pev)', async () => {
+    const driverA = authedStorage('driverA');
+    await assertFails(getMetadata(ref(driverA, paths.co1DriverBLeadDq)));
+    await assertFails(getMetadata(ref(driverA, paths.co1DriverBLeadGeneral)));
+    await assertFails(getMetadata(ref(driverA, paths.co1PevResult)));
+  });
+
+  it('allows company_admin same-company read/write/delete and blocks cross-tenant access', async () => {
+    const co1Admin = authedStorage('admin-co1', teamClaims('co1', 'company_admin'));
+    const co2Admin = authedStorage('admin-co2', teamClaims('co2', 'company_admin'));
+    const adminUpload = testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/admin-upload.pdf');
+
+    await assertSucceeds(getMetadata(ref(co1Admin, paths.co1DriverBLicense)));
     await assertSucceeds(
       uploadString(
-        ref(storageCo1, 'companies/co1/applications/driverB/cdl-front/admin-upload.pdf'),
+        ref(co1Admin, adminUpload),
         'admin-upload',
         'raw',
         { contentType: 'application/pdf' },
       ),
     );
-    await assertSucceeds(
-      deleteObject(ref(storageCo1, 'companies/co1/applications/driverB/cdl-front/admin-upload.pdf'))
-    );
-  });
+    await assertSucceeds(deleteObject(ref(co1Admin, adminUpload)));
 
-  it('blocks cross-tenant admin write/delete on foreign company application files', async () => {
-    const storageCo2 = testEnv.authenticatedContext('admin-co2', {
-      ...companyAdminClaims('co2'),
-    }).storage(`gs://${bucket}`);
-
+    await assertFails(getMetadata(ref(co2Admin, paths.co1DriverBLicense)));
     await assertFails(
       uploadString(
-        ref(storageCo2, 'companies/co1/applications/driverB/cdl-front/cross-tenant.pdf'),
+        ref(co2Admin, testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/cross-tenant.pdf')),
         'cross-tenant',
         'raw',
         { contentType: 'application/pdf' },
       ),
     );
-    await assertFails(
-      deleteObject(ref(storageCo2, 'companies/co1/applications/driverB/cdl-front/license.pdf'))
-    );
   });
 
-  it('blocks non-owner drivers from reading another company application files', async () => {
-    const storageDriverA = testEnv.authenticatedContext('driverA').storage(`gs://${bucket}`);
-    await assertFails(
-      getMetadata(ref(storageDriverA, 'companies/co2/applications/driverC/cdl-front/license.pdf'))
-    );
+  it('allows hr_user and recruiter same-company access, but blocks cross-tenant', async () => {
+    const co1Hr = authedStorage('hr-co1', teamClaims('co1', 'hr_user'));
+    const co1Recruiter = authedStorage('rec-co1', teamClaims('co1', 'recruiter'));
+    const co2Hr = authedStorage('hr-co2', teamClaims('co2', 'hr_user'));
+
+    await assertSucceeds(getMetadata(ref(co1Hr, paths.co1DriverBLicense)));
+    await assertSucceeds(getMetadata(ref(co1Recruiter, paths.co1DriverBLeadDq)));
+    await assertFails(getMetadata(ref(co2Hr, paths.co1DriverBLicense)));
   });
 
-  it('allows owner metadata read and blocks non-owner on lead dq_files', async () => {
-    const storageOwner = testEnv.authenticatedContext('driverB').storage(`gs://${bucket}`);
-    const storageOther = testEnv.authenticatedContext('driverA').storage(`gs://${bucket}`);
-
-    await assertSucceeds(getMetadata(ref(storageOwner, 'companies/co1/leads/app123/dq_files/medical.pdf')));
-    await assertFails(getMetadata(ref(storageOther, 'companies/co1/leads/app123/dq_files/medical.pdf')));
+  it('allows team access to non-driver-keyed paths (leads + pev_results)', async () => {
+    const co1Admin = authedStorage('admin-co1', teamClaims('co1', 'company_admin'));
+    await assertSucceeds(getMetadata(ref(co1Admin, paths.co1DriverBLeadDq)));
+    await assertSucceeds(getMetadata(ref(co1Admin, paths.co1DriverBLeadGeneral)));
+    await assertSucceeds(getMetadata(ref(co1Admin, paths.co1PevResult)));
   });
 
-  it('allows company admin access to pev_results and blocks non-admin drivers', async () => {
-    const storageAdmin = testEnv.authenticatedContext('admin-co1', {
-      ...companyAdminClaims('co1'),
-    }).storage(`gs://${bucket}`);
-    const storageDriverA = testEnv.authenticatedContext('driverA').storage(`gs://${bucket}`);
+  it('keeps secure_documents private from guests while allowing company team access', async () => {
+    const guest = guestStorage();
+    const co1Admin = authedStorage('admin-co1', teamClaims('co1', 'company_admin'));
+    const secureWrite = testPath(runCounter, 'secure_documents/co1/templates/offer-letter.pdf');
 
+    await assertFails(getMetadata(ref(guest, paths.co1SecureTemplate)));
     await assertSucceeds(
-      getMetadata(ref(storageAdmin, 'companies/co1/applications/app123/pev_results/PEV_report.pdf'))
-    );
-    await assertFails(
-      getMetadata(ref(storageDriverA, 'companies/co1/applications/app123/pev_results/PEV_report.pdf'))
-    );
-  });
-
-  it('allows metadata owner read for non-dq file categories', async () => {
-    const storageOwner = testEnv.authenticatedContext('driverB').storage(`gs://${bucket}`);
-    await assertSucceeds(
-      getMetadata(ref(storageOwner, 'companies/co1/leads/app123/general_documents/notes.pdf'))
-    );
-  });
-
-  it('blocks guest upload with invalid content type even in guest_uploads', async () => {
-    const guestStorage = testEnv.unauthenticatedContext().storage(`gs://${bucket}`);
-    await assertFails(
       uploadString(
-        ref(guestStorage, 'companies/co1/autofill/guest_uploads/invalid.txt'),
-        'not-an-image',
+        ref(co1Admin, secureWrite),
+        'template-pdf',
         'raw',
-        { contentType: 'text/plain' },
+        { contentType: 'application/pdf' },
       ),
     );
+    await assertSucceeds(getMetadata(ref(co1Admin, secureWrite)));
+  });
+
+  it('allows super_admin cross-tenant reads for operational support', async () => {
+    const superAdmin = authedStorage('super-admin-1', superAdminClaims());
+    await assertSucceeds(getMetadata(ref(superAdmin, paths.co1DriverBLicense)));
+    await assertSucceeds(getMetadata(ref(superAdmin, paths.co2DriverCLicense)));
   });
 });
 

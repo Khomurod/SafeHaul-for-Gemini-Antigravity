@@ -133,11 +133,16 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run Firestore/Storage rules tests with emulators
+      - name: Run Firestore/Storage rules tests with emulators (5x flake guard)
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
           FIREBASE_STORAGE_EMULATOR_HOST: 127.0.0.1:9199
-        run: npx firebase emulators:exec --only firestore,storage "npm test -- --run src/tests/firestore.rules.security.test.js src/tests/storage.rules.security.test.js"
+        run: |
+          set -euo pipefail
+          for run in 1 2 3 4 5; do
+            echo "Rules regression run ${run}/5"
+            npx firebase emulators:exec --only firestore,storage "npm test -- --run src/tests/firestore.rules.security.test.js src/tests/storage.rules.security.test.js"
+          done
 
   deploy-hosting:
     name: Deploy Firebase Hosting and Rules

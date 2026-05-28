@@ -6,9 +6,7 @@ service firebase.storage {
     function isSignedIn() { return request.auth != null; }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
     
-    // ROBUST SUPER ADMIN CHECK (Aligned with Firestore)
-    // BUG-1 FIX: Removed email-domain backdoor (@safehaul.io). 
-    // Only custom claims determine Super Admin status.
+    // Super admin check (claims-only; no email-domain shortcuts).
     function isSuperAdmin() {
       return isSignedIn() && (
          (request.auth.token.keys().hasAny(['globalRole']) && request.auth.token.globalRole == 'super_admin') ||
@@ -16,52 +14,26 @@ service firebase.storage {
       );
     }
 
-    // COMPANY ADMIN CHECK
-    function isCompanyAdmin(companyId) {
+    function hasCompanyRoleClaim(companyId) {
+      return request.auth.token.keys().hasAny(['roles']) &&
+             request.auth.token.roles.keys().hasAny([companyId]) &&
+             request.auth.token.roles[companyId] in ['company_admin', 'hr_user', 'recruiter'];
+    }
+
+    // Legacy fallback for older claim shape.
+    function hasLegacyCompanyRoleClaim(companyId) {
+      return request.auth.token.keys().hasAny(['companyId']) &&
+             request.auth.token.keys().hasAny(['companyRole']) &&
+             request.auth.token.companyId == companyId &&
+             request.auth.token.companyRole in ['company_admin', 'hr_user', 'recruiter'];
+    }
+
+    // Company team = company_admin/hr_user/recruiter/super_admin.
+    function isCompanyTeam(companyId) {
       return isSignedIn() && (
         isSuperAdmin() ||
-        (
-          request.auth.token.keys().hasAny(['roles']) && 
-          request.auth.token.roles.keys().hasAny([companyId]) && 
-          request.auth.token.roles[companyId] == 'company_admin'
-        ) ||
-        (
-          request.auth.token.keys().hasAny(['companyId']) &&
-          request.auth.token.keys().hasAny(['companyRole']) &&
-          request.auth.token.companyId == companyId &&
-          request.auth.token.companyRole == 'company_admin'
-        )
-      );
-    }
-
-    function metadataDriverId() {
-      return resource != null &&
-             resource.metadata != null &&
-             resource.metadata.keys().hasAny(['driverId']) &&
-             resource.metadata.driverId is string
-             ? resource.metadata.driverId
-             : null;
-    }
-
-    function incomingDriverId() {
-      return request.resource != null &&
-             request.resource.metadata != null &&
-             request.resource.metadata.keys().hasAny(['driverId']) &&
-             request.resource.metadata.driverId is string
-             ? request.resource.metadata.driverId
-             : null;
-    }
-
-    function isDriverOwnerFromExistingMetadata() {
-      return isSignedIn() &&
-             metadataDriverId() != null &&
-             request.auth.uid == metadataDriverId();
-    }
-
-    function isDriverOwnedByMetadata() {
-      return isSignedIn() && (
-        isDriverOwnerFromExistingMetadata() ||
-        (incomingDriverId() != null && request.auth.uid == incomingDriverId())
+        hasCompanyRoleClaim(companyId) ||
+        hasLegacyCompanyRoleClaim(companyId)
       );
     }
 
@@ -78,8 +50,8 @@ service firebase.storage {
     // Public Read, Team Write
     match /company_assets/{companyId}/{allPaths=**} {
       allow read: if true;
-      allow create, update: if isCompanyAdmin(companyId) && isValidFile();
-      allow delete: if isCompanyAdmin(companyId);
+      allow create, update: if isCompanyTeam(companyId) && isValidFile();
+      allow delete: if isCompanyTeam(companyId);
     }
 
     // 2. Driver Private Documents
@@ -90,69 +62,34 @@ service firebase.storage {
     // 3. Application Attachments (Guest Uploads)
     // Guests may upload only. Reads via getSignedGuestUploadUrl callable / company admin paths.
     match /companies/{companyId}/{folder}/guest_uploads/{allPaths=**} {
-      allow read: if isCompanyAdmin(companyId) || isSuperAdmin();
+      allow read: if isCompanyTeam(companyId);
       allow create: if (folder == 'applications' || folder == 'autofill') &&
                        isValidFile();
-      // No delete or update permissions for guests
+      // Staff can manage guest uploads after intake.
+      allow update: if isCompanyTeam(companyId) && isValidFile();
+      allow delete: if isCompanyTeam(companyId);
     }
 
-    // Sensitive applicant document root: driver UID is path-bound.
+    // Company team gets broad company-path access (tenant-isolated by companyId path).
+    match /companies/{companyId}/{allPaths=**} {
+      allow read, write: if isCompanyTeam(companyId);
+    }
+
+    // Driver-keyed application root: drivers can access only own path.
     match /companies/{companyId}/applications/{driverId}/{allPaths=**} {
-      allow read: if isOwner(driverId) || isCompanyAdmin(companyId) || isSuperAdmin();
-      // Restricted to authenticated owner/company admin/super admin.
-      // Guest uploads are only allowed in the dedicated guest_uploads path above.
-      allow create, update: if isSuperAdmin() ||
-                              (isSignedIn() && (isOwner(driverId) || isCompanyAdmin(companyId)) && isValidFile());
-      allow delete: if isSuperAdmin() || 
-                       (isSignedIn() && (isOwner(driverId) || isCompanyAdmin(companyId)));
-    }
-
-    // Lead DQ files: strict owner/admin read access.
-    match /companies/{companyId}/leads/{applicationId}/dq_files/{allPaths=**} {
-      allow read: if isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata();
-      allow create, update: if isSuperAdmin() ||
-                              (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata()) && isValidFile());
-      allow delete: if isSuperAdmin() ||
-                       (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata()));
-    }
-
-    // Other lead attachment categories: metadata owner/admin access.
-    match /companies/{companyId}/leads/{applicationId}/{fileCategory}/{allPaths=**} {
-      allow read: if fileCategory != 'dq_files' &&
-                    (isCompanyAdmin(companyId) || isSuperAdmin() || isDriverOwnerFromExistingMetadata());
-      allow create, update: if fileCategory != 'dq_files' &&
-                              (isSuperAdmin() ||
-                               (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata()) && isValidFile()));
-      allow delete: if fileCategory != 'dq_files' &&
-                       (isSuperAdmin() ||
-                        (isSignedIn() && (isCompanyAdmin(companyId) || isDriverOwnedByMetadata())));
+      allow read: if isOwner(driverId) || isCompanyTeam(companyId);
+      allow create, update: if (isOwner(driverId) || isCompanyTeam(companyId)) && isValidFile();
+      allow delete: if isOwner(driverId) || isCompanyTeam(companyId);
     }
 
     // 4. Secure Documents (E-Signature Envelopes and Templates)
     // Path: secure_documents/{companyId}/{folder}/{fileName}
     match /secure_documents/{companyId}/{folder}/{allPaths=**} {
-       // Read: Company Admin OR Super Admin. 
-       // NOTE: Drivers/Recipients access these via generated Signed URLs from the backend.
-       allow read: if isCompanyAdmin(companyId) || isSuperAdmin();
+       // Keep direct bucket access private; public recipients use signed/callable links.
+       allow read: if isCompanyTeam(companyId);
        
-       // Write: Company Admin Only
-       allow create, update: if isCompanyAdmin(companyId) && isValidFile();
-       allow delete: if isCompanyAdmin(companyId);
-    }
-
-    // 5. PEV (Previous Employment Verification) Result Uploads
-    // Path: companies/{companyId}/{collection}/{applicationId}/pev_results/{file}
-    match /companies/{companyId}/{collection}/{applicationId}/pev_results/{fileName} {
-      allow read: if isCompanyAdmin(companyId) || isSuperAdmin();
-      allow create, update: if isCompanyAdmin(companyId) && isValidFile();
-      allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
-    }
-
-    // 5b. PEV Signatures (Written by Cloud Functions via Admin SDK)
-    // Path: companies/{companyId}/pev_signatures/{file}
-    match /companies/{companyId}/pev_signatures/{fileName} {
-      allow read: if isCompanyAdmin(companyId) || isSuperAdmin();
-      allow write: if false; // Only Cloud Functions (Admin SDK) can write
+       allow create, update: if isCompanyTeam(companyId) && isValidFile();
+       allow delete: if isCompanyTeam(companyId);
     }
 
     // 6. System Health Tests
