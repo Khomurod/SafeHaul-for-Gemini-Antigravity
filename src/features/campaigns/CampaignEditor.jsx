@@ -91,6 +91,17 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
         }));
     };
 
+    const handleAudienceChange = useCallback((newFilters, count) => {
+        setCampaignData(prev => {
+            // Guard against no-op updates to avoid render loops from effect-driven callbacks.
+            if (prev.filters === newFilters && (prev.matchCount || 0) === (count || 0)) {
+                return prev;
+            }
+            return { ...prev, filters: newFilters, matchCount: count };
+        });
+        setIsDirty(true);
+    }, []);
+
     const isSectionComplete = (sectionId) => {
         if (sectionId === 'audience') return campaignData.matchCount > 0;
         if (sectionId === 'content') return !!campaignData.messageConfig?.message;
@@ -159,9 +170,7 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
                             companyId={companyId}
                             filters={campaignData.filters || {}}
                             campaignScopeKey={`${companyId || 'no-company'}:${campaignId || 'new-campaign'}`}
-                            onChange={(newFilters, count) => {
-                                setCampaignData(prev => ({ ...prev, filters: newFilters, matchCount: count }));
-                            }}
+                            onChange={handleAudienceChange}
                         />
                     )}
 
