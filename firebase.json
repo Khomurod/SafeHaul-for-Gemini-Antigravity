@@ -26,6 +26,10 @@
     ],
     "rewrites": [
       {
+        "source": "/telegram/sign",
+        "destination": "/telegram-sign.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

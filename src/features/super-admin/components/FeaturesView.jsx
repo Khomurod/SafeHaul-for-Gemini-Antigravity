@@ -183,6 +183,7 @@ export function FeaturesView({ companyList, onDataUpdate }) {
     const ALL_FEATURES = [
         { key: 'searchDB', label: 'Search Drivers' },
         { key: 'driverApp', label: 'Driver Application' },
+        { key: 'telegramApply', label: 'Telegram Apply' },
         { key: 'pev', label: 'PEV' },
         { key: 'campaignsEnabled', label: 'Campaigns' },
         { key: 'eDocs', label: 'E-Docs' },
@@ -225,7 +226,10 @@ export function FeaturesView({ companyList, onDataUpdate }) {
                                 return (
                                     <tr key={company.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4 font-medium text-gray-900 sticky left-0 bg-white border-r border-gray-100 z-10 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
-                                            {company.companyName}
+                                            <div>{company.companyName}</div>
+                                            <div className="mt-1 text-[11px] font-normal text-gray-500 font-mono break-all max-w-[260px]">
+                                                https://t.me/&lt;BOT_USERNAME_PLACEHOLDER&gt;?start=apply_{company.appSlug || company.id}
+                                            </div>
                                         </td>
                                         {ALL_FEATURES.map(f => {
                                             const isEnabled = company.features?.[f.key] === true;

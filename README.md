@@ -273,10 +273,30 @@ cd functions && npm install && cd ..
 | `GROQ_API_KEY` | Groq vision API for CDL parsing |
 | `SMS_ENCRYPTION_KEY` | AES key for encrypting SMS provider credentials |
 | `SENTRY_DSN` | Sentry DSN for server-side error tracking |
+| `TELEGRAM_BOT_TOKEN` | Optional Telegram bot token for Telegram Apply beta (leave empty until configured) |
+| `TELEGRAM_BOT_USERNAME` | Optional Telegram bot username for deep links |
+| `TELEGRAM_WEBHOOK_SECRET` | Optional Telegram webhook secret token |
 
 > **Bulk campaigns:** See [docs/production-readiness-runbook.md](docs/production-readiness-runbook.md#bulk-sms--email-campaigns) for Cloud Tasks queue setup and verification.
 
 > **Note**: Firebase Cloud Functions also use runtime configuration for service-specific keys. See `firebase functions:config:get` for current values.
+
+### Telegram Apply (Beta)
+
+Telegram Apply is an additive driver intake channel. It uses `telegramWebhook`, `getTelegramSessionStatus`, and `completeTelegramApplication` to collect core application fields in Telegram, then opens a lightweight signature-only Mini App at `/telegram/sign`.
+
+Token setup is pending human configuration. Until `TELEGRAM_BOT_TOKEN` is set, the webhook acknowledges requests and Bot API sends no-op safely, so deploys do not require a live bot.
+
+Manual setup after a bot is created:
+
+```bash
+# functions/.env only; never put these in VITE_* frontend env vars
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_BOT_USERNAME=
+TELEGRAM_WEBHOOK_SECRET=
+```
+
+Operators will create the bot in BotFather, set the Functions env values, register the webhook with the deployed `telegramWebhook` URL and optional secret token, and set the Mini App URL to `https://truckerapp-system.web.app/telegram/sign`.
 
 ### Running Locally
 

@@ -19,6 +19,7 @@ Defined in `ALL_FEATURES` in [`FeaturesView.jsx`](../src/features/super-admin/co
 |-----|------------------|---------------------|
 | `searchDB` | Search Drivers | Sidebar (`featureFlag`), [`SearchDriversPage.jsx`](../src/features/company-admin/views/SearchDriversPage.jsx) requires `=== true`, dashboard quick link |
 | `driverApp` | Driver Application | **Super-admin toggle only** — no `src/` gate found on `/apply/:slug` or driver wizard |
+| `telegramApply` | Telegram Apply | Server-side Telegram bot intake requires `companies/{companyId}.features.telegramApply === true`; does not affect `/apply/:slug` |
 | `pev` | PEV | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) blocks when `=== false` |
 | `campaignsEnabled` | Campaigns | Sidebar; [`CampaignsDashboard.jsx`](../src/features/campaigns/CampaignsDashboard.jsx) uses `!== false` (default on) |
 | `eDocs` | E-Docs | Sidebar; [`DocumentsManager.jsx`](../src/features/company-admin/views/DocumentsManager.jsx) when `=== false` |
@@ -62,7 +63,8 @@ Stricter checks on direct URL access:
 ### 3. Public / driver surfaces
 
 - `public_profiles` sync **strips** `features` and `featureSchedules` ([`buildPublicProfileDto`](../functions/companyAdmin.js) / tests in `publicProfileDto.test.js`).
-- Guest apply and authenticated driver routes are **not** gated by `features.driverApp` in frontend code today.
+- Guest apply and authenticated driver routes are **not** gated by `features.driverApp` or `features.telegramApply` in frontend code today.
+- Telegram bot intake is gated server-side by `features.telegramApply === true`.
 
 ---
 
@@ -148,7 +150,8 @@ Mounted from company shell (see `CompanyAppShell` / dashboard layout).
     "pev": true,
     "importLeads": true,
     "callTracking": true,
-    "driverApp": true
+    "driverApp": true,
+    "telegramApply": false
   },
   "featureSchedules": {
     "campaignsEnabled": "2026-06-01T04:00:00.000Z"
@@ -183,5 +186,6 @@ After scheduler runs past June 1:
 ## Gaps / implementation notes
 
 1. **`driverApp`** — toggled in super admin but not enforced on public apply or driver portal; treat as operational/metadata unless server-side checks are added.
-2. **Default-on vs default-off** — `searchDB` requires explicit `true`; other flags disable only on explicit `false`.
-3. **Scale** — scheduler loads all companies each run; acceptable at current scale per code comment; would need indexing if tenant count grows large.
+2. **`telegramApply`** — opt-in for the Telegram bot channel only; web apply remains unchanged.
+3. **Default-on vs default-off** — `searchDB` requires explicit `true`; other flags disable only on explicit `false`.
+4. **Scale** — scheduler loads all companies each run; acceptable at current scale per code comment; would need indexing if tenant count grows large.

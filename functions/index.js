@@ -88,6 +88,12 @@ exports.submitGuestApplication = require('./guestApplication').submitGuestApplic
 exports.parseCdlWithGroq = require('./cdlParser').parseCdlWithGroq;
 exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').createPostApplicationSigningRequest;
 
+// 4c. Telegram Driver Application Channel (additive public intake)
+const telegramApplication = require('./telegram/application');
+exports.telegramWebhook = require('./telegram/webhook').telegramWebhook;
+exports.getTelegramSessionStatus = telegramApplication.getTelegramSessionStatus;
+exports.completeTelegramApplication = telegramApplication.completeTelegramApplication;
+
 // 4d. Sandbox applications (Super Admin maintenance)
 const sandboxApplication = require('./sandboxApplication');
 exports.listSandboxTenantCompanies = sandboxApplication.listSandboxTenantCompanies;

@@ -40,6 +40,10 @@ export default defineConfig({
   build: {
     target: 'esnext', // CRITICAL: Ensures production build supports modern JS features
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        telegramSign: path.resolve(__dirname, 'telegram-sign.html'),
+      },
       output: {
         manualChunks: {
           pdfjs: ['pdfjs-dist']
