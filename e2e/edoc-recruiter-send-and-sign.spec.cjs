@@ -16,22 +16,23 @@ test.describe('E-Doc recruiter send and public sign', () => {
     await expect(page.getByText('Document Signed!')).toBeVisible({ timeout: 15_000 });
   });
 
-  test('mobile viewport field overlays respect percent width not 44px minimum', async ({ page }) => {
+  test('mobile viewport routes to the guided card flow and submits', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/sign/e2e-company/e2e-request?token=e2e-token&e2eSign=mock');
     await expect(page.getByText('E2E Test Document')).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: /I Agree - Proceed to Sign/i }).click();
 
-    const checkboxOverlay = page.locator('[data-field-id="check1"]');
-    await expect(checkboxOverlay).toBeVisible({ timeout: 10_000 });
+    // On phones the public signing room renders the field-by-field guided flow
+    // instead of stacking percent-positioned overlays on top of the PDF.
+    await expect(page.getByText(/Step\s+1\s+of/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-field-id="check1"]')).toHaveCount(0);
 
-    const box = await checkboxOverlay.boundingBox();
-    const pageBox = await page.locator('.inline-block').first().boundingBox();
-    expect(box).toBeTruthy();
-    expect(pageBox).toBeTruthy();
-
-    const widthRatio = box.width / pageBox.width;
-    expect(widthRatio).toBeLessThan(0.08);
-    expect(widthRatio).toBeGreaterThan(0.02);
+    // E2E mock pre-fills every required field; tap through the cards until
+    // the bottom action bar swaps Next for the submit button on the last field.
+    for (let i = 0; i < 3; i += 1) {
+      await page.getByRole('button', { name: /^Next$/ }).click();
+    }
+    await page.getByRole('button', { name: /Finish & Submit/i }).click();
+    await expect(page.getByText('Document Signed!')).toBeVisible({ timeout: 15_000 });
   });
 });
