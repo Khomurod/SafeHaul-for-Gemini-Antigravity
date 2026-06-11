@@ -7,6 +7,9 @@ import { isFieldLocked } from '@features/signing/utils/prefillEngine';
 import { normalizeSignerField } from '@features/signing/utils/signerFieldStyle';
 import { SignerFieldOverlay } from '@features/signing/components/SignerFieldOverlay';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+import { useIsMobile } from '@shared/hooks';
+import { useToast } from '@shared/components/feedback';
+import MobileSigningRoom from './MobileSigningRoom';
 
 const E2E_MOCK_PDF_URL =
     'data:application/pdf;base64,' +
@@ -23,10 +26,45 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     import.meta.url,
 ).toString();
 
+// Draft storage — survives a tab refresh on flaky LTE so drivers don't lose typed values.
+// Signatures (PNG dataURLs, ~10-50 KB each) are included; multi-signature docs fit comfortably
+// under the typical 5 MB localStorage quota.
+const DRAFT_KEY_PREFIX = 'signing_draft_v1';
+const draftKey = (companyId, requestId) => `${DRAFT_KEY_PREFIX}:${companyId}:${requestId}`;
+
+function readDraft(companyId, requestId) {
+    try {
+        const raw = localStorage.getItem(draftKey(companyId, requestId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeDraft(companyId, requestId, values) {
+    try {
+        localStorage.setItem(draftKey(companyId, requestId), JSON.stringify(values));
+    } catch {
+        // Quota exceeded or storage disabled — silently skip, in-memory state still works.
+    }
+}
+
+function clearDraft(companyId, requestId) {
+    try {
+        localStorage.removeItem(draftKey(companyId, requestId));
+    } catch {
+        /* ignore */
+    }
+}
+
 export default function SigningRoom() {
     const { companyId, requestId } = useParams();
     const [searchParams] = useSearchParams();
     const accessToken = searchParams.get('token');
+    const isMobile = useIsMobile();
+    const { showError } = useToast();
 
     const [request, setRequest] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -139,6 +177,20 @@ export default function SigningRoom() {
 
                         initial[f.id] = '';
                     });
+
+                    // Merge any persisted draft over the freshly-initialized defaults.
+                    // Only restore values for fields that still exist; ignore locked fields
+                    // (their value must come from the server-side defaultValue, not the client).
+                    const draft = readDraft(companyId, requestId);
+                    if (draft) {
+                        data.fields.forEach((f) => {
+                            if (!f || isFieldLocked(f)) return;
+                            if (Object.prototype.hasOwnProperty.call(draft, f.id)) {
+                                initial[f.id] = draft[f.id];
+                            }
+                        });
+                    }
+
                     setFieldValues(initial);
                 }
             } catch (err) {
@@ -156,12 +208,21 @@ export default function SigningRoom() {
         if (activeSignatureField) setTimeout(initializeSignatureCanvas, 100);
     }, [activeSignatureField]);
 
-    const handleFieldChange = (id, value) => {
-        setFieldValues(prev => ({ ...prev, [id]: value }));
-    };
+    const handleFieldChange = useCallback((id, value) => {
+        setFieldValues(prev => {
+            const next = { ...prev, [id]: value };
+            if (companyId && requestId) {
+                writeDraft(companyId, requestId, next);
+            }
+            return next;
+        });
+    }, [companyId, requestId]);
 
     const handleSaveSignature = async () => {
-        if (isCanvasEmpty()) return alert("Please sign first.");
+        if (isCanvasEmpty()) {
+            showError("Please sign first.");
+            return;
+        }
         const sigData = getSignatureDataUrl();
         handleFieldChange(activeSignatureField, sigData);
         setActiveSignatureField(null);
@@ -208,7 +269,7 @@ export default function SigningRoom() {
 
     const handleFinishSigning = async () => {
         if (lockedRequiredMissing.length > 0) {
-            alert(
+            showError(
                 'This document has required locked fields with no value. Please ask the sender to correct and resend it.'
             );
             scrollToField(lockedRequiredMissing[0]);
@@ -220,7 +281,7 @@ export default function SigningRoom() {
         // SAFETY: Guard against null/undefined elements in the fields array from corrupted Firestore data.
         const missing = (request?.fields || []).filter(f => f && f.required && !isFieldLocked(f) && !fieldValues[f.id]);
         if (missing.length > 0) {
-            alert(`Please complete all required fields. (${missing.length} remaining)`);
+            showError(`Please complete all required fields. (${missing.length} remaining)`);
             // PROD-FIX: Auto-scroll to the first missing field so the signer can find it
             scrollToField(missing[0]);
             return;
@@ -229,6 +290,7 @@ export default function SigningRoom() {
         setSubmitting(true);
         try {
             if (isE2ETestMode && getE2EQueryParam('e2eSign', '') === 'mock') {
+                clearDraft(companyId, requestId);
                 setSuccess(true);
                 return;
             }
@@ -249,13 +311,14 @@ export default function SigningRoom() {
                 auditData
             });
 
+            clearDraft(companyId, requestId);
             setSuccess(true);
             // ESIGN-16 FIX: Confetti removed - document signing is a professional/legal act;
             // celebratory animations are inappropriate in regulated trucking compliance context.
 
         } catch (e) {
             console.error("Submission Error:", e);
-            alert("Error saving document: " + e.message);
+            showError("Error saving document: " + e.message);
         } finally {
             setSubmitting(false);
         }
@@ -371,6 +434,20 @@ export default function SigningRoom() {
             </div>
         </div>
     );
+
+    // Mobile-first guided flow — drivers fill the form field-by-field instead of
+    // pinch-zooming a PDF on a 360 px screen. Desktop keeps the overlay-on-PDF view.
+    if (isMobile && request) {
+        return (
+            <MobileSigningRoom
+                request={request}
+                fieldValues={fieldValues}
+                onFieldChange={handleFieldChange}
+                onSubmit={handleFinishSigning}
+                submitting={submitting}
+            />
+        );
+    }
 
     const handleInputFocus = (e) => {
         setTimeout(() => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { ToastProvider } from '@shared/components/feedback';
 
 const getEnvelopeFn = vi.fn();
 
@@ -36,15 +37,30 @@ vi.mock('@lib/runtime/e2eMode', () => ({
   getE2EQueryParam: vi.fn(() => ''),
 }));
 
+// Force the desktop branch for these tests — MobileSigningRoom has its own coverage.
+vi.mock('@shared/hooks', () => ({
+  useIsMobile: () => false,
+}));
+
+beforeEach(() => {
+  try {
+    localStorage.clear();
+  } catch {
+    /* jsdom-only — best effort */
+  }
+});
+
 import SigningRoom from './SigningRoom';
 
 function renderRoom(token = 'valid-token') {
   return render(
-    <MemoryRouter initialEntries={[`/sign/co1/req1?token=${token}`]}>
-      <Routes>
-        <Route path="/sign/:companyId/:requestId" element={<SigningRoom />} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={[`/sign/co1/req1?token=${token}`]}>
+        <Routes>
+          <Route path="/sign/:companyId/:requestId" element={<SigningRoom />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -153,11 +169,13 @@ describe('SigningRoom', () => {
 
   it('shows error when access token is missing', async () => {
     render(
-      <MemoryRouter initialEntries={['/sign/co1/req1']}>
-        <Routes>
-          <Route path="/sign/:companyId/:requestId" element={<SigningRoom />} />
-        </Routes>
-      </MemoryRouter>,
+      <ToastProvider>
+        <MemoryRouter initialEntries={['/sign/co1/req1']}>
+          <Routes>
+            <Route path="/sign/:companyId/:requestId" element={<SigningRoom />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
     );
     await waitFor(() => {
       expect(screen.getByText(/Invalid Link/i)).toBeInTheDocument();
