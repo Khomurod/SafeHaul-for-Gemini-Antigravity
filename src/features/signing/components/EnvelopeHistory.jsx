@@ -70,8 +70,14 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
     // NEW: Function to handle secure downloads
     const handleDownload = async (storagePath) => {
         try {
+            // Force-refresh the auth token so Storage rules see the latest
+            // companyTeamIds claim (tokens are cached up to 1 hour).
+            const { currentUser } = await import('firebase/auth').then(m => ({ currentUser: m.getAuth(storage.app).currentUser }));
+            if (currentUser) {
+                await currentUser.getIdToken(/* forceRefresh */ true);
+            }
+
             // If path is gs://, clean it; otherwise use as is
-            // Ideally, save the clean 'storagePath' in your doc, but we can handle gs:// too
             let path = storagePath;
             if (storagePath.startsWith('gs://')) {
                 // Extract relative path from gs://bucket/path
