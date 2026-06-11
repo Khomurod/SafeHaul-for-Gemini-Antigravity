@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, storage } from '@lib/firebase';
+import { db } from '@lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { FileText, CheckCircle, Clock, Download, ExternalLink, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Edit3 } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
@@ -67,30 +66,27 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
         return () => unsub();
     }, [companyId]);
 
-    // NEW: Function to handle secure downloads
+    // Secure download via Cloud Function signed URL (bypasses Storage rules)
     const handleDownload = async (storagePath) => {
         try {
-            // Force-refresh the auth token so Storage rules see the latest
-            // companyTeamIds claim (tokens are cached up to 1 hour).
-            const { currentUser } = await import('firebase/auth').then(m => ({ currentUser: m.getAuth(storage.app).currentUser }));
-            if (currentUser) {
-                await currentUser.getIdToken(/* forceRefresh */ true);
-            }
-
-            // If path is gs://, clean it; otherwise use as is
+            // Clean gs:// prefix if present
             let path = storagePath;
             if (storagePath.startsWith('gs://')) {
-                // Extract relative path from gs://bucket/path
-                const parts = storagePath.split(storage.app.options.storageBucket);
-                if (parts[1]) path = parts[1].substring(1); // Remove leading slash
+                const bucketEnd = storagePath.indexOf('/', 5);
+                if (bucketEnd !== -1) path = storagePath.substring(bucketEnd + 1);
             }
 
-            const fileRef = ref(storage, path);
-            const url = await getDownloadURL(fileRef);
-            window.open(url, '_blank');
+            const functions = getFunctions();
+            const getSignedDocumentUrl = httpsCallable(functions, 'getSignedDocumentUrl');
+            const result = await getSignedDocumentUrl({ storagePath: path });
+            window.open(result.data.url, '_blank');
         } catch (err) {
             console.error("Download Error:", err);
-            showError("Could not download file. It may have been deleted or moved.");
+            if (err?.code === 'functions/not-found') {
+                showError("File not found. It may have been deleted or moved.");
+            } else {
+                showError("Could not download file. Please try again.");
+            }
         }
     };
 

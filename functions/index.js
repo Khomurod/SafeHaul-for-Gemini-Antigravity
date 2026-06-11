@@ -196,6 +196,8 @@ exports.trackVerificationOpen = employmentVerification.trackVerificationOpen;
 exports.processVerificationReminders = employmentVerification.processVerificationReminders;
 // PEV-BRK-3 companion: On-demand signed URL generation for PEV result PDFs
 exports.getSignedPevUrl = require('./getSignedPevUrl').getSignedPevUrl;
+// Signed download URLs for secure_documents (e-signature envelopes)
+exports.getSignedDocumentUrl = require('./getSignedDocumentUrl').getSignedDocumentUrl;
 
 // 18. Feature Scheduler
 const featureScheduler = require('./featureScheduler');

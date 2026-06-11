@@ -392,7 +392,7 @@ exports.getVerificationRequest = onCall({ cors: true }, async (request) => {
 // ============================================================
 // 3. SUBMIT VERIFICATION RESPONSE (Public endpoint — token-based)
 // ============================================================
-exports.submitVerificationResponse = onCall({ cors: true }, async (request) => {
+exports.submitVerificationResponse = onCall({ cors: true, memory: '1GiB', timeoutSeconds: 120 }, async (request) => {
     const { token, response: formResponse } = request.data || {};
 
     if (!token || !formResponse) {
