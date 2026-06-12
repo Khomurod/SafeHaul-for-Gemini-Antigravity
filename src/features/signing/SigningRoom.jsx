@@ -2,20 +2,31 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
-import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
 import { isFieldLocked } from '@features/signing/utils/prefillEngine';
 import { normalizeSignerField } from '@features/signing/utils/signerFieldStyle';
+import {
+    sortFieldsForFlow,
+    isFieldComplete,
+    findFirstIncompleteField,
+    findNextField,
+} from '@features/signing/utils/signerFieldFlow';
+import { ensureFieldVisible } from '@features/signing/utils/fieldViewport';
+import { clampSignerZoom } from '@features/signing/utils/envelopePdfZoom';
 import { SignerFieldOverlay } from '@features/signing/components/SignerFieldOverlay';
+import { SignatureSheet } from '@features/signing/components/SignatureSheet';
+import { usePdfZoomGestures } from '@features/signing/hooks/usePdfZoomGestures';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { useIsMobile } from '@shared/hooks';
 import { useToast } from '@shared/components/feedback';
-import MobileSigningRoom from './MobileSigningRoom';
 
 const E2E_MOCK_PDF_URL =
     'data:application/pdf;base64,' +
     btoa('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n');
 import { Document, Page, pdfjs } from 'react-pdf';
-import { Loader2, CheckCircle, PenTool, X, ChevronDown, AlertTriangle, ShieldCheck, FileText, Ban, Fingerprint } from 'lucide-react';
+import {
+    Loader2, CheckCircle, PenTool, ChevronDown, AlertTriangle, ShieldCheck,
+    FileText, Ban, Fingerprint, ZoomIn, ZoomOut, RefreshCw,
+} from 'lucide-react';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -25,6 +36,20 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.mjs',
     import.meta.url,
 ).toString();
+
+// US Letter portrait ratio — used for page placeholders until the real page
+// geometry arrives from pdf.js, so layout never jumps more than once.
+const DEFAULT_PAGE_ASPECT = 1.294;
+
+// Cap the fit-width on large screens for readability; zoom can exceed it.
+const MAX_FIT_WIDTH = 800;
+const MIN_FIT_WIDTH = 260;
+
+// Focused fields smaller than this (CSS px) trigger an automatic zoom bump on
+// touch devices — at fit-width on a phone, a 5%-height field is ~18px and
+// unusable for typing. 2.5x cap keeps the bump from being disorienting.
+const MIN_COMFORTABLE_FIELD_PX = 22;
+const AUTO_ZOOM_MAX = 2.5;
 
 // Draft storage — survives a tab refresh on flaky LTE so drivers don't lose typed values.
 // Signatures (PNG dataURLs, ~10-50 KB each) are included; multi-signature docs fit comfortably
@@ -79,28 +104,75 @@ export default function SigningRoom() {
 
     // Data State
     const [fieldValues, setFieldValues] = useState({});
-    const [activeSignatureField, setActiveSignatureField] = useState(null);
+    // { fieldId, kind: 'signature' | 'initial' } while the drawing sheet is open
+    const [activeSignature, setActiveSignature] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [success, setSuccess] = useState(false);
+
+    // Document-rendering state for the unified (desktop + mobile) PDF view.
+    const [pageAspects, setPageAspects] = useState({});
+    // NET-SLOW FIX: Fields stay non-interactive per page until that page's
+    // canvas has actually painted, so signers on throttled connections can't
+    // fill boxes floating over a blank page.
+    const [renderedPages, setRenderedPages] = useState(() => new Set());
+    const [docError, setDocError] = useState(null);
+    const [docReloadKey, setDocReloadKey] = useState(0);
+    const [scrollerWidth, setScrollerWidth] = useState(() => window.innerWidth);
+
+    // The signer draws once; later signature/initial fields are stamped with
+    // the same ink in one tap (DocuSign-style "adopted signature").
+    const adoptedInkRef = useRef({ signature: null, initial: null });
 
     // PROD-FIX: Refs for each page container, used for scroll-to-field navigation
     const pageRefs = useRef({});
 
-    // MED-4 FIX: Track window width for responsive PDF rendering
-    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-    useEffect(() => {
-        const handleResize = () => setWindowWidth(window.innerWidth);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+    const {
+        zoom,
+        zoomIn,
+        zoomOut,
+        zoomToElement,
+        setScrollerEl,
+        scrollerEl,
+        contentRef,
+    } = usePdfZoomGestures();
 
-    // RACE FIX: Reset numPages when pdfUrl changes to prevent stale page rendering
+    const isE2EMockShell =
+        isE2ETestMode &&
+        getE2EQueryParam('e2eSign', '') === 'mock' &&
+        request?.pdfUrl === E2E_MOCK_PDF_URL;
+
+    // Track the scroller's box (not the window) so rotation and split-screen
+    // resizes re-fit the page instantly. ResizeObserver is guarded for older
+    // engines / test DOMs and falls back to window resize events.
     useEffect(() => {
+        if (!scrollerEl) return undefined;
+        const update = () => setScrollerWidth(scrollerEl.clientWidth);
+        update();
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(update);
+            ro.observe(scrollerEl);
+            return () => ro.disconnect();
+        }
+        window.addEventListener('resize', update);
+        window.addEventListener('orientationchange', update);
+        return () => {
+            window.removeEventListener('resize', update);
+            window.removeEventListener('orientationchange', update);
+        };
+    }, [scrollerEl]);
+
+    // RACE FIX: Reset per-document render state when pdfUrl changes to prevent
+    // stale pages/aspects bleeding into a different document.
+    useEffect(() => {
+        setPageAspects({});
         if (request?.pdfUrl === E2E_MOCK_PDF_URL) {
             setNumPages(1);
+            setRenderedPages(new Set([1])); // mock shell has no real canvas to wait for
         } else {
             setNumPages(null);
+            setRenderedPages(new Set());
         }
+        setDocError(null);
     }, [request?.pdfUrl]);
 
     // 1. Load Document via Public API
@@ -118,6 +190,10 @@ export default function SigningRoom() {
                     { id: 'date1', type: 'date', pageNumber: 1, required: true, xPosition: 10, yPosition: 20, width: 20, height: 5 },
                     { id: 'check1', type: 'checkbox', pageNumber: 1, required: true, xPosition: 10, yPosition: 30, width: 4, height: 3 },
                     { id: 'sig1', type: 'signature', pageNumber: 1, required: true, xPosition: 10, yPosition: 40, width: 20, height: 8 },
+                    // Edge-anchored optional fields so e2e can verify overlays
+                    // hug the page corners at any viewport / zoom.
+                    { id: 'corner_tl', type: 'text', pageNumber: 1, required: false, xPosition: 0, yPosition: 0, width: 12, height: 4 },
+                    { id: 'corner_br', type: 'checkbox', pageNumber: 1, required: false, xPosition: 93, yPosition: 95, width: 6, height: 4 },
                 ].map(normalizeSignerField);
                 setRequest({
                     title: 'E2E Test Document',
@@ -203,11 +279,6 @@ export default function SigningRoom() {
         load();
     }, [companyId, requestId, accessToken]);
 
-    // Init Canvas
-    useEffect(() => {
-        if (activeSignatureField) setTimeout(initializeSignatureCanvas, 100);
-    }, [activeSignatureField]);
-
     const handleFieldChange = useCallback((id, value) => {
         setFieldValues(prev => {
             const next = { ...prev, [id]: value };
@@ -218,32 +289,30 @@ export default function SigningRoom() {
         });
     }, [companyId, requestId]);
 
-    const handleSaveSignature = async () => {
-        if (isCanvasEmpty()) {
-            showError("Please sign first.");
-            return;
-        }
-        const sigData = getSignatureDataUrl();
-        handleFieldChange(activeSignatureField, sigData);
-        setActiveSignatureField(null);
-    };
+    // Reading-order list drives "next field" navigation, the progress chip,
+    // and the keyboard Enter key — independent of authoring order in Firestore.
+    const orderedFields = useMemo(
+        () => sortFieldsForFlow(request?.fields),
+        [request?.fields],
+    );
 
     // PROD-FIX: Compute remaining required fields for the progress indicator
-    const requiredFields = useMemo(() => {
-        if (!request?.fields) return [];
-        return request.fields.filter(f => f && f.required && !isFieldLocked(f));
-    }, [request?.fields]);
+    const requiredFields = useMemo(
+        () => orderedFields.filter(f => f.required && !isFieldLocked(f)),
+        [orderedFields],
+    );
 
-    const completedCount = useMemo(() => {
-        return requiredFields.filter(f => !!fieldValues[f.id]).length;
-    }, [requiredFields, fieldValues]);
+    const completedCount = useMemo(
+        () => requiredFields.filter(f => isFieldComplete(f, fieldValues[f.id])).length,
+        [requiredFields, fieldValues],
+    );
 
     const remainingCount = requiredFields.length - completedCount;
 
-    // PROD-FIX: Find the first incomplete required field for "Jump to" navigation
-    const firstIncompleteField = useMemo(() => {
-        return requiredFields.find(f => !fieldValues[f.id]) || null;
-    }, [requiredFields, fieldValues]);
+    const firstIncompleteField = useMemo(
+        () => findFirstIncompleteField(orderedFields, fieldValues),
+        [orderedFields, fieldValues],
+    );
 
     const lockedRequiredMissing = useMemo(() => {
         return (request?.fields || []).filter((field) => {
@@ -252,20 +321,80 @@ export default function SigningRoom() {
         });
     }, [request?.fields]);
 
-    // PROD-FIX: Scroll to the page containing a specific field
+    // PROD-FIX: Scroll directly to a field overlay (not just its page) and
+    // flash it so the signer can spot the box they still need to fill.
     const scrollToField = useCallback((field) => {
         if (!field) return;
-        const pageNum = Number(field.pageNumber) || 1;
-        const pageEl = pageRefs.current[pageNum];
-        if (pageEl) {
-            pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Briefly flash the field's border via CSS class
-            pageEl.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
-            setTimeout(() => {
-                pageEl.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
-            }, 2000);
+        const overlayEl = scrollerEl?.querySelector(`[data-field-id="${field.id}"]`);
+        const target = overlayEl || pageRefs.current[Number(field.pageNumber) || 1];
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        target.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+        setTimeout(() => {
+            target.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+        }, 2000);
+    }, [scrollerEl]);
+
+    /**
+     * KEYBOARD FIX: When the virtual keyboard opens it covers the lower ~45%
+     * of the screen without resizing the layout viewport. Nudge the document
+     * scroller so the focused field sits in the visible band, and — on touch
+     * screens — bump the zoom first when the field is too small to type into.
+     */
+    const handleFieldFocus = useCallback((e) => {
+        const el = e.target;
+        if (isMobile) {
+            const rect = el.getBoundingClientRect();
+            if (rect.height > 0 && rect.height < MIN_COMFORTABLE_FIELD_PX) {
+                const target = clampSignerZoom(
+                    Math.min(AUTO_ZOOM_MAX, zoom * (MIN_COMFORTABLE_FIELD_PX + 6) / rect.height),
+                );
+                if (target > zoom + 0.1) {
+                    zoomToElement(el, target);
+                }
+            }
         }
-    }, []);
+        ensureFieldVisible(el, scrollerEl);
+    }, [isMobile, zoom, zoomToElement, scrollerEl]);
+
+    /** Keyboard "Next"/Enter advances to the next fillable field in reading order. */
+    const handleEnterAdvance = useCallback((field) => (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const next = findNextField(orderedFields, field.id);
+        if (!next) {
+            e.target.blur();
+            return;
+        }
+        const nextInput = scrollerEl?.querySelector(`[data-signer-input="${next.id}"]`);
+        if (nextInput) {
+            nextInput.focus(); // focus handler scrolls it into the visible band
+        } else {
+            scrollToField(next); // signature/checkbox — show the signer where it is
+        }
+    }, [orderedFields, scrollerEl, scrollToField]);
+
+    /**
+     * Signature fields: first tap opens the drawing sheet; once ink has been
+     * adopted, tapping another signature/initial box stamps the same ink in
+     * one tap. Tapping an already-signed box re-opens the sheet to redraw.
+     */
+    const handleSignatureTap = useCallback((field) => {
+        const kind = field.type === 'initial' ? 'initial' : 'signature';
+        const saved = adoptedInkRef.current[kind];
+        if (saved && !fieldValues[field.id]) {
+            handleFieldChange(field.id, saved);
+            return;
+        }
+        setActiveSignature({ fieldId: field.id, kind });
+    }, [fieldValues, handleFieldChange]);
+
+    const handleAdoptInk = useCallback((dataUrl) => {
+        if (!activeSignature) return;
+        adoptedInkRef.current[activeSignature.kind] = dataUrl;
+        handleFieldChange(activeSignature.fieldId, dataUrl);
+        setActiveSignature(null);
+    }, [activeSignature, handleFieldChange]);
 
     const handleFinishSigning = async () => {
         if (lockedRequiredMissing.length > 0) {
@@ -435,32 +564,21 @@ export default function SigningRoom() {
         </div>
     );
 
-    // Mobile-first guided flow — drivers fill the form field-by-field instead of
-    // pinch-zooming a PDF on a 360 px screen. Desktop keeps the overlay-on-PDF view.
-    if (isMobile && request) {
-        return (
-            <MobileSigningRoom
-                request={request}
-                fieldValues={fieldValues}
-                onFieldChange={handleFieldChange}
-                onSubmit={handleFinishSigning}
-                submitting={submitting}
-            />
-        );
-    }
+    // ------------------------------------------------------------------
+    // Unified document-first view (desktop AND mobile).
+    //
+    // The PDF is always the source of truth on screen: fields are rendered as
+    // percent-positioned overlays INSIDE each page container, so they scale
+    // with the page at every viewport size and zoom level, and taps resolve
+    // through native DOM hit testing (no coordinate math to drift).
+    // ------------------------------------------------------------------
 
-    const handleInputFocus = (e) => {
-        setTimeout(() => {
-            e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
-    };
+    const gutterX = isMobile ? 16 : 40; // matches px-2 / md:px-5 on the gutter wrapper
+    const fitWidth = Math.max(MIN_FIT_WIDTH, Math.min(scrollerWidth - gutterX, MAX_FIT_WIDTH));
+    const renderedWidth = Math.round(fitWidth * zoom);
+    const zoomLabel = `${Math.round(zoom * 100)}%`;
 
     const fillClass = 'w-full h-full min-w-0 min-h-0 box-border';
-    const pdfRenderWidth = Math.min(windowWidth - 40, 800);
-    const isE2EMockShell =
-        isE2ETestMode &&
-        getE2EQueryParam('e2eSign', '') === 'mock' &&
-        request?.pdfUrl === E2E_MOCK_PDF_URL;
 
     const renderField = (field) => {
         if (request.status === 'signed') return null;
@@ -479,10 +597,13 @@ export default function SigningRoom() {
                 return (
                     <SignerFieldOverlay field={field}>
                         <input
-                            className={`${fillClass} border-2 border-blue-400 bg-blue-50/90 px-2 text-sm rounded`}
+                            className={`${fillClass} border-2 border-blue-400 bg-blue-50/90 px-2 text-base md:text-sm rounded`}
                             placeholder="Type here..."
                             value={fieldValues[field.id] || ''}
-                            onFocus={handleInputFocus}
+                            data-signer-input={field.id}
+                            enterKeyHint="next"
+                            onFocus={handleFieldFocus}
+                            onKeyDown={handleEnterAdvance(field)}
                             onChange={(e) => handleFieldChange(field.id, e.target.value)}
                         />
                     </SignerFieldOverlay>
@@ -502,9 +623,11 @@ export default function SigningRoom() {
                     <SignerFieldOverlay field={field}>
                         <input
                             type="date"
-                            className={`${fillClass} border-2 border-green-400 bg-green-50/90 px-2 text-sm rounded`}
+                            className={`${fillClass} border-2 border-green-400 bg-green-50/90 px-2 text-base md:text-sm rounded`}
                             value={fieldValues[field.id] || ''}
-                            onFocus={handleInputFocus}
+                            data-signer-input={field.id}
+                            onFocus={handleFieldFocus}
+                            onKeyDown={handleEnterAdvance(field)}
                             onChange={(e) => handleFieldChange(field.id, e.target.value)}
                         />
                     </SignerFieldOverlay>
@@ -523,44 +646,38 @@ export default function SigningRoom() {
                         </label>
                     </SignerFieldOverlay>
                 );
-            case 'signature': {
-                const isSigned = !!fieldValues[field.id];
-                return (
-                    <SignerFieldOverlay field={field}>
-                        <button
-                            type="button"
-                            onClick={() => setActiveSignatureField(field.id)}
-                            className={`${fillClass} cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-2 shadow-sm transition ${isSigned ? 'bg-yellow-100 border-yellow-600' : 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse'}`}
-                        >
-                            {isSigned ? (
-                                <span className="text-yellow-800 font-bold text-xs flex items-center gap-1">
-                                    <CheckCircle size={14} /> Signed
-                                </span>
-                            ) : (
-                                <span className="text-yellow-700 font-medium text-xs flex items-center gap-1">
-                                    <PenTool size={14} /> Sign
-                                </span>
-                            )}
-                        </button>
-                    </SignerFieldOverlay>
-                );
-            }
+            case 'signature':
             case 'initial': {
-                const isInitialed = !!fieldValues[field.id];
+                const isInitial = field.type === 'initial';
+                const value = fieldValues[field.id];
+                const palette = isInitial
+                    ? { signed: 'bg-orange-50/80 border-orange-500', empty: 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse', text: 'text-orange-700' }
+                    : { signed: 'bg-yellow-50/80 border-yellow-500', empty: 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse', text: 'text-yellow-700' };
                 return (
                     <SignerFieldOverlay field={field}>
                         <button
                             type="button"
-                            onClick={() => setActiveSignatureField(field.id)}
-                            className={`${fillClass} cursor-pointer border-2 border-dashed rounded flex items-center justify-center gap-1 shadow-sm transition ${isInitialed ? 'bg-orange-100 border-orange-600' : 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse'}`}
+                            onClick={() => handleSignatureTap(field)}
+                            aria-label={
+                                value
+                                    ? (isInitial ? 'Initials added — tap to redraw' : 'Signature added — tap to redraw')
+                                    : (isInitial ? 'Tap to add initials' : 'Tap to sign')
+                            }
+                            className={`${fillClass} cursor-pointer border-2 ${value ? 'border-solid p-0.5' : 'border-dashed'} rounded flex items-center justify-center gap-1 shadow-sm transition ${value ? palette.signed : palette.empty}`}
                         >
-                            {isInitialed ? (
-                                <span className="text-orange-800 font-bold text-[10px] flex items-center gap-1">
-                                    <CheckCircle size={12} /> Initialed
-                                </span>
+                            {value ? (
+                                // Show the actual ink on the document — the signer
+                                // sees exactly what the sealed PDF will contain.
+                                <img
+                                    src={value}
+                                    alt={isInitial ? 'Your initials' : 'Your signature'}
+                                    className="w-full h-full object-contain pointer-events-none"
+                                    draggable={false}
+                                />
                             ) : (
-                                <span className="text-orange-700 font-medium text-[10px] flex items-center gap-1">
-                                    <Fingerprint size={12} /> Initial
+                                <span className={`${palette.text} font-medium text-xs flex items-center gap-1`}>
+                                    {isInitial ? <Fingerprint size={12} /> : <PenTool size={14} />}
+                                    {isInitial ? 'Initial' : 'Sign'}
                                 </span>
                             )}
                         </button>
@@ -574,77 +691,197 @@ export default function SigningRoom() {
 
     const renderSigningPages = () =>
         numPages > 0 &&
-        Array.from(new Array(numPages), (el, index) => (
-            <div
-                key={index}
-                ref={(el) => { pageRefs.current[index + 1] = el; }}
-                className="relative shadow-xl border border-gray-300 bg-white inline-block transition-all duration-300"
-                style={
-                    isE2EMockShell
-                        ? { width: pdfRenderWidth, height: Math.round(pdfRenderWidth * 1.294) }
-                        : undefined
-                }
-            >
-                {!isE2EMockShell && (
-                    <Page
-                        pageNumber={index + 1}
-                        width={pdfRenderWidth}
-                        renderAnnotationLayer={false}
-                        renderTextLayer={false}
-                    />
-                )}
-                {(request?.fields || [])
-                    .filter((f) => Number(f?.pageNumber) === index + 1)
-                    .map((field) => (
-                        <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>
-                    ))}
-            </div>
-        ));
+        Array.from(new Array(numPages), (el, index) => {
+            const pageNumber = index + 1;
+            const aspect = pageAspects[pageNumber] || DEFAULT_PAGE_ASPECT;
+            const isPageReady = renderedPages.has(pageNumber);
+            return (
+                <div
+                    key={pageNumber}
+                    ref={(node) => { pageRefs.current[pageNumber] = node; }}
+                    data-signing-page={pageNumber}
+                    className="relative shadow-xl border border-gray-300 bg-white"
+                    // Explicit dimensions from the known aspect ratio keep layout
+                    // (and overlay anchors) stable while canvases re-render after
+                    // a zoom commit or rotation.
+                    style={{ width: renderedWidth, height: Math.round(renderedWidth * aspect) }}
+                >
+                    {!isE2EMockShell && (
+                        <Page
+                            pageNumber={pageNumber}
+                            width={renderedWidth}
+                            renderAnnotationLayer={false}
+                            renderTextLayer={false}
+                            loading={null}
+                            onLoadSuccess={(page) => {
+                                try {
+                                    const vp = page.getViewport({ scale: 1 });
+                                    const ratio = vp.height / vp.width;
+                                    setPageAspects((prev) =>
+                                        prev[pageNumber] === ratio ? prev : { ...prev, [pageNumber]: ratio },
+                                    );
+                                } catch {
+                                    /* keep the default Letter aspect */
+                                }
+                            }}
+                            onRenderSuccess={() => {
+                                setRenderedPages((prev) => {
+                                    if (prev.has(pageNumber)) return prev;
+                                    const next = new Set(prev);
+                                    next.add(pageNumber);
+                                    return next;
+                                });
+                            }}
+                        />
+                    )}
 
-    return (
-        <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
-            <header className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-30">
-                <div>
-                    <h1 className="font-bold text-gray-800">{request?.title || 'Document'}</h1>
-                    <p className="text-xs text-gray-500">Signing as: {request?.recipientName || 'Signer'}</p>
-                </div>
-
-                {/* PROD-FIX: Progress counter showing remaining fields */}
-                <div className="flex items-center gap-3">
-                    {requiredFields.length > 0 && (
-                        <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${remainingCount === 0 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                            {remainingCount === 0 ? (
-                                <><CheckCircle size={14} /> All fields complete</>
-                            ) : (
-                                <><AlertTriangle size={14} /> {remainingCount} field{remainingCount > 1 ? 's' : ''} remaining</>
-                            )}
+                    {!isPageReady && (
+                        <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm gap-2">
+                            <Loader2 className="animate-spin" size={18} /> Rendering page {pageNumber}…
                         </div>
                     )}
 
-                    <button onClick={handleFinishSigning} disabled={submitting} className="px-6 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 transition flex items-center gap-2 disabled:opacity-50">
+                    {/* NET-SLOW FIX: keep overlays inert until the page has painted */}
+                    <div className={isPageReady ? undefined : 'pointer-events-none opacity-60'}>
+                        {orderedFields
+                            .filter((f) => Number(f?.pageNumber) === pageNumber)
+                            .map((field) => (
+                                <React.Fragment key={field.id}>{renderField(field)}</React.Fragment>
+                            ))}
+                    </div>
+                </div>
+            );
+        });
+
+    const progressChip = requiredFields.length > 0 && (
+        <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 whitespace-nowrap ${remainingCount === 0 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+            {remainingCount === 0 ? (
+                <><CheckCircle size={14} /> <span className="hidden sm:inline">All fields complete</span><span className="sm:hidden">Done</span></>
+            ) : (
+                <><AlertTriangle size={14} /> {remainingCount} <span className="hidden sm:inline">field{remainingCount > 1 ? 's' : ''} remaining</span><span className="sm:hidden">left</span></>
+            )}
+        </div>
+    );
+
+    const zoomControls = (
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+                type="button"
+                onClick={zoomOut}
+                aria-label="Zoom out"
+                className="p-2 rounded-md text-gray-600 hover:bg-white hover:shadow-sm active:scale-95 transition"
+            >
+                <ZoomOut size={18} />
+            </button>
+            <span className="text-xs font-bold text-gray-600 w-11 text-center tabular-nums" aria-live="polite">
+                {zoomLabel}
+            </span>
+            <button
+                type="button"
+                onClick={zoomIn}
+                aria-label="Zoom in"
+                className="p-2 rounded-md text-gray-600 hover:bg-white hover:shadow-sm active:scale-95 transition"
+            >
+                <ZoomIn size={18} />
+            </button>
+        </div>
+    );
+
+    return (
+        // 100dvh tracks the *dynamic* mobile viewport (URL bar collapse); the
+        // h-screen class is the fallback where dvh is unsupported.
+        <div className="h-screen bg-gray-100 flex flex-col font-sans" style={{ height: '100dvh' }}>
+            <header
+                className="bg-white px-3 py-2 md:px-4 md:py-3 shadow-sm flex justify-between items-center gap-2 z-30 shrink-0"
+                style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+            >
+                <div className="min-w-0">
+                    <h1 className="font-bold text-gray-800 truncate text-sm md:text-base">{request?.title || 'Document'}</h1>
+                    <p className="text-xs text-gray-500 truncate">Signing as: {request?.recipientName || 'Signer'}</p>
+                </div>
+
+                <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                    {progressChip}
+                    <div className="hidden md:block">{zoomControls}</div>
+                    <button
+                        onClick={handleFinishSigning}
+                        disabled={submitting}
+                        className="hidden md:flex px-6 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 transition items-center gap-2 disabled:opacity-50"
+                    >
                         {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                         Finish & Submit
                     </button>
                 </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-8 flex justify-center bg-gray-200/50">
-                {isE2EMockShell ? (
-                    <div className="flex flex-col gap-6">{renderSigningPages()}</div>
+            {/* The document scroller: native one-finger pan on both axes; the
+                gesture hook intercepts two-finger pinch. relative is required
+                so the page stack's offsetLeft/Top resolve against it. */}
+            <div
+                ref={setScrollerEl}
+                data-signing-scroller
+                className="flex-1 overflow-auto overscroll-contain bg-gray-200/50 relative"
+                style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
+            >
+                {docError ? (
+                    <div className="h-full flex items-center justify-center p-6">
+                        <div className="bg-white rounded-xl border border-red-100 shadow p-6 text-center max-w-sm">
+                            <AlertTriangle size={32} className="text-red-500 mx-auto mb-3" />
+                            <h3 className="font-bold text-gray-900 mb-1">Couldn't load the document</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Check your connection and try again. Your entered values are saved on this device.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDocError(null);
+                                    setNumPages(null);
+                                    setRenderedPages(new Set());
+                                    setDocReloadKey((k) => k + 1);
+                                }}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-bold rounded-lg"
+                            >
+                                <RefreshCw size={16} /> Try again
+                            </button>
+                        </div>
+                    </div>
                 ) : (
-                    <Document
-                        file={request.pdfUrl}
-                        onLoadSuccess={({ numPages: pages }) => setNumPages(pages)}
-                        className="flex flex-col gap-6"
-                    >
-                        {renderSigningPages()}
-                    </Document>
+                    <div className="px-2 py-4 md:px-5 md:py-8 pb-28 md:pb-8">
+                        <div
+                            ref={contentRef}
+                            className="mx-auto flex flex-col items-center gap-4 md:gap-6"
+                            style={{ width: renderedWidth }}
+                        >
+                            {isE2EMockShell ? (
+                                renderSigningPages()
+                            ) : (
+                                <Document
+                                    key={docReloadKey}
+                                    file={request.pdfUrl}
+                                    onLoadSuccess={({ numPages: pages }) => setNumPages(pages)}
+                                    onLoadError={(err) => {
+                                        console.error('PDF load error:', err);
+                                        setDocError(err?.message || 'load_failed');
+                                    }}
+                                    loading={(
+                                        <div className="flex items-center gap-2 text-gray-500 py-16">
+                                            <Loader2 className="animate-spin" size={20} /> Loading document…
+                                        </div>
+                                    )}
+                                    className="flex flex-col items-center gap-4 md:gap-6"
+                                >
+                                    {renderSigningPages()}
+                                </Document>
+                            )}
+                        </div>
+                    </div>
                 )}
-            </main>
+            </div>
 
-            {/* PROD-FIX: Floating "Jump to next field" button - only shows when there are incomplete required fields */}
+            {/* Desktop keeps the floating jump pill; mobile gets a fixed action
+                bar with zoom + next/finish (thumb-reachable, above safe area). */}
             {firstIncompleteField && (
-                <div className="fixed bottom-6 right-6 z-40">
+                <div className="hidden md:block fixed bottom-6 right-6 z-40">
                     <button
                         onClick={() => scrollToField(firstIncompleteField)}
                         className="bg-blue-600 text-white px-4 py-3 rounded-xl shadow-2xl font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition-all animate-bounce"
@@ -655,17 +892,39 @@ export default function SigningRoom() {
                 </div>
             )}
 
-            {activeSignatureField && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-                        <div className="bg-gray-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-gray-700">Draw Your Signature</h3><button onClick={() => setActiveSignatureField(null)}><X size={20} /></button></div>
-                        <div className="p-6 text-center">
-                            <div className="border-2 border-dashed border-gray-300 rounded bg-white mb-4 relative"><canvas id="signature-canvas" className="w-full h-40 touch-none cursor-crosshair"></canvas><button id="clear-signature" onClick={clearCanvas} className="absolute bottom-2 right-2 text-xs text-red-500 bg-white border border-gray-200 px-2 py-1 rounded">Clear</button></div>
-                            <p className="text-xs text-gray-400">By clicking "Adopt", I agree this is my legal signature.</p>
-                        </div>
-                        <div className="p-4 bg-gray-50 flex justify-end gap-2 border-t"><button onClick={() => setActiveSignatureField(null)} className="px-4 py-2 text-gray-600 font-medium">Cancel</button><button onClick={handleSaveSignature} className="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow hover:bg-blue-700">Adopt Signature</button></div>
-                    </div>
-                </div>
+            <div
+                className="md:hidden bg-white border-t border-gray-200 px-3 py-2 flex items-center gap-2 z-40 shrink-0"
+                style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+            >
+                {zoomControls}
+                <div className="flex-1" />
+                {remainingCount > 0 && firstIncompleteField ? (
+                    <button
+                        type="button"
+                        onClick={() => scrollToField(firstIncompleteField)}
+                        className="px-4 py-3 bg-blue-600 text-white font-bold rounded-xl shadow text-sm flex items-center gap-1.5 active:scale-[0.98] transition"
+                    >
+                        <ChevronDown size={16} /> Next field
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={handleFinishSigning}
+                        disabled={submitting}
+                        className="px-5 py-3 bg-green-600 text-white font-bold rounded-xl shadow text-sm flex items-center gap-1.5 disabled:opacity-50 active:scale-[0.98] transition"
+                    >
+                        {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
+                        Finish & Submit
+                    </button>
+                )}
+            </div>
+
+            {activeSignature && (
+                <SignatureSheet
+                    kind={activeSignature.kind}
+                    onCancel={() => setActiveSignature(null)}
+                    onAdopt={handleAdoptInk}
+                />
             )}
         </div>
     );

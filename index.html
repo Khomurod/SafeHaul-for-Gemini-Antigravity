@@ -3,8 +3,11 @@
 
 <head>
     <meta charset="UTF-8">
-    <!-- viewport-fit=cover lets the layout draw under the iOS safe-area; signing room uses env(safe-area-inset-*) -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- viewport-fit=cover lets the layout draw under the iOS safe-area; signing room uses env(safe-area-inset-*).
+         maximum-scale=1 disables ONLY iOS Safari's automatic zoom-on-input-focus (which fights the signing
+         room's own document zoom); since iOS 10 user-initiated pinch ignores this cap, so accessibility
+         pinch-zoom of the page still works everywhere. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
     <meta name="theme-color" content="#004C68">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
