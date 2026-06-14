@@ -486,6 +486,15 @@ service cloud.firestore {
       allow write: if false; // Only updated by server-side functions
     }
 
+    // --- SERVER-ONLY LEDGERS (A6 — defense-in-depth + self-documentation) ---
+    // These collections are written exclusively by the Admin SDK (which bypasses rules).
+    // Firestore already default-denies any collection without a match, so clients cannot
+    // reach them today; these explicit terminal rules make that intent auditable and
+    // guard against a future accidental wildcard rule opening them up.
+    match /integrations_index/{id} { allow read, write: if false; } // server-only (Admin SDK)
+    match /rate_limits/{id}        { allow read, write: if false; } // server-only (rate limiter)
+    match /processing_status/{id}  { allow read, write: if false; } // server-only (idempotency)
+
     // --- SYSTEM SETTINGS ---
     match /system_settings/{settingId} {
       allow read: if isStaff() || isSuperAdmin();

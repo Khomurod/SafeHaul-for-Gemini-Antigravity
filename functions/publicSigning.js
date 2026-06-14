@@ -56,6 +56,16 @@ exports.getPublicEnvelope = onCall({ cors: true }, async (request) => {
         throw new HttpsError('invalid-argument', 'Missing parameters.');
     }
 
+    // A2 FIX: Rate-limit the unauthenticated read path (it mints a signed Storage URL per call).
+    // Layered, defense-in-depth limits keyed by the most specific stable identifiers, both
+    // 'closed' (a security path must not fail open). Limits are well above real signer behavior.
+    const okEnvelope = await checkRateLimit(`envelope_read_${requestId}`, 30, 300, 'closed');
+    if (!okEnvelope) throw new HttpsError('resource-exhausted', 'Too many requests. Please wait and retry.');
+
+    const ip = request.rawRequest?.ip || 'unknown';
+    const okIp = await checkRateLimit(`envelope_read_ip_${ip}`, 100, 300, 'closed');
+    if (!okIp) throw new HttpsError('resource-exhausted', 'Too many requests from this network.');
+
     try {
         const docRef = db.collection('companies').doc(companyId).collection('signing_requests').doc(requestId);
         const docSnap = await docRef.get();
