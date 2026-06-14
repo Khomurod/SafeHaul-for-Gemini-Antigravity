@@ -41,7 +41,7 @@
         "operator-linebreak": "off",
         "space-before-function-paren": "off",
         "no-unused-vars": [
-            "warn"
+            "error"
         ]
     },
     "overrides": [

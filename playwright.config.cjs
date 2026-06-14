@@ -29,6 +29,16 @@ module.exports = defineConfig({
             name: 'webkit',
             use: { ...devices['Desktop Safari'] },
         },
+        // C1: First-class mobile device-emulation projects (real UA, DPR, touch, viewport)
+        // so mobile-primary driver journeys are a permanent lane, not one-off setViewportSize.
+        {
+            name: 'mobile-safari',
+            use: { ...devices['iPhone 13'] },
+        },
+        {
+            name: 'mobile-chrome',
+            use: { ...devices['Pixel 7'] },
+        },
     ],
     /* Run your local dev server before starting the tests */
     webServer: {
