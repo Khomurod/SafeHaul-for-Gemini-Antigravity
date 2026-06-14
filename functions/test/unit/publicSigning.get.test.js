@@ -46,6 +46,7 @@ jest.mock('../../shared/rateLimiter', () => ({
 }));
 
 const { getPublicEnvelope } = require('../../publicSigning');
+const { checkRateLimit } = require('../../shared/rateLimiter');
 
 function baseEnvelope(overrides = {}) {
   return {
@@ -145,5 +146,30 @@ describe('getPublicEnvelope', () => {
         data: { companyId: 'co1', requestId: 'req1', accessToken: 'wrong-token' },
       }),
     ).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  // A2 FIX coverage: read path is now rate-limited (per-envelope + per-IP, fail-closed).
+  it('rejects when the per-envelope read rate limit is exceeded', async () => {
+    checkRateLimit.mockResolvedValueOnce(false); // first (per-requestId) check fails
+    await expect(getPublicEnvelope(validRequest)).rejects.toMatchObject({
+      code: 'resource-exhausted',
+    });
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the per-IP read rate limit is exceeded', async () => {
+    checkRateLimit
+      .mockResolvedValueOnce(true) // per-envelope passes
+      .mockResolvedValueOnce(false); // per-IP fails
+    await expect(getPublicEnvelope(validRequest)).rejects.toMatchObject({
+      code: 'resource-exhausted',
+    });
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it('keys the per-IP limit on the server-observed IP', async () => {
+    await getPublicEnvelope({ ...validRequest, rawRequest: { ip: '203.0.113.7' } });
+    expect(checkRateLimit).toHaveBeenCalledWith('envelope_read_req1', 30, 300, 'closed');
+    expect(checkRateLimit).toHaveBeenCalledWith('envelope_read_ip_203.0.113.7', 100, 300, 'closed');
   });
 });

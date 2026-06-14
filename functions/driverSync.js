@@ -6,6 +6,12 @@ const { admin, db, auth } = require("./firebaseAdmin");
 const { LIFECYCLE_STATUSES } = require("./shared/constants");
 const { isPlaceholderEmail } = require("./shared/placeholderDomains");
 
+// B1 FIX: processing_status is an idempotency ledger that only needs to outlive the longest
+// retry/replay window. Stamp an expiresAt so a Firestore native TTL policy on the
+// processing_status collection-group can age these docs out automatically (same managed
+// pattern rate_limits already uses). 30 days is far beyond any realistic retry window.
+const PROCESSING_STATUS_TTL_DAYS = 30;
+
 /**
  * SHARED HELPER: Finds or Creates the Auth User and syncs data to the Master Profile.
  * This is triggered by Lead (unbranded), Application (branded), and Company Lead submissions.
@@ -148,6 +154,10 @@ exports.onApplicationSubmitted = onDocumentCreated({
       // BUG-6 FIX: Single atomic write — no intermediate "started but not completed" state
       transaction.create(statusRef, {
         processedAt: admin.firestore.FieldValue.serverTimestamp(), // DEBT-4: For TTL cleanup
+        // B1 FIX: expiry field consumed by the Firestore native TTL policy.
+        expiresAt: admin.firestore.Timestamp.fromMillis(
+          Date.now() + PROCESSING_STATUS_TTL_DAYS * 24 * 60 * 60 * 1000
+        ),
         companyId,
         applicationId: appId,
       });

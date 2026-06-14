@@ -196,7 +196,31 @@ jobs:
         run: npm ci
 
       - name: Build Frontend
+        env:
+          VITE_RELEASE_SHA: ${{ github.sha }}
         run: npm run build
+
+      # E1: Upload the hidden sourcemaps to Sentry (keyed to the release SHA) so production
+      # stack traces de-minify. Guarded so it is a safe no-op when the Sentry secrets are not
+      # configured (e.g. forks) instead of breaking the deploy.
+      - name: Upload sourcemaps to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "Sentry secrets not set; skipping sourcemap upload."
+            exit 0
+          fi
+          npx --yes @sentry/cli releases new "$GITHUB_SHA"
+          npx --yes @sentry/cli releases files "$GITHUB_SHA" upload-sourcemaps ./dist --url-prefix '~/assets'
+          npx --yes @sentry/cli releases finalize "$GITHUB_SHA"
+
+      # E1: Never publish *.map files to Firebase Hosting (no public source disclosure).
+      # Runs unconditionally, after any upload and before deploy.
+      - name: Strip sourcemaps from deploy artifact
+        run: find dist -name '*.map' -delete
 
       - name: Deploy Firebase Hosting
         run: npx firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive

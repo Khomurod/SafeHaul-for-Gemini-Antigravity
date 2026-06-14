@@ -276,6 +276,32 @@ describeFirestore('firestore.rules security regressions', () => {
     );
   });
 
+  it('blocks all client access to server-only ledgers (A6)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'rate_limits', 'k1'), { count: 1 });
+      await setDoc(doc(adminDb, 'processing_status', 'app_co1_app1'), { processedAt: 1 });
+      await setDoc(doc(adminDb, 'integrations_index', 'idx1'), { companyId: 'co1' });
+    });
+
+    const superDb = testEnv.authenticatedContext('super-1', {
+      globalRole: 'super_admin',
+    }).firestore();
+    const adminDb = testEnv.authenticatedContext('admin-1', {
+      roles: { co1: 'company_admin' },
+    }).firestore();
+
+    for (const db of [superDb, adminDb]) {
+      await assertFails(getDoc(doc(db, 'rate_limits', 'k1')));
+      await assertFails(getDoc(doc(db, 'processing_status', 'app_co1_app1')));
+      await assertFails(getDoc(doc(db, 'integrations_index', 'idx1')));
+    }
+
+    await assertFails(setDoc(doc(adminDb, 'rate_limits', 'k2'), { count: 9 }));
+    await assertFails(setDoc(doc(adminDb, 'processing_status', 'x'), { processedAt: 2 }));
+    await assertFails(setDoc(doc(adminDb, 'integrations_index', 'y'), { companyId: 'co1' }));
+  });
+
   it('blocks lead update that changes companyId', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();

@@ -119,6 +119,14 @@ exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) 
     // Without this, any authenticated user can send bulk SMS to leads belonging to any company.
     await assertCompanyAdminStrict(request.auth.uid, companyId);
 
+    // A3 FIX: Frequency throttle. The per-call size cap (50) and RBAC above do not stop an
+    // admin (or a stolen admin session) from firing back-to-back batches. 'closed' so a
+    // rate-limiter system error denies rather than allows on this security/cost-sensitive path.
+    const reactivationOk = await checkRateLimit(`reactivation_batch_${companyId}_${request.auth.uid}`, 5, 300, 'closed');
+    if (!reactivationOk) {
+        throw new HttpsError('resource-exhausted', 'Too many campaigns. Please wait a few minutes.');
+    }
+
     let successCount = 0;
     let failCount = 0;
     const errors = [];

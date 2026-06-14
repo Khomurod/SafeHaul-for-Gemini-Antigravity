@@ -20,6 +20,9 @@ const sentryTraceSampleRate = import.meta.env.PROD
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
+  // E1 FIX: Tag events with the build SHA so they resolve against the sourcemaps CI uploads
+  // for that release. Undefined in local/PR builds (no release tag) — harmless.
+  release: import.meta.env.VITE_RELEASE_SHA || undefined,
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.replayIntegration(),
