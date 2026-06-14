@@ -1,9 +1,15 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const Sentry = require("@sentry/node");
+const { scrub } = require("./scrub");
 
 // Initialize Sentry only if DSN is present (prevents crash in dev)
 if (process.env.SENTRY_DSN) {
-    Sentry.init({ dsn: process.env.SENTRY_DSN });
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        // A5: deep-scrub PII from every event/breadcrumb before it leaves the process.
+        beforeSend: (event) => scrub(event),
+        beforeBreadcrumb: (breadcrumb) => scrub(breadcrumb),
+    });
 }
 
 /**
