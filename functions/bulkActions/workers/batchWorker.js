@@ -9,6 +9,11 @@ const { normalizePhone } = require("../../utils/phoneUtils");
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
+// B4: hard per-session lifetime ceiling — a runaway-cost circuit breaker so a single
+// bulk_session can never process more than this many items total, regardless of how large
+// (or corrupted) its targetIds list is. Set far above any legitimate campaign; tunable via env.
+const MAX_SESSION_SENDS = Number(process.env.BULK_SESSION_MAX_SENDS) || 100000;
+
 exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, async (req, res) => {
     // --- SECURITY GATE: Shared Secret Verification ---
     // Reject requests that don't carry the internal auth header.
@@ -79,6 +84,10 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
                 const current = data.progress?.currentPointer || 0;
                 const total = data.targetIds?.length || 0;
 
+                // B4: circuit breaker — halt before claiming another batch if this session
+                // has already processed an unreasonable number of items.
+                if (current >= MAX_SESSION_SENDS) return { ceilingExceeded: true };
+
                 if (current >= total) return { finished: true };
 
                 const BATCH_SIZE = 50;
@@ -93,6 +102,16 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
             });
 
             if (!claimResult) return res.status(200).send("Session not active (check logs).");
+            if (claimResult.ceilingExceeded) {
+                // B4: stop the recursion entirely and surface why; do NOT enqueue another worker.
+                console.error(`[processBulkBatch] Session ${sessionId} hit the ${MAX_SESSION_SENDS}-send ceiling. Halting.`);
+                await sessionRef.update({
+                    status: 'failed',
+                    error: `Session exceeded the ${MAX_SESSION_SENDS}-send safety ceiling and was halted.`,
+                    failedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                return res.status(200).send("Session exceeded max-send ceiling. Halted.");
+            }
             if (claimResult.finished) {
                 // Mark completed if not already?
                 // Actually, if we are here, current >= total.
