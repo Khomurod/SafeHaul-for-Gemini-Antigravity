@@ -11,16 +11,12 @@ export const isValidPhone = (phone) => {
 };
 
 /**
- * Normalize a US phone number to 10 digits by stripping the leading '1' country code.
+ * D5: Single canonical phone normalizer lives in helpers.js (more robust: coerces to
+ * string, trims, never drops digits). Re-exported here so existing
+ * `import { normalizePhone } from '.../validation'` call sites keep working without a
+ * second, drift-prone implementation.
  */
-export const normalizePhone = (phone) => {
-    if (!phone) return '';
-    const cleaned = phone.replace(/\D/g, '');
-    if (cleaned.length === 11 && cleaned.startsWith('1')) {
-        return cleaned.substring(1);
-    }
-    return cleaned;
-};
+export { normalizePhone } from './helpers';
 
 export const isValidSSN = (ssn) => {
     // Basic format check: AAA-GG-SSSS or AAAGGSSSS

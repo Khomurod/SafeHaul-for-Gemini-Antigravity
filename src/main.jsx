@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 import * as Sentry from "@sentry/react";
+import { scrub } from "./shared/utils/scrub";
 
 // --- CRITICAL PDF WORKER FIX ---
 import { pdfjs } from 'react-pdf';
@@ -32,6 +33,9 @@ Sentry.init({
   // Session Replay
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1.0,
+  // A5: deep-scrub PII from every event/breadcrumb before it leaves the browser.
+  beforeSend: (event) => scrub(event),
+  beforeBreadcrumb: (breadcrumb) => scrub(breadcrumb),
 });
 // -------------------------------
 

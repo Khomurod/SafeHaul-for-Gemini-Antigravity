@@ -158,23 +158,10 @@ const migrationLogic = onCall({
 
     if (request.data?.mode === 'ping') return { success: true, message: "Pong!" };
     try {
-        // const { db } = getServices(); // REMOVED
         const companiesRef = db.collection('companies');
-        // Use a cursor or limit in production for safer migration, 
-        // but for now we keep the structure while handling errors gracefully.
-        const snapshot = await companiesRef.get();
-        let batch = db.batch();
-        let count = 0;
-        let totalUpdated = 0;
-
         // No-op migration: the legacy dailyQuota backfill targeted the now-deleted
         // Lead Distribution Engine. Kept as a callable for cloud-function ping diagnostics.
-        for (const doc of snapshot.docs) {
-            // touch nothing; the migration is intentionally empty after engine removal
-            // eslint-disable-next-line no-unused-vars
-            const _data = doc.data();
-        }
-        if (count > 0) await batch.commit();
+        const snapshot = await companiesRef.get();
         return { success: true, message: `Migration ran (no-op). Scanned ${snapshot.size} companies.` };
     } catch (error) {
         return { success: false, error: error.message };
