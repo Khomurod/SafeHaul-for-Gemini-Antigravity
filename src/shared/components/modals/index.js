@@ -1,3 +1,4 @@
+export { Modal } from './Modal';
 export { CompanyChooserModal } from './CompanyChooserModal';
 export { FeatureLockedModal } from './FeatureLockedModal';
 export { CallOutcomeModal } from './CallOutcomeModal';

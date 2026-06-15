@@ -5,6 +5,7 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { admin, db } = require("./firebaseAdmin");
 const { deleteCompanySchema, sendEmailSchema } = require("./shared/schema");
 const { assertCompanyAdminStrict } = require('./shared/companyAccess');
+const { buildPublicProfileDto } = require('./shared/publicProfileDto');
 
 // --- IN-MEMORY CACHE FOR SLUG RESOLUTION (REMOVED - HANDLED CLIENT SIDE) ---
 
@@ -196,7 +197,7 @@ exports.backfillPublicProfiles = onCall({
 
         for (const doc of snapshot.docs) {
             const data = doc.data();
-            const publicData = buildPublicProfileDto(data);
+            const publicData = buildPublicProfileDto(data, admin.firestore.FieldValue.serverTimestamp());
 
             batch.set(db.collection('public_profiles').doc(doc.id), publicData, { merge: true });
             count++;
@@ -219,31 +220,6 @@ exports.backfillPublicProfiles = onCall({
 });
 
 
-/** Whitelisted applicationConfig keys exposed on public apply pages. */
-const PUBLIC_APPLICATION_CONFIG_KEYS = [
-    'cdlUpload', 'medCardUpload', 'showEmergencyContacts',
-    'ssn', 'dob', 'previousAddresses', 'employers', 'violations', 'accidents',
-];
-
-function buildPublicProfileDto(companyData) {
-    const rawConfig = companyData.applicationConfig || {};
-    const applicationConfig = {};
-    for (const key of PUBLIC_APPLICATION_CONFIG_KEYS) {
-        if (rawConfig[key] !== undefined) {
-            applicationConfig[key] = rawConfig[key];
-        }
-    }
-    return {
-        companyName: companyData.companyName || 'Untitled Company',
-        appSlug: companyData.appSlug || null,
-        logoUrl: companyData.companyLogoUrl || null,
-        brandColor: companyData.brandColor || '#1e40af',
-        applicationConfig,
-        customQuestions: Array.isArray(companyData.customQuestions) ? companyData.customQuestions : [],
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-}
-
 /**
  * SYNC PUBLIC PROFILE
  * Trigger: onWrite /companies/{companyId}
@@ -261,7 +237,7 @@ exports.syncPublicProfile = onDocumentWritten("companies/{companyId}", async (ev
         return;
     }
 
-    const publicData = buildPublicProfileDto(newData);
+    const publicData = buildPublicProfileDto(newData, admin.firestore.FieldValue.serverTimestamp());
 
     await db.collection("public_profiles").doc(companyId).set(publicData, { merge: true });
     console.log(`[syncPublicProfile] Synced public profile for ${companyId}`);

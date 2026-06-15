@@ -1,14 +1,18 @@
 // src/shared/components/modals/RoleSelectionModal.jsx
 import React from 'react';
 import { Truck, Building2, ArrowRight } from 'lucide-react';
+import { Modal } from './Modal';
 
 export function RoleSelectionModal({ onSelect }) {
+  // Forced choice: no onClose, so Escape / backdrop don't dismiss it.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        
+    <Modal
+      labelledBy="role-selection-title"
+      overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+    >
         <div className="p-8 text-center border-b border-slate-100">
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">
+          <h2 id="role-selection-title" className="text-2xl font-bold text-slate-900 mb-2">
             Welcome Back
           </h2>
           <p className="text-slate-500">
@@ -59,8 +63,6 @@ export function RoleSelectionModal({ onSelect }) {
             You can switch between portals anytime from the menu
           </p>
         </div>
-
-      </div>
-    </div>
+    </Modal>
   );
 }
