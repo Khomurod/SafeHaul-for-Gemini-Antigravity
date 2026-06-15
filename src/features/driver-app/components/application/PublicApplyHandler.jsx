@@ -5,8 +5,9 @@ import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/
 import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes } from 'firebase/storage';
 import { db, functions, storage } from '@lib/firebase';
-import { Loader2, AlertCircle, Building2, Wand2, PencilLine, FileSignature, ArrowRight } from 'lucide-react';
+import { Loader2, AlertCircle, Building2, FileSignature, ArrowRight } from 'lucide-react';
 import Stepper from '@shared/components/layout/Stepper';
+import { IntakeChooser } from './IntakeChooser';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
 import { isValidEmail, isValidPhone } from '@shared/utils/validation';
@@ -802,58 +803,13 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
 
   if (!intakeMode) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 max-w-2xl w-full">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{company.companyName}</h1>
-            <p className="text-gray-600">
-              How would you like to start your driver application?
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button
-              type="button"
-              onClick={handleChooseAutoFill}
-              className="rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 p-6 text-left transition"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <Wand2 className="text-blue-600" size={20} />
-                <h3 className="text-lg font-semibold text-gray-900">Upload CDL for Auto-Fill (Fastest)</h3>
-              </div>
-              <p className="text-sm text-gray-600">
-                Upload one CDL photo and we pre-fill your name, date of birth, address, CDL number, and expiration date.
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleChooseManual}
-              className="rounded-xl border-2 border-gray-200 bg-white hover:bg-gray-50 p-6 text-left transition"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <PencilLine className="text-gray-700" size={20} />
-                <h3 className="text-lg font-semibold text-gray-900">Fill Out Manually</h3>
-              </div>
-              <p className="text-sm text-gray-600">
-                Start at Step 1 and enter everything by hand, just like the current flow.
-              </p>
-            </button>
-          </div>
-
-          <div className="mt-6 text-center text-xs text-gray-500">
-            You can review and edit everything before submitting.
-          </div>
-
-          <input
-            ref={cdlAutoFillInputRef}
-            type="file"
-            accept="image/jpeg,image/jpg,image/png,image/webp"
-            className="hidden"
-            onChange={handleCdlAutoFillFileChange}
-          />
-        </div>
-      </div>
+      <IntakeChooser
+        companyName={company.companyName}
+        onChooseAutoFill={handleChooseAutoFill}
+        onChooseManual={handleChooseManual}
+        cdlInputRef={cdlAutoFillInputRef}
+        onCdlFileChange={handleCdlAutoFillFileChange}
+      />
     );
   }
 

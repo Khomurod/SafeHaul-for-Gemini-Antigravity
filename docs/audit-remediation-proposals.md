@@ -456,7 +456,19 @@ the C2 work.
 
 **Effort:** ~1 day total. **Risk:** low.
 
-### D1 · Decompose god-components `[Verified]`
+### D1 · Decompose god-components `[In progress — incremental]`
+
+> **Status.** First incremental extraction shipped: the intake-chooser screen is
+> now a presentational `IntakeChooser` child of `PublicApplyHandler` (behaviour
+> identical, guarded by the existing `PublicApplyHandler` intake unit test).
+> **Remaining extractions are deferred until they can be run against the guarding
+> e2e suites** (`guest-application-intake`, `edoc-recruiter-send-flow`) — these
+> touch the live guest DOT-application and signing flows, where the working rule
+> is to run those e2e before *and* after each extraction. Continue one
+> extraction per PR: `PublicApplyHandler` → `usePublicApplicationForm()` (state/
+> validation/submit/queue) + thin step renderers; `EnvelopeCreator` →
+> `useEnvelopeBuilder()` + `<EnvelopeCanvas>` + `<FieldPalette>` +
+> `<PrefillConfigPanel>`; then `PEVRequestModal` and `VerificationPortal`.
 
 **Problem.** `EnvelopeCreator.jsx` (~1100), `PublicApplyHandler.jsx` (~970),
 `PEVRequestModal` (~880), `VerificationPortal` (~800). Hard to test, review,
