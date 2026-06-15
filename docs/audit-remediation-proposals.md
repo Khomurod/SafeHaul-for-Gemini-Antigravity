@@ -558,14 +558,27 @@ curated `public_profiles/{id}` projection from a trigger) so the public surface
 can never accidentally include PII added to the source doc later. **Effort:**
 ~0.5 day. **Risk:** low.
 
-### A7 · App Check on public callables `[Reported / accepted]`
-Currently relying on rate-limiting + tokens (a reasonable trade-off — App Check
-can add friction/edge cases for public links). **Optional hardening:** enable
-**Firebase App Check** (reCAPTCHA Enterprise/v3) on `submitGuestApplication`
-and the signing callables to cut bot abuse, in **monitor/unenforced mode first**
-to measure false-positive rate before enforcing. **Effort:** ~1 day + bake time.
-**Risk:** medium (can block legitimate users if enforced too early — hence
-monitor-first).
+### A7 · App Check on public callables `[Resolved — Accepted (no App Check by design)]`
+
+**Decision: accepted as-is; App Check will NOT be added.** Per
+[`docs/security-posture.md`](./security-posture.md), App Check is an *intentional
+product omission*. The public surface is mobile-primary (drivers on varied/again
+carrier networks), and App Check (reCAPTCHA Enterprise/v3 attestation) carries a
+real risk of false-positives that silently block legitimate applicants and
+signers — a worse failure mode than the abuse it prevents. The surface is already
+covered by sound defense-in-depth: per-IP/per-resource **rate limits**
+(`shared/rateLimiter.js`), **constant-time token gating** on signing links
+(`publicSigning.js` `safeCompare`), the A3 **frequency throttles**, and A5
+**PII scrubbing**. Adding a high-risk, user-blocking control against a deliberate,
+documented decision purely to "tick a box" is not warranted.
+
+**Reversible future option (a product decision, not a defect):** if bot abuse is
+ever observed, enable **reCAPTCHA Enterprise in monitor/unenforced mode** on
+`submitGuestApplication` and the signing callables first, measure the
+false-positive rate over a bake period, and only then consider enforcement.
+Tracked as a product call, not an outstanding security gap. See
+`docs/security-posture.md` for the standing rationale.
+
 
 ---
 
