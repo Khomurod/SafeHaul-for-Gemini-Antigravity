@@ -102,6 +102,25 @@ jobs:
       - name: Frontend E2E Tests (Chromium)
         run: npm run test:e2e -- --project=chromium
 
+  typecheck:
+    runs-on: ubuntu-latest
+    # D3: non-blocking type-safety baseline (checkJs on scoped high-leverage
+    # modules via jsconfig.json). Surfaces latent type issues to ratchet over
+    # time; intentionally NOT listed in the deploy jobs' `needs:` so it never
+    # blocks a release.
+    steps:
+      - uses: actions/checkout@v5
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20.x
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Typecheck (non-blocking baseline)
+        run: npm run typecheck
+        continue-on-error: true
+
   callable-contract:
     runs-on: ubuntu-latest
     steps:
