@@ -11,7 +11,10 @@ module.exports = {
     rules: {
         // Keep meaningful checks
         "no-restricted-globals": ["error", "name", "length"],
-        "no-unused-vars": "warn",
+        // E4: dead imports/vars are an error (was "warn"). The superseded
+        // .eslintrc.json carried this intent but ESLint never read it
+        // (.eslintrc.js wins the cascade), so it never enforced — now it does.
+        "no-unused-vars": "error",
         "no-empty": "warn",
         "prefer-const": "warn",
         "no-undef": "error",
