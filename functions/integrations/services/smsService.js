@@ -1,8 +1,8 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
 const SMSAdapterFactory = require('../factory');
 const { assertCompanyAdminStrict } = require('../../shared/companyAccess');
 const { checkRateLimit } = require('../../shared/rateLimiter');
+const { createAndStartBulkSession } = require('../../bulkActions/helpers/sessionFactory');
 
 // Shared options for functions that need encryption capabilities
 const encryptedCallOptions = {
@@ -127,85 +127,32 @@ exports.executeReactivationBatch = onCall(encryptedCallOptions, async (request) 
         throw new HttpsError('resource-exhausted', 'Too many campaigns. Please wait a few minutes.');
     }
 
-    let successCount = 0;
-    let failCount = 0;
-    const errors = [];
-
+    // A3 (durability/cost half): instead of holding this instance open with an
+    // in-process setTimeout(1000)-per-lead loop (up to ~50s of paid wall-clock,
+    // non-resumable on crash, fragile against the function timeout), enqueue a
+    // bulk session and let the existing recursive Cloud Tasks worker fan it out
+    // — gaining pacing, idempotency, blacklist checks, progress tracking, the
+    // per-session ceiling, and pause/resume for free. The reactivation leads are
+    // applications under companies/{companyId}/applications/{leadId}.
     try {
-        // Batch execution now uses recruiter-specific routing
-        const adapter = await SMSAdapterFactory.getAdapterForUser(companyId, request.auth.uid);
-        const db = admin.firestore();
-
-        // Loop with Delay
-        for (const leadId of leadIds) {
-            try {
-                // 1. Rate Limit Sleep (1000ms)
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                // 2. Fetch Lead Phone
-                // Data might be in leads/{id} or companies/{id}/applications/{id} depending on structure
-                // Assuming company leads structure for Company Admin campaigns
-                const leadRef = db.collection('companies').doc(companyId).collection('applications').doc(leadId); // or generic leads
-                const leadSnap = await leadRef.get();
-
-                if (!leadSnap.exists) {
-                    errors.push(`Lead not found: ${leadId}`);
-                    failCount++;
-                    continue;
-                }
-
-                const leadData = leadSnap.data();
-                const phone = leadData.phone || leadData.phoneNumber;
-
-                if (!phone) {
-                    errors.push(`Lead ${leadId} has no phone number`);
-                    failCount++;
-                    continue;
-                }
-
-                // 3. Send SMS
-                // Inject variables if needed (simple replacement)
-                const finalMsg = messageText.replace('[Driver Name]', leadData.firstName || 'Driver');
-
-                await adapter.sendSMS(phone, finalMsg, request.auth.uid);
-
-                // 4. Update Status
-                await leadRef.update({
-                    lastContactedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    status: 'Reactivation Attempted',
-                    [`campaignLogs.${Date.now()}`]: {
-                        action: 'sms_sent',
-                        message: finalMsg,
-                        sentFrom: adapter.config.assignments?.[request.auth.uid] || adapter.config.defaultPhoneNumber || 'default',
-                        sentBy: request.auth.uid,
-                        status: 'success'
-                    }
-                });
-
-                successCount++;
-
-            } catch (innerError) {
-                console.error(`Failed for lead ${leadId}:`, innerError);
-                failCount++;
-                errors.push(`Lead ${leadId}: ${innerError.message}`);
-
-                // Try to log failure to doc
-                try {
-                    await db.collection('companies').doc(companyId).collection('applications').doc(leadId).update({
-                        [`campaignLogs.${Date.now()}`]: { action: 'sms_failed', error: innerError.message }
-                    });
-                } catch (e) { /* ignore */ }
-            }
-        }
+        const { sessionId, targetCount } = await createAndStartBulkSession({
+            companyId,
+            createdBy: request.auth.uid,
+            targetIds: leadIds,
+            leadSourceType: 'applications',
+            config: { method: 'sms', message: messageText },
+            sessionName: `Reactivation ${new Date().toLocaleDateString()}`,
+        });
 
         return {
             success: true,
-            stats: { total: leadIds.length, sent: successCount, failed: failCount },
-            errors: errors.slice(0, 5) // Return first 5 errors to avoid huge payload
+            sessionId,
+            queued: targetCount,
+            // Sends now happen asynchronously in the worker; poll the session for progress.
+            message: `Reactivation campaign queued for ${targetCount} lead(s).`,
         };
-
     } catch (error) {
-        console.error("Batch Execution Error:", error);
+        console.error('Reactivation enqueue error:', error);
         throw new HttpsError('internal', error.message);
     }
 });
