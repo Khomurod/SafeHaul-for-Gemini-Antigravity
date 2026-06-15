@@ -1,5 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import InputField from '@shared/components/form/InputField';
+import { useFieldValidation } from '@shared/hooks/useFieldValidation';
+import { required, email as emailRule, phone as phoneRule } from '@shared/utils/fieldValidators';
 import DateTripletField from '@shared/components/form/DateTripletField';
 import MonthYearField from '@shared/components/form/MonthYearField';
 import { ageFromIsoDate } from '@shared/utils/dateFormHelpers';
@@ -9,6 +11,17 @@ import { useUtils } from '@shared/hooks/useUtils';
 import { useData } from '@/context/DataContext';
 import { AlertCircle } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
+
+// Map validator field names to their input element ids (for focus-on-error).
+const FIELD_ID_BY_NAME = {
+    firstName: 'first-name',
+    lastName: 'last-name',
+    phone: 'phone',
+    email: 'email',
+    street: 'street',
+    city: 'city',
+    zip: 'zip',
+};
 
 const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }) => {
     const ty = new Date().getFullYear();
@@ -43,6 +56,31 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
     }, [formData, updateFormData]);
 
     const yesNoOptions = [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }];
+
+    // C5: per-field on-blur validation. Rules reuse the canonical validation.js
+    // predicates via the shared factories, so inline and submit-time validation
+    // stay in lockstep.
+    const fieldValidators = useMemo(() => ({
+        firstName: required('First Name'),
+        lastName: required('Last Name'),
+        phone: phoneRule('Phone'),
+        email: emailRule('Email'),
+        street: required('Address 1'),
+        city: required('City'),
+        zip: required('ZIP Code'),
+    }), []);
+    const { errors, handleBlur, revalidate, validateAll } = useFieldValidation(fieldValidators);
+
+    // Update value, then re-validate the field if it has already been touched
+    // (revalidate-on-change-once-touched). Untouched fields stay quiet.
+    const handleChange = useCallback((name, value) => {
+        updateFormData(name, value);
+        revalidate(name, value, { ...formData, [name]: value });
+    }, [updateFormData, revalidate, formData]);
+
+    const handleFieldBlur = useCallback((name, value) => {
+        handleBlur(name, value, formData);
+    }, [handleBlur, formData]);
 
     const handleOtherNameToggle = (e) => {
         updateFormData('known-by-other-name', e.target.checked ? 'yes' : 'no');
@@ -112,6 +150,13 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
     };
 
     const handleContinue = () => {
+        // C5: surface per-field inline errors for the basic fields, then fall
+        // through to the authoritative validateStep() gate (which also enforces
+        // DOB/age rules and shows the summary toast).
+        const { firstErrorField } = validateAll(formData);
+        if (firstErrorField) {
+            document.getElementById(FIELD_ID_BY_NAME[firstErrorField] || firstErrorField)?.focus?.();
+        }
         if (!validateStep()) return;
 
         const form = document.getElementById('driver-form');
@@ -145,9 +190,9 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
                 <legend className="text-lg font-semibold text-gray-800 px-2">Step 1 of 9: Personal Information</legend>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <InputField label="First Name" id="first-name" name="firstName" required={true} value={formData.firstName} onChange={updateFormData} placeholder="John" />
+                    <InputField label="First Name" id="first-name" name="firstName" required={true} value={formData.firstName} onChange={handleChange} onBlur={handleFieldBlur} error={errors.firstName} placeholder="John" />
                     <InputField label="Middle Name" id="middle-name" name="middleName" value={formData.middleName} onChange={updateFormData} placeholder="M" />
-                    <InputField label="Last Name" id="last-name" name="lastName" required={true} value={formData.lastName} onChange={updateFormData} placeholder="Doe" />
+                    <InputField label="Last Name" id="last-name" name="lastName" required={true} value={formData.lastName} onChange={handleChange} onBlur={handleFieldBlur} error={errors.lastName} placeholder="Doe" />
                     <InputField label="Suffix" id="suffix" name="suffix" value={formData.suffix} onChange={updateFormData} placeholder="Jr." />
                 </div>
 
@@ -206,12 +251,12 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
                     <div>
-                        <InputField label="Phone" id="phone" name="phone" type="tel" required={true} value={formData.phone} onChange={updateFormData} placeholder="(555) 555-5555" />
-                        {hasPhoneWarning(formData.phone) && <ValidationWarning message="Please double-check phone format." />}
+                        <InputField label="Phone" id="phone" name="phone" type="tel" required={true} value={formData.phone} onChange={handleChange} onBlur={handleFieldBlur} error={errors.phone} placeholder="(555) 555-5555" />
+                        {!errors.phone && hasPhoneWarning(formData.phone) && <ValidationWarning message="Please double-check phone format." />}
                     </div>
                     <div>
-                        <InputField label="Email" id="email" name="email" type="email" required={true} value={formData.email} onChange={updateFormData} placeholder="you@example.com" />
-                        {hasEmailWarning(formData.email) && <ValidationWarning message="Email address looks incomplete." />}
+                        <InputField label="Email" id="email" name="email" type="email" required={true} value={formData.email} onChange={handleChange} onBlur={handleFieldBlur} error={errors.email} placeholder="you@example.com" />
+                        {!errors.email && hasEmailWarning(formData.email) && <ValidationWarning message="Email address looks incomplete." />}
                     </div>
                 </div>
 
@@ -244,10 +289,10 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
             <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
                 <legend className="text-lg font-semibold text-gray-800 px-2">Current Address</legend>
                 <div>
-                    <InputField label="Address 1" id="street" name="street" required={true} value={formData.street} onChange={updateFormData} placeholder="123 Main St" />
+                    <InputField label="Address 1" id="street" name="street" required={true} value={formData.street} onChange={handleChange} onBlur={handleFieldBlur} error={errors.street} placeholder="123 Main St" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <InputField label="City" id="city" name="city" required={true} value={formData.city} onChange={updateFormData} placeholder="Anytown" />
+                    <InputField label="City" id="city" name="city" required={true} value={formData.city} onChange={handleChange} onBlur={handleFieldBlur} error={errors.city} placeholder="Anytown" />
                     <div>
                         <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">State <span className="text-red-500">*</span></label>
                         <select
@@ -263,8 +308,8 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
                         </select>
                     </div>
                     <div>
-                        <InputField label="ZIP Code" id="zip" name="zip" required={true} value={formData.zip} onChange={updateFormData} placeholder="12345" />
-                        {hasZipWarning(formData.zip) && <ValidationWarning message="Standard ZIP is 5 digits." />}
+                        <InputField label="ZIP Code" id="zip" name="zip" required={true} value={formData.zip} onChange={handleChange} onBlur={handleFieldBlur} error={errors.zip} placeholder="12345" />
+                        {!errors.zip && hasZipWarning(formData.zip) && <ValidationWarning message="Standard ZIP is 5 digits." />}
                     </div>
                 </div>
 

@@ -46,7 +46,12 @@ export function SchemaField({
     onChange,
     mode = 'display',
     isEditing = false,
-    config = {}
+    config = {},
+    // C5: optional on-blur validation wiring. `errors` is a map keyed by field key;
+    // `onBlur` is the (name, value) passthrough. Both default to no-ops so existing
+    // call sites are unaffected.
+    errors = {},
+    onBlur
 }) {
     const definition = getFieldByKey(fieldKey);
 
@@ -70,7 +75,7 @@ export function SchemaField({
 
     // --- INPUT MODE ---
     if (mode === 'input') {
-        return renderInputMode(definition, value, onChange, isRequired);
+        return renderInputMode(definition, value, onChange, isRequired, errors[fieldKey], onBlur);
     }
 
     // --- DISPLAY MODE ---
@@ -80,7 +85,7 @@ export function SchemaField({
 /**
  * Render field in input mode (driver wizard forms)
  */
-function renderInputMode(definition, value, onChange, isRequired) {
+function renderInputMode(definition, value, onChange, isRequired, error, onBlur) {
     const { key, label, type, placeholder, options } = definition;
 
     switch (type) {
@@ -97,6 +102,8 @@ function renderInputMode(definition, value, onChange, isRequired) {
                     required={isRequired}
                     value={value || ''}
                     onChange={onChange}
+                    onBlur={onBlur}
+                    error={error}
                     placeholder={placeholder}
                 />
             );
