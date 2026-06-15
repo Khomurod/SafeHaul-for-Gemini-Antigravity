@@ -1,13 +1,18 @@
 import React from 'react';
 import { X, Lock, Zap, ArrowRight, Database } from 'lucide-react';
+import { Modal } from './Modal';
 
 export function FeatureLockedModal({ onClose, onGoToLeads, featureName = "Search For Drivers" }) {
     return (
-        <div className="fixed inset-0 bg-gray-900/70 flex items-center justify-center p-4 z-[60] backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-white/20 overflow-hidden relative">
-
+        <Modal
+            onClose={onClose}
+            labelledBy="feature-locked-title"
+            overlayClassName="fixed inset-0 bg-gray-900/70 flex items-center justify-center p-4 z-[60] backdrop-blur-sm animate-in fade-in duration-300"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-white/20 overflow-hidden relative"
+        >
                 <button
                     onClick={onClose}
+                    aria-label="Close"
                     className="absolute top-4 right-4 p-2 bg-white/80 hover:bg-white rounded-full transition-colors z-30 text-gray-500 hover:text-gray-800 shadow-sm"
                 >
                     <X size={20} />
@@ -33,7 +38,7 @@ export function FeatureLockedModal({ onClose, onGoToLeads, featureName = "Search
                             </div>
                         </div>
 
-                        <h2 className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">
+                        <h2 id="feature-locked-title" className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">
                             {featureName}
                         </h2>
 
@@ -72,7 +77,6 @@ export function FeatureLockedModal({ onClose, onGoToLeads, featureName = "Search
             100% { transform: translateX(100%); }
           }
         `}</style>
-            </div>
-        </div>
+        </Modal>
     );
 }
