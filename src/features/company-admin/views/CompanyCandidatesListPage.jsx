@@ -11,6 +11,7 @@ import {
     Phone, Lock, Zap, User, Briefcase, MapPin, Calendar, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { getFieldValue, formatPhoneNumber, toTitleCase } from '@shared/utils/helpers';
+import { getStatusIcon } from '@shared/components/badges/statusIcon';
 
 // ── Status pill styling ──
 const getStatusPillStyle = (status) => {
@@ -273,11 +274,16 @@ export const CompanyCandidatesListPage = ({ scope }) => {
             header: 'Status',
             headerClassName: 'text-center',
             cellClassName: 'text-center',
-            render: (item) => (
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusPillStyle(item.status)}`}>
-                    {item.status || 'New'}
-                </span>
-            ),
+            render: (item) => {
+                // C3 (WCAG 1.4.1): icon shape + text, so status is never colour-only.
+                const StatusIcon = getStatusIcon(item.status || 'New');
+                return (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusPillStyle(item.status)}`}>
+                        <StatusIcon size={12} aria-hidden="true" />
+                        {item.status || 'New'}
+                    </span>
+                );
+            },
         });
 
 
