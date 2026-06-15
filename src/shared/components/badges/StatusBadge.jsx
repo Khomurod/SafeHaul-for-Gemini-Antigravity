@@ -1,8 +1,9 @@
 import React from 'react';
+import { getStatusIcon } from './statusIcon';
 
 /**
  * StatusBadge - Muted pill badge for status display
- * 
+ *
  * @param {string} status - Status value (New, In Review, Qualified, Hold, Rejected, Approved, Stale)
  * @param {'sm' | 'md'} size - Badge size
  * @param {'pill' | 'dot'} variant - Badge variant
@@ -76,17 +77,23 @@ export function StatusBadge({ status, size = 'sm', variant = 'pill' }) {
         ? 'px-2 py-0.5 text-xs'
         : 'px-3 py-1 text-sm';
 
+    // C3 (WCAG 1.4.1): pair the colour with an icon shape so status is never
+    // colour-only. The text label is the accessible name; the icon is decorative.
+    const Icon = getStatusIcon(status);
+    const iconSize = size === 'sm' ? 12 : 14;
+
     if (variant === 'dot') {
         return (
             <span className={`inline-flex items-center gap-1.5 ${sizeClasses} font-medium ${config.text}`}>
-                <span className={`w-2 h-2 rounded-full ${config.dot}`} />
+                <Icon size={iconSize} className={config.text} aria-hidden="true" />
                 {status}
             </span>
         );
     }
 
     return (
-        <span className={`inline-flex items-center ${sizeClasses} font-semibold rounded-full border ${config.bg} ${config.text} ${config.border}`}>
+        <span className={`inline-flex items-center gap-1 ${sizeClasses} font-semibold rounded-full border ${config.bg} ${config.text} ${config.border}`}>
+            <Icon size={iconSize} aria-hidden="true" />
             {status}
         </span>
     );
