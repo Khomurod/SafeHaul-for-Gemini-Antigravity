@@ -256,7 +256,16 @@ retry window; never touches application data.
 
 ---
 
-### B2 · `activity_logs` unbounded `[Reported — verify volume first]`
+### B2 · `activity_logs` unbounded `[Code shipped — destructive ops gated]`
+
+> **Status:** non-destructive code is **shipped** — collection-group triggers
+> (`functions/activityLogRetention.js`) stamp `expiresAt = createTime + 90d` on
+> every activity-log write, and `scripts/backfill-activity-log-expiry.mjs`
+> (dry-run by default) stamps pre-existing docs. The **destructive** parts
+> (BigQuery export extension, then the TTL delete policy) are ordered, gated ops
+> steps in [`production-readiness-runbook.md`](./production-readiness-runbook.md)
+> §B2, requiring a one-line stakeholder sign-off on the 90-day window and a
+> verified-live BigQuery export **before** any TTL delete is enabled.
 
 **Problem.** `activity_logs`/`activities` subcollections accrue forever; read
 cost on history views and collection-group queries grows linearly per tenant.
