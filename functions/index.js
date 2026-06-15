@@ -159,6 +159,11 @@ exports.onLegacyActivityCreated = statsAggregator.onLegacyActivityCreated;
 exports.onLeadsActivityLogCreated = statsAggregator.onLeadsActivityLogCreated; // NEW: Leads trigger
 exports.onLeadsLegacyActivityCreated = statsAggregator.onLeadsLegacyActivityCreated; // NEW: Leads legacy trigger
 
+// 12. Activity-log retention (B2): stamp expiresAt for the eventual TTL policy.
+const activityLogRetention = require('./activityLogRetention');
+exports.stampActivityLogExpiry = activityLogRetention.stampActivityLogExpiry;
+exports.stampLegacyActivityExpiry = activityLogRetention.stampLegacyActivityExpiry;
+
 // 13. Stats Backfill (Admin Tools)
 // CALL-3 FIX: These functions are called by StatsBackfillPanel.jsx and were previously missing.
 const statsBackfill = require('./statsBackfill');

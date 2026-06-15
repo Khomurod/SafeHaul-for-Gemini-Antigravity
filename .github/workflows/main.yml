@@ -93,14 +93,57 @@ jobs:
       - name: Frontend Lint
         run: npm run lint:frontend
 
-      - name: Frontend Unit Tests
-        run: npm test -- --run
+      - name: Frontend Unit Tests + Coverage (baseline-ratchet gate)
+        run: npm run test:coverage
 
       - name: Install Playwright Browser
         run: npx playwright install --with-deps chromium
 
       - name: Frontend E2E Tests (Chromium)
-        run: npm run test:e2e -- --project=chromium
+        # Exclude the @a11y axe lane here; it runs in the non-blocking e2e-a11y job.
+        run: npm run test:e2e -- --project=chromium --grep-invert "@a11y"
+
+  e2e-a11y:
+    runs-on: ubuntu-latest
+    # E3: automated accessibility gate (@axe-core/playwright) on the mobile-critical
+    # journeys. Initially NON-BLOCKING (continue-on-error) and intentionally absent
+    # from the deploy jobs' needs:, because it could not be verified in the dev
+    # sandbox (browser download blocked). Once confirmed green in CI, fold these
+    # tests back into the blocking Frontend E2E step (drop the --grep-invert) and
+    # remove this job.
+    steps:
+      - uses: actions/checkout@v5
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20.x
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Install Playwright Browser
+        run: npx playwright install --with-deps chromium
+      - name: E2E accessibility (axe) — non-blocking baseline
+        run: npm run test:e2e -- --project=chromium --grep "@a11y"
+        continue-on-error: true
+
+  typecheck:
+    runs-on: ubuntu-latest
+    # D3: non-blocking type-safety baseline (checkJs on scoped high-leverage
+    # modules via jsconfig.json). Surfaces latent type issues to ratchet over
+    # time; intentionally NOT listed in the deploy jobs' `needs:` so it never
+    # blocks a release.
+    steps:
+      - uses: actions/checkout@v5
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20.x
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Typecheck (non-blocking baseline)
+        run: npm run typecheck
+        continue-on-error: true
 
   callable-contract:
     runs-on: ubuntu-latest

@@ -1,5 +1,5 @@
 // src/context/DataContext.jsx
-import React, { useState, useEffect, useContext, createContext, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useContext, createContext, useCallback, useRef, useMemo } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '@lib/firebase';
 import { doc, getDoc, collection, getCountFromServer } from 'firebase/firestore';
@@ -10,8 +10,36 @@ import { SESSION_KEYS } from './dataContext/sessionKeys';
 import { extractRoleContext, getPrimaryCompanyRole } from './dataContext/claims';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 
+// D2: split the former mega-context by change-cadence into three memoized
+// contexts so consumers re-render only when their slice changes. A single
+// provider still owns the (tightly-coupled) auth flow; it publishes three
+// independently-memoized values. `DataContext` + `useData()` remain as a
+// backwards-compatible shim so the ~47 existing consumers need no changes —
+// migrate them to the granular hooks (useAuth/useCompany/useUI) over time.
+export const AuthContext = createContext(null);
+export const CompanyContext = createContext(null);
+export const UIContext = createContext(null);
 export const DataContext = createContext();
 
+function useRequiredContext(ctx, name) {
+  const value = useContext(ctx);
+  if (!value) {
+    throw new Error(`${name} must be used within a DataProvider`);
+  }
+  return value;
+}
+
+/** Auth identity / role / portal slice. */
+export const useAuth = () => useRequiredContext(AuthContext, 'useAuth');
+/** Selected-company slice. */
+export const useCompany = () => useRequiredContext(CompanyContext, 'useCompany');
+/** UI (modal visibility) slice. */
+export const useUI = () => useRequiredContext(UIContext, 'useUI');
+
+/**
+ * Backwards-compatible shim exposing the full former surface. Prefer the
+ * granular hooks (useAuth/useCompany/useUI) in new code.
+ */
 export const useData = () => {
   const context = useContext(DataContext);
   if (!context) {
@@ -262,7 +290,9 @@ export function DataProvider({ children }) {
     };
   }, [loginToCompany]);
 
-  const handlePortalSelection = async (portal) => {
+  // Handlers wrapped in useCallback so their identity is stable — required for
+  // the memoized context slices below to actually prevent re-renders.
+  const handlePortalSelection = useCallback(async (portal) => {
     setSelectedPortal(portal);
     localStorage.setItem(SESSION_KEYS.SELECTED_PORTAL, portal);
     setShowRoleSelection(false);
@@ -283,16 +313,16 @@ export function DataProvider({ children }) {
     } else {
       setShowCompanyChooser(true);
     }
-  };
+  }, [currentUserClaims, loginToCompany]);
 
-  const switchPortal = () => {
+  const switchPortal = useCallback(() => {
     localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
     setSelectedPortal(null);
     setUserRole(null);
     setShowRoleSelection(true);
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       companyProfileCacheRef.current = { companyId: null, data: null, fetchedAt: 0 };
       await auth.signOut();
@@ -302,27 +332,50 @@ export function DataProvider({ children }) {
     } catch (e) {
       console.error('Logout failed', e);
     }
-  };
+  }, []);
 
-  const returnToCompanyChooser = () => {
+  const returnToCompanyChooser = useCallback(() => {
     companyProfileCacheRef.current = { companyId: null, data: null, fetchedAt: 0 };
     setCurrentCompanyProfile(null);
     localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
     setShowCompanyChooser(true);
-  };
+  }, []);
 
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <SafeHaulLoader size="h-20 w-20" className="mx-auto mb-4" />
-          <p className="text-gray-500 font-medium">Loading Platform...</p>
-        </div>
-      </div>
-    );
-  }
+  const canSwitchPortals = hasDriverProfile && hasEmployerProfile;
 
-  const contextValue = {
+  // --- Memoized context slices (split by change-cadence) ---
+  const authValue = useMemo(() => ({
+    currentUser,
+    currentUserClaims,
+    userRole,
+    loading,
+    hasDriverProfile,
+    hasEmployerProfile,
+    selectedPortal,
+    canSwitchPortals,
+    switchPortal,
+    handleLogout,
+    logout: handleLogout,
+  }), [
+    currentUser, currentUserClaims, userRole, loading, hasDriverProfile,
+    hasEmployerProfile, selectedPortal, canSwitchPortals, switchPortal, handleLogout,
+  ]);
+
+  const companyValue = useMemo(() => ({
+    currentCompanyProfile,
+    setCurrentCompanyProfile,
+    loginToCompany,
+    returnToCompanyChooser,
+  }), [currentCompanyProfile, loginToCompany, returnToCompanyChooser]);
+
+  const uiValue = useMemo(() => ({
+    showCompanyChooser,
+    setShowCompanyChooser,
+  }), [showCompanyChooser]);
+
+  // Backwards-compatible shim: exactly the former public surface, now memoized
+  // (the old object was rebuilt every render). Prefer the granular hooks above.
+  const dataValue = useMemo(() => ({
     currentUser,
     currentUserClaims,
     userRole,
@@ -338,20 +391,43 @@ export function DataProvider({ children }) {
     hasEmployerProfile,
     selectedPortal,
     switchPortal,
-    canSwitchPortals: hasDriverProfile && hasEmployerProfile,
-  };
+    canSwitchPortals,
+  }), [
+    currentUser, currentUserClaims, userRole, currentCompanyProfile, loginToCompany,
+    handleLogout, returnToCompanyChooser, loading, hasDriverProfile, hasEmployerProfile,
+    selectedPortal, switchPortal, canSwitchPortals,
+  ]);
+
+  // All hooks are declared above this point — the loading early-return must come
+  // after them to satisfy the rules of hooks.
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <SafeHaulLoader size="h-20 w-20" className="mx-auto mb-4" />
+          <p className="text-gray-500 font-medium">Loading Platform...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <DataContext.Provider value={contextValue}>
-      {children}
+    <AuthContext.Provider value={authValue}>
+      <CompanyContext.Provider value={companyValue}>
+        <UIContext.Provider value={uiValue}>
+          <DataContext.Provider value={dataValue}>
+            {children}
 
-      {currentUser && showRoleSelection && !loading && (
-        <RoleSelectionModal onSelect={handlePortalSelection} />
-      )}
+            {currentUser && showRoleSelection && !loading && (
+              <RoleSelectionModal onSelect={handlePortalSelection} />
+            )}
 
-      {currentUser && showCompanyChooser && !loading && selectedPortal === 'employer' && !showRoleSelection && (
-        <CompanyChooserModal />
-      )}
-    </DataContext.Provider>
+            {currentUser && showCompanyChooser && !loading && selectedPortal === 'employer' && !showRoleSelection && (
+              <CompanyChooserModal />
+            )}
+          </DataContext.Provider>
+        </UIContext.Provider>
+      </CompanyContext.Provider>
+    </AuthContext.Provider>
   );
 }
