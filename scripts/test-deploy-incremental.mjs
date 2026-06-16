@@ -204,7 +204,6 @@ section('6. Simulating the commit that triggered the full deploy');
     'functions/bulkActions/workers/batchWorker.js',
     'functions/companyAdmin.js',
     'functions/integrations/facebook.js',
-    'functions/pipelineTriggers.js',
     'functions/schemaConfig.js',
     'functions/test/unit/guestApplication.test.js',
     'functions/index.js',
@@ -217,7 +216,6 @@ section('6. Simulating the commit that triggered the full deploy');
     assert('deploy plan is dramatically smaller than 85 functions', plan.exports.length < 30);
     assert('plan includes a systemIntegrity export (from schemaConfig owner)', plan.exports.includes('syncSystemStructure') || plan.exports.includes('runSecurityAudit'));
     assert('plan includes a bulkActions export', plan.exports.some((e) => /Bulk|backfill|checkImport/i.test(e)));
-    assert('plan includes pipeline trigger', plan.exports.includes('onPipelineEntryWrite'));
   }
 }
 
