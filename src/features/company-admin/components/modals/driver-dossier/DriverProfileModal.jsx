@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import { useApplicationView } from '@features/company-admin/hooks/useApplicationView';
+import { useApplicationDelete } from '@features/applications/hooks/useApplicationDelete';
+import { useData } from '@/context/DataContext';
+import { Modal } from '@shared/components/modals/Modal';
 import { DossierSidebar } from './DossierSidebar';
 import { DossierHeader } from './DossierHeader';
 import { DossierContent } from './DossierContent';
@@ -15,9 +18,16 @@ export function DriverProfileModal({
     companyId,
     driverId,
     isOpen,
-    onClose
+    onClose,
+    onDeleted,
 }) {
     const [activeTab, setActiveTab] = useState('application');
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+    const { currentUserClaims } = useData();
+    const isCompanyAdmin = currentUserClaims?.roles?.[companyId] === 'company_admin'
+        || currentUserClaims?.roles?.globalRole === 'super_admin';
+    const { deleting, deleteApplication } = useApplicationDelete();
 
     // Use the existing hook for data fetching
     // We pass onClose as onClosePanel to the hook
@@ -41,6 +51,15 @@ export function DriverProfileModal({
         teamMembers,
         assignedTo,
     } = useApplicationView(companyId, driverId, null, onClose, null);
+
+    const handleConfirmDelete = async () => {
+        const ok = await deleteApplication({ companyId, applicationId: driverId, collectionName });
+        if (ok) {
+            setConfirmingDelete(false);
+            onDeleted?.();
+            onClose();
+        }
+    };
 
     // Close on Escape key
     useEffect(() => {
@@ -92,6 +111,8 @@ export function DriverProfileModal({
                             teamMembers={teamMembers}
                             assignedTo={assignedTo}
                             onAssignChange={handleAssignChange}
+                            canDelete={isCompanyAdmin}
+                            onDelete={() => setConfirmingDelete(true)}
                         />
                     </div>
 
@@ -125,6 +146,46 @@ export function DriverProfileModal({
                 </div>
 
             </div>
+
+            {confirmingDelete && (
+                <Modal
+                    onClose={deleting ? undefined : () => setConfirmingDelete(false)}
+                    labelledBy="delete-app-title"
+                    className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+                >
+                    <div className="p-6">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="p-2 bg-red-100 rounded-lg">
+                                <AlertTriangle size={22} className="text-red-600" />
+                            </div>
+                            <h2 id="delete-app-title" className="text-lg font-bold text-gray-900">Delete this application?</h2>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-6">
+                            This permanently removes the application, its activity history, notes, and all
+                            uploaded documents. This cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setConfirmingDelete(false)}
+                                disabled={deleting}
+                                className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmDelete}
+                                disabled={deleting}
+                                className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
+                            >
+                                {deleting && <Loader2 size={16} className="animate-spin" />}
+                                {deleting ? 'Deleting…' : 'Delete permanently'}
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }

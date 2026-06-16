@@ -64,6 +64,8 @@ exports.onDriverProfileCreated = require('./userOnboarding').onDriverProfileCrea
 // 3. Company Admin
 exports.deleteCompany = companyAdmin.deleteCompany;
 exports.syncPublicProfile = companyAdmin.syncPublicProfile;
+// Company-admin hard delete of an application/lead (cascade + storage cleanup)
+exports.deleteApplication = require('./deleteApplication').deleteApplication;
 
 // 4a. Employer dashboard counter rollups (internal_stats — server writes only)
 const dashboardStatsRollup = require('./dashboardStatsRollup');
