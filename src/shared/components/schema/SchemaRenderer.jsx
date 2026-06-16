@@ -51,7 +51,10 @@ export function SchemaField({
     // `onBlur` is the (name, value) passthrough. Both default to no-ops so existing
     // call sites are unaffected.
     errors = {},
-    onBlur
+    onBlur,
+    // Re-signed file URLs keyed by field key (display mode), so file links use a
+    // fresh signed URL instead of the expired persisted one.
+    fileUrls = {}
 }) {
     const definition = getFieldByKey(fieldKey);
 
@@ -79,7 +82,7 @@ export function SchemaField({
     }
 
     // --- DISPLAY MODE ---
-    return renderDisplayMode(definition, value, onChange, isEditing);
+    return renderDisplayMode(definition, value, onChange, isEditing, fileUrls);
 }
 
 /**
@@ -177,10 +180,10 @@ function renderInputMode(definition, value, onChange, isRequired, error, onBlur)
 /**
  * Render field in display mode (admin dashboard sections)
  */
-function renderDisplayMode(definition, value, onChange, isEditing) {
+function renderDisplayMode(definition, value, onChange, isEditing, fileUrls = {}) {
     const { key, label, type, sensitive, mask, options } = definition;
 
-    const displayValue = formatDisplayValue(value, definition);
+    const displayValue = formatDisplayValue(value, definition, fileUrls);
 
     // Editing mode in admin panel
     if (isEditing && !definition.readOnly) {
@@ -247,7 +250,7 @@ function mapFieldType(schemaType) {
 /**
  * Format a value for display, handling sensitive data and empty values
  */
-function formatDisplayValue(value, definition) {
+function formatDisplayValue(value, definition, fileUrls = {}) {
     if (value === undefined || value === null || value === '') {
         return <span className="text-gray-400 italic">-</span>;
     }
@@ -263,9 +266,13 @@ function formatDisplayValue(value, definition) {
 
     // Handle file objects (AF4 fix)
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        if (value.url) {
+        // Prefer the freshly re-signed URL (useAppFetch -> fileUrls keyed by field)
+        // over the persisted value.url, which is a short-lived signed URL that has
+        // expired by dossier-view time (CDL "ExpiredToken" bug).
+        const resolvedHref = (definition?.key && fileUrls[definition.key]) || value.url;
+        if (resolvedHref) {
             return (
-                <a href={value.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">
+                <a href={resolvedHref} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">
                     📎 {value.name || 'View File'}
                 </a>
             );
@@ -308,7 +315,10 @@ export function SchemaSection({
     isEditing = false,
     onChange,
     config = {},
-    className = ''
+    className = '',
+    // Re-signed file URLs keyed by field key, so file links (CDL etc.) use a
+    // fresh signed URL instead of the expired persisted one.
+    fileUrls = {}
 }) {
     // Find section directly from APPLICATION_SCHEMA
     const section = APPLICATION_SCHEMA.sections.find(s => s.id === sectionId);
@@ -328,6 +338,7 @@ export function SchemaSection({
             mode="display"
             isEditing={isEditing}
             config={config}
+            fileUrls={fileUrls}
         />
     ));
 
@@ -352,7 +363,7 @@ export function SchemaSection({
                                         const legacyMap = { companyName: 'name', address: 'street', reasonForLeaving: 'reason' };
                                         if (legacyMap[field.key]) val = item[legacyMap[field.key]];
                                     }
-                                    const displayVal = formatDisplayValue(val, field);
+                                    const displayVal = formatDisplayValue(val, field, fileUrls);
                                     return (
                                         <div key={field.key} className="col-span-1">
                                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{field.label}</label>
