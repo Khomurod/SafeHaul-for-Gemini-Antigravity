@@ -27,6 +27,10 @@ export const featureScreens = Object.freeze({
     () => import('@features/company-admin/views/CompanyCandidatesListPage'),
     'CompanyCandidatesListPage',
   ),
+  candidatesWorkspace: lazyNamed(
+    () => import('@features/company-admin/views/CandidatesWorkspace'),
+    'CandidatesWorkspace',
+  ),
   searchDriversPage: lazyNamed(
     () => import('@features/company-admin/views/SearchDriversPage'),
     'SearchDriversPage',
