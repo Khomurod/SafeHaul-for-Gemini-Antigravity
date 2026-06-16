@@ -7,17 +7,27 @@ import {
     Truck,
     AlertTriangle,
     CheckCircle,
-    Clock,
-    Briefcase,
     Eye,
     EyeOff,
     FileText,
-    PenTool
+    PenTool,
+    Pencil,
+    Link2,
+    Loader2,
 } from 'lucide-react';
 import { formatDate } from '@shared/utils/helpers';
 import { formatIsoDateUs, formatMonthYearUs } from '@shared/utils/dateFormHelpers';
 import { APPLICATION_SCHEMA } from '@/config/applicationSchema';
 import { SchemaSection } from '@shared/components/schema/SchemaRenderer';
+import { useApplicationChanges } from '@features/applications/hooks/useApplicationChanges';
+
+/** Compact value preview for the pending-changes before/after list. */
+function previewValue(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'object') return Array.isArray(v) ? `${v.length} item(s)` : '(updated)';
+    const s = String(v);
+    return s.length > 48 ? `${s.slice(0, 48)}…` : s;
+}
 
 /** Safely convert Firestore Timestamps, ISO strings, or epoch values to a Date (or null). */
 function formatTimelineDate(val) {
@@ -36,13 +46,106 @@ function toDateOrNull(val) {
     return isNaN(d.getTime()) ? null : d;
 }
 
-export function ApplicationTab({ appData, fileUrls = {} }) {
+export function ApplicationTab({ appData, fileUrls = {}, canEdit = false, companyId, applicationId, collectionName = 'applications' }) {
     const [viewMode, setViewMode] = useState('summary'); // 'summary' | 'full'
+    const [editing, setEditing] = useState(false);
+    const [editedData, setEditedData] = useState({});
+
+    const { pendingChanges, proposing, linking, proposeChanges, createReviewLink } =
+        useApplicationChanges(companyId, applicationId, collectionName);
 
     if (!appData) return null;
 
+    const startEdit = () => {
+        setEditedData({ ...appData });
+        setEditing(true);
+        setViewMode('full');
+    };
+
+    const handleFieldChange = (key, value) => {
+        setEditedData((prev) => ({ ...prev, [key]: value }));
+    };
+
+    const handlePropose = async () => {
+        const changes = Object.keys(editedData)
+            .filter((k) => JSON.stringify(editedData[k]) !== JSON.stringify(appData[k]))
+            .map((k) => ({ fieldKey: k, proposedValue: editedData[k] }));
+        if (changes.length === 0) { setEditing(false); return; }
+        const ok = await proposeChanges(changes);
+        if (ok) setEditing(false);
+    };
+
     return (
         <div className="space-y-6">
+            {/* Pending company edits — awaiting driver approval */}
+            {pendingChanges.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                        <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+                            <AlertTriangle size={16} />
+                            {pendingChanges.length} field(s) edited by company — pending driver approval
+                        </div>
+                        <button
+                            type="button"
+                            onClick={createReviewLink}
+                            disabled={linking}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+                        >
+                            {linking ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                            Copy driver review link
+                        </button>
+                    </div>
+                    <ul className="space-y-1">
+                        {pendingChanges.map((c) => (
+                            <li key={c.id} className="text-xs text-amber-900 flex flex-wrap items-center gap-1">
+                                <span className="font-semibold">{c.fieldLabel || c.fieldKey}:</span>
+                                <span className="line-through text-amber-700">{previewValue(c.originalValue)}</span>
+                                <span aria-hidden>→</span>
+                                <span className="font-medium">{previewValue(c.proposedValue)}</span>
+                                {c.status && c.status !== 'pending' && (
+                                    <span className="ml-1 px-1.5 rounded bg-amber-200 text-amber-900 capitalize">{c.status}</span>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* Edit controls */}
+            {canEdit && (
+                <div className="flex items-center gap-2 flex-wrap">
+                    {!editing ? (
+                        <button
+                            type="button"
+                            onClick={startEdit}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                        >
+                            <Pencil size={14} /> Edit application
+                        </button>
+                    ) : (
+                        <>
+                            <button
+                                type="button"
+                                onClick={handlePropose}
+                                disabled={proposing}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                            >
+                                {proposing && <Loader2 size={14} className="animate-spin" />}
+                                Propose changes for approval
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setEditing(false)}
+                                className="px-3 py-1.5 text-sm font-semibold rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <span className="text-xs text-gray-400">Edits become pending changes the driver must approve.</span>
+                        </>
+                    )}
+                </div>
+            )}
+
             {/* Toggle Header */}
             <div className="flex items-center justify-between bg-gray-50 p-1 rounded-lg border border-gray-200 w-fit">
                 <button
@@ -108,9 +211,10 @@ export function ApplicationTab({ appData, fileUrls = {} }) {
                                 </h3>
                                 <SchemaSection
                                     sectionId={section.id}
-                                    data={appData}
+                                    data={editing ? editedData : appData}
                                     mode="display"
-                                    isEditing={false} // Read Only
+                                    isEditing={editing}
+                                    onChange={handleFieldChange}
                                     fileUrls={fileUrls}
                                 />
                             </div>
