@@ -30,6 +30,7 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `getEmailSettingsMeta` | [`EmailSettingsTab.jsx`](../src/features/settings/components/EmailSettingsTab.jsx) | Load SMTP meta (no password) |
 | `getFilteredLeadsPage` | [`VirtualLeadList.jsx`](../src/features/campaigns/components/VirtualLeadList.jsx) | Paginated campaign audience |
 | `getFilterCount` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js) | Audience size preview |
+| `getChangeReview` | [`ReviewChangePortal.jsx`](../src/features/driver-changes/ReviewChangePortal.jsx) | Driver loads company-proposed changes (before/after) |
 | `getPublicEnvelope` | [`SigningRoom.jsx`](../src/features/signing/SigningRoom.jsx) | Public e-sign load |
 | `getSignedApplicationFileUrl` | [`useAppFetch.js`](../src/features/applications/hooks/useAppFetch.js) | Re-sign guest-uploaded application files (CDL etc.) for company dossier view |
 | `getSignedGuestUploadUrl` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Guest file read URL |
@@ -54,6 +55,7 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `sendSMS` | [`DocumentsManager.jsx`](../src/features/company-admin/views/DocumentsManager.jsx), [`EnvelopeCreator.jsx`](../src/features/signing/EnvelopeCreator.jsx) | Outbound SMS |
 | `sendTestSMS` | [`SMSDiagnosticModal.jsx`](../src/features/settings/components/SMSDiagnosticModal.jsx), [`IntegrationManager.jsx`](../src/features/super-admin/components/integrations/IntegrationManager.jsx) | SMS connectivity test |
 | `sendVerificationRequest` | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) | Start PEV request |
+| `submitChangeResolution` | [`ReviewChangePortal.jsx`](../src/features/driver-changes/ReviewChangePortal.jsx) | Driver approve/reject/edit company changes |
 | `submitGuestApplication` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx), [`useSubmissionQueue.js`](../src/hooks/useSubmissionQueue.js) | Guest/auth application submit |
 | `submitPublicEnvelope` | [`SigningRoom.jsx`](../src/features/signing/SigningRoom.jsx) | Complete public signature |
 | `submitVerificationResponse` | [`VerificationPortal.jsx`](../src/features/verification/VerificationPortal.jsx) | Employer PEV response |
