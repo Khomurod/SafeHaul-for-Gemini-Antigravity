@@ -38,6 +38,9 @@ export function DossierContent({
                     isEditing={isEditing}
                     setIsEditing={setIsEditing}
                     canEdit={canEdit}
+                    companyId={companyId}
+                    applicationId={driverId}
+                    collectionName={collectionName}
                 />;
 
             case 'documents':
