@@ -30,6 +30,7 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `getFilteredLeadsPage` | [`VirtualLeadList.jsx`](../src/features/campaigns/components/VirtualLeadList.jsx) | Paginated campaign audience |
 | `getFilterCount` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js) | Audience size preview |
 | `getPublicEnvelope` | [`SigningRoom.jsx`](../src/features/signing/SigningRoom.jsx) | Public e-sign load |
+| `getSignedApplicationFileUrl` | [`useAppFetch.js`](../src/features/applications/hooks/useAppFetch.js) | Re-sign guest-uploaded application files (CDL etc.) for company dossier view |
 | `getSignedGuestUploadUrl` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Guest file read URL |
 | `getSignedPevUrl` | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) | Signed URL for PEV PDF |
 | `getSignedUploadUrl` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Auth/guest upload URL |
