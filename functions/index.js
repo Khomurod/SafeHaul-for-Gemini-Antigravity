@@ -67,6 +67,13 @@ exports.syncPublicProfile = companyAdmin.syncPublicProfile;
 // Company-admin hard delete of an application/lead (cascade + storage cleanup)
 exports.deleteApplication = require('./deleteApplication').deleteApplication;
 
+// Company edits → pending driver-approved changes (+ token review portal)
+const applicationChanges = require('./applicationChanges');
+exports.proposeApplicationChanges = applicationChanges.proposeApplicationChanges;
+exports.createChangeReview = applicationChanges.createChangeReview;
+exports.getChangeReview = applicationChanges.getChangeReview;
+exports.submitChangeResolution = applicationChanges.submitChangeResolution;
+
 // 4a. Employer dashboard counter rollups (internal_stats — server writes only)
 const dashboardStatsRollup = require('./dashboardStatsRollup');
 exports.onApplicationWrittenDashboardRollup = dashboardStatsRollup.onApplicationWrittenDashboardRollup;
