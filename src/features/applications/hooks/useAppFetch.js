@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
-import { db, storage } from '@lib/firebase';
+import { httpsCallable } from "firebase/functions";
+import { db, storage, functions } from '@lib/firebase';
 import { getCompanyProfile } from '@features/companies';
 
 const simpleRetry = async (fn, retries = 3, delay = 1000) => {
@@ -92,6 +93,21 @@ export function useAppFetch(companyId, applicationId) {
           if (!fileData) return null;
           try {
             if (fileData.storagePath) {
+              // Driver-uploaded application files (CDL/medical card etc.) live under
+              // guest_uploads. Their persisted `url` is a 15-min signed URL that has
+              // expired by dossier-view time, and the client Storage SDK read is gated
+              // by the narrow companyTeamIds claim (no super-admin bypass). Re-sign
+              // server-side FIRST via the callable (RBAC'd by roles[companyId]/super_admin),
+              // then fall back to the client SDK / stored url only if that fails.
+              if (fileData.storagePath.includes('guest_uploads')) {
+                try {
+                  const resign = httpsCallable(functions, 'getSignedApplicationFileUrl');
+                  const res = await resign({ storagePath: fileData.storagePath });
+                  if (res?.data?.url) return res.data.url;
+                } catch (resignErr) {
+                  console.warn(`[useAppFetch] Server re-sign failed for ${fileData.storagePath}. Falling back to client SDK.`, resignErr.message);
+                }
+              }
               const fileRef = ref(storage, fileData.storagePath);
               try {
                 return await getDownloadURL(fileRef);

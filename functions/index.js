@@ -199,6 +199,10 @@ exports.getSignedPevUrl = require('./getSignedPevUrl').getSignedPevUrl;
 // Signed download URLs for secure_documents (e-signature envelopes)
 exports.getSignedDocumentUrl = require('./getSignedDocumentUrl').getSignedDocumentUrl;
 
+// Signed download URLs for driver-uploaded application files (guest_uploads): re-signs
+// at view time so company users can open CDLs/medical cards (the persisted URL expires).
+exports.getSignedApplicationFileUrl = require('./getSignedApplicationFileUrl').getSignedApplicationFileUrl;
+
 // 18. Feature Scheduler
 const featureScheduler = require('./featureScheduler');
 exports.enforceFeatureSchedules = featureScheduler.enforceFeatureSchedules;
