@@ -111,6 +111,7 @@ export function ApplicationTab({ appData, fileUrls = {} }) {
                                     data={appData}
                                     mode="display"
                                     isEditing={false} // Read Only
+                                    fileUrls={fileUrls}
                                 />
                             </div>
                         ))}
