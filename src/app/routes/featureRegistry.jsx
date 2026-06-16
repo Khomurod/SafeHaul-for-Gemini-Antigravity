@@ -72,6 +72,10 @@ export const featureScreens = Object.freeze({
     () => import('@features/verification/VerificationPortal'),
     'VerificationPortal',
   ),
+  changeReviewPortal: lazyNamed(
+    () => import('@features/driver-changes/ReviewChangePortal'),
+    'ReviewChangePortal',
+  ),
   sandboxApplyHandler: lazyNamed(
     () => import('@features/sandbox/SandboxApplyHandler'),
     'SandboxApplyHandler',

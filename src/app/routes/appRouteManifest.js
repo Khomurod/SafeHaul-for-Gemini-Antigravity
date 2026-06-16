@@ -35,6 +35,12 @@ export const PUBLIC_FEATURE_ROUTE_MANIFEST = Object.freeze([
     featureName: 'Verification Portal',
   },
   {
+    id: 'changeReviewPortal',
+    path: '/review-change/:token',
+    screen: 'changeReviewPortal',
+    featureName: 'Change Review Portal',
+  },
+  {
     id: 'sandboxApply',
     path: '/sandbox/apply',
     screen: 'sandboxApplyHandler',
