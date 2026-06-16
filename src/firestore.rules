@@ -295,16 +295,6 @@ service cloud.firestore {
         allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
       }
 
-      // PIPELINE ENTRIES: Hiring pipeline tracking
-      match /pipeline_entries/{entryId} {
-        allow read: if isCompanyTeam(companyId);
-        allow create: if isCompanyTeam(companyId)
-          && request.resource.data.hiringStage in ['in_process', 'on_hold', 'hired', 'rejected'];
-        allow update: if isCompanyTeam(companyId)
-          && request.resource.data.hiringStage in ['in_process', 'on_hold', 'hired', 'rejected'];
-        allow delete: if isCompanyAdmin(companyId);
-      }
-
       // FEATURE ALERTS: Tracking user interactions with scheduled deactivation warnings
       match /feature_alerts/{alertId} {
         allow read, write: if isSuperAdmin() || isCompanyTeam(companyId);

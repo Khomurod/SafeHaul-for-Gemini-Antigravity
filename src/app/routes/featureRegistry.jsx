@@ -27,10 +27,6 @@ export const featureScreens = Object.freeze({
     () => import('@features/company-admin/views/CompanyCandidatesListPage'),
     'CompanyCandidatesListPage',
   ),
-  candidatesWorkspace: lazyNamed(
-    () => import('@features/company-admin/views/CandidatesWorkspace'),
-    'CandidatesWorkspace',
-  ),
   searchDriversPage: lazyNamed(
     () => import('@features/company-admin/views/SearchDriversPage'),
     'SearchDriversPage',
@@ -46,10 +42,6 @@ export const featureScreens = Object.freeze({
   quickAddLeadPage: lazyNamed(
     () => import('@features/company-admin/views/QuickAddLeadPage'),
     'QuickAddLeadPage',
-  ),
-  pipelineSheetPage: lazyNamed(
-    () => import('@features/company-admin/views/PipelineSheetPage'),
-    'PipelineSheetPage',
   ),
   userProfilePage: lazyNamed(
     () => import('@features/company-admin/views/UserProfilePage'),

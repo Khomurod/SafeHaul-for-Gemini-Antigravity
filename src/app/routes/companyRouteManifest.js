@@ -14,7 +14,7 @@ export const COMPANY_ROUTE_MANIFEST = Object.freeze([
   {
     id: 'applications',
     path: 'drivers/applications',
-    screen: 'candidatesWorkspace',
+    screen: 'companyCandidatesListPage',
     featureName: 'Applications',
     props: { scope: 'applications' },
     nav: { kind: 'group-item', group: 'applications', label: 'Applications', icon: 'FileText' },
@@ -22,7 +22,7 @@ export const COMPANY_ROUTE_MANIFEST = Object.freeze([
   {
     id: 'companyLeads',
     path: 'drivers/leads/company',
-    screen: 'candidatesWorkspace',
+    screen: 'companyCandidatesListPage',
     featureName: 'Company Leads',
     props: { scope: 'company_leads' },
     nav: { kind: 'group-item', group: 'applications', label: 'Company Leads', icon: 'Building2' },
@@ -30,20 +30,10 @@ export const COMPANY_ROUTE_MANIFEST = Object.freeze([
   {
     id: 'myLeads',
     path: 'drivers/leads/my',
-    screen: 'candidatesWorkspace',
+    screen: 'companyCandidatesListPage',
     featureName: 'My Leads',
     props: { scope: 'my_leads' },
     nav: { kind: 'group-item', group: 'applications', label: 'My Leads', icon: 'User' },
-  },
-  {
-    // Legacy deep link: the Pipeline "sheet" is now a view mode of the candidates
-    // workspace (no longer a separate sidebar destination). Keep the path so old
-    // links/bookmarks land directly in Sheet mode.
-    id: 'pipeline',
-    path: 'drivers/pipeline',
-    screen: 'candidatesWorkspace',
-    featureName: 'Pipeline',
-    props: { scope: 'applications', defaultView: 'sheet' },
   },
   {
     id: 'searchDrivers',

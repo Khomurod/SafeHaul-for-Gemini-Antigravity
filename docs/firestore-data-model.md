@@ -23,7 +23,6 @@ erDiagram
   companies ||--o{ leads : has
   companies ||--o{ bulk_sessions : has
   companies ||--o{ signing_requests : has
-  companies ||--o{ pipeline_entries : has
   companies ||--o{ segments : has
   companies ||--o{ team : has
   companies ||--o{ integrations : has
@@ -94,7 +93,6 @@ Used by Cloud Functions with Admin SDK:
 | `stats_daily/{dateId}` | read: team | Aggregated daily stats (server-written) |
 | `internal_stats/{docId}` | read: team · write: **denied** | Dashboard KPI rollups (server-only writes) |
 | `notifications/{id}` | read: team · create: admin · update: team · delete: admin | Company-scoped notifications |
-| `pipeline_entries/{id}` | read/create/update: team · delete: admin | Hiring pipeline; `hiringStage` ∈ `in_process`, `on_hold`, `hired`, `rejected` |
 | `feature_alerts/{id}` | read/write: team or super | Scheduled deactivation warning analytics |
 | `system_settings/email_config` | read/write: admin | SMTP credentials (sensitive) |
 | `settings/{docId}` | read: team · write: admin | Custom questions, ATS SMS templates, etc. |

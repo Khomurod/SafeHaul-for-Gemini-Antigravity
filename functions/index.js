@@ -188,10 +188,6 @@ exports.onLeadCallbackScheduled = notificationTriggers.onLeadCallbackScheduled;
 // DL-4 FIX: Send confirmation email to applicant on every new application
 exports.onNewApplicationEmailConfirmation = notificationTriggers.onNewApplicationEmailConfirmation;
 
-// 16. Pipeline Tracking
-const pipelineTriggers = require('./pipelineTriggers');
-exports.onPipelineEntryWrite = pipelineTriggers.onPipelineEntryWrite;
-
 // 17. Employment Verification (PEV Portal)
 const employmentVerification = require('./employmentVerification');
 exports.sendVerificationRequest = employmentVerification.sendVerificationRequest;
