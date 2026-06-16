@@ -195,6 +195,7 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                 driverId={selectedApp.id}
                 isOpen={true}
                 onClose={() => setSelectedApp(null)}
+                onDeleted={() => dashboard.refreshData()}
             />
         );
     };

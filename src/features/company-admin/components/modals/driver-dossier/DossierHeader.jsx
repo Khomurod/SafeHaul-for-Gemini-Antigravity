@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { X, Download } from 'lucide-react';
+import { X, Download, Trash2 } from 'lucide-react';
 import { generateApplicationPDF } from '@shared/utils/pdfGenerator';
 import { ATS_STATUS_DROPDOWN_OPTIONS } from '@shared/constants/atsStatus';
 
@@ -14,6 +14,8 @@ export function DossierHeader({
     teamMembers = [],
     assignedTo,
     onAssignChange,
+    canDelete = false,
+    onDelete,
 }) {
     const getTitle = () => {
         switch (activeTab) {
@@ -108,6 +110,18 @@ export function DossierHeader({
                 >
                     <Download size={20} />
                 </button>
+
+                {canDelete && (
+                    <button
+                        onClick={onDelete}
+                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors border border-transparent hover:border-red-100"
+                        title="Delete application"
+                        aria-label="Delete application"
+                        type="button"
+                    >
+                        <Trash2 size={20} />
+                    </button>
+                )}
 
                 <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block" />
 
