@@ -220,6 +220,15 @@ service cloud.firestore {
       }
     }
 
+    // --- CHANGE REVIEWS (Token-based public access via Cloud Functions only) ---
+    // Driver review of company-proposed application edits. The token doc is read
+    // and resolved exclusively through the getChangeReview / submitChangeResolution
+    // callables (Admin SDK); no direct client access.
+    match /change_reviews/{token} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
     // --- TELEGRAM SESSIONS (Server-only bot/Mini App state) ---
     // All access goes through Cloud Functions with Admin SDK.
     match /telegram_sessions/{sessionId} {
@@ -386,6 +395,10 @@ service cloud.firestore {
         match /internal_notes/{noteId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
         match /activity_logs/{activityId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
         match /activities/{activityId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
+        // Company-proposed pending changes: team may READ (to show badges); all
+        // writes go through the proposeApplicationChanges / submitChangeResolution
+        // callables (Admin SDK), so client writes are denied.
+        match /pending_changes/{fieldKey} { allow read: if isCompanyTeam(companyId) || isSuperAdmin(); allow write: if false; }
       }
 
       // LEADS (Company Specific)
@@ -403,8 +416,9 @@ service cloud.firestore {
         match /internal_notes/{noteId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
         match /dq_files/{fileId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
         match /general_documents/{fileId} { allow read, write: if isCompanyTeam(companyId) || isSuperAdmin(); }
+        match /pending_changes/{fieldKey} { allow read: if isCompanyTeam(companyId) || isSuperAdmin(); allow write: if false; }
       }
-      
+
       // TEAM MEMBERS
       match /team/{userId} {
         allow read: if isCompanyTeam(companyId) || isSuperAdmin();
