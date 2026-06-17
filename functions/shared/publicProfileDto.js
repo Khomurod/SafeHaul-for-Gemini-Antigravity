@@ -40,6 +40,20 @@ function buildPublicProfileDto(companyData = {}, updatedAt = null) {
         brandColor: companyData.brandColor || '#1e40af',
         applicationConfig,
         customQuestions: Array.isArray(companyData.customQuestions) ? companyData.customQuestions : [],
+        // Optional post-application e-sign forms offered to the driver on the
+        // success screen. Project ONLY the fields the public page needs
+        // (templateId/title/enabled) — never the full template config.
+        postApplicationTemplates: Array.isArray(companyData.postApplicationTemplates)
+            ? companyData.postApplicationTemplates
+                .map((t) => {
+                    if (typeof t === 'string') return { templateId: t, title: 'Complete Form', enabled: true };
+                    if (!t || typeof t !== 'object') return null;
+                    const templateId = String(t.templateId || t.id || '').trim();
+                    if (!templateId) return null;
+                    return { templateId, title: String(t.title || 'Complete Form'), enabled: t.enabled !== false };
+                })
+                .filter(Boolean)
+            : [],
         updatedAt,
     };
 }

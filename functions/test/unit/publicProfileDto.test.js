@@ -26,11 +26,30 @@ describe('public profile DTO (A4 projection)', () => {
     expect(dto.isActive).toBeUndefined();
     expect(dto.revenue).toBeUndefined();
     expect(dto.featureSchedules).toBeUndefined();
-    expect(dto.postApplicationTemplates).toBeUndefined();
     expect(dto.applicationConfig.internalOnly).toBeUndefined();
     expect(dto.applicationConfig.cdlUpload).toEqual({ required: true });
     expect(dto.customQuestions).toHaveLength(1);
     expect(dto.updatedAt).toBe(TS);
+  });
+
+  it('projects post-application templates as a sanitized {templateId,title,enabled} subset only', () => {
+    const dto = buildPublicProfileDto({
+      companyName: 'Acme',
+      postApplicationTemplates: [
+        { templateId: 't1', title: 'W-9', enabled: true, secretConfig: 'do-not-leak', fields: [{ x: 1 }] },
+        { id: 't2', title: 'Handbook' },
+        'rawStringId',
+        { title: 'no id — dropped' },
+      ],
+    }, TS);
+
+    expect(dto.postApplicationTemplates).toEqual([
+      { templateId: 't1', title: 'W-9', enabled: true },
+      { templateId: 't2', title: 'Handbook', enabled: true },
+      { templateId: 'rawStringId', title: 'Complete Form', enabled: true },
+    ]);
+    // Full template config never leaks.
+    expect(JSON.stringify(dto)).not.toMatch(/do-not-leak/);
   });
 
   it('never copies arbitrary PII-looking fields added to the source doc later', () => {
@@ -46,7 +65,7 @@ describe('public profile DTO (A4 projection)', () => {
 
     // The projection is an allowlist: only these keys may ever appear.
     expect(Object.keys(dto).sort()).toEqual(
-      ['appSlug', 'applicationConfig', 'brandColor', 'companyName', 'customQuestions', 'logoUrl', 'updatedAt'].sort(),
+      ['appSlug', 'applicationConfig', 'brandColor', 'companyName', 'customQuestions', 'logoUrl', 'postApplicationTemplates', 'updatedAt'].sort(),
     );
     expect(JSON.stringify(dto)).not.toMatch(/123-45-6789|00012345|do not share|secret|owner@acme.com/);
   });
@@ -67,5 +86,6 @@ describe('public profile DTO (A4 projection)', () => {
     expect(dto.brandColor).toBe('#1e40af');
     expect(dto.applicationConfig).toEqual({});
     expect(dto.customQuestions).toEqual([]);
+    expect(dto.postApplicationTemplates).toEqual([]);
   });
 });

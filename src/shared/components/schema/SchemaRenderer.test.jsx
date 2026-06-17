@@ -34,3 +34,14 @@ describe('SchemaRenderer file display (CDL re-signed URL)', () => {
             .toHaveAttribute('href', 'https://expired.example/old?token=dead');
     });
 });
+
+describe('SchemaRenderer signature display', () => {
+    it('renders a data-URL signature as an image, not raw base64 text', () => {
+        const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+        const { getByRole, queryByText } = render(
+            <SchemaField fieldKey="signature" mode="display" data={{ signature: dataUrl }} />,
+        );
+        expect(getByRole('img')).toHaveAttribute('src', dataUrl);
+        expect(queryByText(/iVBORw0KGgo/)).toBeNull();
+    });
+});
