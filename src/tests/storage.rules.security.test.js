@@ -328,17 +328,13 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
 
   it('allows super_admin cross-tenant reads for operational support', async () => {
     const superAdmin = authedStorage(nextUid('super-admin'), superAdminClaims());
+    // Driver-keyed application paths (governed by the applications/{driverId} match).
     await assertSucceeds(getMetadata(ref(superAdmin, paths.co1DriverBLicense)));
     await assertSucceeds(getMetadata(ref(superAdmin, paths.co2DriverCLicense)));
-  });
-
-  it('allows super_admin to read guest_uploads while guests stay blocked', async () => {
-    // guest_uploads carries its own match block; lock in that the operational
-    // super_admin read path (via isCompanyTeam -> isSuperAdmin) is honored here too,
-    // and that an unauthenticated guest still cannot read the same object.
-    const superAdmin = authedStorage(nextUid('super-admin-guest'), superAdminClaims());
-    await assertFails(getMetadata(ref(guestStorage(), paths.co1GuestSeed)));
-    await assertSucceeds(getMetadata(ref(superAdmin, paths.co1GuestSeed)));
+    // Non-driver-keyed company paths (leads + pev_results), governed by the broad
+    // companies/{companyId}/** match — confirm super_admin support reads reach these too.
+    await assertSucceeds(getMetadata(ref(superAdmin, paths.co1DriverBLeadDq)));
+    await assertSucceeds(getMetadata(ref(superAdmin, paths.co1PevResult)));
   });
 
   it('denies team-style roles when companyTeamIds claim is missing', async () => {
