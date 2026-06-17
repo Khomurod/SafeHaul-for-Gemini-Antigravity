@@ -289,6 +289,18 @@ function formatDisplayValue(value, definition, fileUrls = {}) {
         return value.length > 0 ? value.join(', ') : '-';
     }
 
+    // Inline image data URLs (e.g. signature / initials) — render the image,
+    // not the raw base64 string (which otherwise looks like a "token").
+    if (typeof value === 'string' && value.startsWith('data:image')) {
+        return (
+            <img
+                src={value}
+                alt={definition?.label || 'Signature'}
+                className="max-h-20 w-auto border border-gray-200 rounded bg-gray-50 p-1"
+            />
+        );
+    }
+
     // Handle booleans / yes/no
     if (value === true || value === 'yes') return 'Yes';
     if (value === false || value === 'no') return 'No';
