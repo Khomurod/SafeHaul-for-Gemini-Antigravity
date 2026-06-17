@@ -11,6 +11,15 @@ const tasksClient = new CloudTasksClient(TASKS_CLIENT_OPTS);
 
 // AUDIT FIX #4: Accept workerGeneration to forward in task payload
 async function enqueueWorker(companyId, sessionId, delaySeconds, workerGeneration = null) {
+    // Fail-closed: never enqueue a task without the shared worker secret. Sending an
+    // empty header would let the worker reject the task at the far end, but enqueuing
+    // an unauthenticatable task wastes a Cloud Tasks slot and masks the real config
+    // error — surface it here so the campaign fails fast and visibly.
+    const workerSecret = process.env.BULK_WORKER_SECRET;
+    if (!workerSecret) {
+        throw new Error("CRITICAL CONFIG ERROR: BULK_WORKER_SECRET env var is missing. Refusing to enqueue an unauthenticated worker task.");
+    }
+
     const queuePath = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
 
     // FIX: V2 URL Logic & Env Var Requirement
@@ -40,7 +49,8 @@ async function enqueueWorker(companyId, sessionId, delaySeconds, workerGeneratio
             headers: {
                 "Content-Type": "application/json",
                 // SECURITY: Inject shared secret for worker endpoint authentication
-                "X-SafeHaul-Internal-Auth": process.env.BULK_WORKER_SECRET || ''
+                // (guaranteed present — enqueueWorker throws above if unset).
+                "X-SafeHaul-Internal-Auth": workerSecret
             },
             body: Buffer.from(JSON.stringify(payload)).toString("base64"),
             oidcToken: {

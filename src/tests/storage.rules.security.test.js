@@ -332,6 +332,15 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
     await assertSucceeds(getMetadata(ref(superAdmin, paths.co2DriverCLicense)));
   });
 
+  it('allows super_admin to read guest_uploads while guests stay blocked', async () => {
+    // guest_uploads carries its own match block; lock in that the operational
+    // super_admin read path (via isCompanyTeam -> isSuperAdmin) is honored here too,
+    // and that an unauthenticated guest still cannot read the same object.
+    const superAdmin = authedStorage(nextUid('super-admin-guest'), superAdminClaims());
+    await assertFails(getMetadata(ref(guestStorage(), paths.co1GuestSeed)));
+    await assertSucceeds(getMetadata(ref(superAdmin, paths.co1GuestSeed)));
+  });
+
   it('denies team-style roles when companyTeamIds claim is missing', async () => {
     const malformedAdmin = authedStorage(
       nextUid('malformed-admin'),
