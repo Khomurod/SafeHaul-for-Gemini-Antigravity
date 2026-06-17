@@ -180,7 +180,7 @@ export function CompaniesView({
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-lg font-bold text-gray-500 shrink-0">
                                                 {company.companyLogoUrl ? (
-                                                    <img src={company.companyLogoUrl} alt="Logo" className="w-full h-full object-contain rounded-lg" />
+                                                    <img src={company.companyLogoUrl} alt="Logo" loading="lazy" className="w-full h-full object-contain rounded-lg" />
                                                 ) : (
                                                     getFieldValue(company.companyName).charAt(0)
                                                 )}
