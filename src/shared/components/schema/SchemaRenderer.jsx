@@ -31,6 +31,21 @@ const FIELD_TYPES = {
 
 
 /**
+ * Normalize a radio/select option to a { value, label } pair.
+ * Schema options come in two shapes: plain strings (['yes', 'no']) and objects
+ * ({ label: 'Yes', value: 'yes' } from form-options.js). Rendering the object
+ * form directly as a React child throws "Objects are not valid as a React child"
+ * (React error #31), which crashes the edit form for any yes/no field.
+ */
+function normalizeOption(opt) {
+    if (opt && typeof opt === 'object') {
+        const value = opt.value;
+        return { value, label: opt.label ?? String(value) };
+    }
+    return { value: opt, label: String(opt) };
+}
+
+/**
  * Render a single field based on schema and mode
  *
  * @param {string} fieldKey - The key from the schema
@@ -116,17 +131,17 @@ function renderInputMode(definition, value, onChange, isRequired, error, onBlur)
                 <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">{label}</label>
                     <div className="flex gap-4">
-                        {(options || ['yes', 'no']).map(opt => (
-                            <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                        {(options || ['yes', 'no']).map(normalizeOption).map(opt => (
+                            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                                 <input
                                     type="radio"
                                     name={key}
-                                    value={opt}
-                                    checked={value === opt}
+                                    value={opt.value}
+                                    checked={value === opt.value}
                                     onChange={(e) => onChange(key, e.target.value)}
                                     className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                                 />
-                                <span className="text-sm text-gray-700 capitalize">{opt}</span>
+                                <span className="text-sm text-gray-700 capitalize">{opt.label}</span>
                             </label>
                         ))}
                     </div>
@@ -199,17 +214,17 @@ function renderDisplayMode(definition, value, onChange, isEditing, fileUrls = {}
                     />
                 ) : type === FIELD_TYPES.RADIO ? (
                     <div className="flex gap-4">
-                        {(options || ['yes', 'no']).map(opt => (
-                            <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm">
+                        {(options || ['yes', 'no']).map(normalizeOption).map(opt => (
+                            <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm">
                                 <input
                                     type="radio"
                                     name={key}
-                                    value={opt}
-                                    checked={value === opt}
+                                    value={opt.value}
+                                    checked={value === opt.value}
                                     onChange={(e) => onChange(key, e.target.value)}
                                     className="h-4 w-4 text-blue-600"
                                 />
-                                <span className="capitalize">{opt}</span>
+                                <span className="capitalize">{opt.label}</span>
                             </label>
                         ))}
                     </div>
