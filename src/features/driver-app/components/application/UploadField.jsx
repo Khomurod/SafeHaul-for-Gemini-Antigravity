@@ -138,7 +138,7 @@ const UploadField = ({
                 <div className="group relative flex items-center p-3 border border-green-200 bg-green-50/30 rounded-lg hover:bg-green-50 transition-all">
                     <div className="flex-shrink-0 h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600 mr-3 overflow-hidden">
                         {isImage && fileUrl ? (
-                            <img src={fileUrl} alt="Preview" className="h-full w-full object-cover" />
+                            <img src={fileUrl} alt="Preview" loading="lazy" className="h-full w-full object-cover" />
                         ) : (
                             <FileText size={20} />
                         )}

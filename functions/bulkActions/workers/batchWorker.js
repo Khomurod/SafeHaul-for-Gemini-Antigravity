@@ -1,4 +1,5 @@
 const { onRequest } = require("firebase-functions/v2/https");
+const crypto = require("crypto");
 const { admin, db } = require("../../firebaseAdmin");
 const nodemailer = require("nodemailer");
 const { enqueueWorker } = require("../services/queueService");
@@ -24,8 +25,13 @@ exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, 
         return res.status(500).send("Server misconfiguration.");
     }
 
-    const incomingSecret = req.headers['x-safehaul-internal-auth'];
-    if (!incomingSecret || incomingSecret !== workerSecret) {
+    // Constant-time comparison so the shared secret can't be recovered via a
+    // timing side-channel (consistent with publicSigning.js safeCompare).
+    const incomingBuf = Buffer.from(String(req.headers['x-safehaul-internal-auth'] || ''));
+    const expectedBuf = Buffer.from(String(workerSecret));
+    const secretOk = incomingBuf.length === expectedBuf.length
+        && crypto.timingSafeEqual(incomingBuf, expectedBuf);
+    if (!secretOk) {
         console.warn("[processBulkBatch] Unauthorized request blocked. Missing or invalid internal auth header.");
         return res.status(403).send("Forbidden");
     }
