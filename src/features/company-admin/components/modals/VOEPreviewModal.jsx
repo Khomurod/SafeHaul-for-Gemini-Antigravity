@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { X, CheckCircle, Save, Mail, Printer, ShieldCheck, Download, Loader2 } from 'lucide-react';
+import { X, CheckCircle, Save, Mail, Printer, ShieldCheck, Download, Loader2, AlertCircle } from 'lucide-react';
 import { getFieldValue } from '@shared/utils/helpers';
 import { useData } from '@/context/DataContext';
 import html2canvas from 'html2canvas';

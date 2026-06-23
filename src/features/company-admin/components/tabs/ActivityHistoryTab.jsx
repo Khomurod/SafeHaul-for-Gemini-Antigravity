@@ -34,7 +34,7 @@ export function ActivityHistoryTab({ companyId, applicationId, collectionName })
     };
 
     const getIcon = (type, action) => {
-        const lowerAction = action.toLowerCase();
+        const lowerAction = (action || '').toLowerCase();
         const lowerType = (type || '').toLowerCase();
 
         if (lowerType === 'call' || lowerAction.includes('call')) return <Phone size={16} className="text-emerald-600" />;
@@ -57,7 +57,7 @@ export function ActivityHistoryTab({ companyId, applicationId, collectionName })
     const filteredLogs = useMemo(() => {
         if (filterType === 'all') return logs;
         return logs.filter(log => {
-            const action = log.action.toLowerCase();
+            const action = (log.action || '').toLowerCase();
             const type = (log.type || '').toLowerCase();
             if (filterType === 'calls') return type === 'call' || action.includes('call');
             if (filterType === 'notes') return action.includes('note');
