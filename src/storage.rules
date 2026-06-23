@@ -20,11 +20,25 @@ service firebase.storage {
              request.auth.token.companyTeamIds.hasAny([companyId]);
     }
 
+    // Fallback to the per-company role claim — the SAME trust signal Firestore
+    // rules use (roles[companyId]). The denormalized companyTeamIds claim can be
+    // missing or stale (it only refreshes when onMembershipWrite re-runs AND the
+    // client refreshes its token), which would let a legitimate team member use
+    // the dashboard via the roles claim yet be denied direct Storage writes (e.g.
+    // saving an E-Docs template). Accepting either claim keeps Storage and
+    // Firestore authorization consistent.
+    function hasCompanyRole(companyId) {
+      return request.auth.token.keys().hasAny(['roles']) &&
+             request.auth.token.roles.keys().hasAny([companyId]) &&
+             request.auth.token.roles[companyId] in ['company_admin', 'hr_user', 'recruiter'];
+    }
+
     // Company team = company_admin/hr_user/recruiter/super_admin.
     function isCompanyTeam(companyId) {
       return isSignedIn() && (
         isSuperAdmin() ||
-        hasCompanyTeamId(companyId)
+        hasCompanyTeamId(companyId) ||
+        hasCompanyRole(companyId)
       );
     }
 
