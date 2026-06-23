@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 let testEnv;
 
@@ -226,6 +226,57 @@ describeFirestore('firestore.rules security regressions', () => {
 
     await assertFails(
       getDoc(doc(adminDb, 'companies', 'company-a', 'signing_requests', 'req1', 'secrets', 'token')),
+    );
+  });
+
+  it('lets any company team member save/edit E-Docs templates, but only admins delete', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'company-a'), { companyName: 'Co A' });
+      // Seed a template to exercise update + delete paths.
+      await setDoc(doc(adminDb, 'companies', 'company-a', 'templates', 'tmpl-seed'), {
+        companyId: 'company-a', title: 'Seed', fields: [],
+      });
+    });
+
+    const hrDb = testEnv.authenticatedContext('hr-a', {
+      roles: { 'company-a': 'hr_user' },
+    }).firestore();
+    const recruiterDb = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+    }).firestore();
+    const adminDb = testEnv.authenticatedContext('admin-a', {
+      roles: { 'company-a': 'company_admin' },
+    }).firestore();
+    const crossTenantDb = testEnv.authenticatedContext('admin-b', {
+      roles: { 'company-b': 'company_admin' },
+    }).firestore();
+
+    // hr_user can CREATE (this is the E-Docs "Save Template" regression).
+    await assertSucceeds(
+      setDoc(doc(hrDb, 'companies', 'company-a', 'templates', 'tmpl-hr'), {
+        companyId: 'company-a', title: 'Offer Letter', fields: [],
+      }),
+    );
+    // recruiter can UPDATE.
+    await assertSucceeds(
+      updateDoc(doc(recruiterDb, 'companies', 'company-a', 'templates', 'tmpl-seed'), {
+        title: 'Seed (edited)',
+      }),
+    );
+    // hr_user / recruiter CANNOT delete (admin-only, mirrors signing_requests).
+    await assertFails(
+      deleteDoc(doc(hrDb, 'companies', 'company-a', 'templates', 'tmpl-seed')),
+    );
+    // company_admin CAN delete.
+    await assertSucceeds(
+      deleteDoc(doc(adminDb, 'companies', 'company-a', 'templates', 'tmpl-hr')),
+    );
+    // Cross-tenant write is still blocked.
+    await assertFails(
+      setDoc(doc(crossTenantDb, 'companies', 'company-a', 'templates', 'tmpl-evil'), {
+        companyId: 'company-a', title: 'Evil', fields: [],
+      }),
     );
   });
 

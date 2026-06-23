@@ -247,10 +247,15 @@ service cloud.firestore {
 
       // --- SUBCOLLECTIONS ---
 
-      // TEMPLATES: Used for hiring offers/forms
+      // TEMPLATES: Used for hiring offers/forms (E-Docs).
+      // Aligned with the rest of the E-Docs feature: any company team member who
+      // can create/send a signing_request (isCompanyTeam) and upload the source PDF
+      // to secure_documents (isCompanyTeam) can also save/edit a reusable template.
+      // Deletion stays admin-only, mirroring signing_requests delete.
       match /templates/{templateId} {
         allow read: if isCompanyTeam(companyId) || isSuperAdmin();
-        allow write: if isCompanyAdmin(companyId) || isSuperAdmin();
+        allow create, update: if isCompanyTeam(companyId) || isSuperAdmin();
+        allow delete: if isCompanyAdmin(companyId) || isSuperAdmin();
       }
 
       // MESSAGE TEMPLATES: Used for campaigns
