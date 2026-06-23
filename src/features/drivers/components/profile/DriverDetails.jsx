@@ -50,7 +50,9 @@ export function DriverDetails({ driver }) {
                         <div className="flex justify-between">
                             <span className="text-gray-500">Endorsements</span>
                             <span className="font-semibold text-gray-900">
-                                {l.endorsements?.length > 0 ? l.endorsements.join(', ') : 'None'}
+                                {Array.isArray(l.endorsements)
+                                    ? (l.endorsements.length > 0 ? l.endorsements.join(', ') : 'None')
+                                    : (l.endorsements || 'None')}
                             </span>
                         </div>
                     </div>

@@ -157,7 +157,13 @@ export function useAppActions({
 
       const diff = computeDiff(originalData || {}, finalData);
 
-      await simpleRetry(() => updateDoc(docRef, finalData));
+      // Firestore rejects any payload containing `undefined`. Strip undefined
+      // keys so a partially-populated field can never fail the whole save.
+      const sanitized = Object.fromEntries(
+        Object.entries(finalData).filter(([, v]) => v !== undefined),
+      );
+
+      await simpleRetry(() => updateDoc(docRef, sanitized));
 
       if (diff) {
         await logActivity(companyId, collectionName, applicationId, "Details Updated", diff);
