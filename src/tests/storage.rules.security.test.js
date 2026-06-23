@@ -342,15 +342,36 @@ describeStorage('storage.rules security matrix (tenant isolation + permissive te
     // company-scoped paths (which super_admin CAN read) after intake processing.
   });
 
-  it('denies team-style roles when companyTeamIds claim is missing', async () => {
-    const malformedAdmin = authedStorage(
-      nextUid('malformed-admin'),
-      teamClaims('co1', 'company_admin', { includeCompanyTeamIds: false }),
+  it('recognizes a team member via the roles claim even when companyTeamIds is absent', async () => {
+    // Real-world case: a valid hr_user whose denormalized companyTeamIds claim is
+    // stale/missing must still be able to read company files and save an E-Docs
+    // template (a direct secure_documents upload) via the roles claim — matching
+    // how Firestore authorizes the same user.
+    const rolesOnlyHr = authedStorage(
+      nextUid('roles-only-hr'),
+      teamClaims('co1', 'hr_user', { includeCompanyTeamIds: false }),
     );
-    await assertFails(getMetadata(ref(malformedAdmin, paths.co1DriverBLicense)));
+    await assertSucceeds(getMetadata(ref(rolesOnlyHr, paths.co1DriverBLicense)));
+    await assertSucceeds(
+      uploadString(
+        ref(rolesOnlyHr, testPath(runCounter, 'secure_documents/co1/templates/roles-only.pdf')),
+        'tmpl',
+        'raw',
+        { contentType: 'application/pdf' },
+      ),
+    );
+  });
+
+  it('still denies a user with neither companyTeamIds nor a role for that company', async () => {
+    // A company_admin of co2 (wrong tenant), no companyTeamIds — must be denied co1.
+    const otherTenant = authedStorage(
+      nextUid('other-tenant'),
+      teamClaims('co2', 'company_admin', { includeCompanyTeamIds: false }),
+    );
+    await assertFails(getMetadata(ref(otherTenant, paths.co1DriverBLicense)));
     await assertFails(
       uploadString(
-        ref(malformedAdmin, testPath(runCounter, 'companies/co1/applications/driverB/cdl-front/malformed-admin.pdf')),
+        ref(otherTenant, testPath(runCounter, 'secure_documents/co1/templates/cross-tenant.pdf')),
         'blocked',
         'raw',
         { contentType: 'application/pdf' },
