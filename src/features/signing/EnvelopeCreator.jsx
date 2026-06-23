@@ -22,6 +22,7 @@ import {
     computeNextPasteRect,
     isEditableKeyboardTarget,
 } from '@features/signing/utils/envelopeFieldClipboard';
+import { serializeTemplateFields } from '@features/signing/utils/templateFieldSerializer';
 import {
     PDF_VIEWPORT_WIDTH_DEFAULT,
     adjustPdfViewportWidth,
@@ -36,6 +37,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.mjs',
     import.meta.url,
 ).toString();
+
+// Upload ceiling. MUST stay <= the storage-rule limit (isValidFile in
+// src/storage.rules), otherwise the client accepts files the server rejects.
+const MAX_UPLOAD_MB = 20;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 // --- FIELD TEMPLATES ---
 const FIELD_TEMPLATES = {
@@ -538,9 +544,12 @@ export default function EnvelopeCreator({
     const handleFileChange = (e) => {
         const selected = e.target.files[0];
         if (selected && selected.type === 'application/pdf') {
-            // MED-3 FIX: Reject files larger than 25MB
-            if (selected.size > 25 * 1024 * 1024) {
-                showError('File too large. Maximum size is 25MB.');
+            // Keep this limit in lock-step with the storage rule (isValidFile in
+            // storage.rules, currently < 20MB). If the client accepts a file the
+            // rule rejects, the upload fails server-side and surfaces as an opaque
+            // error — so the two limits MUST match.
+            if (selected.size >= MAX_UPLOAD_BYTES) {
+                showError(`File too large. Maximum size is ${MAX_UPLOAD_MB}MB.`);
                 return;
             }
             setFile(selected);
@@ -669,25 +678,10 @@ export default function EnvelopeCreator({
         try {
             const commonData = {
                 companyId,
-                title,
-                // SAFETY: Aggressively sanitize before Firestore write - strip null/undefined entries
-                fields: (processedFields || []).filter(f => f != null).map(f => ({
-                    id: f.id,
-                    type: f.type,
-                    label: f.label,
-                    pageNumber: f.page || 1,
-                    xPosition: f.x,
-                    yPosition: f.y,
-                    width: f.width,
-                    height: f.height,
-                    required: f.required ?? true,
-                    defaultValue: f.defaultValue ?? '',
-                    readOnly: f.readOnly || false,
-                    prefillPolicy: normalizePrefillPolicy(f),
-                    bindingKey: f.bindingKey || '',
-                    prefillGroupKey: f.prefillGroupKey || '',
-                    fontSize: f.fontSize || 'Auto',
-                })),
+                title: title || 'Untitled Document',
+                // Funnel every field through the pure serializer so the payload can
+                // never contain `undefined` (which Firestore rejects outright).
+                fields: serializeTemplateFields(processedFields),
                 updatedAt: serverTimestamp()
             };
 
@@ -793,7 +787,11 @@ export default function EnvelopeCreator({
             if (onClose) onClose();
         } catch (err) {
             console.error('Error saving:', err);
-            showError('Action failed. Please try again.');
+            // Surface the real reason (e.g. permission-denied, storage/unauthorized,
+            // invalid-argument) instead of a generic message. An opaque "Action failed"
+            // is undebuggable; a precise code/message means this is never a mystery again.
+            const reason = err?.code || err?.message || 'unknown error';
+            showError(`Save failed (${reason}). Please try again or contact support.`);
         } finally {
             setLoading(false);
         }
