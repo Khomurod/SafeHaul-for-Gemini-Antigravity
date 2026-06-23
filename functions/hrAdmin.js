@@ -5,27 +5,37 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { admin, db, auth } = require("./firebaseAdmin");
 
 // --- 1. CREATE USER ---
+// Roles a company admin may grant within their own company. `super_admin` is
+// deliberately excluded — only an existing global super admin can mint one.
+const ASSIGNABLE_PORTAL_ROLES = ["company_admin", "hr_user", "recruiter"];
+
 exports.createPortalUser = onCall({ maxInstances: 2 }, async (request) => {
     const { fullName, email, password, companyId, role } = request.data;
 
     if (!request.auth) throw new HttpsError("unauthenticated", "Login required.");
-
-    const roles = request.auth.token.roles || {};
-
-    // Security Check: Only a Super Admin can create another Super Admin
-    if (role === "super_admin") {
-        const isGlobalSuperAdmin = roles.globalRole === "super_admin";
-        if (!isGlobalSuperAdmin) throw new HttpsError("permission-denied", "Only Super Admins can create other Super Admins.");
+    if (!email || !companyId || !role) {
+        throw new HttpsError("invalid-argument", "email, companyId and role are required.");
     }
 
-    // Security Check: Regular admins can only add to their own company
-    if (role === "company_admin" || role === "hr_user") {
-        const isAdminForThisCompany = roles[companyId] === "company_admin";
-        const isGlobalSuperAdmin = roles.globalRole === "super_admin";
+    const roles = request.auth.token.roles || {};
+    const isGlobalSuperAdmin = roles.globalRole === "super_admin";
 
+    // DEFAULT-DENY authorization. Previously only `super_admin` and
+    // `company_admin`/`hr_user` were gated, so any OTHER role string (e.g.
+    // "recruiter", a typo, or empty) fell through with NO permission check and
+    // created a cross-tenant membership. Now every path is explicitly authorized.
+    if (role === "super_admin") {
+        if (!isGlobalSuperAdmin) {
+            throw new HttpsError("permission-denied", "Only Super Admins can create other Super Admins.");
+        }
+    } else if (ASSIGNABLE_PORTAL_ROLES.includes(role)) {
+        const isAdminForThisCompany = roles[companyId] === "company_admin";
         if (!isGlobalSuperAdmin && !isAdminForThisCompany) {
             throw new HttpsError("permission-denied", "You do not have permission to add users to this company.");
         }
+    } else {
+        // Unknown / unsupported role — reject outright.
+        throw new HttpsError("invalid-argument", `Unsupported role: ${role}`);
     }
 
     let userId;
