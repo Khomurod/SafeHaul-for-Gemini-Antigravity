@@ -58,6 +58,10 @@ const userRowSelect = (name) => {
     const row = screen.getByText(name).closest('tr');
     return within(row).getByRole('combobox');
 };
+// The dropdown's `value` is now a non-phone token (ln0/ln1/...); the visible number lives
+// in the selected option's text. Assert on the rendered text instead of the raw value.
+const selText = (select) => select.options[select.selectedIndex]?.textContent?.trim() || '';
+const rowSelText = (name) => selText(userRowSelect(name));
 
 describe('NumberAssignmentManager — linked-number display', () => {
     it('CASE A: clean E.164 assignment shows the linked number', async () => {
@@ -75,7 +79,7 @@ describe('NumberAssignmentManager — linked-number display', () => {
 
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
-        expect(userRowSelect('Tom Robinson').value).toBe('+15550000002');
+        expect(rowSelText('Tom Robinson')).toContain('+15550000002');
     });
 
     it('CASE B: assignment stored in a different format still matches inventory (no false mismatch)', async () => {
@@ -93,7 +97,7 @@ describe('NumberAssignmentManager — linked-number display', () => {
 
         const row = screen.getByText('Tom Robinson').closest('tr');
         // Resolves to canonical E.164 and matches the inventory entry exactly.
-        expect(within(row).getByRole('combobox').value).toBe('+15550000002');
+        expect(selText(within(row).getByRole('combobox'))).toContain('+15550000002');
         // ...so it must NOT be flagged as out-of-sync.
         expect(within(row).queryByText('Inventory Mismatch')).not.toBeInTheDocument();
     });
@@ -111,7 +115,7 @@ describe('NumberAssignmentManager — linked-number display', () => {
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Company Default Line')).toBeInTheDocument());
         const defaultSelect = screen.getAllByRole('combobox')[0];
-        expect(defaultSelect.value).toBe('+15559999999');
+        expect(selText(defaultSelect)).toContain('+15559999999');
         expect(screen.getByText(/Missing from sync/)).toBeInTheDocument();
     });
 
@@ -128,7 +132,7 @@ describe('NumberAssignmentManager — linked-number display', () => {
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Company Default Line')).toBeInTheDocument());
         const defaultSelect = screen.getAllByRole('combobox')[0];
-        expect(defaultSelect.value).toBe('+15550000001');
+        expect(selText(defaultSelect)).toContain('+15550000001');
         // matched inventory, so no stale-sync marker
         expect(screen.queryByText(/Missing from sync/)).not.toBeInTheDocument();
     });
@@ -148,8 +152,8 @@ describe('NumberAssignmentManager — linked-number display', () => {
 
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
-        expect(userRowSelect('Tom Robinson').value).toBe('+5550000002');
-        expect(screen.getAllByRole('combobox')[0].value).toBe('+5550000002');
+        expect(rowSelText('Tom Robinson')).toContain('+5550000002');
+        expect(selText(screen.getAllByRole('combobox')[0])).toContain('+5550000002');
         expect(screen.queryByText(/Missing from sync/)).not.toBeInTheDocument();
     });
 
@@ -165,8 +169,8 @@ describe('NumberAssignmentManager — linked-number display', () => {
 
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
-        expect(userRowSelect('Tom Robinson').value).toBe('');
-        expect(screen.getAllByRole('combobox')[0].value).toBe('');
+        expect(rowSelText('Tom Robinson')).toBe('No Direct Line');
+        expect(selText(screen.getAllByRole('combobox')[0])).toContain('Select Default Number');
         expect(screen.queryByText(/Missing from sync/)).not.toBeInTheDocument();
     });
 
@@ -182,7 +186,7 @@ describe('NumberAssignmentManager — linked-number display', () => {
 
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
-        expect(userRowSelect('Tom Robinson').value).toBe('');
+        expect(rowSelText('Tom Robinson')).toBe('No Direct Line');
     });
 
     it('CASE H: a line assigned to a uid missing from the roster is still surfaced (resolved user doc)', async () => {
@@ -201,11 +205,11 @@ describe('NumberAssignmentManager — linked-number display', () => {
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
         // The assigned line is now visible on Tom's appended row...
-        expect(userRowSelect('Tom Robinson').value).toBe('+15550000002');
+        expect(rowSelText('Tom Robinson')).toContain('+15550000002');
         // ...and flagged so the admin understands it's outside the current roster.
         expect(screen.getByText('Not in current team')).toBeInTheDocument();
         // The actual roster member with no line still reads empty.
-        expect(userRowSelect('Nova').value).toBe('');
+        expect(rowSelText('Nova')).toBe('No Direct Line');
     });
 
     it('CASE I: a line assigned to a uid with no user doc shows a placeholder row (still manageable)', async () => {
@@ -222,6 +226,6 @@ describe('NumberAssignmentManager — linked-number display', () => {
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Unknown / former user')).toBeInTheDocument());
         const row = screen.getByText('Unknown / former user').closest('tr');
-        expect(within(row).getByRole('combobox').value).toBe('+15550000003');
+        expect(selText(within(row).getByRole('combobox'))).toContain('+15550000003');
     });
 });

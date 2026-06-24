@@ -282,6 +282,31 @@ export function NumberAssignmentManager({ companyId }) {
     const sanitizedDefault = sanitizePhone(defaultNumber);
     const defaultInInventory = inventory.some(num => sanitizePhone(num.phoneNumber) === sanitizedDefault);
 
+    // Non-phone option tokens + human-readable labels.
+    // Some browsers/extensions (corporate DLP tools, embedded/AI browsers) strip
+    // phone-like text AND attribute values out of the page. When an <option value> is the
+    // raw phone number it gets blanked, the <select> can no longer match its current value,
+    // and every line silently collapses to the first option ("No Direct Line"). Using a
+    // stable, non-phone token (`ln0`, `ln1`, ...) as the option value keeps selection
+    // working regardless, and leading each option with the line's saved label
+    // ("Main Number", "Tom's Number") keeps the list readable even when the digits
+    // themselves are hidden. The stored value (assignments / defaultPhoneNumber) stays the
+    // real phone number — only the dropdown's internal value changes.
+    const MISSING_TOKEN = '__missing__';
+    const lines = inventory.map((num, idx) => ({
+        token: `ln${idx}`,
+        phone: sanitizePhone(num.phoneNumber),
+        label: num.label,
+        usageType: num.usageType,
+    }));
+    const tokenForPhone = (phone) => lines.find(l => l.phone === phone)?.token || '';
+    const phoneForToken = (token) => lines.find(l => l.token === token)?.phone || '';
+    const lineDisplay = (label, phone, idx, suffix) => {
+        const name = (label && String(label).trim()) || `Line ${idx + 1}`;
+        const base = phone ? `${name} (${phone})` : name;
+        return suffix ? `${base} ${suffix}` : base;
+    };
+
     if (inventory.length === 0) {
         return (
             <div className="bg-gray-50 p-8 rounded-xl border border-gray-200 text-center">
@@ -345,22 +370,24 @@ export function NumberAssignmentManager({ companyId }) {
                 </div>
                 <div className="flex gap-3 max-w-lg">
                     <select
-                        value={sanitizedDefault}
-                        onChange={(e) => setDefaultNumber(sanitizePhone(e.target.value))}
-                        className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                        value={tokenForPhone(sanitizedDefault) || (sanitizedDefault ? MISSING_TOKEN : '')}
+                        onChange={(e) => {
+                            const t = e.target.value;
+                            if (!t) setDefaultNumber('');
+                            else if (t !== MISSING_TOKEN) setDefaultNumber(phoneForToken(t));
+                            // MISSING_TOKEN: keep the configured-but-unsynced default as-is
+                        }}
+                        className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                     >
                         <option value="">-- Select Default Number --</option>
-                        {inventory.map(num => {
-                            const sNum = sanitizePhone(num.phoneNumber);
-                            return (
-                                <option key={num.phoneNumber} value={sNum}>
-                                    {sNum} ({num.usageType || 'Line'})
-                                </option>
-                            );
-                        })}
+                        {lines.map((l, idx) => (
+                            <option key={l.token} value={l.token}>
+                                {lineDisplay(l.label, l.phone, idx, `· ${l.usageType || 'Line'}`)}
+                            </option>
+                        ))}
                         {/* Resilience: configured default that isn't in the synced inventory */}
                         {sanitizedDefault && !defaultInInventory && (
-                            <option value={sanitizedDefault}>
+                            <option value={MISSING_TOKEN}>
                                 {sanitizedDefault} (Missing from sync)
                             </option>
                         )}
@@ -448,24 +475,26 @@ export function NumberAssignmentManager({ companyId }) {
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col gap-1">
                                             <select
-                                                value={currentPhone}
-                                                onChange={(e) => setAssignments(prev => ({ ...prev, [user.id]: sanitizePhone(e.target.value) }))}
-                                                className={`w-full p-2 border rounded text-sm outline-none transition-all ${isAssigned ? 'border-purple-200 bg-purple-50 text-purple-700 font-mono' : 'border-gray-200 text-gray-400'
+                                                value={tokenForPhone(currentPhone) || (isAssigned ? MISSING_TOKEN : '')}
+                                                onChange={(e) => {
+                                                    const t = e.target.value;
+                                                    const nextPhone = !t ? '' : (t === MISSING_TOKEN ? currentPhone : phoneForToken(t));
+                                                    setAssignments(prev => ({ ...prev, [user.id]: nextPhone }));
+                                                }}
+                                                className={`w-full p-2 border rounded text-sm outline-none transition-all ${isAssigned ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-400'
                                                     }`}
                                             >
                                                 <option value="">No Direct Line</option>
-                                                {/* 1. Show existing inventory */}
-                                                {inventory.map(num => {
-                                                    const sNum = sanitizePhone(num.phoneNumber);
-                                                    return (
-                                                        <option key={num.phoneNumber} value={sNum}>
-                                                            {sNum}
-                                                        </option>
-                                                    );
-                                                })}
+                                                {/* 1. Show existing inventory (label-first so it stays readable even if a
+                                                    browser/DLP extension hides the raw digits) */}
+                                                {lines.map((l, idx) => (
+                                                    <option key={l.token} value={l.token}>
+                                                        {lineDisplay(l.label, l.phone, idx)}
+                                                    </option>
+                                                ))}
                                                 {/* 2. Resilience: If currently assigned number is MISSING from inventory, show it anyway */}
                                                 {isAssigned && !invItem && (
-                                                    <option value={currentPhone}>
+                                                    <option value={MISSING_TOKEN}>
                                                         {currentPhone} (Missing from sync)
                                                     </option>
                                                 )}
