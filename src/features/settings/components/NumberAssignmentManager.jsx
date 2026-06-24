@@ -27,6 +27,9 @@ export function NumberAssignmentManager({ companyId }) {
     const sanitizePhone = (num) => {
         if (!num) return "";
         const raw = num.replace(/[^0-9+]/g, '');
+        // No actual digits (e.g. "", "+", punctuation-only) -> treat as empty, so the
+        // verify button never renders and we never send the bare "+" to the backend.
+        if (raw.replace(/[^0-9]/g, '').length === 0) return "";
         return raw.startsWith('+') ? raw : `+${raw}`;
     };
 
@@ -115,7 +118,8 @@ export function NumberAssignmentManager({ companyId }) {
     }, [companyId]);
 
     const handleVerifyLine = async (phoneNumber) => {
-        if (!phoneNumber) return;
+        // Guard against malformed/blank numbers (the bare "+") reaching the backend.
+        if (!phoneNumber || phoneNumber.replace(/[^0-9]/g, '').length === 0) return;
         setVerifyingLine(phoneNumber);
 
         try {
