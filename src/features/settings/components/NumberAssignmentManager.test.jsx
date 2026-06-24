@@ -228,44 +228,4 @@ describe('NumberAssignmentManager — linked-number display', () => {
         const row = screen.getByText('Unknown / former user').closest('tr');
         expect(selText(within(row).getByRole('combobox'))).toContain('+15550000003');
     });
-
-    it('CASE H: a line assigned to a uid missing from the roster is still surfaced (resolved user doc)', async () => {
-        // Reproduces the production case: assignment keyed by a uid the membership
-        // -> users join didn't return, but the user doc is resolvable.
-        CONFIG_DATA = {
-            isActive: true,
-            inventory: [{ phoneNumber: '+15550000002', usageType: 'DirectNumber' }],
-            defaultPhoneNumber: '+15550000002',
-            assignments: { '5921L1GIU7Z7O5dq22DuMZ0dzMY2': '+15550000002' },
-        };
-        MEMBERSHIPS = [{ userId: 'uidNova', companyId: 'c1', role: 'company_admin' }];
-        USERS = [{ id: 'uidNova', name: 'Nova', email: 'nova@x.com' }];
-        EXTERNAL_POOL = [{ id: '5921L1GIU7Z7O5dq22DuMZ0dzMY2', name: 'Tom Robinson', email: 'tom@raystarllc.com' }];
-
-        render(<NumberAssignmentManager companyId="c1" />);
-        await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
-        // The assigned line is now visible on Tom's appended row...
-        expect(userRowSelect('Tom Robinson').value).toBe('+15550000002');
-        // ...and flagged so the admin understands it's outside the current roster.
-        expect(screen.getByText('Not in current team')).toBeInTheDocument();
-        // The actual roster member with no line still reads empty.
-        expect(userRowSelect('Nova').value).toBe('');
-    });
-
-    it('CASE I: a line assigned to a uid with no user doc shows a placeholder row (still manageable)', async () => {
-        CONFIG_DATA = {
-            isActive: true,
-            inventory: [{ phoneNumber: '+15550000003', usageType: 'DirectNumber' }],
-            defaultPhoneNumber: '+15550000003',
-            assignments: { flBompzYPpVoJbCcooLiSzrFkTH3: '+15550000003' },
-        };
-        MEMBERSHIPS = [{ userId: 'uidNova', companyId: 'c1', role: 'company_admin' }];
-        USERS = [{ id: 'uidNova', name: 'Nova', email: 'nova@x.com' }];
-        EXTERNAL_POOL = []; // no user doc resolvable for the assigned uid
-
-        render(<NumberAssignmentManager companyId="c1" />);
-        await waitFor(() => expect(screen.getByText('Unknown / former user')).toBeInTheDocument());
-        const row = screen.getByText('Unknown / former user').closest('tr');
-        expect(within(row).getByRole('combobox').value).toBe('+15550000003');
-    });
 });
