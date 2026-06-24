@@ -136,6 +136,63 @@ export function NumberAssignmentManager({ companyId }) {
         return () => unsub();
     }, [companyId]);
 
+    // Surface EVERY user that has a line assigned, even when the company
+    // memberships -> users join did not return them. A number can be linked and
+    // actively sending while its owner is missing from the roster (a former
+    // member, a missing/!companyId membership record, or an account whose
+    // users-doc id differs from the uid the assignment was keyed by). Without
+    // this, that assignment is invisible: the matrix only renders rows built
+    // from memberships, so the linked number silently shows as unassigned for
+    // everyone. We resolve any assignment-key uid that isn't already listed and
+    // append it (flagged), so the assignment is always visible and manageable.
+    useEffect(() => {
+        const assignedUids = Object.keys(assignments || {}).filter(
+            (uid) => uid && sanitizePhone(assignments[uid])
+        );
+        if (assignedUids.length === 0) return;
+
+        const known = new Set(users.map((u) => u.id));
+        const missing = assignedUids.filter((uid) => !known.has(uid));
+        if (missing.length === 0) return;
+
+        let cancelled = false;
+        (async () => {
+            const extras = [];
+            const resolved = new Set();
+            for (let i = 0; i < missing.length; i += 30) {
+                const batch = missing.slice(i, i + 30);
+                try {
+                    const snap = await getDocs(
+                        query(collection(db, 'users'), where(documentId(), 'in', batch))
+                    );
+                    snap.docs.forEach((d) => {
+                        resolved.add(d.id);
+                        extras.push({ id: d.id, ...d.data(), role: 'external', _unlinkedAssignment: true });
+                    });
+                } catch (e) {
+                    console.error('[SMS Config] Failed to resolve assigned user docs', e);
+                }
+            }
+            // Assignment keys with no users doc at all still get a placeholder row
+            // so the dangling assignment is visible and can be cleared/reassigned.
+            missing.forEach((uid) => {
+                if (!resolved.has(uid)) {
+                    extras.push({ id: uid, name: 'Unknown / former user', email: uid, role: 'unassigned', _unlinkedAssignment: true });
+                }
+            });
+            if (!cancelled && extras.length) {
+                setUsers((prev) => {
+                    const ids = new Set(prev.map((p) => p.id));
+                    const merged = extras.filter((e) => !ids.has(e.id));
+                    return merged.length ? [...prev, ...merged] : prev;
+                });
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [assignments, users]);
+
     const handleVerifyLine = async (phoneNumber) => {
         // Guard against malformed/blank numbers (the bare "+") reaching the backend.
         if (!phoneNumber || phoneNumber.replace(/[^0-9]/g, '').length === 0) return;
@@ -379,6 +436,11 @@ export function NumberAssignmentManager({ companyId }) {
                                     <td className="px-6 py-4 text-sm font-medium text-gray-900 border-r border-gray-50">
                                         {user.name || user.fullName || user.email}
                                         <div className="text-xs text-gray-400 font-normal">{user.email}</div>
+                                        {user._unlinkedAssignment && (
+                                            <div className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                                                <AlertCircle size={10} /> Not in current team
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-xs text-gray-500 uppercase tracking-wider">
                                         {user.role?.replace('_', ' ')}
