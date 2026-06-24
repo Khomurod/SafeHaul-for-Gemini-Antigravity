@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useData } from '@/context/DataContext';
 import { doc, onSnapshot, updateDoc, collection, getDocs, query, where, documentId } from 'firebase/firestore';
 import { db, functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -24,13 +23,33 @@ export function NumberAssignmentManager({ companyId }) {
     const [defaultNumber, setDefaultNumber] = useState('');
     const [showTestModal, setShowTestModal] = useState(false);
 
+    // Canonical E.164 normalization. Mirrors functions/shared/normalizePhone so that a
+    // number stored in any format -- "(555) 123-4567", "5551234567", "15551234567",
+    // "+15551234567" -- collapses to the SAME string the synced inventory uses
+    // (+15551234567). Without this, an assigned/default line saved in a different format
+    // silently fails to match its inventory entry: the per-recruiter row falls back to a
+    // "Missing from sync" warning and the Company Default Line shows "-- Select --" even
+    // though the line is configured and actively sending. Normalizing here also means the
+    // value we write on Save is already canonical, so future linking stays consistent.
     const sanitizePhone = (num) => {
         if (!num) return "";
-        const raw = num.replace(/[^0-9+]/g, '');
+        const str = String(num);
+        const digits = str.replace(/[^0-9]/g, '');
         // No actual digits (e.g. "", "+", punctuation-only) -> treat as empty, so the
         // verify button never renders and we never send the bare "+" to the backend.
-        if (raw.replace(/[^0-9]/g, '').length === 0) return "";
-        return raw.startsWith('+') ? raw : `+${raw}`;
+        if (digits.length === 0) return "";
+        // Preserve numbers that already carry an explicit "+" prefix EXACTLY as stored.
+        // The synced inventory and the per-line keychain entries are keyed by this same
+        // "+ then digits" form (see functions normalizePhoneForKeychain), so rewriting a
+        // country code here would break inventory matching and line verification.
+        if (str.trim().startsWith('+')) return `+${digits}`;
+        // No "+" at all: apply US/CA normalization so a line saved as "(555) 123-4567",
+        // "5551234567" or "15551234567" collapses to the +1XXXXXXXXXX form the synced
+        // inventory uses -- otherwise the dropdown can't find a matching option and the
+        // line silently reads as unassigned even though it's configured and sending.
+        if (digits.length === 10) return `+1${digits}`;
+        if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+        return `+${digits}`;
     };
 
     const hasChanges = JSON.stringify(assignments) !== JSON.stringify(initialAssignments) ||
@@ -198,6 +217,14 @@ export function NumberAssignmentManager({ companyId }) {
 
     const inventory = configDoc.inventory || []; // Array of { phoneNumber, ... }
 
+    // Resilience: if a default line is configured but is not present in the synced
+    // inventory (e.g. the number was added directly at the provider, or the sync is
+    // stale), the dropdown would otherwise have no matching <option> and silently render
+    // as "-- Select Default Number --" -- hiding a default that is configured and used to
+    // send. Surface it as a selectable option instead, mirroring the per-recruiter matrix.
+    const sanitizedDefault = sanitizePhone(defaultNumber);
+    const defaultInInventory = inventory.some(num => sanitizePhone(num.phoneNumber) === sanitizedDefault);
+
     if (inventory.length === 0) {
         return (
             <div className="bg-gray-50 p-8 rounded-xl border border-gray-200 text-center">
@@ -261,7 +288,7 @@ export function NumberAssignmentManager({ companyId }) {
                 </div>
                 <div className="flex gap-3 max-w-lg">
                     <select
-                        value={sanitizePhone(defaultNumber)}
+                        value={sanitizedDefault}
                         onChange={(e) => setDefaultNumber(sanitizePhone(e.target.value))}
                         className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
                     >
@@ -274,6 +301,12 @@ export function NumberAssignmentManager({ companyId }) {
                                 </option>
                             );
                         })}
+                        {/* Resilience: configured default that isn't in the synced inventory */}
+                        {sanitizedDefault && !defaultInInventory && (
+                            <option value={sanitizedDefault}>
+                                {sanitizedDefault} (Missing from sync)
+                            </option>
+                        )}
                     </select>
                     {defaultNumber && (
                         <button
