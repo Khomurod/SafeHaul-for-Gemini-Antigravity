@@ -1,5 +1,6 @@
 const BaseAdapter = require('./BaseAdapter');
 const RC = require('@ringcentral/sdk').SDK;
+const { isLikelyValidPhone } = require('../../utils/phoneUtils');
 
 class RingCentralAdapter extends BaseAdapter {
     constructor(config) {
@@ -236,7 +237,12 @@ class RingCentralAdapter extends BaseAdapter {
                         status: 'available',         // Default status
                         assignedTo: null             // Not assigned yet
                     };
-                });
+                })
+                // Drop entries whose number didn't sanitize to a real dialable number
+                // (blank / punctuation-only RC records collapse to the bare "+"), which
+                // would otherwise poison defaultPhoneNumber and break line verification
+                // with "No authentication key found for +".
+                .filter(item => isLikelyValidPhone(item.phoneNumber));
 
             return filtered;
         } catch (error) {

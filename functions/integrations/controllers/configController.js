@@ -5,6 +5,7 @@ const { encrypt, decrypt } = require('../encryption');
 const RingCentralAdapter = require('../adapters/ringcentral');
 const EightByEightAdapter = require('../adapters/eightbyeight');
 const RC = require('@ringcentral/sdk').SDK;
+const { isLikelyValidPhone } = require('../../utils/phoneUtils');
 
 // Shared options for functions that need encryption capabilities
 const encryptedCallOptions = {
@@ -128,7 +129,10 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
         }
 
         if (!defaultPhoneNumber && inventory && inventory.length > 0) {
-            defaultPhoneNumber = inventory[0].phoneNumber;
+            // Pick the first VALID line; never adopt a malformed "+"/blank entry as
+            // the default (that would break line verification downstream).
+            const firstValid = inventory.find(item => isLikelyValidPhone(item.phoneNumber));
+            defaultPhoneNumber = firstValid ? firstValid.phoneNumber : null;
         }
 
         // --- INVENTORY MERGE STRATEGY ---
@@ -326,6 +330,11 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
     const { companyId, phoneNumber } = request.data;
     if (!companyId || !phoneNumber) {
         throw new HttpsError('invalid-argument', 'Company ID and Phone Number are required.');
+    }
+    // Reject malformed numbers (e.g. the bare "+") before the keychain lookup, so the
+    // user gets an actionable message instead of "No authentication key found for +".
+    if (!isLikelyValidPhone(phoneNumber)) {
+        throw new HttpsError('invalid-argument', 'Select a valid phone line to verify.');
     }
 
     // Check Permissions (Aligned with companyAdmin.js)

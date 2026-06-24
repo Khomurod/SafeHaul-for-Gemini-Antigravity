@@ -13,4 +13,17 @@ function normalizePhoneForKeychain(phoneNumber) {
     return rawSanitized.startsWith('+') ? rawSanitized : `+${rawSanitized}`;
 }
 
-module.exports = { normalizePhoneForKeychain, normalizePhone };
+/**
+ * True if `phoneNumber` plausibly contains a real dialable number (not just "+"
+ * or punctuation). Guards against malformed inventory entries that sanitize to
+ * the bare "+" and then fail keychain lookups ("No authentication key found for +").
+ * @param {*} phoneNumber
+ * @returns {boolean}
+ */
+function isLikelyValidPhone(phoneNumber) {
+    if (!phoneNumber || typeof phoneNumber !== 'string') return false;
+    const digits = phoneNumber.replace(/[^0-9]/g, '');
+    return digits.length >= 7;
+}
+
+module.exports = { normalizePhoneForKeychain, normalizePhone, isLikelyValidPhone };
