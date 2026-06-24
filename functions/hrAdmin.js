@@ -191,6 +191,30 @@ exports.onMembershipWrite = onDocumentWritten({
     }
 });
 
+// Remove a user's dedicated SMS line assignment when they leave a company. Without
+// this, deleting a recruiter who had a line assigned leaves an orphaned entry in
+// companies/{companyId}/integrations/sms_provider.assignments keyed by a uid that no
+// longer appears in the company roster — which then renders as an invisible "ghost"
+// assignment in Number Assignments (a linked, sending line that shows nowhere). It also
+// keeps the line tied up so it can't be cleanly reassigned. Best-effort: user removal
+// must still succeed even if the integrations doc is missing or the prune fails.
+async function clearSmsAssignment(companyId, userId) {
+    if (!companyId || !userId) return;
+    const ref = db
+        .collection('companies').doc(companyId)
+        .collection('integrations').doc('sms_provider');
+    try {
+        const snap = await ref.get();
+        const assignments = (snap.exists && snap.data() && snap.data().assignments) || null;
+        if (assignments && Object.prototype.hasOwnProperty.call(assignments, userId)) {
+            await ref.update({ [`assignments.${userId}`]: admin.firestore.FieldValue.delete() });
+            console.log(`[deletePortalUser] Cleared SMS line assignment for ${userId} in company ${companyId}.`);
+        }
+    } catch (e) {
+        console.error(`[deletePortalUser] Failed to clear SMS assignment for ${userId} in ${companyId}:`, e.message || e);
+    }
+}
+
 // --- 3. DELETE USER ---
 exports.deletePortalUser = onCall({ maxInstances: 2 }, async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Login required.");
@@ -212,9 +236,16 @@ exports.deletePortalUser = onCall({ maxInstances: 2 }, async (request) => {
             await auth.deleteUser(userId);
             await db.collection("users").doc(userId).delete();
             const membershipsSnap = await db.collection("memberships").where("userId", "==", userId).get();
+            // Free any SMS line assignments in every company this user belonged to.
+            const affectedCompanyIds = new Set();
+            membershipsSnap.forEach((doc) => {
+                const cid = doc.data() && doc.data().companyId;
+                if (cid) affectedCompanyIds.add(cid);
+            });
             const batch = db.batch();
             membershipsSnap.forEach((doc) => batch.delete(doc.ref));
             await batch.commit();
+            await Promise.all([...affectedCompanyIds].map((cid) => clearSmsAssignment(cid, userId)));
             return { message: "User completely deleted." };
         } else {
             // Company Admin remove
@@ -226,6 +257,9 @@ exports.deletePortalUser = onCall({ maxInstances: 2 }, async (request) => {
             const batch = db.batch();
             memQuery.forEach((doc) => batch.delete(doc.ref));
             await batch.commit();
+
+            // Free the user's dedicated SMS line in this company (if any).
+            await clearSmsAssignment(companyId, userId);
 
             // Cleanup orphaned users
             const remaining = await db.collection("memberships").where("userId", "==", userId).get();

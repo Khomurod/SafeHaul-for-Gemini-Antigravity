@@ -31,7 +31,11 @@ describe('validateInitData', () => {
       auth_date: String(Math.floor(Date.now() / 1000)),
       user: JSON.stringify({ id: 123 }),
     }, 'bot-token');
-    expect(validateInitData(valid.replace(/.$/, '0'), 'bot-token').valid).toBe(false);
+    // Flip the final hash character to something guaranteed different (using a fixed
+    // '0' fails ~1/16 of runs when the HMAC already ends in '0', leaving the string
+    // unchanged and still valid).
+    const tampered = valid.slice(0, -1) + (valid.slice(-1) === '0' ? '1' : '0');
+    expect(validateInitData(tampered, 'bot-token').valid).toBe(false);
 
     const stale = signInitData({
       auth_date: '1',

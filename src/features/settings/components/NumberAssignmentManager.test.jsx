@@ -11,38 +11,46 @@ vi.mock('firebase/functions', () => ({ httpsCallable: vi.fn(() => vi.fn()) }));
 vi.mock('@lib/firebase', () => ({ db: {}, functions: {} }));
 
 let CONFIG_DATA;
-let MEMBERSHIPS;
-let USERS;
-let getDocsCall = 0;
+let MEMBERSHIPS;       // [{ userId, role }] -> company roster
+let USERS;             // roster user docs [{ id, name, email }]
+let EXTERNAL_POOL;     // resolvable user docs NOT in the roster [{ id, name, email }]
 
+// Query-aware Firestore mock: resolves the `memberships` query and any `users`
+// query (filtered by the documentId() `in` list) from the fixture pools, so it
+// handles both the roster fetch and the "resolve missing assignment owner" fetch.
 vi.mock('firebase/firestore', () => ({
     doc: vi.fn((...args) => ({ __type: 'doc', path: args.slice(1).join('/') })),
-    collection: vi.fn((...args) => ({ __type: 'collection', path: args.slice(1).join('/') })),
-    query: vi.fn((c) => c),
-    where: vi.fn(() => ({})),
+    collection: vi.fn((_db, name) => ({ __col: name })),
+    query: vi.fn((col, ...constraints) => ({ col, constraints })),
+    where: vi.fn((field, op, value) => ({ field, op, value })),
     documentId: vi.fn(() => '__name__'),
     updateDoc: vi.fn(() => Promise.resolve()),
     onSnapshot: (ref, cb) => {
         cb({ exists: () => !!CONFIG_DATA, data: () => CONFIG_DATA });
         return vi.fn();
     },
-    getDocs: vi.fn(() => {
-        if (getDocsCall === 0) {
-            getDocsCall++;
+    getDocs: vi.fn((q) => {
+        const colName = q?.col?.__col;
+        if (colName === 'memberships') {
             return Promise.resolve({
                 docs: MEMBERSHIPS.map(m => ({ id: 'mem_' + m.userId, data: () => m }))
             });
         }
-        return Promise.resolve({
-            docs: USERS.map(u => ({ id: u.id, data: () => ({ name: u.name, email: u.email }) }))
-        });
+        // users query -> return docs from the pool whose id is in the requested list
+        const inC = (q?.constraints || []).find(c => c.op === 'in');
+        const ids = inC?.value || [];
+        const pool = [...USERS, ...EXTERNAL_POOL];
+        const docs = pool
+            .filter(u => ids.includes(u.id))
+            .map(u => ({ id: u.id, data: () => ({ name: u.name, email: u.email }) }));
+        return Promise.resolve({ docs });
     }),
 }));
 
 import { NumberAssignmentManager } from './NumberAssignmentManager';
 
 beforeEach(() => {
-    getDocsCall = 0;
+    EXTERNAL_POOL = [];
     vi.clearAllMocks();
 });
 
@@ -175,5 +183,45 @@ describe('NumberAssignmentManager — linked-number display', () => {
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
         expect(userRowSelect('Tom Robinson').value).toBe('');
+    });
+
+    it('CASE H: a line assigned to a uid missing from the roster is still surfaced (resolved user doc)', async () => {
+        // Reproduces the production case: assignment keyed by a uid the membership
+        // -> users join didn't return, but the user doc is resolvable.
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [{ phoneNumber: '+15550000002', usageType: 'DirectNumber' }],
+            defaultPhoneNumber: '+15550000002',
+            assignments: { '5921L1GIU7Z7O5dq22DuMZ0dzMY2': '+15550000002' },
+        };
+        MEMBERSHIPS = [{ userId: 'uidNova', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidNova', name: 'Nova', email: 'nova@x.com' }];
+        EXTERNAL_POOL = [{ id: '5921L1GIU7Z7O5dq22DuMZ0dzMY2', name: 'Tom Robinson', email: 'tom@raystarllc.com' }];
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
+        // The assigned line is now visible on Tom's appended row...
+        expect(userRowSelect('Tom Robinson').value).toBe('+15550000002');
+        // ...and flagged so the admin understands it's outside the current roster.
+        expect(screen.getByText('Not in current team')).toBeInTheDocument();
+        // The actual roster member with no line still reads empty.
+        expect(userRowSelect('Nova').value).toBe('');
+    });
+
+    it('CASE I: a line assigned to a uid with no user doc shows a placeholder row (still manageable)', async () => {
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [{ phoneNumber: '+15550000003', usageType: 'DirectNumber' }],
+            defaultPhoneNumber: '+15550000003',
+            assignments: { flBompzYPpVoJbCcooLiSzrFkTH3: '+15550000003' },
+        };
+        MEMBERSHIPS = [{ userId: 'uidNova', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidNova', name: 'Nova', email: 'nova@x.com' }];
+        EXTERNAL_POOL = []; // no user doc resolvable for the assigned uid
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        await waitFor(() => expect(screen.getByText('Unknown / former user')).toBeInTheDocument());
+        const row = screen.getByText('Unknown / former user').closest('tr');
+        expect(within(row).getByRole('combobox').value).toBe('+15550000003');
     });
 });
