@@ -244,7 +244,7 @@ export function NumberAssignmentManager({ companyId }) {
             // Some browser/privacy layers redact phone numbers in Firestore snapshots before
             // React sees them, so saving raw <option> phone values can turn a selected line
             // into an empty string. The callable re-reads the authoritative inventory with
-            // Admin SDK and maps tokens (ln0/ln1/...) back to real phone numbers server-side.
+            // Admin SDK and maps stable line IDs back to real phone numbers server-side.
             const saveAssignments = httpsCallable(functions, 'saveSmsLineAssignments');
             await saveAssignments({
                 companyId,
@@ -304,15 +304,15 @@ export function NumberAssignmentManager({ companyId }) {
     // Some browsers/extensions (corporate DLP tools, embedded/AI browsers) strip
     // phone-like text AND attribute values out of the page. When an <option value> is the
     // raw phone number it gets blanked, the <select> can no longer match its current value,
-    // and every line silently collapses to the first option ("No Direct Line"). Using a
-    // stable, non-phone token (`ln0`, `ln1`, ...) as the option value keeps selection
-    // working regardless, and leading each option with the line's saved label
+    // and every line silently collapses to the first option ("No Direct Line"). Using the
+    // backend-provided stable lineId as the option value keeps selection working even when
+    // inventory rows are reordered, and leading each option with the line's saved label
     // ("Main Number", "Tom's Number") keeps the list readable even when the digits
     // themselves are hidden. The stored value (assignments / defaultPhoneNumber) stays the
     // real phone number — only the dropdown's internal value changes.
     const MISSING_TOKEN = '__missing__';
     const lines = inventory.map((num, idx) => ({
-        token: `ln${idx}`,
+        token: num.lineId || num.id || `ln${idx}`,
         phone: sanitizePhone(num.phoneNumber),
         label: num.label,
         usageType: num.usageType,
@@ -323,8 +323,15 @@ export function NumberAssignmentManager({ companyId }) {
     // every row would collapse to showing that line ("Main Number"), and selecting another
     // line couldn't stick. Guarding on a non-empty phone keeps unassigned = "No Direct Line"
     // and makes selection exact.
+    const resolveLineToken = (token) => {
+        if (!token) return '';
+        if (lines.some(l => l.token === token)) return token;
+        const legacyMatch = String(token).match(/^ln(\d+)$/);
+        if (legacyMatch) return lines[Number(legacyMatch[1])]?.token || token;
+        return token;
+    };
     const tokenForPhone = (phone) => (phone ? (lines.find(l => l.phone === phone)?.token || '') : '');
-    const phoneForToken = (token) => lines.find(l => l.token === token)?.phone || '';
+    const phoneForToken = (token) => lines.find(l => l.token === resolveLineToken(token))?.phone || '';
     const lineDisplay = (label, phone, idx, suffix) => {
         const name = (label && String(label).trim()) || `Line ${idx + 1}`;
         const base = phone ? `${name} (${phone})` : name;
@@ -394,7 +401,7 @@ export function NumberAssignmentManager({ companyId }) {
                 </div>
                 <div className="flex gap-3 max-w-lg">
                     <select
-                        value={defaultTokenOverride ?? (tokenForPhone(sanitizedDefault) || savedDefaultToken || (sanitizedDefault ? MISSING_TOKEN : ''))}
+                        value={defaultTokenOverride ?? (tokenForPhone(sanitizedDefault) || resolveLineToken(savedDefaultToken) || (sanitizedDefault ? MISSING_TOKEN : ''))}
                         onChange={(e) => {
                             const t = e.target.value;
                             setDefaultTokenOverride(t);
@@ -477,7 +484,7 @@ export function NumberAssignmentManager({ companyId }) {
                         {users.map(user => {
                             const rawPhone = assignments[user.id] || '';
                             const currentPhone = sanitizePhone(rawPhone);
-                            const selectedToken = assignmentTokenOverrides[user.id] ?? (tokenForPhone(currentPhone) || savedAssignmentTokens[user.id] || (currentPhone ? MISSING_TOKEN : ''));
+                            const selectedToken = assignmentTokenOverrides[user.id] ?? (tokenForPhone(currentPhone) || resolveLineToken(savedAssignmentTokens[user.id]) || (currentPhone ? MISSING_TOKEN : ''));
                             const isAssigned = !!currentPhone || !!assignmentTokenOverrides[user.id];
 
                             // Match against sanitized inventory numbers

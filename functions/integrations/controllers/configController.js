@@ -5,13 +5,35 @@ const { encrypt, decrypt } = require('../encryption');
 const RingCentralAdapter = require('../adapters/ringcentral');
 const EightByEightAdapter = require('../adapters/eightbyeight');
 const RC = require('@ringcentral/sdk').SDK;
-const { isLikelyValidPhone } = require('../../utils/phoneUtils');
+const crypto = require('crypto');
+const { isLikelyValidPhone, normalizePhoneForKeychain } = require('../../utils/phoneUtils');
 
 // Shared options for functions that need encryption capabilities
 const encryptedCallOptions = {
     cors: true,
     secrets: ['SMS_ENCRYPTION_KEY']
 };
+
+const stableLineIdForPhone = (phoneNumber) => {
+    if (!phoneNumber) return '';
+    try {
+        const normalized = normalizePhoneForKeychain(String(phoneNumber));
+        if (!isLikelyValidPhone(normalized)) return '';
+        return `line_${crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16)}`;
+    } catch {
+        return '';
+    }
+};
+
+const lineTokenForInventoryItem = (line, idx) => {
+    return line?.lineId || line?.id || stableLineIdForPhone(line?.phoneNumber) || `ln${idx}`;
+};
+
+const withStableLineIds = (inventory = []) => inventory.map((line, idx) => ({
+    ...(line || {}),
+    lineId: lineTokenForInventoryItem(line, idx)
+}));
+
 
 /**
  * 1. Save Configuration (Super Admin)
@@ -163,7 +185,7 @@ exports.saveIntegrationConfig = onCall(encryptedCallOptions, async (request) => 
         await docRef.set({
             provider,
             config: finalConfig,
-            inventory: finalInventory,
+            inventory: withStableLineIds(finalInventory),
             defaultPhoneNumber,
             isActive: true,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -394,7 +416,7 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
 
 
 /**
- * Save line assignments by stable inventory tokens (ln0/ln1/...) instead of trusting
+ * Save line assignments by stable inventory line IDs instead of trusting
  * browser-visible phone values. Some customer browsers/DLP layers redact phone
  * numbers in Firestore snapshots and <option> values, which makes the UI unable to
  * persist a selected line. This callable re-reads the authoritative inventory with
@@ -420,8 +442,16 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
     if (!snap.exists) throw new HttpsError('not-found', 'SMS provider config was not found.');
 
     const data = snap.data() || {};
-    const inventory = Array.isArray(data.inventory) ? data.inventory : [];
-    const tokenToPhone = new Map(inventory.map((line, idx) => [`ln${idx}`, line?.phoneNumber || '']));
+    const inventory = withStableLineIds(Array.isArray(data.inventory) ? data.inventory : []);
+    const tokenToLine = new Map();
+    inventory.forEach((line, idx) => {
+        const stableToken = lineTokenForInventoryItem(line, idx);
+        tokenToLine.set(stableToken, line);
+        // Backward compatibility for already-rendered/saved selections from the
+        // first token implementation. We accept lnN, but always re-persist the
+        // stable lineId so future saves survive inventory reordering/removal.
+        tokenToLine.set(`ln${idx}`, line);
+    });
 
     const updates = {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -437,15 +467,16 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
             nextAssignmentLineTokens[uid] = '';
             continue;
         }
-        if (!tokenToPhone.has(token)) {
+        const line = tokenToLine.get(token);
+        if (!line) {
             throw new HttpsError('invalid-argument', `Unknown phone line selection: ${token}`);
         }
-        const phone = tokenToPhone.get(token);
+        const phone = line?.phoneNumber || '';
         if (!phone) {
             throw new HttpsError('failed-precondition', `Selected phone line ${token} has no phone number in inventory.`);
         }
         nextAssignments[uid] = phone;
-        nextAssignmentLineTokens[uid] = token;
+        nextAssignmentLineTokens[uid] = lineTokenForInventoryItem(line, 0);
     }
     updates.assignments = nextAssignments;
     updates.assignmentLineTokens = nextAssignmentLineTokens;
@@ -455,17 +486,20 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
             updates.defaultPhoneNumber = '';
             updates.defaultLineToken = '';
         } else {
-            if (!tokenToPhone.has(defaultToken)) {
+            const line = tokenToLine.get(defaultToken);
+            if (!line) {
                 throw new HttpsError('invalid-argument', `Unknown default phone line selection: ${defaultToken}`);
             }
-            const phone = tokenToPhone.get(defaultToken);
+            const phone = line?.phoneNumber || '';
             if (!phone) {
                 throw new HttpsError('failed-precondition', `Selected default line ${defaultToken} has no phone number in inventory.`);
             }
             updates.defaultPhoneNumber = phone;
-            updates.defaultLineToken = defaultToken;
+            updates.defaultLineToken = lineTokenForInventoryItem(line, 0);
         }
     }
+
+    updates.inventory = inventory;
 
     await providerDocRef.update(updates);
     return { success: true };
@@ -545,7 +579,6 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
             throw new HttpsError('invalid-argument', `JWT verification failed: ${verifyError.message}. Please ensure the JWT is valid and associated with this phone number.`);
         }
 
-        const { normalizePhoneForKeychain } = require('../../utils/phoneUtils');
         const sanitizedPhone = normalizePhoneForKeychain(phoneNumber);
 
         // 3. Store encrypted JWT + Per-Line Credentials in Private Keychain (subcollection)
@@ -584,6 +617,7 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
 
         // Add new entry
         inventory.push({
+            lineId: stableLineIdForPhone(sanitizedPhone),
             phoneNumber: sanitizedPhone,
             label: label || sanitizedPhone,
             status: 'active',
@@ -596,7 +630,7 @@ exports.addPhoneLine = onCall(encryptedCallOptions, async (request) => {
         const updateData = {
             provider: 'ringcentral',
             isActive: true,
-            inventory: inventory,
+            inventory: withStableLineIds(inventory),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedBy: request.auth.uid
         };
@@ -688,7 +722,7 @@ exports.removePhoneLine = onCall(encryptedCallOptions, async (request) => {
         }
 
         const data = providerDoc.data();
-        let inventory = data.inventory || [];
+        let inventory = withStableLineIds(data.inventory || []);
         const assignments = data.assignments || {};
 
         // Remove from inventory
@@ -709,7 +743,7 @@ exports.removePhoneLine = onCall(encryptedCallOptions, async (request) => {
         }
 
         await providerDocRef.update({
-            inventory: inventory,
+            inventory: withStableLineIds(inventory),
             assignments: updatedAssignments,
             defaultPhoneNumber: defaultPhoneNumber,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
