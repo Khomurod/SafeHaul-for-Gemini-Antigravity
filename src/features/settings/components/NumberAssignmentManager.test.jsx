@@ -228,4 +228,32 @@ describe('NumberAssignmentManager — linked-number display', () => {
         const row = screen.getByText('Unknown / former user').closest('tr');
         expect(selText(within(row).getByRole('combobox'))).toContain('+15550000003');
     });
+
+    it('CASE J: lines with stripped/empty phone numbers do NOT collapse unassigned rows to the first line', async () => {
+        // Simulates a browser/DLP layer that removes phone numbers from the data the page
+        // receives: every inventory line arrives with an empty phoneNumber. An unassigned
+        // recruiter must still read "No Direct Line" -- not silently show the first line
+        // ("Main Number") -- and the options stay distinguishable by their labels.
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [
+                { phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
+                { phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
+            ],
+            defaultPhoneNumber: '',
+            assignments: {},
+        };
+        MEMBERSHIPS = [{ userId: 'uidTom', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidTom', name: 'Tom Robinson', email: 'tom@x.com' }];
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
+        // Must NOT collapse to the first line.
+        expect(rowSelText('Tom Robinson')).toBe('No Direct Line');
+        // Options remain selectable and distinguishable by label.
+        const select = userRowSelect('Tom Robinson');
+        const optionTexts = [...select.options].map(o => o.textContent);
+        expect(optionTexts.some(t => /Main Number/.test(t))).toBe(true);
+        expect(optionTexts.some(t => /Sofia/.test(t))).toBe(true);
+    });
 });
