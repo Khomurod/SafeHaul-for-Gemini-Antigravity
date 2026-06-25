@@ -92,6 +92,25 @@ class RingCentralAdapter extends BaseAdapter {
                     (primaryError.response?.data?.errorCode === 'InvalidParameter')
                 );
 
+                const responseMessage = primaryError.response?.data?.message || primaryError.message || '';
+                const fromDoesNotBelongToExtension = isClientError && /phone number doesn't belong to extension/i.test(responseMessage);
+
+                // If the configured `from` line is not owned by the authenticated JWT's
+                // extension, RingCentral rejects the send before delivery. Retrying once
+                // without `from` lets RingCentral use the authenticated extension's default
+                // SMS sender. This is safe for this deterministic 4xx validation failure
+                // and avoids mass campaign failures when provider-side line ownership does
+                // not exactly match the wallet label/default stored in Firestore.
+                if (fromNumber && fromDoesNotBelongToExtension) {
+                    console.warn(`[RC Adapter] From line ${fromNumber} is not on the authenticated extension. Retrying without explicit from.`);
+                    const noFromPayload = {
+                        to: [{ phoneNumber: to }],
+                        text: text
+                    };
+                    await this._sendWithRetry('/restapi/v1.0/account/~/extension/~/sms', noFromPayload);
+                    return true;
+                }
+
                 const canFallback = fromNumber && fromNumber !== this.config.defaultPhoneNumber && isPermissionError;
 
                 if (canFallback) {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import React from 'react';
 
@@ -47,6 +47,7 @@ vi.mock('firebase/firestore', () => ({
     }),
 }));
 
+import { httpsCallable } from 'firebase/functions';
 import { NumberAssignmentManager } from './NumberAssignmentManager';
 
 beforeEach(() => {
@@ -227,6 +228,35 @@ describe('NumberAssignmentManager — linked-number display', () => {
         await waitFor(() => expect(screen.getByText('Unknown / former user')).toBeInTheDocument());
         const row = screen.getByText('Unknown / former user').closest('tr');
         expect(selText(within(row).getByRole('combobox'))).toContain('+15550000003');
+    });
+
+
+
+    it('CASE K: saves redacted selections by token through the backend callable', async () => {
+        const callable = vi.fn(() => Promise.resolve({ data: { success: true } }));
+        vi.mocked(httpsCallable).mockReturnValue(callable);
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [
+                { phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
+                { phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
+            ],
+            defaultPhoneNumber: '',
+            assignments: {},
+        };
+        MEMBERSHIPS = [{ userId: 'uidTom', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidTom', name: 'Tom Robinson', email: 'tom@x.com' }];
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
+
+        fireEvent.change(userRowSelect('Tom Robinson'), { target: { value: 'ln1' } });
+        fireEvent.click(screen.getByText('Save Changes Now'));
+
+        await waitFor(() => expect(callable).toHaveBeenCalledWith({
+            companyId: 'c1',
+            assignmentTokens: { uidTom: 'ln1' }
+        }));
     });
 
     it('CASE J: lines with stripped/empty phone numbers do NOT collapse unassigned rows to the first line', async () => {
