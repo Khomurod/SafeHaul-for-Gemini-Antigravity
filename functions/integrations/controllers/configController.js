@@ -392,6 +392,79 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
     }
 });
 
+
+/**
+ * Save line assignments by stable inventory tokens (ln0/ln1/...) instead of trusting
+ * browser-visible phone values. Some customer browsers/DLP layers redact phone
+ * numbers in Firestore snapshots and <option> values, which makes the UI unable to
+ * persist a selected line. This callable re-reads the authoritative inventory with
+ * Admin SDK and maps the UI token back to the real phone number server-side.
+ */
+exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
+
+    const { companyId, assignmentTokens = {}, defaultToken } = request.data || {};
+    if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+    if (assignmentTokens && typeof assignmentTokens !== 'object') {
+        throw new HttpsError('invalid-argument', 'assignmentTokens must be an object.');
+    }
+
+    const { assertCompanyAdminStrict } = require('../../shared/companyAccess');
+    await assertCompanyAdminStrict(request.auth.uid, companyId);
+
+    const providerDocRef = admin.firestore()
+        .collection('companies').doc(companyId)
+        .collection('integrations').doc('sms_provider');
+
+    const snap = await providerDocRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'SMS provider config was not found.');
+
+    const data = snap.data() || {};
+    const inventory = Array.isArray(data.inventory) ? data.inventory : [];
+    const tokenToPhone = new Map(inventory.map((line, idx) => [`ln${idx}`, line?.phoneNumber || '']));
+
+    const updates = {
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: request.auth.uid
+    };
+
+    const nextAssignments = { ...(data.assignments || {}) };
+    for (const [uid, token] of Object.entries(assignmentTokens || {})) {
+        if (!uid) continue;
+        if (!token) {
+            nextAssignments[uid] = '';
+            continue;
+        }
+        if (!tokenToPhone.has(token)) {
+            throw new HttpsError('invalid-argument', `Unknown phone line selection: ${token}`);
+        }
+        const phone = tokenToPhone.get(token);
+        if (!phone) {
+            throw new HttpsError('failed-precondition', `Selected phone line ${token} has no phone number in inventory.`);
+        }
+        nextAssignments[uid] = phone;
+    }
+    updates.assignments = nextAssignments;
+
+    if (Object.prototype.hasOwnProperty.call(request.data || {}, 'defaultToken')) {
+        if (!defaultToken) {
+            updates.defaultPhoneNumber = '';
+        } else {
+            if (!tokenToPhone.has(defaultToken)) {
+                throw new HttpsError('invalid-argument', `Unknown default phone line selection: ${defaultToken}`);
+            }
+            const phone = tokenToPhone.get(defaultToken);
+            if (!phone) {
+                throw new HttpsError('failed-precondition', `Selected default line ${defaultToken} has no phone number in inventory.`);
+            }
+            updates.defaultPhoneNumber = phone;
+        }
+    }
+
+    await providerDocRef.update(updates);
+    return { success: true };
+});
+
 /**
  * 5. Add Phone Line (Super Admin - Digital Wallet)
  */
