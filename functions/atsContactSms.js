@@ -81,7 +81,10 @@ async function sendContactAttemptSmsIfNeeded({ companyId, beforeData, afterData 
   }
 }
 
-const triggerOpts = { maxInstances: 3 };
+// secrets: this trigger decrypts the company's SMS credentials/JWT (via SMSAdapterFactory)
+// to send automated contact-attempt texts. Without SMS_ENCRYPTION_KEY bound, decryption throws
+// and the automated SMS never sends.
+const triggerOpts = { maxInstances: 3, secrets: ['SMS_ENCRYPTION_KEY'] };
 
 exports.onApplicationAtsContactSms = onDocumentUpdated(
   {

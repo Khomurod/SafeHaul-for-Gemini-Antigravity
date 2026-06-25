@@ -15,7 +15,14 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 // (or corrupted) its targetIds list is. Set far above any legitimate campaign; tunable via env.
 const MAX_SESSION_SENDS = Number(process.env.BULK_SESSION_MAX_SENDS) || 100000;
 
-exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, async (req, res) => {
+// SMS_ENCRYPTION_KEY: this worker decrypts the company's SMS provider credentials /
+// per-line JWTs (via SMSAdapterFactory) and SMTP passwords for bulk campaigns. Without the
+// secret bound here, process.env.SMS_ENCRYPTION_KEY is undefined inside this function and
+// every decrypt throws "SMS_ENCRYPTION_KEY ... is not set", so the adapter fails to load and
+// the whole campaign session is marked failed -- i.e. campaigns silently don't send even when
+// the line is correctly provisioned (the config/test-send functions DO bind the secret, which
+// is why Super Admin shows the line as working while bulk sends fail).
+exports.processBulkBatch = onRequest({ timeoutSeconds: 540, memory: '512MiB', secrets: ['SMS_ENCRYPTION_KEY'] }, async (req, res) => {
     // --- SECURITY GATE: Shared Secret Verification ---
     // Reject requests that don't carry the internal auth header.
     // This prevents external actors from triggering the worker even if they know the URL.
