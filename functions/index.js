@@ -160,6 +160,7 @@ exports.removePhoneLine = smsIntegrations.removePhoneLine;
 
 exports.testLineConnection = smsIntegrations.testLineConnection;
 exports.verifyLineConnection = smsIntegrations.verifyLineConnection;
+exports.saveSmsLineAssignments = smsIntegrations.saveSmsLineAssignments;
 
 
 // 11. Stats Aggregation
