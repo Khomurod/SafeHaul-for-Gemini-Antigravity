@@ -8,18 +8,6 @@ jest.mock('@ringcentral/sdk', () => {
 
 const RingCentralAdapter = require('../../integrations/adapters/ringcentral');
 
-<<<<<<< ours
-describe('RingCentralAdapter explicit from fallback', () => {
-  it('retries without explicit from when RingCentral says the line is not on the JWT extension', async () => {
-    const adapter = new RingCentralAdapter({
-      clientId: 'cid',
-      clientSecret: 'secret',
-      jwt: 'jwt',
-      defaultPhoneNumber: '+15550000001',
-      assignments: { user1: '+15550000001' },
-    });
-    adapter.ensureLoggedIn = jest.fn().mockResolvedValue(undefined);
-=======
 function adapterWithMockedSend(config = {}) {
   const adapter = new RingCentralAdapter({
     clientId: 'cid',
@@ -35,7 +23,6 @@ function adapterWithMockedSend(config = {}) {
 describe('RingCentralAdapter explicit from fallback', () => {
   it('retries without explicit from when RingCentral says the line is not on the JWT extension', async () => {
     const adapter = adapterWithMockedSend({ assignments: { user1: '+15550000001' } });
->>>>>>> theirs
     const rcError = new Error("Phone number doesn't belong to extension");
     rcError.response = { status: 400, data: { message: "Phone number doesn't belong to extension" } };
     adapter._sendWithRetry = jest.fn()
@@ -55,8 +42,6 @@ describe('RingCentralAdapter explicit from fallback', () => {
       text: 'hello',
     });
   });
-<<<<<<< ours
-=======
 
   it('also retries without explicit from when RingCentral reports an invalid from parameter', async () => {
     const adapter = adapterWithMockedSend();
@@ -79,5 +64,4 @@ describe('RingCentralAdapter explicit from fallback', () => {
       text: 'hello',
     });
   });
->>>>>>> theirs
 });

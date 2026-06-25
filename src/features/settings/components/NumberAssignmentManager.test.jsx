@@ -238,13 +238,8 @@ describe('NumberAssignmentManager — linked-number display', () => {
         CONFIG_DATA = {
             isActive: true,
             inventory: [
-<<<<<<< ours
-                { phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
-                { phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
-=======
                 { lineId: 'line_main', phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
                 { lineId: 'line_sofia', phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
->>>>>>> theirs
             ],
             defaultPhoneNumber: '',
             assignments: {},
@@ -255,21 +250,11 @@ describe('NumberAssignmentManager — linked-number display', () => {
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
 
-<<<<<<< ours
-        fireEvent.change(userRowSelect('Tom Robinson'), { target: { value: 'ln1' } });
-=======
         fireEvent.change(userRowSelect('Tom Robinson'), { target: { value: 'line_sofia' } });
->>>>>>> theirs
         fireEvent.click(screen.getByText('Save Changes Now'));
 
         await waitFor(() => expect(callable).toHaveBeenCalledWith({
             companyId: 'c1',
-<<<<<<< ours
-            assignmentTokens: { uidTom: 'ln1' }
-        }));
-    });
-
-=======
             assignmentTokens: { uidTom: 'line_sofia' }
         }));
     });
@@ -321,7 +306,6 @@ describe('NumberAssignmentManager — linked-number display', () => {
         expect(userRowSelect('Tom Robinson').value).toBe('line_sofia');
     });
 
->>>>>>> theirs
     it('CASE J: lines with stripped/empty phone numbers do NOT collapse unassigned rows to the first line', async () => {
         // Simulates a browser/DLP layer that removes phone numbers from the data the page
         // receives: every inventory line arrives with an empty phoneNumber. An unassigned
