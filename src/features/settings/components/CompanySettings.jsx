@@ -6,7 +6,7 @@ import {
     Blocks, ArrowLeft, Users, Mail, Briefcase, MessageSquare, Send
 } from 'lucide-react';
 
-import { NumberAssignmentManager } from './NumberAssignmentManager';
+import { SmsSettingsTab } from './SmsSettingsTab';
 
 import { AutomatedSmsTab } from './AutomatedSmsTab';
 import { CompanyProfileTab } from './CompanyProfileTab';
@@ -92,7 +92,7 @@ export function CompanySettings() {
                 );
             case 'sms':
                 return (
-                    <NumberAssignmentManager companyId={currentCompanyProfile?.id} />
+                    <SmsSettingsTab currentCompanyProfile={currentCompanyProfile} />
                 );
             case 'automated_sms':
                 return (
