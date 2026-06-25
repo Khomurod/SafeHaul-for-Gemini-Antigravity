@@ -299,7 +299,13 @@ export function NumberAssignmentManager({ companyId }) {
         label: num.label,
         usageType: num.usageType,
     }));
-    const tokenForPhone = (phone) => lines.find(l => l.phone === phone)?.token || '';
+    // Only ever match a NON-empty phone. Otherwise, if a line's phone resolves to "" (e.g.
+    // a browser/DLP layer strips phone numbers out of the data the page receives), an
+    // unassigned recruiter's empty currentPhone would "match" the first empty-phone line and
+    // every row would collapse to showing that line ("Main Number"), and selecting another
+    // line couldn't stick. Guarding on a non-empty phone keeps unassigned = "No Direct Line"
+    // and makes selection exact.
+    const tokenForPhone = (phone) => (phone ? (lines.find(l => l.phone === phone)?.token || '') : '');
     const phoneForToken = (token) => lines.find(l => l.token === token)?.phone || '';
     const lineDisplay = (label, phone, idx, suffix) => {
         const name = (label && String(label).trim()) || `Line ${idx + 1}`;

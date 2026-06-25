@@ -223,6 +223,20 @@ export function CampaignDetails({ campaign, onClose }) {
             <div className="flex-1 overflow-y-auto p-8">
                 <div className="max-w-5xl mx-auto space-y-6">
 
+                    {/* Failure reason — surface why a session failed so it's diagnosable
+                        instead of just showing a red "FAILED" with no explanation. */}
+                    {campaign.status === 'failed' && (campaign.error || campaign.failureReason) && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-5">
+                            <div className="flex items-start gap-3">
+                                <AlertCircle size={20} className="text-red-600 mt-0.5 shrink-0" />
+                                <div>
+                                    <p className="text-xs font-black text-red-700 uppercase tracking-widest mb-1">Why this campaign failed</p>
+                                    <p className="text-sm text-red-800 break-words">{campaign.error || campaign.failureReason}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
