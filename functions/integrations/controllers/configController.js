@@ -444,6 +444,7 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
     const data = snap.data() || {};
     const inventory = withStableLineIds(Array.isArray(data.inventory) ? data.inventory : []);
     const tokenToLine = new Map();
+    const phoneToLine = new Map();
     inventory.forEach((line, idx) => {
         const stableToken = lineTokenForInventoryItem(line, idx);
         tokenToLine.set(stableToken, line);
@@ -451,7 +452,24 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
         // first token implementation. We accept lnN, but always re-persist the
         // stable lineId so future saves survive inventory reordering/removal.
         tokenToLine.set(`ln${idx}`, line);
+        // Phone -> line, used to backfill tokens for legacy assignments saved as a raw
+        // phone before line tokens existed.
+        try {
+            const normalized = line?.phoneNumber ? normalizePhoneForKeychain(String(line.phoneNumber)) : '';
+            if (normalized) phoneToLine.set(normalized, line);
+        } catch { /* ignore malformed inventory phone */ }
     });
+
+    // Resolve the stable line token for a stored phone number (best-effort).
+    const tokenForStoredPhone = (phone) => {
+        if (!phone) return '';
+        try {
+            const line = phoneToLine.get(normalizePhoneForKeychain(String(phone)));
+            return line ? lineTokenForInventoryItem(line, 0) : '';
+        } catch {
+            return '';
+        }
+    };
 
     const updates = {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -478,6 +496,19 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
         nextAssignments[uid] = phone;
         nextAssignmentLineTokens[uid] = lineTokenForInventoryItem(line, 0);
     }
+
+    // Backfill: any existing assignment that has a real phone but no line token yet
+    // (legacy assignments saved before line tokens existed) gets its stable token
+    // derived from the phone here. Without this, a browser that redacts phone numbers
+    // can't connect the saved phone to a line and shows "No Direct Line" even though
+    // the assignment is live and sending. Non-destructive: phones are left unchanged.
+    for (const [uid, phone] of Object.entries(nextAssignments)) {
+        if (!uid) continue;
+        if (nextAssignmentLineTokens[uid]) continue; // already resolved
+        const backfilled = tokenForStoredPhone(phone);
+        if (backfilled) nextAssignmentLineTokens[uid] = backfilled;
+    }
+
     updates.assignments = nextAssignments;
     updates.assignmentLineTokens = nextAssignmentLineTokens;
 
@@ -497,6 +528,11 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
             updates.defaultPhoneNumber = phone;
             updates.defaultLineToken = lineTokenForInventoryItem(line, 0);
         }
+    } else if (!data.defaultLineToken && data.defaultPhoneNumber) {
+        // Default line not being changed, but its token is missing (legacy) -> backfill it
+        // so the default dropdown can show the configured line under phone redaction.
+        const backfilledDefault = tokenForStoredPhone(data.defaultPhoneNumber);
+        if (backfilledDefault) updates.defaultLineToken = backfilledDefault;
     }
 
     updates.inventory = inventory;

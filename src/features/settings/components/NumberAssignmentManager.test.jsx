@@ -333,4 +333,45 @@ describe('NumberAssignmentManager — linked-number display', () => {
         expect(optionTexts.some(t => /Main Number/.test(t))).toBe(true);
         expect(optionTexts.some(t => /Sofia/.test(t))).toBe(true);
     });
+
+    it('CASE N: auto-heals legacy assignments (no line tokens) by calling the backfill once', async () => {
+        const callable = vi.fn(() => Promise.resolve({ data: { success: true } }));
+        vi.mocked(httpsCallable).mockReturnValue(callable);
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [{ lineId: 'line_sofia', phoneNumber: '+15550000002', label: 'Sofia', usageType: 'DirectNumber' }],
+            assignments: { uidTom: '+15550000002' }, // legacy: assignment present, NO assignmentLineTokens
+            defaultPhoneNumber: '',
+        };
+        MEMBERSHIPS = [{ userId: 'uidTom', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidTom', name: 'Tom Robinson', email: 'tom@x.com' }];
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        // Auto-heal fires a non-destructive backfill (no assignment changes).
+        await waitFor(() => expect(callable).toHaveBeenCalledWith({ companyId: 'c1', assignmentTokens: {} }));
+        // ...and only once.
+        const backfillCalls = callable.mock.calls.filter(
+            ([arg]) => arg && Object.keys(arg.assignmentTokens || {}).length === 0 && !('defaultToken' in arg)
+        );
+        expect(backfillCalls).toHaveLength(1);
+    });
+
+    it('CASE O: does NOT auto-heal when line tokens already exist', async () => {
+        const callable = vi.fn(() => Promise.resolve({ data: { success: true } }));
+        vi.mocked(httpsCallable).mockReturnValue(callable);
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [{ lineId: 'line_sofia', phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' }],
+            assignments: { uidTom: '' },
+            assignmentLineTokens: { uidTom: 'line_sofia' }, // tokens already present
+            defaultPhoneNumber: '',
+        };
+        MEMBERSHIPS = [{ userId: 'uidTom', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidTom', name: 'Tom Robinson', email: 'tom@x.com' }];
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
+        await Promise.resolve();
+        expect(callable).not.toHaveBeenCalledWith({ companyId: 'c1', assignmentTokens: {} });
+    });
 });
