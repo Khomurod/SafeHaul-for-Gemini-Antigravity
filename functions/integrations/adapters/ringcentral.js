@@ -92,6 +92,28 @@ class RingCentralAdapter extends BaseAdapter {
                     (primaryError.response?.data?.errorCode === 'InvalidParameter')
                 );
 
+                const responseMessage = primaryError.response?.data?.message || primaryError.message || '';
+                const fromRejectedByRingCentral = isClientError && (
+                    /phone number doesn't belong to extension/i.test(responseMessage) ||
+                    /parameter \[from\] value is invalid/i.test(responseMessage) ||
+                    /PhoneNumber\.from/i.test(responseMessage)
+                );
+
+                // If RingCentral rejects the configured `from` line before delivery, retry
+                // once without `from` so the authenticated JWT extension can use its default
+                // SMS sender. This covers provider-side ownership/format mismatches such as
+                // "Phone number doesn't belong to extension" and "Parameter [from] value
+                // is invalid" without risking double-sends on timeouts or 5xx errors.
+                if (fromNumber && fromRejectedByRingCentral) {
+                    console.warn(`[RC Adapter] RingCentral rejected from line ${fromNumber}. Retrying without explicit from.`);
+                    const noFromPayload = {
+                        to: [{ phoneNumber: to }],
+                        text: text
+                    };
+                    await this._sendWithRetry('/restapi/v1.0/account/~/extension/~/sms', noFromPayload);
+                    return true;
+                }
+
                 const canFallback = fromNumber && fromNumber !== this.config.defaultPhoneNumber && isPermissionError;
 
                 if (canFallback) {

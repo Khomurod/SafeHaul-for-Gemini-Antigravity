@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, onSnapshot, updateDoc, collection, getDocs, query, where, documentId } from 'firebase/firestore';
+import { doc, onSnapshot, collection, getDocs, query, where, documentId } from 'firebase/firestore';
 import { db, functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { Phone, Users as UsersIcon, Check, AlertCircle, Save, RefreshCw, Beaker, ShieldCheck, ShieldAlert, Activity, Wifi, WifiOff } from 'lucide-react';
@@ -21,6 +21,10 @@ export function NumberAssignmentManager({ companyId }) {
     const [assignments, setAssignments] = useState({});
     const [initialAssignments, setInitialAssignments] = useState({});
     const [defaultNumber, setDefaultNumber] = useState('');
+    const [assignmentTokenOverrides, setAssignmentTokenOverrides] = useState({});
+    const [savedAssignmentTokens, setSavedAssignmentTokens] = useState({});
+    const [defaultTokenOverride, setDefaultTokenOverride] = useState(null);
+    const [savedDefaultToken, setSavedDefaultToken] = useState('');
     const [showTestModal, setShowTestModal] = useState(false);
 
     // Canonical E.164 normalization. Mirrors functions/shared/normalizePhone so that a
@@ -52,8 +56,10 @@ export function NumberAssignmentManager({ companyId }) {
         return `+${digits}`;
     };
 
+    const hasTokenChanges = Object.keys(assignmentTokenOverrides).length > 0 || defaultTokenOverride !== null;
     const hasChanges = JSON.stringify(assignments) !== JSON.stringify(initialAssignments) ||
-        defaultNumber !== (configDoc?.defaultPhoneNumber || configDoc?.config?.defaultPhoneNumber || '');
+        defaultNumber !== (configDoc?.defaultPhoneNumber || configDoc?.config?.defaultPhoneNumber || '') ||
+        hasTokenChanges;
 
     useEffect(() => {
         if (!companyId) return;
@@ -75,6 +81,10 @@ export function NumberAssignmentManager({ companyId }) {
                 setAssignments(sanitizedMap);
                 setInitialAssignments(JSON.parse(JSON.stringify(sanitizedMap))); // Deep copy
                 setDefaultNumber(sanitizePhone(data.defaultPhoneNumber || data.config?.defaultPhoneNumber || ''));
+                setAssignmentTokenOverrides({});
+                setSavedAssignmentTokens(data.assignmentLineTokens || {});
+                setDefaultTokenOverride(null);
+                setSavedDefaultToken(data.defaultLineToken || '');
             } else {
                 console.log("[SMS Config] Document does not exist.");
                 setConfigDoc(null);
@@ -230,15 +240,23 @@ export function NumberAssignmentManager({ companyId }) {
     const handleSave = async () => {
         setSaving(true);
         try {
-            const docRef = doc(db, 'companies', companyId, 'integrations', 'sms_provider');
-
-            await updateDoc(docRef, {
-                assignments: assignments,
-                defaultPhoneNumber: sanitizePhone(defaultNumber),
-                updatedAt: new Date()
+            // Save through the backend by stable line tokens instead of raw phone values.
+            // Some browser/privacy layers redact phone numbers in Firestore snapshots before
+            // React sees them, so saving raw <option> phone values can turn a selected line
+            // into an empty string. The callable re-reads the authoritative inventory with
+            // Admin SDK and maps tokens (ln0/ln1/...) back to real phone numbers server-side.
+            const saveAssignments = httpsCallable(functions, 'saveSmsLineAssignments');
+            await saveAssignments({
+                companyId,
+                assignmentTokens: assignmentTokenOverrides,
+                ...(defaultTokenOverride !== null ? { defaultToken: defaultTokenOverride } : {})
             });
 
             setInitialAssignments(JSON.parse(JSON.stringify(assignments)));
+            setSavedAssignmentTokens(prev => ({ ...prev, ...assignmentTokenOverrides }));
+            if (defaultTokenOverride !== null) setSavedDefaultToken(defaultTokenOverride);
+            setAssignmentTokenOverrides({});
+            setDefaultTokenOverride(null);
             showSuccess("Assignments updated successfully.");
         } catch (error) {
             console.error(error);
@@ -376,9 +394,10 @@ export function NumberAssignmentManager({ companyId }) {
                 </div>
                 <div className="flex gap-3 max-w-lg">
                     <select
-                        value={tokenForPhone(sanitizedDefault) || (sanitizedDefault ? MISSING_TOKEN : '')}
+                        value={defaultTokenOverride ?? (tokenForPhone(sanitizedDefault) || savedDefaultToken || (sanitizedDefault ? MISSING_TOKEN : ''))}
                         onChange={(e) => {
                             const t = e.target.value;
+                            setDefaultTokenOverride(t);
                             if (!t) setDefaultNumber('');
                             else if (t !== MISSING_TOKEN) setDefaultNumber(phoneForToken(t));
                             // MISSING_TOKEN: keep the configured-but-unsynced default as-is
@@ -458,7 +477,8 @@ export function NumberAssignmentManager({ companyId }) {
                         {users.map(user => {
                             const rawPhone = assignments[user.id] || '';
                             const currentPhone = sanitizePhone(rawPhone);
-                            const isAssigned = !!currentPhone;
+                            const selectedToken = assignmentTokenOverrides[user.id] ?? (tokenForPhone(currentPhone) || savedAssignmentTokens[user.id] || (currentPhone ? MISSING_TOKEN : ''));
+                            const isAssigned = !!currentPhone || !!assignmentTokenOverrides[user.id];
 
                             // Match against sanitized inventory numbers
                             const invItem = inventory.find(i => sanitizePhone(i.phoneNumber) === currentPhone);
@@ -481,9 +501,15 @@ export function NumberAssignmentManager({ companyId }) {
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col gap-1">
                                             <select
-                                                value={tokenForPhone(currentPhone) || (isAssigned ? MISSING_TOKEN : '')}
+                                                value={selectedToken}
                                                 onChange={(e) => {
                                                     const t = e.target.value;
+                                                    setAssignmentTokenOverrides(prev => {
+                                                        const next = { ...prev };
+                                                        if (t === MISSING_TOKEN) delete next[user.id];
+                                                        else next[user.id] = t;
+                                                        return next;
+                                                    });
                                                     const nextPhone = !t ? '' : (t === MISSING_TOKEN ? currentPhone : phoneForToken(t));
                                                     setAssignments(prev => ({ ...prev, [user.id]: nextPhone }));
                                                 }}
