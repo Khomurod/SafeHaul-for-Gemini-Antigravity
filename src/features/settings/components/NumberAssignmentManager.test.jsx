@@ -59,7 +59,7 @@ const userRowSelect = (name) => {
     const row = screen.getByText(name).closest('tr');
     return within(row).getByRole('combobox');
 };
-// The dropdown's `value` is now a non-phone token (ln0/ln1/...); the visible number lives
+// The dropdown's `value` is now a non-phone stable lineId; the visible number lives
 // in the selected option's text. Assert on the rendered text instead of the raw value.
 const selText = (select) => select.options[select.selectedIndex]?.textContent?.trim() || '';
 const rowSelText = (name) => selText(userRowSelect(name));
@@ -238,8 +238,13 @@ describe('NumberAssignmentManager — linked-number display', () => {
         CONFIG_DATA = {
             isActive: true,
             inventory: [
+<<<<<<< ours
                 { phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
                 { phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
+=======
+                { lineId: 'line_main', phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
+                { lineId: 'line_sofia', phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
+>>>>>>> theirs
             ],
             defaultPhoneNumber: '',
             assignments: {},
@@ -250,15 +255,73 @@ describe('NumberAssignmentManager — linked-number display', () => {
         render(<NumberAssignmentManager companyId="c1" />);
         await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
 
+<<<<<<< ours
         fireEvent.change(userRowSelect('Tom Robinson'), { target: { value: 'ln1' } });
+=======
+        fireEvent.change(userRowSelect('Tom Robinson'), { target: { value: 'line_sofia' } });
+>>>>>>> theirs
         fireEvent.click(screen.getByText('Save Changes Now'));
 
         await waitFor(() => expect(callable).toHaveBeenCalledWith({
             companyId: 'c1',
+<<<<<<< ours
             assignmentTokens: { uidTom: 'ln1' }
         }));
     });
 
+=======
+            assignmentTokens: { uidTom: 'line_sofia' }
+        }));
+    });
+
+
+
+    it('CASE L: persisted line tokens keep saved selections visible when phone numbers stay redacted', async () => {
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [
+                { lineId: 'line_main', phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
+                { lineId: 'line_sofia', phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
+            ],
+            defaultPhoneNumber: '',
+            defaultLineToken: 'line_sofia',
+            assignments: { uidTom: '' },
+            assignmentLineTokens: { uidTom: 'line_sofia' },
+        };
+        MEMBERSHIPS = [{ userId: 'uidTom', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidTom', name: 'Tom Robinson', email: 'tom@x.com' }];
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
+
+        expect(selText(screen.getAllByRole('combobox')[0])).toContain('Sofia');
+        expect(rowSelText('Tom Robinson')).toContain('Sofia');
+    });
+
+
+    it('CASE M: legacy lnN saved tokens are resolved to stable lineId options after migration', async () => {
+        CONFIG_DATA = {
+            isActive: true,
+            inventory: [
+                { lineId: 'line_main', phoneNumber: '', label: 'Main Number', usageType: 'DirectNumber' },
+                { lineId: 'line_sofia', phoneNumber: '', label: 'Sofia', usageType: 'DirectNumber' },
+            ],
+            defaultPhoneNumber: '',
+            defaultLineToken: 'ln1',
+            assignments: { uidTom: '' },
+            assignmentLineTokens: { uidTom: 'ln1' },
+        };
+        MEMBERSHIPS = [{ userId: 'uidTom', companyId: 'c1', role: 'company_admin' }];
+        USERS = [{ id: 'uidTom', name: 'Tom Robinson', email: 'tom@x.com' }];
+
+        render(<NumberAssignmentManager companyId="c1" />);
+        await waitFor(() => expect(screen.getByText('Tom Robinson')).toBeInTheDocument());
+
+        expect(screen.getAllByRole('combobox')[0].value).toBe('line_sofia');
+        expect(userRowSelect('Tom Robinson').value).toBe('line_sofia');
+    });
+
+>>>>>>> theirs
     it('CASE J: lines with stripped/empty phone numbers do NOT collapse unassigned rows to the first line', async () => {
         // Simulates a browser/DLP layer that removes phone numbers from the data the page
         // receives: every inventory line arrives with an empty phoneNumber. An unassigned

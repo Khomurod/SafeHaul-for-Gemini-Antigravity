@@ -93,6 +93,7 @@ class RingCentralAdapter extends BaseAdapter {
                 );
 
                 const responseMessage = primaryError.response?.data?.message || primaryError.message || '';
+<<<<<<< ours
                 const fromDoesNotBelongToExtension = isClientError && /phone number doesn't belong to extension/i.test(responseMessage);
 
                 // If the configured `from` line is not owned by the authenticated JWT's
@@ -103,6 +104,21 @@ class RingCentralAdapter extends BaseAdapter {
                 // not exactly match the wallet label/default stored in Firestore.
                 if (fromNumber && fromDoesNotBelongToExtension) {
                     console.warn(`[RC Adapter] From line ${fromNumber} is not on the authenticated extension. Retrying without explicit from.`);
+=======
+                const fromRejectedByRingCentral = isClientError && (
+                    /phone number doesn't belong to extension/i.test(responseMessage) ||
+                    /parameter \[from\] value is invalid/i.test(responseMessage) ||
+                    /PhoneNumber\.from/i.test(responseMessage)
+                );
+
+                // If RingCentral rejects the configured `from` line before delivery, retry
+                // once without `from` so the authenticated JWT extension can use its default
+                // SMS sender. This covers provider-side ownership/format mismatches such as
+                // "Phone number doesn't belong to extension" and "Parameter [from] value
+                // is invalid" without risking double-sends on timeouts or 5xx errors.
+                if (fromNumber && fromRejectedByRingCentral) {
+                    console.warn(`[RC Adapter] RingCentral rejected from line ${fromNumber}. Retrying without explicit from.`);
+>>>>>>> theirs
                     const noFromPayload = {
                         to: [{ phoneNumber: to }],
                         text: text
