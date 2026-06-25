@@ -22,13 +22,9 @@ export function NumberAssignmentManager({ companyId }) {
     const [initialAssignments, setInitialAssignments] = useState({});
     const [defaultNumber, setDefaultNumber] = useState('');
     const [assignmentTokenOverrides, setAssignmentTokenOverrides] = useState({});
-<<<<<<< ours
-    const [defaultTokenOverride, setDefaultTokenOverride] = useState(null);
-=======
     const [savedAssignmentTokens, setSavedAssignmentTokens] = useState({});
     const [defaultTokenOverride, setDefaultTokenOverride] = useState(null);
     const [savedDefaultToken, setSavedDefaultToken] = useState('');
->>>>>>> theirs
     const [showTestModal, setShowTestModal] = useState(false);
 
     // Canonical E.164 normalization. Mirrors functions/shared/normalizePhone so that a
@@ -86,13 +82,9 @@ export function NumberAssignmentManager({ companyId }) {
                 setInitialAssignments(JSON.parse(JSON.stringify(sanitizedMap))); // Deep copy
                 setDefaultNumber(sanitizePhone(data.defaultPhoneNumber || data.config?.defaultPhoneNumber || ''));
                 setAssignmentTokenOverrides({});
-<<<<<<< ours
-                setDefaultTokenOverride(null);
-=======
                 setSavedAssignmentTokens(data.assignmentLineTokens || {});
                 setDefaultTokenOverride(null);
                 setSavedDefaultToken(data.defaultLineToken || '');
->>>>>>> theirs
             } else {
                 console.log("[SMS Config] Document does not exist.");
                 setConfigDoc(null);
@@ -252,11 +244,7 @@ export function NumberAssignmentManager({ companyId }) {
             // Some browser/privacy layers redact phone numbers in Firestore snapshots before
             // React sees them, so saving raw <option> phone values can turn a selected line
             // into an empty string. The callable re-reads the authoritative inventory with
-<<<<<<< ours
-            // Admin SDK and maps tokens (ln0/ln1/...) back to real phone numbers server-side.
-=======
             // Admin SDK and maps stable line IDs back to real phone numbers server-side.
->>>>>>> theirs
             const saveAssignments = httpsCallable(functions, 'saveSmsLineAssignments');
             await saveAssignments({
                 companyId,
@@ -265,11 +253,8 @@ export function NumberAssignmentManager({ companyId }) {
             });
 
             setInitialAssignments(JSON.parse(JSON.stringify(assignments)));
-<<<<<<< ours
-=======
             setSavedAssignmentTokens(prev => ({ ...prev, ...assignmentTokenOverrides }));
             if (defaultTokenOverride !== null) setSavedDefaultToken(defaultTokenOverride);
->>>>>>> theirs
             setAssignmentTokenOverrides({});
             setDefaultTokenOverride(null);
             showSuccess("Assignments updated successfully.");
@@ -416,11 +401,7 @@ export function NumberAssignmentManager({ companyId }) {
                 </div>
                 <div className="flex gap-3 max-w-lg">
                     <select
-<<<<<<< ours
-                        value={defaultTokenOverride ?? (tokenForPhone(sanitizedDefault) || (sanitizedDefault ? MISSING_TOKEN : ''))}
-=======
                         value={defaultTokenOverride ?? (tokenForPhone(sanitizedDefault) || resolveLineToken(savedDefaultToken) || (sanitizedDefault ? MISSING_TOKEN : ''))}
->>>>>>> theirs
                         onChange={(e) => {
                             const t = e.target.value;
                             setDefaultTokenOverride(t);
@@ -503,11 +484,7 @@ export function NumberAssignmentManager({ companyId }) {
                         {users.map(user => {
                             const rawPhone = assignments[user.id] || '';
                             const currentPhone = sanitizePhone(rawPhone);
-<<<<<<< ours
-                            const selectedToken = assignmentTokenOverrides[user.id] ?? (tokenForPhone(currentPhone) || (currentPhone ? MISSING_TOKEN : ''));
-=======
                             const selectedToken = assignmentTokenOverrides[user.id] ?? (tokenForPhone(currentPhone) || resolveLineToken(savedAssignmentTokens[user.id]) || (currentPhone ? MISSING_TOKEN : ''));
->>>>>>> theirs
                             const isAssigned = !!currentPhone || !!assignmentTokenOverrides[user.id];
 
                             // Match against sanitized inventory numbers

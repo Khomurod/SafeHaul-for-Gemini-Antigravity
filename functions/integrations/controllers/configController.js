@@ -416,11 +416,7 @@ exports.verifyLineConnection = onCall(encryptedCallOptions, async (request) => {
 
 
 /**
-<<<<<<< ours
- * Save line assignments by stable inventory tokens (ln0/ln1/...) instead of trusting
-=======
  * Save line assignments by stable inventory line IDs instead of trusting
->>>>>>> theirs
  * browser-visible phone values. Some customer browsers/DLP layers redact phone
  * numbers in Firestore snapshots and <option> values, which makes the UI unable to
  * persist a selected line. This callable re-reads the authoritative inventory with
@@ -446,10 +442,6 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
     if (!snap.exists) throw new HttpsError('not-found', 'SMS provider config was not found.');
 
     const data = snap.data() || {};
-<<<<<<< ours
-    const inventory = Array.isArray(data.inventory) ? data.inventory : [];
-    const tokenToPhone = new Map(inventory.map((line, idx) => [`ln${idx}`, line?.phoneNumber || '']));
-=======
     const inventory = withStableLineIds(Array.isArray(data.inventory) ? data.inventory : []);
     const tokenToLine = new Map();
     inventory.forEach((line, idx) => {
@@ -460,7 +452,6 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
         // stable lineId so future saves survive inventory reordering/removal.
         tokenToLine.set(`ln${idx}`, line);
     });
->>>>>>> theirs
 
     const updates = {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -468,22 +459,11 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
     };
 
     const nextAssignments = { ...(data.assignments || {}) };
-<<<<<<< ours
-=======
     const nextAssignmentLineTokens = { ...(data.assignmentLineTokens || {}) };
->>>>>>> theirs
     for (const [uid, token] of Object.entries(assignmentTokens || {})) {
         if (!uid) continue;
         if (!token) {
             nextAssignments[uid] = '';
-<<<<<<< ours
-            continue;
-        }
-        if (!tokenToPhone.has(token)) {
-            throw new HttpsError('invalid-argument', `Unknown phone line selection: ${token}`);
-        }
-        const phone = tokenToPhone.get(token);
-=======
             nextAssignmentLineTokens[uid] = '';
             continue;
         }
@@ -492,31 +472,18 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
             throw new HttpsError('invalid-argument', `Unknown phone line selection: ${token}`);
         }
         const phone = line?.phoneNumber || '';
->>>>>>> theirs
         if (!phone) {
             throw new HttpsError('failed-precondition', `Selected phone line ${token} has no phone number in inventory.`);
         }
         nextAssignments[uid] = phone;
-<<<<<<< ours
-    }
-    updates.assignments = nextAssignments;
-=======
         nextAssignmentLineTokens[uid] = lineTokenForInventoryItem(line, 0);
     }
     updates.assignments = nextAssignments;
     updates.assignmentLineTokens = nextAssignmentLineTokens;
->>>>>>> theirs
 
     if (Object.prototype.hasOwnProperty.call(request.data || {}, 'defaultToken')) {
         if (!defaultToken) {
             updates.defaultPhoneNumber = '';
-<<<<<<< ours
-        } else {
-            if (!tokenToPhone.has(defaultToken)) {
-                throw new HttpsError('invalid-argument', `Unknown default phone line selection: ${defaultToken}`);
-            }
-            const phone = tokenToPhone.get(defaultToken);
-=======
             updates.defaultLineToken = '';
         } else {
             const line = tokenToLine.get(defaultToken);
@@ -524,23 +491,16 @@ exports.saveSmsLineAssignments = onCall(encryptedCallOptions, async (request) =>
                 throw new HttpsError('invalid-argument', `Unknown default phone line selection: ${defaultToken}`);
             }
             const phone = line?.phoneNumber || '';
->>>>>>> theirs
             if (!phone) {
                 throw new HttpsError('failed-precondition', `Selected default line ${defaultToken} has no phone number in inventory.`);
             }
             updates.defaultPhoneNumber = phone;
-<<<<<<< ours
-        }
-    }
-
-=======
             updates.defaultLineToken = lineTokenForInventoryItem(line, 0);
         }
     }
 
     updates.inventory = inventory;
 
->>>>>>> theirs
     await providerDocRef.update(updates);
     return { success: true };
 });
