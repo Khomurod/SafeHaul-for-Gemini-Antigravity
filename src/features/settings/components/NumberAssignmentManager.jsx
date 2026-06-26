@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { doc, onSnapshot, collection, getDocs, query, where, documentId } from 'firebase/firestore';
 import { db, functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -26,6 +26,7 @@ export function NumberAssignmentManager({ companyId }) {
     const [defaultTokenOverride, setDefaultTokenOverride] = useState(null);
     const [savedDefaultToken, setSavedDefaultToken] = useState('');
     const [showTestModal, setShowTestModal] = useState(false);
+    const tokenBackfillAttempted = useRef({}); // companyId -> bool (one-time auto-heal guard)
 
     // Canonical E.164 normalization. Mirrors functions/shared/normalizePhone so that a
     // number stored in any format -- "(555) 123-4567", "5551234567", "15551234567",
@@ -145,6 +146,36 @@ export function NumberAssignmentManager({ companyId }) {
 
         return () => unsub();
     }, [companyId]);
+
+    // One-time auto-heal for LEGACY assignments. If a company already had line
+    // assignments / a default line saved as raw phone numbers (before stable line
+    // tokens existed), the doc has `assignments` but no `assignmentLineTokens`. A
+    // browser that redacts phone numbers then can't connect the saved phone to a line
+    // and shows "No Direct Line" even though the assignment is live. We ask the backend
+    // (which sees the real phones) to backfill the line tokens exactly once. This is
+    // non-destructive: it changes no assignment, only fills in the missing token map.
+    useEffect(() => {
+        if (!companyId || !configDoc) return;
+        if (tokenBackfillAttempted.current[companyId]) return;
+
+        const assignmentKeys = Object.keys(configDoc.assignments || {});
+        const hasAnyToken = Object.values(configDoc.assignmentLineTokens || {}).some(Boolean);
+        const defaultNeedsToken = !!configDoc.defaultPhoneNumber && !configDoc.defaultLineToken;
+        const needsHeal = (assignmentKeys.length > 0 && !hasAnyToken) || defaultNeedsToken;
+        if (!needsHeal) return;
+
+        tokenBackfillAttempted.current[companyId] = true;
+        (async () => {
+            try {
+                const backfill = httpsCallable(functions, 'saveSmsLineAssignments');
+                // Empty assignmentTokens => no assignment is changed; the callable just
+                // backfills the missing line tokens from the authoritative inventory.
+                await backfill({ companyId, assignmentTokens: {} });
+            } catch (e) {
+                console.warn('[SMS] line-token backfill skipped:', e?.message || e);
+            }
+        })();
+    }, [companyId, configDoc]);
 
     // Surface EVERY user that has a line assigned, even when the company
     // memberships -> users join did not return them. A number can be linked and
