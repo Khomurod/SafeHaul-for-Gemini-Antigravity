@@ -672,4 +672,54 @@ describeFirestore('firestore.rules security regressions', () => {
       }),
     );
   });
+
+  // ===================================================================
+  // Phase 7: lead upload/import must work for allowed roles (companyId-bound)
+  // ===================================================================
+
+  it('LEAD-UPLOAD: lead create requires the companyId field (tenant binding)', async () => {
+    const adminDb = testEnv.authenticatedContext('admin-a', {
+      roles: { 'company-a': 'company_admin' },
+    }).firestore();
+
+    // Missing companyId in the body -> DENIED by tenantCompanyIdMatches. This is
+    // the regression that made bulk/quick lead creation fail; the client must
+    // stamp companyId to match the path.
+    await assertFails(
+      setDoc(doc(adminDb, 'companies', 'company-a', 'leads', 'no-cid'), {
+        firstName: 'Nomatch', status: 'New Lead',
+      }),
+    );
+    // With companyId matching the path -> allowed.
+    await assertSucceeds(
+      setDoc(doc(adminDb, 'companies', 'company-a', 'leads', 'ok'), {
+        companyId: 'company-a', firstName: 'Ok', status: 'New Lead',
+      }),
+    );
+  });
+
+  it('LEAD-UPLOAD: recruiter can create/import company-scoped leads, but not into another company', async () => {
+    const recruiterA = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+    }).firestore();
+
+    // Recruiter import into their OWN company (companyId matches path) -> allowed.
+    await assertSucceeds(
+      setDoc(doc(recruiterA, 'companies', 'company-a', 'leads', 'lead-a'), {
+        companyId: 'company-a', firstName: 'Imported', status: 'New Lead',
+      }),
+    );
+    // Into ANOTHER company -> denied (not company team of company-b).
+    await assertFails(
+      setDoc(doc(recruiterA, 'companies', 'company-b', 'leads', 'lead-b'), {
+        companyId: 'company-b', firstName: 'CrossTenant', status: 'New Lead',
+      }),
+    );
+    // Even writing a company-b lead under the company-a path (spoofed companyId) -> denied.
+    await assertFails(
+      setDoc(doc(recruiterA, 'companies', 'company-a', 'leads', 'spoof'), {
+        companyId: 'company-b', firstName: 'Spoof', status: 'New Lead',
+      }),
+    );
+  });
 });

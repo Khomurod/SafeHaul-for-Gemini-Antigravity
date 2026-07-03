@@ -48,6 +48,8 @@ export const QuickAddLeadPage = () => {
         try {
             const leadData = {
                 ...formData,
+                // Tenant binding required by firestore.rules (tenantCompanyIdMatches).
+                companyId: companyId,
                 name: `${formData.firstName} ${formData.lastName}`.trim(),
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
