@@ -95,5 +95,8 @@ export const companyChildRouteDefs = Object.freeze(
     featureName: route.featureName,
     props: route.props,
     requiresCompanyProfile: route.requiresCompanyProfile,
+    // UI-006: mirror the sidebar's adminOnly flag onto the route so the route
+    // guard and menu visibility stay in lockstep.
+    adminOnly: route.nav?.adminOnly === true,
   })),
 );

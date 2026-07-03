@@ -23,9 +23,24 @@ describe('company route manifest contract', () => {
       featureName: route.featureName,
       props: route.props,
       requiresCompanyProfile: route.requiresCompanyProfile,
+      adminOnly: route.nav?.adminOnly === true,
     }));
 
     expect(companyChildRouteDefs).toEqual(manifestProjection);
+  });
+
+  it('UI-006: adminOnly route defs mirror the sidebar adminOnly nav flags', () => {
+    // Every route def marked adminOnly must correspond to a nav item flagged
+    // adminOnly, and vice versa — so the route guard and the menu agree.
+    const navAdminOnly = new Set(
+      COMPANY_ROUTE_MANIFEST.filter((r) => r.nav?.adminOnly === true).map((r) => r.id),
+    );
+    const routeAdminOnly = new Set(
+      companyChildRouteDefs.filter((r) => r.adminOnly === true).map((r) => r.id),
+    );
+    expect(routeAdminOnly).toEqual(navAdminOnly);
+    // Settings must be guarded (the reported UI-006 page).
+    expect(routeAdminOnly.has('settings')).toBe(true);
   });
 
   it('has valid route and group references in nav layout', () => {

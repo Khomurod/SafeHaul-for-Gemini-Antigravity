@@ -11,6 +11,7 @@ import {
 import { QueueStatusIndicator } from '@shared/components/feedback/QueueStatusIndicator';
 import { featureScreens, companyChildRouteDefs } from '@app/routes/featureRegistry';
 import { isCompanyWorkspaceRole } from '@app/auth/roles';
+import { CompanyAdminRoute } from '@app/routes/CompanyAdminRoute';
 import {
   COMPANY_WORKSPACE_ROUTE,
   PROTECTED_FEATURE_ROUTE_MANIFEST,
@@ -135,13 +136,18 @@ function AppRoutes() {
               );
             }
 
-            const content = routeDef.requiresCompanyProfile && !currentCompanyProfile
+            const screenContent = routeDef.requiresCompanyProfile && !currentCompanyProfile
               ? (
                 <div className="min-h-screen flex items-center justify-center text-gray-700">
                   Please select a company.
                 </div>
                 )
               : <Screen {...(routeDef.props || {})} />;
+
+            // UI-006: admin-only pages get a route guard that mirrors the sidebar.
+            const content = routeDef.adminOnly
+              ? <CompanyAdminRoute>{screenContent}</CompanyAdminRoute>
+              : screenContent;
 
             return (
               <Route
