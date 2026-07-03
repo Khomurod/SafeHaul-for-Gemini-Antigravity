@@ -62,9 +62,32 @@ service cloud.firestore {
 
     // STAFF CHECK (Any Dashboard User)
     function isStaff() {
-      return isSignedIn() && 
-             request.auth.token.keys().hasAny(['roles']) && 
+      return isSignedIn() &&
+             request.auth.token.keys().hasAny(['roles']) &&
              request.auth.token.roles.keys().size() > 0;
+    }
+
+    // SEC-002: true only when the caller belongs to at least one company that the
+    // target profile document (a driver or a staff user) is ALSO associated with.
+    // This replaces the previous "any staff can read any profile" global access.
+    //
+    // - profileCompanyIds is the server-maintained `companyIds` array on the profile
+    //   doc (users: set by onMembershipWrite from the user's memberships; drivers:
+    //   set by the application/lead sync as arrayUnion of the owning company).
+    // - request.auth.token.companyTeamIds is the caller's denormalized list of
+    //   team companies (also maintained by onMembershipWrite) — the same trust
+    //   signal storage.rules already uses.
+    //
+    // Missing/legacy companyIds (field absent) => not a list => returns false, so a
+    // profile is NOT readable by staff until it has been backfilled. Run the
+    // backfillProfileCompanyIds callable BEFORE deploying these rules so existing
+    // teammate lookups (lead upload/assignment, team management) keep working.
+    function readerSharesCompany(profileCompanyIds) {
+      return isSignedIn() &&
+             profileCompanyIds is list &&
+             request.auth.token.keys().hasAny(['companyTeamIds']) &&
+             request.auth.token.companyTeamIds is list &&
+             request.auth.token.companyTeamIds.hasAny(profileCompanyIds);
     }
 
     // Driver-owned application updates: strict allowlist model (default deny).
@@ -443,11 +466,15 @@ service cloud.firestore {
 
     // --- DRIVERS (User Profiles) ---
     match /drivers/{driverId} {
-      // BUG-2 FIX: Removed isStaff() from list queries. 
+      // BUG-2 FIX: Removed isStaff() from list queries.
       // Previously ANY dashboard user from ANY company could list ALL driver profiles (cross-tenant leak).
       // Now: list (query) restricted to owner + super admin.
-      // get (single doc) still allowed for staff — needed for application detail views.
-      allow get: if isOwner(driverId) || isSuperAdmin() || isStaff();
+      // SEC-002 FIX: get (single doc) is no longer allowed for ANY staff globally.
+      // A staff member may read a driver profile only when they share a company
+      // with that driver (server-maintained companyIds). Owner + super admin keep
+      // full access. Same-company application detail views read the company-scoped
+      // application doc, not this global profile, so they are unaffected.
+      allow get: if isOwner(driverId) || isSuperAdmin() || readerSharesCompany(resource.data.companyIds);
       allow list: if isOwner(driverId) || isSuperAdmin();
       allow create, update: if (isSignedIn() && request.auth.uid == driverId) || isSuperAdmin();
       allow delete: if isSuperAdmin();
@@ -460,9 +487,20 @@ service cloud.firestore {
 
     // --- USERS (HR/Admin Profiles) ---
     match /users/{userId} {
-      allow read: if isOwner(userId) || isSuperAdmin() || (isSignedIn() && isStaff());
+      // SEC-002 FIX: a staff user may read another user's profile ONLY when they
+      // share a company (server-maintained companyIds), not across all tenants.
+      // `get` (single doc) and `list` (queries) are both constrained; the shared-
+      // company `list` constraint still permits documentId-`in` teammate queries
+      // (all returned docs share the caller's company) while rejecting a full
+      // "dump every user" scan. Enumeration by non-key fields (e.g. a global
+      // username query) is no longer allowed for non-super-admins.
+      allow get: if isOwner(userId) || isSuperAdmin() || readerSharesCompany(resource.data.companyIds);
+      allow list: if isSuperAdmin() || readerSharesCompany(resource.data.companyIds);
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSuperAdmin() || (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'globalRole', 'companyId']));
+      // companyIds is server-maintained (onMembershipWrite) and must not be
+      // self-edited — otherwise a user could grant foreign companies read access
+      // to their profile (or hide from their own).
+      allow update: if isSuperAdmin() || (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'globalRole', 'companyId', 'companyIds']));
       allow delete: if isSuperAdmin();
     }
 

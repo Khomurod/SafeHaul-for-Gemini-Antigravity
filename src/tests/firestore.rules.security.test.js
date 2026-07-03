@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, documentId, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 let testEnv;
 
@@ -372,5 +372,121 @@ describeFirestore('firestore.rules security regressions', () => {
         companyId: 'company-b',
       }),
     );
+  });
+
+  // ===================================================================
+  // SEC-002: cross-company driver / staff profile reads
+  // ===================================================================
+
+  it('SEC-002: staff read a driver profile ONLY when they share a company', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'drivers', 'driver-a'), {
+        personalInfo: { firstName: 'Ann' }, companyIds: ['company-a'],
+      });
+      await setDoc(doc(adminDb, 'drivers', 'driver-b'), {
+        personalInfo: { firstName: 'Bob' }, companyIds: ['company-b'],
+      });
+      // Legacy profile with no companyIds field (pre-backfill) must NOT be readable by staff.
+      await setDoc(doc(adminDb, 'drivers', 'driver-legacy'), {
+        personalInfo: { firstName: 'Old' },
+      });
+    });
+
+    const recruiterA = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+      companyTeamIds: ['company-a'],
+    }).firestore();
+
+    // (1) connected to company-a -> allowed
+    await assertSucceeds(getDoc(doc(recruiterA, 'drivers', 'driver-a')));
+    // (2) company-b only -> DENIED
+    await assertFails(getDoc(doc(recruiterA, 'drivers', 'driver-b')));
+    // legacy / no companyIds -> DENIED until backfilled
+    await assertFails(getDoc(doc(recruiterA, 'drivers', 'driver-legacy')));
+  });
+
+  it('SEC-002: driver reads own profile; super admin reads any profile', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'drivers', 'driver-b'), {
+        personalInfo: { firstName: 'Bob' }, companyIds: ['company-b'],
+      });
+    });
+    const ownerDb = testEnv.authenticatedContext('driver-b').firestore();
+    const superDb = testEnv.authenticatedContext('super-1', { globalRole: 'super_admin' }).firestore();
+
+    // (4) owner reads own profile
+    await assertSucceeds(getDoc(doc(ownerDb, 'drivers', 'driver-b')));
+    // (5) super admin reads any profile
+    await assertSucceeds(getDoc(doc(superDb, 'drivers', 'driver-b')));
+  });
+
+  it('SEC-002: staff read a teammate user ONLY when they share a company', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'users', 'user-a'), { name: 'A', email: 'a@x.com', companyIds: ['company-a'] });
+      await setDoc(doc(adminDb, 'users', 'user-b'), { name: 'B', email: 'b@x.com', companyIds: ['company-b'] });
+    });
+
+    const recruiterA = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+      companyTeamIds: ['company-a'],
+    }).firestore();
+
+    // teammate in same company -> allowed
+    await assertSucceeds(getDoc(doc(recruiterA, 'users', 'user-a')));
+    // (3) company-B-only staff user -> DENIED
+    await assertFails(getDoc(doc(recruiterA, 'users', 'user-b')));
+  });
+
+  it('SEC-002: user reads own profile but cannot self-edit companyIds', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'users', 'user-a'), { name: 'A', email: 'a@x.com', companyIds: ['company-a'] });
+    });
+    const ownerDb = testEnv.authenticatedContext('user-a', { roles: {} }).firestore();
+
+    await assertSucceeds(getDoc(doc(ownerDb, 'users', 'user-a')));
+    await assertSucceeds(updateDoc(doc(ownerDb, 'users', 'user-a'), { name: 'A renamed' }));
+    // Privilege field: a user must NOT grant themselves cross-company visibility.
+    await assertFails(updateDoc(doc(ownerDb, 'users', 'user-a'), { companyIds: ['company-a', 'company-b'] }));
+  });
+
+  it('SEC-002: staff cannot dump all users, but a same-company documentId-in query works', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'users', 'user-a1'), { name: 'A1', companyIds: ['company-a'] });
+      await setDoc(doc(adminDb, 'users', 'user-a2'), { name: 'A2', companyIds: ['company-a'] });
+      await setDoc(doc(adminDb, 'users', 'user-b1'), { name: 'B1', companyIds: ['company-b'] });
+    });
+
+    const recruiterA = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+      companyTeamIds: ['company-a'],
+    }).firestore();
+
+    // Full-collection enumeration (would leak other tenants) -> DENIED
+    await assertFails(getDocs(collection(recruiterA, 'users')));
+    // Constrained teammate lookup over same-company member ids -> allowed
+    await assertSucceeds(
+      getDocs(query(collection(recruiterA, 'users'), where(documentId(), 'in', ['user-a1', 'user-a2']))),
+    );
+  });
+
+  it('SEC-002: same-company staff can still read application docs (detail view unaffected)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'company-a', 'applications', 'app1'), {
+        companyId: 'company-a', applicantId: 'driver-a', driverId: 'driver-a',
+        firstName: 'Ann', status: 'New Application',
+      });
+    });
+    const recruiterA = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+      companyTeamIds: ['company-a'],
+    }).firestore();
+    // (6) application detail view for same-company staff still works
+    await assertSucceeds(getDoc(doc(recruiterA, 'companies', 'company-a', 'applications', 'app1')));
   });
 });

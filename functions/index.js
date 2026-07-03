@@ -61,6 +61,11 @@ exports.onMembershipWrite = hrAdmin.onMembershipWrite;
 // 2b. User Onboarding (New)
 exports.onDriverProfileCreated = require('./userOnboarding').onDriverProfileCreated;
 
+// 2c. SEC-002: one-time backfill of users/{uid}.companyIds from memberships.
+// Must be run (LIVE) before deploying the SEC-002 Firestore rules so existing
+// same-company teammate reads keep working. Super-admin only.
+exports.backfillUserCompanyIds = require('./backfillUserCompanyIds').backfillUserCompanyIds;
+
 // 3. Company Admin
 exports.deleteCompany = companyAdmin.deleteCompany;
 exports.syncPublicProfile = companyAdmin.syncPublicProfile;

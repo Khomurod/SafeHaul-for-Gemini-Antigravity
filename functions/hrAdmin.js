@@ -148,6 +148,20 @@ exports.onMembershipWrite = onDocumentWritten({
     await auth.setCustomUserClaims(userId, newClaims);
     console.log(`Claims synced for user ${userId}. Global Admin: ${isGlobalAdmin}`);
 
+    // SEC-002: mirror the user's company memberships onto users/{uid}.companyIds so
+    // Firestore rules can allow same-company teammate reads (readerSharesCompany)
+    // without exposing the profile across tenants. Server-only write (Admin SDK);
+    // clients are blocked from editing companyIds. merge:true preserves name/email.
+    try {
+        const companyIdsList = Array.from(teamRoleCompanyIds).sort();
+        await db.collection('users').doc(userId).set(
+            { companyIds: companyIdsList },
+            { merge: true }
+        );
+    } catch (companyIdsErr) {
+        console.error(`[onMembershipWrite] Failed to sync companyIds for user ${userId}:`, companyIdsErr.message || companyIdsErr);
+    }
+
     // --- 2. Sync Team List to Company Document (Prevention of N+1 Queries) ---
     const companyIdsToUpdate = new Set();
     if (before && before.companyId) companyIdsToUpdate.add(before.companyId);
