@@ -195,6 +195,9 @@ async function processLead(value) {
     // 3. Map Fields
     // We need to map standard fields (email, phone_number, full_name, etc.)
     const mappedLead = {
+        // Tenant binding: keep parity with client-created leads so collection-group
+        // {path=**}/leads reads (which gate on resource.data.companyId) work.
+        companyId: companyId,
         firstName: '',
         lastName: '',
         phone: '',

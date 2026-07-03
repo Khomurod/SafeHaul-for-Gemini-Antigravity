@@ -9,10 +9,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@lib/firebase';
 import * as Sentry from '@sentry/react';
+import { mergeApplicationDoc } from '@lib/applicationWrite';
 
 import {
     initQueue,
@@ -118,7 +119,6 @@ export function useSubmissionQueue() {
 
         const submissionData = {
             ...data,
-            submittedAt: serverTimestamp(),
             lifecycle: {
                 ...data.lifecycle,
                 processedFromQueue: true,
@@ -126,7 +126,10 @@ export function useSubmissionQueue() {
             },
         };
 
-        await setDoc(docRef, submissionData, { merge: true });
+        // FUNC-005 FIX: create-safe merge — a replayed authenticated submission whose
+        // application already exists must not rewrite createdAt/status/confirmationNumber
+        // (which the driver self-update rules reject / would clobber recruiter status).
+        await mergeApplicationDoc(docRef, submissionData);
 
         Sentry.addBreadcrumb({
             category: 'queue',

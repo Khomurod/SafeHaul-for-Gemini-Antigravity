@@ -204,6 +204,10 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
                     const newLeadRef = doc(leadsRef);
                     const newLeadData = {
                         ...leadPayload,
+                        // Tenant binding required by firestore.rules (tenantCompanyIdMatches):
+                        // a new lead MUST carry the companyId that matches its path, or the
+                        // create is denied. Omitting it was silently failing bulk imports.
+                        companyId: companyId,
                         status: 'New Lead',
                         createdAt: serverTimestamp(),
                         assignedTo: assignedTo,

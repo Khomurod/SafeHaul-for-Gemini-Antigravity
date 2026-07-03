@@ -1,7 +1,6 @@
 import {
     doc,
     updateDoc,
-    setDoc,
     getDoc,
     getDocs,
     collection,
@@ -16,6 +15,7 @@ import { db, storage } from '@lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as Sentry from '@sentry/react';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+import { mergeApplicationDoc } from '@lib/applicationWrite';
 
 // Queue and ID generation for bulletproof submissions
 import {
@@ -410,12 +410,13 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
             let docRef;
             docRef = doc(db, "companies", activeCompanyId, "applications", applicationId);
 
-            // P0-5 FIX: Override ISO timestamps with serverTimestamp() for Firestore write
-            // (queue copy keeps ISO strings, Firestore gets canonical server time)
-            const firestoreData = { ...finalData, submittedAt: serverTimestamp(), createdAt: serverTimestamp() };
-            // BUG-3 FIX: Use merge:true so a re-submission never destroys recruiter notes,
-            // pipeline status, or any other fields added by the company team after initial intake.
-            await setDoc(docRef, firestoreData, { merge: true });
+            // FUNC-005 FIX: create-safe merge. On first create the full payload is
+            // written (createdAt stamped). On any retry/edit/re-submit the create-only
+            // fields (createdAt/status/confirmationNumber) are dropped so the driver
+            // self-update rules don't reject the write and recruiter status/notes are
+            // preserved. submittedAt/updatedAt are always stamped server-side.
+            // BUG-3: merge:true keeps everything the company team added after intake.
+            await mergeApplicationDoc(docRef, finalData);
 
             // Success! Dequeue if we queued earlier
             if (queueId) {

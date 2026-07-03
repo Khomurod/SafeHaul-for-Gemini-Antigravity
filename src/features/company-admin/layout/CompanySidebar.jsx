@@ -17,6 +17,7 @@ import {
   GitBranch,
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
+import { isCompanyAdminForRoute } from '@app/auth/roles';
 import {
   COMPANY_ROUTE_MANIFEST,
   COMPANY_NAV_GROUPS,
@@ -86,10 +87,9 @@ export const CompanySidebar = () => {
   };
 
   const companyId = currentCompanyProfile?.id;
-  const isCompanyAdmin = currentCompanyProfile && (
-    currentUserClaims?.roles?.[companyId] === 'company_admin' ||
-    currentUserClaims?.roles?.globalRole === 'super_admin'
-  );
+  // UI-006: same admin check the route guard uses (isCompanyAdminForRoute) so the
+  // menu and direct-URL access can never disagree.
+  const isCompanyAdmin = isCompanyAdminForRoute(currentUserClaims, companyId);
 
   const isRouteVisible = (route) => {
     const nav = route?.nav;

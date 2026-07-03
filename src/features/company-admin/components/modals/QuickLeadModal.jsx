@@ -33,6 +33,8 @@ export function QuickLeadModal({ companyId, onClose, onSuccess }) {
         try {
             const leadsRef = collection(db, 'companies', companyId, 'leads');
             await addDoc(leadsRef, {
+                // Tenant binding required by firestore.rules (tenantCompanyIdMatches).
+                companyId: companyId,
                 firstName: firstName.trim(),
                 lastName: lastName.trim(),
                 phone: phone.trim() || null,

@@ -125,17 +125,28 @@ export const UserProfilePage = () => {
         }
         setIsSavingProfile(true);
         try {
-            // Username uniqueness check
+            // Username uniqueness check (best-effort, non-blocking).
+            // SEC-002: the global `users` collection is no longer listable across
+            // tenants by company staff, so this cross-company query is only allowed
+            // for super admins. For everyone else it will be permission-denied — we
+            // must skip the courtesy check rather than block the whole profile save
+            // (uniqueness was never server-enforced anyway).
             const trimmedUsername = profileData.username.trim();
             if (trimmedUsername) {
-                const usersRef = collection(db, 'users');
-                const q = query(usersRef, where('username', '==', trimmedUsername));
-                const snapshot = await getDocs(q);
-                const otherUsers = snapshot.docs.filter(doc => doc.id !== currentUser.uid);
-                if (otherUsers.length > 0) {
-                    showError('This username is already taken. Please choose a different one.');
-                    setIsSavingProfile(false);
-                    return;
+                try {
+                    const usersRef = collection(db, 'users');
+                    const q = query(usersRef, where('username', '==', trimmedUsername));
+                    const snapshot = await getDocs(q);
+                    const otherUsers = snapshot.docs.filter(doc => doc.id !== currentUser.uid);
+                    if (otherUsers.length > 0) {
+                        showError('This username is already taken. Please choose a different one.');
+                        setIsSavingProfile(false);
+                        return;
+                    }
+                } catch (usernameCheckErr) {
+                    // Permission-denied (non-super-admin) or transient error: skip the
+                    // client-side uniqueness hint and let the save proceed.
+                    console.warn('[UserProfilePage] Username uniqueness check skipped:', usernameCheckErr?.message || usernameCheckErr);
                 }
             }
 
