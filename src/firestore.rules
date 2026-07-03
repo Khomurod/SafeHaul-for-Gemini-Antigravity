@@ -550,8 +550,17 @@ service cloud.firestore {
     
     // --- RECRUITER LINKS ---
     match /recruiter_links/{code} {
-      allow read: if true; // Public access to resolve links
-      allow create, update: if isStaff() || isSuperAdmin(); // Staff can generate links
+      allow read: if true; // Public access to resolve links (drivers applying via a recruiter link)
+      // SEC-003: a recruiter link belongs to ONE company. Previously ANY staff
+      // (from any company) could create or overwrite ANY link code. Now the
+      // creator must be a team member of the company stamped on the link, updates
+      // are restricted to that same company, and companyId is immutable.
+      allow create: if isSuperAdmin() ||
+                       (isSignedIn() && isCompanyTeam(request.resource.data.companyId));
+      allow update: if isSuperAdmin() ||
+                       (isSignedIn() &&
+                        isCompanyTeam(resource.data.companyId) &&
+                        request.resource.data.companyId == resource.data.companyId);
       allow delete: if isSuperAdmin();
     }
 

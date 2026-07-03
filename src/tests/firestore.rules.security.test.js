@@ -578,4 +578,57 @@ describeFirestore('firestore.rules security regressions', () => {
     // (7) cannot delete their application
     await assertFails(deleteDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-1')));
   });
+
+  // ===================================================================
+  // SEC-003: recruiter links belong to exactly one company
+  // ===================================================================
+
+  it('SEC-003: company staff create/update ONLY their own company recruiter links', async () => {
+    // Seed an existing link owned by company-b.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'recruiter_links', 'CODEB'), {
+        userId: 'rec-b', companyId: 'company-b',
+      });
+      await setDoc(doc(adminDb, 'recruiter_links', 'CODEA'), {
+        userId: 'rec-a', companyId: 'company-a',
+      });
+    });
+
+    const staffA = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+    }).firestore();
+
+    // (1) create a link for their OWN company -> allowed
+    await assertSucceeds(
+      setDoc(doc(staffA, 'recruiter_links', 'NEWA'), { userId: 'rec-a', companyId: 'company-a' }),
+    );
+    // (2) update their OWN company link -> allowed
+    await assertSucceeds(
+      updateDoc(doc(staffA, 'recruiter_links', 'CODEA'), { userId: 'rec-a2' }),
+    );
+    // (3) overwrite ANOTHER company's link -> DENIED
+    await assertFails(
+      updateDoc(doc(staffA, 'recruiter_links', 'CODEB'), { userId: 'rec-a' }),
+    );
+    // create for another company -> DENIED
+    await assertFails(
+      setDoc(doc(staffA, 'recruiter_links', 'NEWB'), { userId: 'rec-a', companyId: 'company-b' }),
+    );
+    // (4) change companyId on their own link -> DENIED (companyId immutable)
+    await assertFails(
+      updateDoc(doc(staffA, 'recruiter_links', 'CODEA'), { companyId: 'company-b' }),
+    );
+  });
+
+  it('SEC-003: anyone (incl. unauthenticated guest) can resolve a recruiter link by reading it', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'recruiter_links', 'CODEA'), {
+        userId: 'rec-a', companyId: 'company-a',
+      });
+    });
+    // (5) public/guest resolve still works
+    const guestDb = testEnv.unauthenticatedContext().firestore();
+    await assertSucceeds(getDoc(doc(guestDb, 'recruiter_links', 'CODEA')));
+  });
 });
