@@ -9,10 +9,45 @@
 > `FULL_APPLICATION_AUDIT_REPORT.md` existed. A separate, older
 > `docs/PRODUCTION_AUDIT_REPORT.md` exists and was left untouched.
 
-> **Nothing was changed except this report.** No source files were edited. No
-> files were deleted. No data was modified. Nothing was deployed. No emails,
-> text messages, or campaigns were sent. No Firebase settings, rules, or
-> environment variables were changed. No secret values are shown in this report.
+> **Nothing was changed except this report** *(as of the original audit,
+> July 3, 2026)*. The audit itself was read-only. A follow-up remediation pass
+> (below) was subsequently authorized and applied on the same branch.
+
+---
+
+## 0. Remediation status (Update: July 3, 2026)
+
+After the read-only audit above, the owner authorized a phased fix of the
+findings. The fixes were implemented, tested, and committed on this branch
+(one commit per finding). **Public driver application links were explicitly
+protected and verified end-to-end.** The two findings the owner asked to defer
+were left untouched.
+
+| ID | Finding | Severity | Status |
+|----|---------|----------|--------|
+| DEP-001 | Vulnerable `react-router-dom` + `nodemailer` | High | ✅ Fixed — upgraded to patched versions |
+| SEC-002 | Any staff could read any driver/staff profile across companies | Medium | ✅ Fixed — same-company rule + server-maintained `companyIds` + super-admin backfill callable |
+| FUNC-005 | Logged-in driver re-submit/edit rejected by rules (`createdAt`) | Medium | ✅ Fixed — create-safe merge; create-only fields never rewritten on update |
+| SEC-003 | Recruiter links not bound to one company | Medium | ✅ Fixed — create/update bound to the link's company; `companyId` immutable |
+| SEC-004 | Unauthenticated direct application creation allowed | Medium | ✅ Fixed — fallback rule removed (guest path uses the callable) |
+| UI-006 | Recruiters could open admin Settings via direct URL | Medium/Low | ✅ Fixed — route guard mirroring the sidebar |
+| **LEAD-UPLOAD** | *New bug found during remediation:* lead creation denied because clients never sent `companyId` | Medium | ✅ Fixed — root cause of "lead upload feels restricted" |
+| STOR-007 | Uploaded file-type spoofing / SVG | Low/Medium | ⏸️ Intentionally deferred (owner instruction) |
+| LOW-010 | Guest upload preview link relies on path secrecy | Low | ⏸️ Intentionally deferred (owner instruction) |
+
+**Verification after fixes (all green):** build ✅ · lint ✅ (0 errors) ·
+Firestore/Storage rules emulator **45 tests** (16 new security tests) ✅ ·
+frontend unit **367** ✅ · Cloud Functions **312** ✅ · callable-contract 60 ✅ ·
+Playwright e2e **21 specs** ✅ (guest + authenticated application, uploads,
+e-signatures, PEV, campaigns). `npm audit` improved (root 44→42, functions
+20→19). Typecheck holds at the pre-existing 10-error baseline (no new errors).
+
+**⚠️ Required deploy order (SEC-002):** deploy the Cloud Functions first, run
+the `backfillUserCompanyIds` callable (LIVE) as super admin, then deploy the
+Firestore rules + hosting. Otherwise same-company teammate reads (lead
+upload/assignment, team management) are denied until each user's next
+membership write. **nodemailer 9** is a major bump — smoke-test a real SMTP
+send in staging before production.
 
 ---
 
