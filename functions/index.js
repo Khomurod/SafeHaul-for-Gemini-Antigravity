@@ -66,6 +66,11 @@ exports.onDriverProfileCreated = require('./userOnboarding').onDriverProfileCrea
 // same-company teammate reads keep working. Super-admin only.
 exports.backfillUserCompanyIds = require('./backfillUserCompanyIds').backfillUserCompanyIds;
 
+// 2d. SEC-002 follow-up: backfill drivers/{id}.companyIds from existing
+// applications/leads so same-company staff can read connected driver profiles.
+// Forward population is handled by driverSync; this seeds pre-existing drivers.
+exports.backfillDriverCompanyIds = require('./backfillDriverCompanyIds').backfillDriverCompanyIds;
+
 // 3. Company Admin
 exports.deleteCompany = companyAdmin.deleteCompany;
 exports.syncPublicProfile = companyAdmin.syncPublicProfile;

@@ -119,6 +119,27 @@ async function processDriverData(data, docId) {
   await driverDocRef.collection('pending_updates').add(stagingData);
 
   console.log(`Redirected driver update for ${driverUid} to 'pending_updates'.`);
+
+  // SEC-002 follow-up: record which company this driver is connected to so
+  // same-company staff can read the global driver profile (firestore.rules
+  // readerSharesCompany intersects the caller's companyTeamIds with this array).
+  // Uses update (not set) so we only stamp EXISTING driver docs — a not-found
+  // (shadow profile whose parent driver doc does not exist yet) is expected and
+  // ignored; the backfill and later syncs cover those. Additive + idempotent.
+  const associatedCompanyId = data.companyId;
+  if (associatedCompanyId && typeof associatedCompanyId === 'string') {
+    try {
+      await driverDocRef.update({
+        companyIds: admin.firestore.FieldValue.arrayUnion(associatedCompanyId),
+      });
+    } catch (companyIdErr) {
+      // Firestore NOT_FOUND (code 5 / 'not-found') just means there is no master
+      // driver doc to stamp yet — not an error worth surfacing.
+      if (companyIdErr && companyIdErr.code !== 5 && companyIdErr.code !== 'not-found') {
+        console.error(`[driverSync] Failed to add companyId ${associatedCompanyId} to driver ${driverUid}:`, companyIdErr.message || companyIdErr);
+      }
+    }
+  }
 }
 
 // --- EXPORT: Triggers for Driver Profile Sync ---
