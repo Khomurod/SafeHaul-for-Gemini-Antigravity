@@ -202,14 +202,11 @@ service cloud.firestore {
              (data.applicantId == request.auth.uid);
     }
 
-    // Guest Applications must have companyId and personalInfo logic
-    function isValidGuestApplication(companyId) {
-      let data = request.resource.data;
-      // NOTE: Primary guest submissions go through submitGuestApplication (Admin SDK).
-      // This rule is a fallback only for direct client writes.
-      return data.companyId == companyId &&
-             data.applicantId is string && data.applicantId.size() > 0;
-    }
+    // SEC-004: the unauthenticated guest direct-create path (isValidGuestApplication)
+    // was removed. Public/guest applications go exclusively through the
+    // submitGuestApplication callable (Admin SDK — rate-limited + server-sanitized),
+    // which bypasses these rules. Direct client creation is no longer possible for
+    // an unauthenticated caller, closing the spam / fake-record surface.
 
     // DETERMINISTIC ID CHECK: Ensures the Firestore document ID matches
     // the applicantId field in the submission data. The client generates
@@ -382,12 +379,13 @@ service cloud.firestore {
 
       // APPLICATIONS (The Core Record)
       match /applications/{applicationId} {
-        // CREATE: 
+        // CREATE:
         // 1. Auth User (Driver) -> Submitting their own app (MUST use deterministic ID)
-        // 2. Guest -> Submitting via public link (MUST use deterministic ID)
-        // 3. Super Admin / Company Team (Manual Entry — bypasses ID check)
-        allow create: if (isSignedIn() && isValidAuthenticatedApplication() && isDeterministicApplicationId(companyId, applicationId)) || 
-                         (isValidGuestApplication(companyId) && isDeterministicApplicationId(companyId, applicationId)) || 
+        // 2. Super Admin / Company Team (Manual Entry — bypasses ID check)
+        // NOTE (SEC-004): guests do NOT create applications directly. Public/guest
+        // submissions go through the submitGuestApplication callable (Admin SDK),
+        // so there is no unauthenticated create branch here.
+        allow create: if (isSignedIn() && isValidAuthenticatedApplication() && isDeterministicApplicationId(companyId, applicationId)) ||
                          (isCompanyTeam(companyId) && (isSuperAdmin() || applicationCompanyTeamUpdateAllowed()));
 
         // READ:

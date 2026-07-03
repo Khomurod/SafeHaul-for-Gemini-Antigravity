@@ -631,4 +631,45 @@ describeFirestore('firestore.rules security regressions', () => {
     const guestDb = testEnv.unauthenticatedContext().firestore();
     await assertSucceeds(getDoc(doc(guestDb, 'recruiter_links', 'CODEA')));
   });
+
+  // ===================================================================
+  // SEC-004: no unauthenticated direct application creation
+  // ===================================================================
+
+  it('SEC-004: an unauthenticated guest cannot directly create an application document', async () => {
+    const guestDb = testEnv.unauthenticatedContext().firestore();
+    // Even with a well-formed, deterministic-id payload, the direct client write is denied.
+    await assertFails(
+      setDoc(doc(guestDb, 'companies', 'co1', 'applications', 'hash123'), {
+        companyId: 'co1',
+        applicantId: 'hash123',
+        firstName: 'Spam',
+        status: 'New Application',
+      }),
+    );
+    // (6) fake/junk direct creation is likewise denied.
+    await assertFails(
+      setDoc(doc(guestDb, 'companies', 'co1', 'applications', 'junk1'), {
+        companyId: 'co1', applicantId: 'junk1', status: 'Hired',
+      }),
+    );
+  });
+
+  it('SEC-004: authenticated applicant and company staff can still create applications', async () => {
+    // Authenticated driver, deterministic id (applicationId === applicantId === uid).
+    const driverDb = testEnv.authenticatedContext('driver-9', { email: 'd9@x.com', email_verified: true }).firestore();
+    await assertSucceeds(
+      setDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-9'), {
+        companyId: 'co1', applicantId: 'driver-9', driverId: 'driver-9', status: 'New Application',
+      }),
+    );
+
+    // Company team manual entry (bypasses deterministic-id check, valid ATS status).
+    const staffDb = testEnv.authenticatedContext('rec-1', { roles: { co1: 'recruiter' } }).firestore();
+    await assertSucceeds(
+      setDoc(doc(staffDb, 'companies', 'co1', 'applications', 'manual-1'), {
+        companyId: 'co1', applicantId: 'manual-1', firstName: 'Walk', status: 'New Lead',
+      }),
+    );
+  });
 });
