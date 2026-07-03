@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const firestoreMocks = vi.hoisted(() => {
   const setDocSpy = vi.fn().mockResolvedValue(undefined);
   const docSpy = vi.fn(() => ({ __ref: true }));
-  return { setDocSpy, docSpy };
+  // FUNC-005: mergeApplicationDoc reads the doc first to decide create vs update.
+  // exists:false => create path (keeps status/createdAt/confirmationNumber).
+  const getDocSpy = vi.fn().mockResolvedValue({ exists: () => false });
+  return { setDocSpy, docSpy, getDocSpy };
 });
 
 vi.mock('firebase/firestore', () => ({
   doc: firestoreMocks.docSpy,
   setDoc: firestoreMocks.setDocSpy,
+  getDoc: firestoreMocks.getDocSpy,
   serverTimestamp: vi.fn(() => ({ __serverTimestamp: true })),
 }));
 

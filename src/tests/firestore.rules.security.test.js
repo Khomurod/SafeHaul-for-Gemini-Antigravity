@@ -489,4 +489,93 @@ describeFirestore('firestore.rules security regressions', () => {
     // (6) application detail view for same-company staff still works
     await assertSucceeds(getDoc(doc(recruiterA, 'companies', 'company-a', 'applications', 'app1')));
   });
+
+  // ===================================================================
+  // FUNC-005: logged-in driver re-submit / edit of their own application
+  // ===================================================================
+
+  const driverCtx = () =>
+    testEnv.authenticatedContext('driver-1', { email: 'd@x.com', email_verified: true }).firestore();
+
+  async function seedDriverApp(extra = {}) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, 'companies', 'co1', 'applications', 'driver-1'), {
+        companyId: 'co1',
+        applicantId: 'driver-1',
+        driverId: 'driver-1',
+        status: 'New Application',
+        firstName: 'Al',
+        phone: '111',
+        createdAt: 'orig-created-at',
+        ...extra,
+      });
+    });
+  }
+
+  it('FUNC-005 (1): first-time driver submission (deterministic id) succeeds', async () => {
+    // Full create payload — create branch has no field allow-list.
+    await assertSucceeds(
+      setDoc(doc(driverCtx(), 'companies', 'co1', 'applications', 'driver-1'), {
+        companyId: 'co1',
+        applicantId: 'driver-1',
+        driverId: 'driver-1',
+        status: 'New Application',
+        firstName: 'Al',
+        confirmationNumber: 'ABC123',
+        createdAt: 'first-write',
+      }),
+    );
+  });
+
+  it('FUNC-005 (2,3,8): re-submit/edit with create-only fields dropped succeeds and preserves recruiter status', async () => {
+    // Recruiter has already advanced the pipeline + left a note.
+    await seedDriverApp({ status: 'In Process' });
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), 'companies', 'co1', 'applications', 'driver-1', 'internal_notes', 'n1'),
+        { text: 'called driver' },
+      );
+    });
+
+    const driverDb = driverCtx();
+    // Client-shaped re-submit: allow-listed fields only (NO status/createdAt/confirmationNumber).
+    await assertSucceeds(
+      updateDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-1'), {
+        phone: '222',
+        signatureType: 'drawn',
+        lifecycle: { status: 'pending' },
+      }),
+    );
+    // (8) driver still cannot touch recruiter-owned internal notes.
+    await assertFails(
+      setDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-1', 'internal_notes', 'n2'), { text: 'x' }),
+    );
+  });
+
+  it('FUNC-005: driver cannot rewrite createdAt on update (why the client strips it)', async () => {
+    await seedDriverApp();
+    await assertFails(
+      updateDoc(doc(driverCtx(), 'companies', 'co1', 'applications', 'driver-1'), { createdAt: 'tampered' }),
+    );
+  });
+
+  it('FUNC-005 (4,5,6,7): driver cannot change companyId / assignedRecruiterId / status=Hired, nor delete', async () => {
+    await seedDriverApp();
+    const driverDb = driverCtx();
+    // (4) companyId immutable
+    await assertFails(
+      updateDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-1'), { companyId: 'co2' }),
+    );
+    // (5) recruiter assignment is not a driver-writable field
+    await assertFails(
+      updateDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-1'), { assignedRecruiterId: 'rec-x' }),
+    );
+    // (6) cannot self-hire
+    await assertFails(
+      updateDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-1'), { status: 'Hired' }),
+    );
+    // (7) cannot delete their application
+    await assertFails(deleteDoc(doc(driverDb, 'companies', 'co1', 'applications', 'driver-1')));
+  });
 });

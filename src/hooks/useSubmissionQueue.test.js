@@ -18,6 +18,8 @@ const firebaseFunctionMocks = vi.hoisted(() => ({
 const firestoreMocks = vi.hoisted(() => ({
   doc: vi.fn(() => ({ __docRef: true })),
   setDoc: vi.fn().mockResolvedValue(undefined),
+  // FUNC-005: mergeApplicationDoc reads existence first. exists:false => create path.
+  getDoc: vi.fn().mockResolvedValue({ exists: () => false }),
   serverTimestamp: vi.fn(() => '__server_timestamp__'),
 }));
 
@@ -41,6 +43,7 @@ vi.mock('firebase/functions', () => ({
 vi.mock('firebase/firestore', () => ({
   doc: firestoreMocks.doc,
   setDoc: firestoreMocks.setDoc,
+  getDoc: firestoreMocks.getDoc,
   serverTimestamp: firestoreMocks.serverTimestamp,
 }));
 
