@@ -3,6 +3,7 @@ import { db, auth } from '@lib/firebase';
 import { writeBatch, collection, doc, serverTimestamp, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { formatPhoneNumber, normalizePhone } from '@shared/utils/helpers';
 import { PLACEHOLDER_DOMAIN } from '@/config/placeholderDomains';
+import { LEAD_DEFAULT_STATUS } from '@shared/constants/atsStatus';
 
 export function useCompanyLeadUpload(companyId, onUploadComplete) {
     const [uploading, setUploading] = useState(false);
@@ -208,7 +209,7 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
                         // a new lead MUST carry the companyId that matches its path, or the
                         // create is denied. Omitting it was silently failing bulk imports.
                         companyId: companyId,
-                        status: 'New Lead',
+                        status: LEAD_DEFAULT_STATUS,
                         createdAt: serverTimestamp(),
                         assignedTo: assignedTo,
                         assignedToName: assignedToName
