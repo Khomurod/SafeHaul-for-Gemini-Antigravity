@@ -14,11 +14,12 @@ import {
     initialPlainPrefillState,
     resolveFieldForSend,
 } from '@features/signing/utils/prefillEngine';
-import DateTripletField from '@shared/components/form/DateTripletField';
 import { GlobalLoadingState } from '@shared/components/feedback';
-import { FileSignature, History, ArrowLeft, Plus, FileText, Send, Trash2, X, Search, User, Loader2, Mail, Phone, Copy, MessageSquare, Edit3, ArrowUp, ArrowDown, Save } from 'lucide-react';
+import { FileSignature, History, ArrowLeft, Plus, FileText } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
+import { SendTemplateModal } from '../components/documents/SendTemplateModal';
+import { TemplatesPanel } from '../components/documents/TemplatesPanel';
 
 import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
@@ -147,9 +148,6 @@ export default function DocumentsManager() {
         if (!selectedTemplate?.fields) return { groups: [], plainFields: [] };
         return buildEditablePrefillGroups(selectedTemplate.fields);
     }, [selectedTemplate]);
-
-    const slugPrefillGroupId = (groupKey) =>
-        String(groupKey).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
 
     // FEAT-2: Quick-select a driver to auto-fill manual entry fields
     const handleQuickSelect = (driver) => {
@@ -423,299 +421,48 @@ export default function DocumentsManager() {
                     {activeTab === 'list' ? (
                         <EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />
                     ) : (
-                        <div className="space-y-5">
-                            <div className="bg-white border border-blue-100 rounded-2xl p-5">
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                                    <div>
-                                        <h3 className="text-sm font-bold text-blue-900">Post-Application Success Page Forms</h3>
-                                        <p className="text-xs text-blue-700">
-                                            Choose which templates appear right after a driver submits the application.
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={handleSavePostSubmitTemplates}
-                                        disabled={savingPostSubmitTemplates}
-                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
-                                    >
-                                        {savingPostSubmitTemplates ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                        Save Forms
-                                    </button>
-                                </div>
-                                {postSubmitTemplateIds.length === 0 ? (
-                                    <p className="text-xs text-gray-500">No follow-up forms enabled yet.</p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {postSubmitTemplateIds.map((templateId, idx) => {
-                                            const template = templates.find((item) => item.id === templateId);
-                                            if (!template) return null;
-                                            return (
-                                                <div key={templateId} className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-                                                    <span className="text-sm text-blue-900 font-medium truncate">{template.title || 'Complete Form'}</span>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => movePostSubmitTemplate(templateId, 'up')}
-                                                            disabled={idx === 0}
-                                                            className="p-1 rounded hover:bg-white disabled:opacity-40"
-                                                            aria-label="Move up"
-                                                        >
-                                                            <ArrowUp size={14} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => movePostSubmitTemplate(templateId, 'down')}
-                                                            disabled={idx === postSubmitTemplateIds.length - 1}
-                                                            className="p-1 rounded hover:bg-white disabled:opacity-40"
-                                                            aria-label="Move down"
-                                                        >
-                                                            <ArrowDown size={14} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {templatesLoading ? <div className="col-span-full flex justify-center py-12"><Loader2 className="animate-spin text-gray-300" /></div> :
-                                templates.length === 0 ? <div className="col-span-full bg-white border-2 border-dashed rounded-2xl p-12 text-center text-gray-400">No templates saved yet.</div> :
-                                    templates.map(tmp => (
-                                        <div key={tmp.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div className="bg-purple-50 p-3 rounded-xl"><FileText size={24} className="text-purple-600" /></div>
-                                                <button onClick={() => handleDeleteTemplate(tmp.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-opacity"><Trash2 size={16} /></button>
-                                            </div>
-                                            <h3 className="font-bold text-gray-900 mb-1 truncate">{tmp.title}</h3>
-                                            <p className="text-[10px] text-gray-400 uppercase font-bold mb-4">{tmp.fields?.length || 0} Fields</p>
-                                            <label className="flex items-center gap-2 text-xs text-gray-600 mb-3 cursor-pointer select-none">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isTemplateEnabledPostSubmit(tmp.id)}
-                                                    onChange={() => togglePostSubmitTemplate(tmp.id)}
-                                                />
-                                                Show on post-submit success page
-                                            </label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <button onClick={() => handleUseTemplate(tmp)} className="w-full py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2 transition-all shadow-sm">
-                                                    <Send size={14} /> Use
-                                                </button>
-                                                <button onClick={() => handleEditTemplate(tmp)} className="w-full py-2.5 bg-white text-purple-700 border border-purple-200 text-xs font-bold rounded-xl hover:bg-purple-50 flex items-center justify-center gap-2 transition-all shadow-sm">
-                                                    <Edit3 size={14} /> Edit
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))
-                            }
-                        </div>
-                        </div>
+                        <TemplatesPanel
+                            templates={templates}
+                            templatesLoading={templatesLoading}
+                            postSubmitTemplateIds={postSubmitTemplateIds}
+                            savingPostSubmitTemplates={savingPostSubmitTemplates}
+                            handleSavePostSubmitTemplates={handleSavePostSubmitTemplates}
+                            movePostSubmitTemplate={movePostSubmitTemplate}
+                            isTemplateEnabledPostSubmit={isTemplateEnabledPostSubmit}
+                            togglePostSubmitTemplate={togglePostSubmitTemplate}
+                            handleUseTemplate={handleUseTemplate}
+                            handleEditTemplate={handleEditTemplate}
+                            handleDeleteTemplate={handleDeleteTemplate}
+                        />
                     )}
                 </div>
             </div>
 
             {/* FEAT-2/3/4: REDESIGNED DRIVER PICKER MODAL */}
             {showDriverPicker && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="p-6 border-b flex justify-between items-center bg-gray-50">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900">Send Document</h2>
-                                <p className="text-xs text-gray-500">Sending: <b>{selectedTemplate?.title}</b></p>
-                            </div>
-                            <button onClick={() => setShowDriverPicker(false)} className="p-2 hover:bg-white rounded-full transition-colors"><X size={20} /></button>
-                        </div>
-
-                        {/* FEAT-2: Manual Recipient Entry */}
-                        <div className="p-5 space-y-3 border-b">
-                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recipient Details</h3>
-                            <div className="grid grid-cols-1 gap-3">
-                                <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                    <input
-                                        type="text" placeholder="Recipient name *"
-                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                                        value={manualName} onChange={e => setManualName(e.target.value)}
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                    <input
-                                        type="email" placeholder="Email address"
-                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                                        value={manualEmail} onChange={e => setManualEmail(e.target.value)}
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                    <input
-                                        type="tel" placeholder="Phone number"
-                                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                                        value={manualPhone} onChange={e => setManualPhone(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* FEAT-4: Delivery Method Selector */}
-                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider pt-2">Delivery Method</h3>
-                            <div className="grid grid-cols-4 gap-2">
-                                {[
-                                    { key: 'email', icon: <Mail size={14} />, label: 'Email' },
-                                    { key: 'sms', icon: <MessageSquare size={14} />, label: 'SMS' },
-                                    { key: 'both', icon: <Send size={14} />, label: 'Both' },
-                                    { key: 'copy', icon: <Copy size={14} />, label: 'Copy Link' },
-                                ].map(opt => (
-                                    <button
-                                        key={opt.key}
-                                        onClick={() => setDeliveryMethod(opt.key)}
-                                        className={`flex flex-col items-center gap-1 p-2.5 rounded-xl text-xs font-bold border-2 transition-all ${
-                                            deliveryMethod === opt.key
-                                                ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                                        }`}
-                                    >
-                                        {opt.icon}
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* Template Pre-fill Fields — grouped bindings/tokens; plain text stays per field */}
-                            {(editablePrefillPartition.groups.length > 0 || editablePrefillPartition.plainFields.length > 0) && (
-                                <div className="pt-3">
-                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pre-fill Fields (Optional)</h3>
-                                    <div className="max-h-[220px] overflow-y-auto space-y-3 pr-1">
-                                        {editablePrefillPartition.groups.map((group) => (
-                                            <div key={group.groupKey} className="space-y-1" role="group" aria-label={group.uiLabel}>
-                                                {group.useDateTriplet ? (
-                                                    <div
-                                                        className="block text-[10px] font-bold text-gray-500 uppercase"
-                                                        title={group.members.map((m) => m.label || m.id).join(', ')}
-                                                    >
-                                                        {group.uiLabel}
-                                                        {group.appliesCount > 1 ? (
-                                                            <span className="font-normal normal-case text-gray-400"> — applies to {group.appliesCount} places</span>
-                                                        ) : null}
-                                                    </div>
-                                                ) : (
-                                                    <label
-                                                        className="block text-[10px] font-bold text-gray-500 uppercase"
-                                                        htmlFor={`edoc-grp-${slugPrefillGroupId(group.groupKey)}`}
-                                                        title={group.members.map((m) => m.label || m.id).join(', ')}
-                                                    >
-                                                        {group.uiLabel}
-                                                        {group.appliesCount > 1 ? (
-                                                            <span className="font-normal normal-case text-gray-400"> — applies to {group.appliesCount} places</span>
-                                                        ) : null}
-                                                    </label>
-                                                )}
-                                                {group.useDateTriplet ? (
-                                                    <DateTripletField
-                                                        label=""
-                                                        idPrefix={`edoc-grp-${slugPrefillGroupId(group.groupKey)}`}
-                                                        name={`prefill-${group.groupKey}`}
-                                                        value={prefillValuesByGroupKey[group.groupKey] || ''}
-                                                        onChange={(_n, v) =>
-                                                            setPrefillValuesByGroupKey((prev) => ({
-                                                                ...prev,
-                                                                [group.groupKey]: v,
-                                                            }))
-                                                        }
-                                                        required={false}
-                                                        maxToday={true}
-                                                        minYear={1920}
-                                                    />
-                                                ) : (
-                                                    <input
-                                                        id={`edoc-grp-${slugPrefillGroupId(group.groupKey)}`}
-                                                        type="text"
-                                                        placeholder={`Enter ${group.uiLabel}...`}
-                                                        className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                                                        value={prefillValuesByGroupKey[group.groupKey] || ''}
-                                                        onChange={(e) =>
-                                                            setPrefillValuesByGroupKey((prev) => ({
-                                                                ...prev,
-                                                                [group.groupKey]: e.target.value,
-                                                            }))
-                                                        }
-                                                    />
-                                                )}
-                                            </div>
-                                        ))}
-                                        {editablePrefillPartition.plainFields.map((field) => (
-                                            <div key={field.id} className="space-y-1">
-                                                <label
-                                                    className="block text-[10px] font-bold text-gray-500 uppercase"
-                                                    htmlFor={`edoc-plain-${field.id}`}
-                                                >
-                                                    {field.label || field.id}
-                                                </label>
-                                                <input
-                                                    id={`edoc-plain-${field.id}`}
-                                                    type="text"
-                                                    placeholder={`Enter ${field.label || 'text'}...`}
-                                                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                                                    value={prefillValues[field.id] || ''}
-                                                    onChange={(e) =>
-                                                        setPrefillValues((prev) => ({
-                                                            ...prev,
-                                                            [field.id]: e.target.value,
-                                                        }))
-                                                    }
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Send / Copy Button */}
-                            <button
-                                onClick={executeTemplateSend}
-                                disabled={sending || !manualName.trim()}
-                                className="w-full py-3 bg-purple-600 text-white text-sm font-bold rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-md"
-                            >
-                                {sending ? <Loader2 size={16} className="animate-spin" /> :
-                                    deliveryMethod === 'copy' ? <><Copy size={16} /> Copy Signing Link</> :
-                                    <><Send size={16} /> Send Document</>
-                                }
-                            </button>
-                        </div>
-
-                        {/* Quick Select from existing leads */}
-                        <div className="p-4 bg-gray-50">
-                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Or Quick-Select a Lead</h3>
-                            <div className="relative mb-2">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                <input
-                                    type="text" placeholder="Search leads..."
-                                    className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 transition-all"
-                                    value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                                />
-                            </div>
-                            <div className="max-h-[180px] overflow-y-auto space-y-1">
-                                {filteredDrivers.length === 0 ? (
-                                    <div className="py-6 text-center text-gray-400 text-xs italic">No leads found.</div>
-                                ) : (
-                                    filteredDrivers.slice(0, 20).map(d => (
-                                        <button
-                                            key={d.id}
-                                            onClick={() => handleQuickSelect(d)}
-                                            className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-purple-50 group transition-all text-left"
-                                        >
-                                            <div className="bg-white p-1.5 rounded-lg group-hover:bg-purple-100 group-hover:text-purple-600 transition-colors border">
-                                                <User size={14} />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-xs font-bold text-gray-900 truncate">{d.firstName} {d.lastName}</p>
-                                                <p className="text-[10px] text-gray-400 truncate">{d.email || 'No email'} | {d.phone || d.phoneNumber || 'No phone'}</p>
-                                            </div>
-                                        </button>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <SendTemplateModal
+                    selectedTemplate={selectedTemplate}
+                    onClose={() => setShowDriverPicker(false)}
+                    manualName={manualName}
+                    setManualName={setManualName}
+                    manualEmail={manualEmail}
+                    setManualEmail={setManualEmail}
+                    manualPhone={manualPhone}
+                    setManualPhone={setManualPhone}
+                    deliveryMethod={deliveryMethod}
+                    setDeliveryMethod={setDeliveryMethod}
+                    editablePrefillPartition={editablePrefillPartition}
+                    prefillValues={prefillValues}
+                    setPrefillValues={setPrefillValues}
+                    prefillValuesByGroupKey={prefillValuesByGroupKey}
+                    setPrefillValuesByGroupKey={setPrefillValuesByGroupKey}
+                    sending={sending}
+                    executeTemplateSend={executeTemplateSend}
+                    filteredDrivers={filteredDrivers}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    handleQuickSelect={handleQuickSelect}
+                />
             )}
         </div>
     );
