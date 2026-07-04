@@ -12,8 +12,16 @@ import {
 } from '@features/signing/utils/signerFieldFlow';
 import { ensureFieldVisible } from '@features/signing/utils/fieldViewport';
 import { clampSignerZoom } from '@features/signing/utils/envelopePdfZoom';
-import { SignerFieldOverlay } from '@features/signing/components/SignerFieldOverlay';
 import { SignatureSheet } from '@features/signing/components/SignatureSheet';
+import { SignerField } from '@features/signing/components/signing-room/SignerField';
+import {
+    SigningLoadingScreen,
+    SigningErrorScreen,
+    SigningVoidedScreen,
+    SigningSuccessScreen,
+    EsignConsentScreen,
+} from '@features/signing/components/signing-room/StatusScreens';
+import { readDraft, writeDraft, clearDraft } from '@features/signing/utils/signingDraft';
 import { usePdfZoomGestures } from '@features/signing/hooks/usePdfZoomGestures';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { useIsMobile } from '@shared/hooks';
@@ -24,8 +32,7 @@ const E2E_MOCK_PDF_URL =
     btoa('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n');
 import { Document, Page, pdfjs } from 'react-pdf';
 import {
-    Loader2, CheckCircle, PenTool, ChevronDown, AlertTriangle, ShieldCheck,
-    FileText, Ban, Fingerprint, ZoomIn, ZoomOut, RefreshCw,
+    Loader2, CheckCircle, ChevronDown, AlertTriangle, ZoomIn, ZoomOut, RefreshCw,
 } from 'lucide-react';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -51,38 +58,7 @@ const MIN_FIT_WIDTH = 260;
 const MIN_COMFORTABLE_FIELD_PX = 22;
 const AUTO_ZOOM_MAX = 2.5;
 
-// Draft storage — survives a tab refresh on flaky LTE so drivers don't lose typed values.
-// Signatures (PNG dataURLs, ~10-50 KB each) are included; multi-signature docs fit comfortably
-// under the typical 5 MB localStorage quota.
-const DRAFT_KEY_PREFIX = 'signing_draft_v1';
-const draftKey = (companyId, requestId) => `${DRAFT_KEY_PREFIX}:${companyId}:${requestId}`;
-
-function readDraft(companyId, requestId) {
-    try {
-        const raw = localStorage.getItem(draftKey(companyId, requestId));
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === 'object' ? parsed : null;
-    } catch {
-        return null;
-    }
-}
-
-function writeDraft(companyId, requestId, values) {
-    try {
-        localStorage.setItem(draftKey(companyId, requestId), JSON.stringify(values));
-    } catch {
-        // Quota exceeded or storage disabled — silently skip, in-memory state still works.
-    }
-}
-
-function clearDraft(companyId, requestId) {
-    try {
-        localStorage.removeItem(draftKey(companyId, requestId));
-    } catch {
-        /* ignore */
-    }
-}
+// Draft storage lives in @features/signing/utils/signingDraft (extracted verbatim).
 
 export default function SigningRoom() {
     const { companyId, requestId } = useParams();
@@ -453,115 +429,21 @@ export default function SigningRoom() {
         }
     };
 
-    if (loading) return (
-        <div className="h-screen flex items-center justify-center bg-gray-50">
-            <Loader2 className="animate-spin text-blue-600 mb-2" size={40} />
-            <p className="text-gray-500 font-medium ml-3">Loading secure document...</p>
-        </div>
-    );
+    if (loading) return <SigningLoadingScreen />;
 
-    if (error) return (
-        <div className="h-screen flex items-center justify-center bg-gray-50 p-4">
-            <div className="bg-white p-8 rounded-xl shadow-lg border border-red-100 text-center max-w-md">
-                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <AlertTriangle size={32} />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h3>
-                <p className="text-gray-600">{error}</p>
-            </div>
-        </div>
-    );
+    if (error) return <SigningErrorScreen error={error} />;
 
     // PHASE 4: Voided document hard-stop
-    if (request?.status === 'voided') return (
-        <div className="h-screen flex items-center justify-center bg-gray-50 p-4">
-            <div className="bg-white p-10 rounded-2xl shadow-xl border border-red-100 text-center max-w-md">
-                <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Ban size={48} />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Document Voided</h2>
-                <p className="text-gray-600 mb-6">
-                    This document has been voided by the sender and is no longer accessible.
-                </p>
-                <button onClick={() => window.close()} className="text-gray-500 font-semibold hover:underline">
-                    Close Window
-                </button>
-            </div>
-        </div>
-    );
+    if (request?.status === 'voided') return <SigningVoidedScreen />;
 
-    if (success) return (
-        <div className="h-screen flex items-center justify-center bg-gray-50 p-4">
-            <div className="bg-white p-10 rounded-2xl shadow-xl border border-green-100 text-center max-w-md animate-in zoom-in-95 duration-300">
-                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <CheckCircle size={48} />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Document Signed!</h2>
-                <p className="text-gray-600 mb-6">
-                    Thank you, <strong>{request.recipientName}</strong>. The document has been securely sealed and sent to the sender.
-                </p>
-                <button onClick={() => window.close()} className="text-blue-600 font-semibold hover:underline">
-                    Close Window
-                </button>
-            </div>
-        </div>
-    );
+    if (success) return <SigningSuccessScreen recipientName={request.recipientName} />;
 
     // ESIGN-8 FIX: Electronic consent screen required before document access.
     // UETA Sec. 5(b) and ESIGN Act Sec. 101(c) mandate that signers affirmatively agree to
     // conduct business electronically before they can be bound by electronic signatures.
     // The consent must be presented BEFORE the document is displayed (not inline).
     if (!hasEsignConsent) return (
-        <div className="h-screen flex items-center justify-center bg-gray-50 p-4">
-            <div className="bg-white p-8 rounded-2xl shadow-xl border border-blue-100 max-w-lg w-full">
-                <div className="flex items-center gap-3 mb-5">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                        <ShieldCheck size={28} className="text-blue-600" />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900">Electronic Signature Consent</h2>
-                        <p className="text-sm text-gray-500">Required before signing</p>
-                    </div>
-                </div>
-
-                <div className="space-y-4 text-sm text-gray-700 mb-6">
-                    <p>
-                        You are about to electronically sign: <strong className="text-gray-900">{request?.title || 'a document'}</strong>.
-                    </p>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-                        <p className="font-semibold text-blue-900 flex items-center gap-2">
-                            <FileText size={16} /> Electronic Records & Signature Disclosure
-                        </p>
-                        <ul className="list-disc list-inside space-y-1 text-blue-800 text-xs">
-                            <li>Your electronic signature is legally binding under the ESIGN Act (15 U.S.C. Sec. 7001) and UETA.</li>
-                            <li>You agree to receive and sign this document electronically instead of on paper.</li>
-                            <li>You may withdraw consent and request a paper copy by contacting the sender.</li>
-                            <li>To sign electronically, you need a compatible web browser with JavaScript enabled.</li>
-                            <li>Your IP address and browser information are recorded in the audit trail for this document.</li>
-                        </ul>
-                    </div>
-                    <p className="text-gray-600">
-                        By clicking <strong>"I Agree - Proceed to Sign"</strong>, you confirm that you have read and agree to use electronic records and signatures.
-                    </p>
-                </div>
-
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => window.close()}
-                        className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition"
-                    >
-                        Decline
-                    </button>
-                    <button
-                        onClick={() => setHasEsignConsent(true)}
-                        className="flex-1 px-4 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2"
-                    >
-                        <ShieldCheck size={18} />
-                        I Agree - Proceed to Sign
-                    </button>
-                </div>
-            </div>
-        </div>
+        <EsignConsentScreen title={request?.title} onAgree={() => setHasEsignConsent(true)} />
     );
 
     // ------------------------------------------------------------------
@@ -578,116 +460,17 @@ export default function SigningRoom() {
     const renderedWidth = Math.round(fitWidth * zoom);
     const zoomLabel = `${Math.round(zoom * 100)}%`;
 
-    const fillClass = 'w-full h-full min-w-0 min-h-0 box-border';
-
-    const renderField = (field) => {
-        if (request.status === 'signed') return null;
-
-        switch (field.type) {
-            case 'text': {
-                if (isFieldLocked(field)) {
-                    return (
-                        <SignerFieldOverlay field={field} interactive={false}>
-                            <div className={`${fillClass} border-2 border-blue-300 bg-blue-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium overflow-hidden`}>
-                                {field.defaultValue || ''}
-                            </div>
-                        </SignerFieldOverlay>
-                    );
-                }
-                return (
-                    <SignerFieldOverlay field={field}>
-                        <input
-                            className={`${fillClass} border-2 border-blue-400 bg-blue-50/90 px-2 text-base md:text-sm rounded`}
-                            placeholder="Type here..."
-                            value={fieldValues[field.id] || ''}
-                            data-signer-input={field.id}
-                            enterKeyHint="next"
-                            onFocus={handleFieldFocus}
-                            onKeyDown={handleEnterAdvance(field)}
-                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        />
-                    </SignerFieldOverlay>
-                );
-            }
-            case 'date': {
-                if (isFieldLocked(field)) {
-                    return (
-                        <SignerFieldOverlay field={field} interactive={false}>
-                            <div className={`${fillClass} border-2 border-green-300 bg-green-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium overflow-hidden`}>
-                                {field.defaultValue || ''}
-                            </div>
-                        </SignerFieldOverlay>
-                    );
-                }
-                return (
-                    <SignerFieldOverlay field={field}>
-                        <input
-                            type="date"
-                            className={`${fillClass} border-2 border-green-400 bg-green-50/90 px-2 text-base md:text-sm rounded`}
-                            value={fieldValues[field.id] || ''}
-                            data-signer-input={field.id}
-                            onFocus={handleFieldFocus}
-                            onKeyDown={handleEnterAdvance(field)}
-                            onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        />
-                    </SignerFieldOverlay>
-                );
-            }
-            case 'checkbox':
-                return (
-                    <SignerFieldOverlay field={field}>
-                        <label className={`${fillClass} flex items-center justify-center cursor-pointer m-0`}>
-                            <input
-                                type="checkbox"
-                                className="w-full h-full max-w-full max-h-full min-w-0 min-h-0 accent-purple-600 cursor-pointer m-0"
-                                checked={!!fieldValues[field.id]}
-                                onChange={(e) => handleFieldChange(field.id, e.target.checked)}
-                            />
-                        </label>
-                    </SignerFieldOverlay>
-                );
-            case 'signature':
-            case 'initial': {
-                const isInitial = field.type === 'initial';
-                const value = fieldValues[field.id];
-                const palette = isInitial
-                    ? { signed: 'bg-orange-50/80 border-orange-500', empty: 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse', text: 'text-orange-700' }
-                    : { signed: 'bg-yellow-50/80 border-yellow-500', empty: 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse', text: 'text-yellow-700' };
-                return (
-                    <SignerFieldOverlay field={field}>
-                        <button
-                            type="button"
-                            onClick={() => handleSignatureTap(field)}
-                            aria-label={
-                                value
-                                    ? (isInitial ? 'Initials added — tap to redraw' : 'Signature added — tap to redraw')
-                                    : (isInitial ? 'Tap to add initials' : 'Tap to sign')
-                            }
-                            className={`${fillClass} cursor-pointer border-2 ${value ? 'border-solid p-0.5' : 'border-dashed'} rounded flex items-center justify-center gap-1 shadow-sm transition ${value ? palette.signed : palette.empty}`}
-                        >
-                            {value ? (
-                                // Show the actual ink on the document — the signer
-                                // sees exactly what the sealed PDF will contain.
-                                <img
-                                    src={value}
-                                    alt={isInitial ? 'Your initials' : 'Your signature'}
-                                    className="w-full h-full object-contain pointer-events-none"
-                                    draggable={false}
-                                />
-                            ) : (
-                                <span className={`${palette.text} font-medium text-xs flex items-center gap-1`}>
-                                    {isInitial ? <Fingerprint size={12} /> : <PenTool size={14} />}
-                                    {isInitial ? 'Initial' : 'Sign'}
-                                </span>
-                            )}
-                        </button>
-                    </SignerFieldOverlay>
-                );
-            }
-            default:
-                return null;
-        }
-    };
+    const renderField = (field) => (
+        <SignerField
+            field={field}
+            signed={request.status === 'signed'}
+            fieldValues={fieldValues}
+            handleFieldChange={handleFieldChange}
+            handleFieldFocus={handleFieldFocus}
+            handleEnterAdvance={handleEnterAdvance}
+            handleSignatureTap={handleSignatureTap}
+        />
+    );
 
     const renderSigningPages = () =>
         numPages > 0 &&
