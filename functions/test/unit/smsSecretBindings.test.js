@@ -20,7 +20,12 @@ const SENDER_FILES = [
     'bulkActions/workers/batchWorker.js',     // processBulkBatch (bulk SMS + email campaigns)
     'atsContactSms.js',                        // automated contact-attempt SMS triggers
     'integrations/services/smsService.js',     // sendTestSMS / sendSMS / executeReactivationBatch
-    'integrations/controllers/configController.js', // provision / verify / add / remove line
+    // configController.js was split by concern; each function-defining file must
+    // bind the secret on its own onCall options.
+    'integrations/controllers/config/providerConfigController.js',  // save / verify provider config
+    'integrations/controllers/config/lineConnectionController.js',  // test / verify line connection
+    'integrations/controllers/config/lineInventoryController.js',   // add / remove line
+    'integrations/controllers/config/lineAssignmentsController.js', // recruiter line assignments
     'notifySignerSMS.js',                      // e-doc signer SMS
 ];
 

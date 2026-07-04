@@ -5,6 +5,7 @@ import { useToast } from '@shared/components/feedback/ToastProvider';
 import { db } from '@lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { PlusCircle, User, Phone, Mail, MapPin, Truck, Save, X } from 'lucide-react';
+import { ATS_STATUS_NEW } from '@shared/constants/atsStatus';
 
 export const QuickAddLeadPage = () => {
     const { currentCompanyProfile, currentUser } = useData();
@@ -53,7 +54,7 @@ export const QuickAddLeadPage = () => {
                 name: `${formData.firstName} ${formData.lastName}`.trim(),
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-                status: 'New',
+                status: ATS_STATUS_NEW,
                 source: 'manual_entry',
                 createdBy: currentUser?.uid || 'unknown',
             };

@@ -3,6 +3,7 @@ import { respondToOffer } from '../../services/driverService';
 import { initializeSignatureCanvas, clearCanvas, isCanvasEmpty, getSignatureDataUrl } from '@lib/signature';
 import { X, CheckCircle, XCircle, DollarSign, Calendar, Gift, FileSignature, Loader2, PenTool } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { OFFER_ACCEPTED_STATUS, OFFER_DECLINED_STATUS } from '@shared/constants/atsStatus';
 
 export function DriverOfferModal({ application, onClose, onUpdate }) {
     const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export function DriverOfferModal({ application, onClose, onUpdate }) {
         if (!window.confirm("Are you sure you want to DECLINE this offer?")) return;
         setLoading(true);
         try {
-            await respondToOffer(companyId, appId, 'Offer Declined');
+            await respondToOffer(companyId, appId, OFFER_DECLINED_STATUS);
             onUpdate();
             setTimeout(onClose, 500);
         } catch (e) {
@@ -46,7 +47,7 @@ export function DriverOfferModal({ application, onClose, onUpdate }) {
         try {
             const sigData = getSignatureDataUrl();
             // 1. Update DB using the correct ID and Signature
-            await respondToOffer(companyId, appId, 'Offer Accepted', sigData);
+            await respondToOffer(companyId, appId, OFFER_ACCEPTED_STATUS, sigData);
 
             confetti({
                 particleCount: 100,

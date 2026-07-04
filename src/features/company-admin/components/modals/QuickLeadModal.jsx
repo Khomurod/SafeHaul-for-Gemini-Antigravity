@@ -3,6 +3,7 @@ import { X, UserPlus, Loader2, Phone, Mail, User } from 'lucide-react';
 import { db, auth } from '@lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { LEAD_DEFAULT_STATUS } from '@shared/constants/atsStatus';
 
 /**
  * Modal for quickly adding a new lead with basic information.
@@ -39,7 +40,7 @@ export function QuickLeadModal({ companyId, onClose, onSuccess }) {
                 lastName: lastName.trim(),
                 phone: phone.trim() || null,
                 email: email.trim() || null,
-                status: 'New Lead',
+                status: LEAD_DEFAULT_STATUS,
                 source: 'Manual Entry',
                 createdAt: serverTimestamp(),
                 createdBy: auth.currentUser?.uid || 'unknown',
