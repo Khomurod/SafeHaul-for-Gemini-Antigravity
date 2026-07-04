@@ -6,7 +6,7 @@
  *
  * FMCSA 49 CFR §391.23 compliant — collects all required data points.
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
@@ -15,108 +15,7 @@ import {
     Loader2, CheckCircle, AlertTriangle, Clock, ShieldCheck,
     Send, FileText, Phone, Mail, User, Briefcase, ChevronDown, Info
 } from 'lucide-react';
-
-// ============================================================
-// SIGNATURE PAD COMPONENT (Inline — no external dependency)
-// ============================================================
-function SignaturePad({ onSignatureChange }) {
-    const canvasRef = useRef(null);
-    const [isDrawing, setIsDrawing] = useState(false);
-    const [hasSignature, setHasSignature] = useState(false);
-
-    const resizeCanvas = useCallback(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const parent = canvas.parentElement;
-        canvas.width = parent.offsetWidth;
-        canvas.height = 150;
-        const ctx = canvas.getContext('2d');
-        ctx.strokeStyle = '#1a2332';
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-    }, []);
-
-    useEffect(() => {
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-        return () => window.removeEventListener('resize', resizeCanvas);
-    }, [resizeCanvas]);
-
-    const getPosition = (e) => {
-        const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        if (e.touches) {
-            return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-        }
-        return { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
-    };
-
-    const startDrawing = (e) => {
-        e.preventDefault();
-        setIsDrawing(true);
-        const ctx = canvasRef.current.getContext('2d');
-        const pos = getPosition(e);
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-    };
-
-    const draw = (e) => {
-        e.preventDefault();
-        if (!isDrawing) return;
-        const ctx = canvasRef.current.getContext('2d');
-        const pos = getPosition(e);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-        if (!hasSignature) setHasSignature(true);
-    };
-
-    const stopDrawing = () => {
-        setIsDrawing(false);
-        if (hasSignature && canvasRef.current) {
-            onSignatureChange(canvasRef.current.toDataURL('image/png'));
-        }
-    };
-
-    const clearSignature = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        setHasSignature(false);
-        onSignatureChange(null);
-    };
-
-    return (
-        <div>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg relative bg-white cursor-crosshair overflow-hidden"
-                 style={{ touchAction: 'none' }}>
-                <canvas
-                    ref={canvasRef}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
-                    className="w-full"
-                />
-                {!hasSignature && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <span className="text-gray-400 text-sm">Draw your signature here</span>
-                    </div>
-                )}
-            </div>
-            {hasSignature && (
-                <button type="button" onClick={clearSignature}
-                        className="mt-1 text-xs text-blue-600 hover:text-blue-800 underline">
-                    Clear Signature
-                </button>
-            )}
-        </div>
-    );
-}
-
+import { SignaturePad } from '@shared/components/signature/SignaturePad';
 
 // ============================================================
 // MAIN VERIFICATION PORTAL COMPONENT
