@@ -78,9 +78,16 @@ export function LoginScreen() {
         getMembershipsForUser(user.uid)
       ]);
 
-      // P2-3 FIX: Check Super Admin via claims (primary) with Firestore fallback
+      // P2-3 FIX: Check Super Admin via claims (primary) with Firestore fallback.
+      // Claims carry the marker as globalRole (top-level or nested under roles) —
+      // the same shapes firestore.rules isSuperAdmin() accepts; the legacy
+      // boolean super_admin claim is kept for backwards compatibility.
       const token = await user.getIdTokenResult();
-      const isSuperAdmin = token.claims.super_admin === true || userDoc?.role === 'super_admin';
+      const isSuperAdmin =
+        token.claims.globalRole === 'super_admin' ||
+        token.claims.roles?.globalRole === 'super_admin' ||
+        token.claims.super_admin === true ||
+        userDoc?.role === 'super_admin';
 
       if (isSuperAdmin) {
         navigate('/super-admin', { replace: true });
