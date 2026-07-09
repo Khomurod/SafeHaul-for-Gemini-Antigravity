@@ -7,6 +7,18 @@ const { admin, db } = require("./firebaseAdmin");
  * by company-level config in the future. See SEGMENT_RULES below.
  */
 
+// Statuses meaning "applied but not yet progressed past initial contact".
+// These match the real ATS vocabulary (see src/shared/constants/atsStatus.js
+// and allowedRecruiterPipelineStatus in firestore.rules) — the previous
+// lowercase 'applied'/'new' literals matched no real document, so the
+// GHOSTED and NEW_LEADS segments never gained a single member.
+const PRE_PROGRESS_STATUSES = ['New Application', 'New', 'New Lead', 'Attempted',
+    'Contact Attempt 1', 'Contact Attempt 2', 'Contact Attempt 3'];
+
+// useCallOutcome stores the outcome LABEL ('No Answer'); accept the legacy
+// id form too in case older documents carry it.
+const NO_ANSWER_OUTCOMES = ['No Answer', 'no_answer'];
+
 // Rules definitions — exported for testability and future configurability
 const SEGMENT_RULES = {
     INACTIVE_30_DAYS: {
@@ -24,7 +36,8 @@ const SEGMENT_RULES = {
         slug: 'ghosted',
         label: 'Ghosted',
         check: (data) => {
-            return data.status === 'applied' && data.lastCallOutcome === 'no_answer';
+            return PRE_PROGRESS_STATUSES.includes(data.status) &&
+                NO_ANSWER_OUTCOMES.includes(data.lastCallOutcome);
         }
     },
     NEW_LEADS: {
@@ -34,7 +47,8 @@ const SEGMENT_RULES = {
             const createdAt = data.createdAt?.toDate() || new Date();
             const fortyEightHoursAgo = new Date();
             fortyEightHoursAgo.setHours(fortyEightHoursAgo.getHours() - 48);
-            return createdAt > fortyEightHoursAgo && data.status === 'new';
+            return createdAt > fortyEightHoursAgo &&
+                ['New Application', 'New', 'New Lead'].includes(data.status);
         }
     }
 };
