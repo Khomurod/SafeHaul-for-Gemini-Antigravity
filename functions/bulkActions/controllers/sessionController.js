@@ -2,7 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
 const { assertCompanyAdmin } = require("../helpers/auth");
 const { buildLeadQueries } = require("../helpers/queryBuilder");
-const { enqueueWorker } = require("../services/queueService");
+const { enqueueWorker, assertWorkerConfig } = require("../services/queueService");
 const { checkRateLimit } = require("../../shared/rateLimiter");
 const {
     derivePhoneLedgerKeys,
@@ -31,6 +31,11 @@ exports.initBulkSession = onCall({ cors: true, timeoutSeconds: 540 }, async (req
     if (!isAllowed) {
         throw new HttpsError('resource-exhausted', 'Too many bulk sessions created recently. Please wait before starting another.');
     }
+
+    // Fail fast on missing worker config (PROCESS_BULK_BATCH_URL / BULK_WORKER_SECRET)
+    // BEFORE the expensive targeting phase and before a session doc is created —
+    // otherwise the failure surfaces minutes later as an opaque 'failed' session.
+    assertWorkerConfig();
 
     const leadSourceType = filters.leadType || 'applications'; // 'global', 'leads', 'applications' (default)
 
@@ -532,6 +537,13 @@ const updateSessionStatus = async (request, status) => {
     const { companyId, sessionId } = request.data;
     await assertCompanyAdmin(request.auth.uid, companyId);
 
+    // Resuming re-enqueues the worker — fail fast on missing worker config
+    // BEFORE flipping the session to 'active' (an active session with no
+    // worker would look alive while sending nothing).
+    if (status === 'active') {
+        assertWorkerConfig();
+    }
+
     const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
 
     // AUDIT FIX #4: Increment workerGeneration on resume to invalidate stale workers
@@ -588,6 +600,8 @@ exports.retryFailedAttempts = onCall({ cors: true }, async (request) => {
     const sessionId = directId || originalSessionId;
     if (!sessionId) throw new HttpsError('invalid-argument', 'Session ID is required.');
     await assertCompanyAdmin(request.auth.uid, companyId);
+    // Fail fast on missing worker config before creating the retry session.
+    assertWorkerConfig();
 
     const sessionRef = db.collection('companies').doc(companyId).collection('bulk_sessions').doc(sessionId);
     const snap = await sessionRef.get();
