@@ -14,10 +14,11 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `backfillAllSmsSentPhones` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Admin: backfill SMS sent phones (all companies) |
 | `backfillAllStats` | [`StatsBackfillPanel.jsx`](../src/features/super-admin/components/StatsBackfillPanel.jsx) | Admin: stats backfill all tenants |
 | `backfillCompanyStats` | [`StatsBackfillPanel.jsx`](../src/features/super-admin/components/StatsBackfillPanel.jsx) | Admin: stats backfill one company |
-| `backfillEmployerFields` | [`BackfillEmployersButton.jsx`](../src/features/super-admin/components/BackfillEmployersButton.jsx), [`SuperAdminDashboard.jsx`](../src/features/super-admin/components/SuperAdminDashboard.jsx) | Migrate employer fields on applications |
+| `backfillEmployerFields` | [`SuperAdminDashboard.jsx`](../src/features/super-admin/components/SuperAdminDashboard.jsx) | Migrate employer fields on applications |
 | `backfillPublicProfiles` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Sync all companies → `public_profiles` |
 | `cancelBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx) | Stop bulk campaign |
 | `checkImportPhones` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js) | CSV import phone dedup check |
+| `claimGuestApplication` | [`applicationWrite.js`](../src/lib/applicationWrite.js) | Authenticated merge over a guest-created application (fallback when the direct merge is permission-denied) |
 | `confirmDriverInterest` | [`InterestPage.jsx`](../src/features/driver-app/components/InterestPage.jsx) | Lead interest confirmation |
 | `connectFacebookPage` | [`IntegrationsTab.jsx`](../src/features/settings/components/IntegrationsTab.jsx) | Facebook Lead Ads OAuth |
 | `createPortalUser` | [`CreateView.jsx`](../src/features/super-admin/components/CreateView.jsx), [`TeamManagementTab.jsx`](../src/features/settings/components/TeamManagementTab.jsx), [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Provision HR/recruiter/driver user |
@@ -40,7 +41,7 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `getSignedUploadUrl` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Auth/guest upload URL |
 | `getSigningLink` | [`EnvelopeHistory.jsx`](../src/features/signing/components/EnvelopeHistory.jsx) | Resolve link with secret token |
 | `getTelegramSessionStatus` | [`SignatureApp.jsx`](../src/telegram/SignatureApp.jsx) | Telegram Mini App session load |
-| `getVerificationRequest` | [`VerificationPortal.jsx`](../src/features/verification/VerificationPortal.jsx) | PEV portal load |
+| `getVerificationRequest` | [`useVerificationPortal.js`](../src/features/verification/hooks/useVerificationPortal.js) | PEV portal load |
 | `initBulkSession` | [`LaunchPad.jsx`](../src/features/campaigns/components/LaunchPad.jsx) | Start bulk SMS/email session |
 | `listSandboxTenantCompanies` | [`SandboxActionPanel.jsx`](../src/features/sandbox/SandboxActionPanel.jsx) | List sandbox tenants |
 | `parseCdlWithGroq` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | CDL image OCR |
@@ -60,13 +61,13 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `submitChangeResolution` | [`ReviewChangePortal.jsx`](../src/features/driver-changes/ReviewChangePortal.jsx) | Driver approve/reject/edit company changes |
 | `submitGuestApplication` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx), [`useSubmissionQueue.js`](../src/hooks/useSubmissionQueue.js) | Guest/auth application submit |
 | `submitPublicEnvelope` | [`SigningRoom.jsx`](../src/features/signing/SigningRoom.jsx) | Complete public signature |
-| `submitVerificationResponse` | [`VerificationPortal.jsx`](../src/features/verification/VerificationPortal.jsx) | Employer PEV response |
+| `submitVerificationResponse` | [`useVerificationPortal.js`](../src/features/verification/hooks/useVerificationPortal.js) | Employer PEV response |
 | `syncSystemStructure` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Repair system structure |
 | `testEmailConnection` | [`EmailSettingsTab.jsx`](../src/features/settings/components/EmailSettingsTab.jsx) | SMTP test |
 | `testLineConnection` | [`AddLineModal.jsx`](../src/features/super-admin/components/integrations/AddLineModal.jsx) | Test new SMS line |
 | `transferSandboxApplication` | [`SandboxActionPanel.jsx`](../src/features/sandbox/SandboxActionPanel.jsx) | Move sandbox app to prod tenant |
 | `updatePortalUser` | [`userService.js`](../src/features/auth/services/userService.js) | Update portal user / claims |
-| `verifyLineConnection` | [`NumberAssignmentManager.jsx`](../src/features/settings/components/NumberAssignmentManager.jsx) | Verify recruiter line assignment |
+| `verifyLineConnection` | [`useLineAssignments.js`](../src/features/settings/hooks/useLineAssignments.js) | Verify recruiter line assignment |
 | `verifySmsConfig` | [`SMSDiagnosticModal.jsx`](../src/features/settings/components/SMSDiagnosticModal.jsx) | Verify company SMS config |
 
 ---
@@ -81,7 +82,9 @@ These are exported and may be used by **scripts**, **future UI**, **legacy clien
 | `executeReactivationBatch` | SMS reactivation batch; referenced in bulk session comments, no `src/` caller |
 | `migrateEmailSettings` | One-time migration; invoke callable manually (ops) |
 | `reconcileCompanyDashboardStats` | KPI reconciliation callable ([`dashboardStatsRollup.js`](../functions/dashboardStatsRollup.js)) |
-| `updateBulkSessionStatus` | Legacy compat; pause/resume/cancel now also use direct Firestore writes per [`functions/index.js`](../functions/index.js) comment |
+| `updateBulkSessionStatus` | Legacy compat; superseded by `pauseBulkSession`/`resumeBulkSession`/`cancelBulkSession` — kept only for stale cached SPA bundles |
+| `backfillUserCompanyIds` | One-time SEC-002 backfill (ops-invoked) |
+| `backfillDriverCompanyIds` | One-time SEC-002 follow-up backfill (ops-invoked) |
 
 ---
 

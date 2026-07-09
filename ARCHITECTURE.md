@@ -85,8 +85,8 @@ SafeHaul uses a robust, multi-tenant system to manage SMS provider credentials (
 
 ### B. The Keychain (User-Level Routing)
 *   **Concept**: A company has one main account, but many recruiters.
-*   **Storage**: `companies/{id}/integrations/sms_provider/keychain/{userId}`
-*   **Function**: Maps a specific `userId` to a specific `phoneNumber`.
+*   **Storage**: `companies/{id}/integrations/sms_provider/keychain/{sanitizedPhone}` (document ID is the sanitized phone number)
+*   **Function**: Stores per-line credentials; user→line routing is held in the provider doc's assignments and resolved to a keychain entry by phone number.
 *   **Usage**: When `sendSMS` is called with a `userId`, the adapter looks up this map to determine which "From" number to use.
 
 ### C. Automatic Fallback Strategy (The "Safety Net")
@@ -105,7 +105,7 @@ To prevent message failures when a recruiter's direct line is misconfigured or l
 
 ## 6. Bulk Actions State Machine
 
-The Bulk Messaging system (`functions/bulkActions.js`) uses a resilient, recursive worker pattern to process thousands of messages without hitting timeout limits.
+The Bulk Messaging system (`functions/bulkActions/` — controllers, services, workers) uses a resilient, recursive worker pattern to process thousands of messages without hitting timeout limits.
 
 ### A. recursive Worker Pattern (`processBulkBatch`)
 Instead of a long-running function, the system processes messages in small batches (e.g., 20 at a time).
