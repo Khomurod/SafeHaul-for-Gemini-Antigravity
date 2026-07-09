@@ -53,7 +53,7 @@ export function initializeSignatureCanvas() {
     abortController = new AbortController();
     const { signal } = abortController;
 
-    canvas = document.getElementById('signature-canvas');
+    canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('signature-canvas'));
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();

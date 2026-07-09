@@ -42,7 +42,7 @@ export function subscribeToNotifications(userId, callback) {
   );
   return onSnapshot(q, (snapshot) => {
       const notifications = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .map(doc => /** @type {Record<string, any>} */ ({ id: doc.id, ...doc.data() }))
         .filter(n => n.status !== 'dismissed');
       
       callback(notifications);

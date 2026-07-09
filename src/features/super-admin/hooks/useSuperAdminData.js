@@ -1,8 +1,7 @@
 // src/features/super-admin/hooks/useSuperAdminData.js
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, functions } from '@lib/firebase';
-import { httpsCallable } from 'firebase/functions';
+import { db } from '@lib/firebase';
 import {
     collection,
     getDocs,

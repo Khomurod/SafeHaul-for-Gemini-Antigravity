@@ -56,11 +56,11 @@ async function claimViaCallable(docRef, data) {
     }
 
     const claimFn = httpsCallable(functions, 'claimGuestApplication');
-    const result = await claimFn({
+    const result = /** @type {{ data?: { claimed?: boolean } }} */ (await claimFn({
         companyId: pathInfo.companyId,
         applicationId: pathInfo.applicationId,
         formData,
-    });
+    }));
     return { isNew: false, claimed: result?.data?.claimed === true };
 }
 
