@@ -242,11 +242,13 @@ exports.onNewApplicationEmailConfirmation = onDocumentCreated(
                 </div>
             </div>`;
 
-            await sendDynamicEmail(companyId, {
-                to: applicantEmail,
-                subject: `Application Received – ${companyName} (${confirmationNumber})`,
-                html: emailHtml,
-            });
+            // sendDynamicEmail takes positional args (companyId, to, subject, html)
+            await sendDynamicEmail(
+                companyId,
+                applicantEmail,
+                `Application Received – ${companyName} (${confirmationNumber})`,
+                emailHtml,
+            );
 
             console.log(`[DL-4] Confirmation email sent to ${applicantEmail} for application ${confirmationNumber}`);
         } catch (err) {
