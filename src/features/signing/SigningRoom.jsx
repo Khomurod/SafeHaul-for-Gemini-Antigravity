@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import {
+    markRequestSigned,
+    readSigningReturnPath,
+} from '@features/driver-app/components/application/postApplyDocsStorage';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { isFieldLocked } from '@features/signing/utils/prefillEngine';
@@ -63,9 +67,15 @@ const AUTO_ZOOM_MAX = 2.5;
 export default function SigningRoom() {
     const { companyId, requestId } = useParams();
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
     const accessToken = searchParams.get('token');
     const isMobile = useIsMobile();
     const { showError } = useToast();
+
+    // Post-application flow: the apply page stores a return path for its own
+    // requests before navigating here. Recruiter-sent documents have none, so
+    // their success screen keeps the plain "Close Window" behavior.
+    const postApplyReturnPath = readSigningReturnPath(companyId, requestId);
 
     const [request, setRequest] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -396,6 +406,7 @@ export default function SigningRoom() {
         try {
             if (isE2ETestMode && getE2EQueryParam('e2eSign', '') === 'mock') {
                 clearDraft(companyId, requestId);
+                if (postApplyReturnPath) markRequestSigned(companyId, requestId);
                 setSuccess(true);
                 return;
             }
@@ -417,6 +428,9 @@ export default function SigningRoom() {
             });
 
             clearDraft(companyId, requestId);
+            // Post-application flow: record completion so the Required Documents
+            // checklist marks this template as completed when the driver returns.
+            if (postApplyReturnPath) markRequestSigned(companyId, requestId);
             setSuccess(true);
             // ESIGN-16 FIX: Confetti removed - document signing is a professional/legal act;
             // celebratory animations are inappropriate in regulated trucking compliance context.
@@ -436,7 +450,16 @@ export default function SigningRoom() {
     // PHASE 4: Voided document hard-stop
     if (request?.status === 'voided') return <SigningVoidedScreen />;
 
-    if (success) return <SigningSuccessScreen recipientName={request.recipientName} />;
+    if (success) {
+        return (
+            <SigningSuccessScreen
+                recipientName={request.recipientName}
+                onReturnToDocuments={
+                    postApplyReturnPath ? () => navigate(postApplyReturnPath) : undefined
+                }
+            />
+        );
+    }
 
     // ESIGN-8 FIX: Electronic consent screen required before document access.
     // UETA Sec. 5(b) and ESIGN Act Sec. 101(c) mandate that signers affirmatively agree to

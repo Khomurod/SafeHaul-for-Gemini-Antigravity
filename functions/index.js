@@ -106,6 +106,7 @@ exports.onLeadAtsContactSms = atsContactSms.onLeadAtsContactSms;
 exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
 exports.parseCdlWithGroq = require('./cdlParser').parseCdlWithGroq;
 exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').createPostApplicationSigningRequest;
+exports.backfillApplicationSearchFields = require('./searchFieldsBackfill').backfillApplicationSearchFields;
 
 // 4c. Telegram Driver Application Channel (additive public intake)
 const telegramApplication = require('./telegram/application');

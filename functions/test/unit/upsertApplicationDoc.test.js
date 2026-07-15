@@ -78,4 +78,62 @@ describe('upsertApplicationDoc', () => {
     expect(result.applicationId).toBe('app1_2');
     expect(set.mock.calls[0][0].applicationId).toBe('app1_2');
   });
+
+  it('recomputes applicationIdNormalized for the suffixed collision id', async () => {
+    const { db, set } = createDbMock([
+      { exists: true, data: () => ({ applicantKeyFull: 'other' }) },
+      { exists: false, data: () => null },
+      { exists: false, data: () => null },
+    ]);
+    const applicationDoc = {
+      applicationId: 'app1',
+      applicantId: 'app1',
+      driverId: 'app1',
+      userId: 'app1',
+      confirmationNumber: 'SAF-2026-NEW11',
+      applicationIdNormalized: 'app1',
+    };
+    await upsertApplicationDoc({
+      db,
+      companyId: 'co1',
+      applicationId: 'app1',
+      applicantKeyFull: 'full',
+      applicationDoc,
+      now: { __srv: true },
+      logLabel: 'test',
+    });
+
+    expect(set.mock.calls[0][0].applicationIdNormalized).toBe('app1_2');
+    expect(set.mock.calls[0][0].confirmationNumberNormalized).toBe('SAF-2026-NEW11');
+  });
+
+  it('keeps confirmationNumberNormalized in sync with a preserved confirmation on dedup', async () => {
+    const existing = {
+      exists: true,
+      data: () => ({
+        confirmationNumber: 'SAF-2026-ORIG1',
+        submittedAt: 'submitted',
+        createdAt: 'created',
+      }),
+    };
+    const { db, set } = createDbMock([existing, existing]);
+    const applicationDoc = {
+      applicationId: 'app1',
+      applicantId: 'app1',
+      confirmationNumber: 'SAF-2026-NEW11',
+      confirmationNumberNormalized: 'SAF-2026-NEW11',
+    };
+    const result = await upsertApplicationDoc({
+      db,
+      companyId: 'co1',
+      applicationId: 'app1',
+      applicantKeyFull: 'full',
+      applicationDoc,
+      now: { __srv: true },
+      logLabel: 'test',
+    });
+
+    expect(result.confirmationNumber).toBe('SAF-2026-ORIG1');
+    expect(set.mock.calls[0][0].confirmationNumberNormalized).toBe('SAF-2026-ORIG1');
+  });
 });

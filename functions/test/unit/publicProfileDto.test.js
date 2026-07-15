@@ -32,7 +32,7 @@ describe('public profile DTO (A4 projection)', () => {
     expect(dto.updatedAt).toBe(TS);
   });
 
-  it('projects post-application templates as a sanitized {templateId,title,enabled} subset only', () => {
+  it('projects post-application templates as a sanitized {templateId,title,enabled,required} subset only', () => {
     const dto = buildPublicProfileDto({
       companyName: 'Acme',
       postApplicationTemplates: [
@@ -40,16 +40,26 @@ describe('public profile DTO (A4 projection)', () => {
         { id: 't2', title: 'Handbook' },
         'rawStringId',
         { title: 'no id — dropped' },
+        { templateId: 't3', title: 'Survey', required: false },
       ],
     }, TS);
 
     expect(dto.postApplicationTemplates).toEqual([
-      { templateId: 't1', title: 'W-9', enabled: true },
-      { templateId: 't2', title: 'Handbook', enabled: true },
-      { templateId: 'rawStringId', title: 'Complete Form', enabled: true },
+      { templateId: 't1', title: 'W-9', enabled: true, required: true },
+      { templateId: 't2', title: 'Handbook', enabled: true, required: true },
+      { templateId: 'rawStringId', title: 'Complete Form', enabled: true, required: true },
+      { templateId: 't3', title: 'Survey', enabled: true, required: false },
     ]);
     // Full template config never leaks.
     expect(JSON.stringify(dto)).not.toMatch(/do-not-leak/);
+  });
+
+  it('defaults templates without an explicit required flag to REQUIRED (backward compat)', () => {
+    const dto = buildPublicProfileDto({
+      companyName: 'Acme',
+      postApplicationTemplates: [{ templateId: 'legacy', title: 'Old Config' }],
+    }, TS);
+    expect(dto.postApplicationTemplates[0].required).toBe(true);
   });
 
   it('never copies arbitrary PII-looking fields added to the source doc later', () => {

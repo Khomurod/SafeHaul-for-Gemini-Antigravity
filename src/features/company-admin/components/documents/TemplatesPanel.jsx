@@ -9,6 +9,8 @@ export function TemplatesPanel({
     templates,
     templatesLoading,
     postSubmitTemplateIds,
+    postSubmitRequiredById = {},
+    togglePostSubmitRequired,
     savingPostSubmitTemplates,
     handleSavePostSubmitTemplates,
     movePostSubmitTemplate,
@@ -26,6 +28,8 @@ export function TemplatesPanel({
                         <h3 className="text-sm font-bold text-blue-900">Post-Application Success Page Forms</h3>
                         <p className="text-xs text-blue-700">
                             Choose which templates appear right after a driver submits the application.
+                            Forms are <strong>required</strong> by default — drivers see them as a must-complete
+                            checklist. Untick "Required" to make a form optional.
                         </p>
                     </div>
                     <button
@@ -44,10 +48,22 @@ export function TemplatesPanel({
                         {postSubmitTemplateIds.map((templateId, idx) => {
                             const template = templates.find((item) => item.id === templateId);
                             if (!template) return null;
+                            const isRequired = postSubmitRequiredById[templateId] !== false;
                             return (
-                                <div key={templateId} className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                                <div key={templateId} className="flex items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
                                     <span className="text-sm text-blue-900 font-medium truncate">{template.title || 'Complete Form'}</span>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <label
+                                            className="flex items-center gap-1.5 text-xs text-blue-900 cursor-pointer select-none"
+                                            title="Required documents must be completed by the driver right after submitting the application."
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isRequired}
+                                                onChange={() => togglePostSubmitRequired?.(templateId)}
+                                            />
+                                            Required
+                                        </label>
                                         <button
                                             type="button"
                                             onClick={() => movePostSubmitTemplate(templateId, 'up')}

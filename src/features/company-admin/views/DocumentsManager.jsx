@@ -54,6 +54,9 @@ export default function DocumentsManager() {
     const [prefillValues, setPrefillValues] = useState({});
     const [prefillValuesByGroupKey, setPrefillValuesByGroupKey] = useState({});
     const [postSubmitTemplateIds, setPostSubmitTemplateIds] = useState([]);
+    // templateId -> boolean. Missing key = required (backward-compatible default:
+    // post-application forms are required unless explicitly marked optional).
+    const [postSubmitRequiredById, setPostSubmitRequiredById] = useState({});
     const [savingPostSubmitTemplates, setSavingPostSubmitTemplates] = useState(false);
     const isE2EEdocMock = isE2ETestMode && getE2EQueryParam('e2eEdoc', '') === 'mock';
 
@@ -93,14 +96,23 @@ export default function DocumentsManager() {
         const raw = Array.isArray(currentCompanyProfile?.postApplicationTemplates)
             ? currentCompanyProfile.postApplicationTemplates
             : [];
-        const ids = raw
-            .map((item) => {
-                if (typeof item === 'string') return item.trim();
-                if (!item || typeof item !== 'object') return '';
-                return String(item.templateId || item.id || '').trim();
-            })
-            .filter(Boolean);
+        const ids = [];
+        const requiredById = {};
+        for (const item of raw) {
+            let templateId = '';
+            let required = true;
+            if (typeof item === 'string') {
+                templateId = item.trim();
+            } else if (item && typeof item === 'object') {
+                templateId = String(item.templateId || item.id || '').trim();
+                required = item.required !== false;
+            }
+            if (!templateId) continue;
+            ids.push(templateId);
+            requiredById[templateId] = required;
+        }
         setPostSubmitTemplateIds(ids);
+        setPostSubmitRequiredById(requiredById);
     }, [currentCompanyProfile?.postApplicationTemplates]);
 
     useEffect(() => {
@@ -293,10 +305,37 @@ export default function DocumentsManager() {
         }
     };
 
+    const buildPostSubmitConfig = (ids, requiredById) => ids
+        .map((templateId) => {
+            const template = templates.find((item) => item.id === templateId);
+            if (!template) return null;
+            return {
+                templateId,
+                title: String(template.title || 'Complete Form').trim(),
+                enabled: true,
+                required: requiredById[templateId] !== false,
+            };
+        })
+        .filter(Boolean);
+
     const handleDeleteTemplate = async (id) => {
         if (!window.confirm("Delete template?")) return;
         await deleteDoc(doc(db, 'companies', currentCompanyProfile.id, 'templates', id));
-        setPostSubmitTemplateIds((prev) => prev.filter((templateId) => templateId !== id));
+        const nextIds = postSubmitTemplateIds.filter((templateId) => templateId !== id);
+        setPostSubmitTemplateIds(nextIds);
+        // Persist immediately when a configured post-submit form is deleted —
+        // a stale companies/{id}.postApplicationTemplates entry would otherwise
+        // keep offering applicants a document whose template no longer exists.
+        if (nextIds.length !== postSubmitTemplateIds.length) {
+            try {
+                await updateDoc(doc(db, 'companies', currentCompanyProfile.id), {
+                    postApplicationTemplates: buildPostSubmitConfig(nextIds, postSubmitRequiredById),
+                });
+            } catch (error) {
+                console.error('[DocumentsManager] Failed pruning deleted template from post-submit forms:', error);
+                showError('Template deleted, but the post-submission forms list could not be updated. Please press "Save Forms".');
+            }
+        }
     };
 
     const handleEditTemplate = (template) => {
@@ -327,20 +366,17 @@ export default function DocumentsManager() {
         });
     };
 
+    const togglePostSubmitRequired = (templateId) => {
+        setPostSubmitRequiredById((prev) => ({
+            ...prev,
+            [templateId]: prev[templateId] === false,
+        }));
+    };
+
     const handleSavePostSubmitTemplates = async () => {
         try {
             setSavingPostSubmitTemplates(true);
-            const mapped = postSubmitTemplateIds
-                .map((templateId) => {
-                    const template = templates.find((item) => item.id === templateId);
-                    if (!template) return null;
-                    return {
-                        templateId,
-                        title: String(template.title || 'Complete Form').trim(),
-                        enabled: true,
-                    };
-                })
-                .filter(Boolean);
+            const mapped = buildPostSubmitConfig(postSubmitTemplateIds, postSubmitRequiredById);
 
             await updateDoc(doc(db, 'companies', currentCompanyProfile.id), {
                 postApplicationTemplates: mapped,
@@ -425,6 +461,8 @@ export default function DocumentsManager() {
                             templates={templates}
                             templatesLoading={templatesLoading}
                             postSubmitTemplateIds={postSubmitTemplateIds}
+                            postSubmitRequiredById={postSubmitRequiredById}
+                            togglePostSubmitRequired={togglePostSubmitRequired}
                             savingPostSubmitTemplates={savingPostSubmitTemplates}
                             handleSavePostSubmitTemplates={handleSavePostSubmitTemplates}
                             movePostSubmitTemplate={movePostSubmitTemplate}

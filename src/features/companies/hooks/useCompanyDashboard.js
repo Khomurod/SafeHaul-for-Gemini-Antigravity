@@ -8,16 +8,28 @@ import {
     limit,
     startAfter,
     getDocs,
-    where,
-    getCountFromServer,
     getDoc,
     doc,
+    where,
+    getCountFromServer,
+    documentId,
 } from 'firebase/firestore';
 import { db, auth } from '@lib/firebase';
-import { normalizePhone } from '@shared/utils/helpers';
 import { shouldPreferDashboardRollup } from '@lib/runtime/dashboardRollup';
+import { getStatusesForSegment } from '@shared/utils/applicationStatus';
+import { isE2ETestMode } from '@lib/runtime/e2eMode';
+import {
+    classifySearchTerm,
+    buildSearchPlans,
+    recordMatchesSearch,
+    applyClientSideFilters,
+    mergeSearchResults,
+    SEARCH_PLAN_LIMIT,
+    PREFIX_END,
+} from './dashboardSearch';
+import { E2E_DASHBOARD_APPLICATIONS, E2E_DASHBOARD_LEADS } from './e2eDashboardFixtures';
 
-/** applications: all | hired | terminated | declined — leads: all | attempting | in_process | interested */
+/** applications: all | new | hired | terminated | declined — leads: all | attempting | in_process | interested */
 export function useCompanyDashboard(companyId) {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -40,6 +52,9 @@ export function useCompanyDashboard(companyId) {
     const [listTotalCount, setListTotalCount] = useState(0);
 
     const lastVisibleDocsRef = useRef({});
+    // Monotonic fetch id — a stale (slower) fetch must never overwrite the
+    // results of a newer query, or cleared searches briefly show old rows.
+    const fetchVersionRef = useRef(0);
 
     const [activeTab, setActiveTab] = useState('applications');
     const [pipelineSegment, setPipelineSegment] = useState('all');
@@ -65,9 +80,31 @@ export function useCompanyDashboard(companyId) {
         setPipelineSegment('all');
     }, [activeTab]);
 
+    // E2E fixture dataset: the placeholder Firebase project is unreachable in
+    // E2E runs, so search/filters/tabs are exercised against in-memory records
+    // through the same pure helpers the live query path uses.
+    const e2eRecordsForTab = useCallback((tab) => {
+        const source = tab === 'applications' ? E2E_DASHBOARD_APPLICATIONS : E2E_DASHBOARD_LEADS;
+        return source.map((record) => ({ ...record, companyId }));
+    }, [companyId]);
+
     const fetchStats = useCallback(async () => {
         if (!companyId) return;
         setStatsFetchError('');
+
+        if (isE2ETestMode) {
+            const apps = e2eRecordsForTab('applications');
+            const leads = e2eRecordsForTab('company_leads');
+            const uid = auth.currentUser?.uid || 'e2e-company_admin';
+            setStats({
+                applications: apps.length,
+                companyLeads: leads.length,
+                myLeads: leads.filter((l) => l.assignedTo === uid).length,
+                hired: applyClientSideFilters(apps, { activeTab: 'applications', pipelineSegment: 'hired' }).length,
+            });
+            return;
+        }
+
         try {
             const appsRef = collection(db, "companies", companyId, "applications");
             const leadsRef = collection(db, "companies", companyId, "leads");
@@ -96,7 +133,7 @@ export function useCompanyDashboard(companyId) {
                 }
             }
 
-            const hiredQuery = query(appsRef, where('status', 'in', ['Hired', 'Approved']));
+            const hiredQuery = query(appsRef, where('status', 'in', getStatusesForSegment('hired')));
             const [appsSnap, companyLeadsSnap, myLeadsSnap, hiredSnap] = await Promise.all([
                 getCountFromServer(appsRef),
                 getCountFromServer(leadsRef),
@@ -114,13 +151,14 @@ export function useCompanyDashboard(companyId) {
             console.error("Error fetching stats:", e);
             setStatsFetchError(e?.message || 'Could not load dashboard counts.');
         }
-    }, [companyId]);
+    }, [companyId, e2eRecordsForTab]);
 
     const pipelineConstraints = useCallback(() => {
         if (activeTab === 'applications') {
-            if (pipelineSegment === 'hired') return [where('status', 'in', ['Hired', 'Approved'])];
-            if (pipelineSegment === 'terminated') return [where('status', '==', 'Terminated')];
-            if (pipelineSegment === 'declined') return [where('status', 'in', ['Declined', 'Rejected'])];
+            // Centralized status vocabulary: 'new' covers 'New' + 'New Application',
+            // 'hired' covers 'Hired' + 'Approved', 'declined' covers 'Declined' + 'Rejected'.
+            const statuses = getStatusesForSegment(pipelineSegment);
+            if (statuses) return [where('status', 'in', statuses)];
             return [];
         }
         if (activeTab === 'company_leads' || activeTab === 'my_leads') {
@@ -139,20 +177,20 @@ export function useCompanyDashboard(companyId) {
         return false;
     }, [activeTab, pipelineSegment]);
 
-    const buildConstraints = useCallback((baseRef, isSearchMode = false) => {
+    const buildConstraints = useCallback(() => {
         let constraints = [];
 
         if (activeTab === 'applications') {
-            if (!isSearchMode && !usesPipelineOrderBy()) {
+            if (!usesPipelineOrderBy()) {
                 // legacy browse: no orderBy (document-id ordering)
             }
         } else if (activeTab === 'company_leads') {
-            if (!isSearchMode && !usesPipelineOrderBy()) {
+            if (!usesPipelineOrderBy()) {
                 constraints.push(orderBy("createdAt", "desc"));
             }
         } else if (activeTab === 'my_leads' && auth.currentUser) {
             constraints.push(where("assignedTo", "==", auth.currentUser.uid));
-            if (!isSearchMode && !usesPipelineOrderBy()) {
+            if (!usesPipelineOrderBy()) {
                 constraints.push(orderBy("createdAt", "desc"));
             }
         }
@@ -178,20 +216,36 @@ export function useCompanyDashboard(companyId) {
             }
         }
 
-        if (!isSearchMode && usesPipelineOrderBy()) {
+        if (usesPipelineOrderBy()) {
             constraints.push(orderBy('createdAt', 'desc'));
         }
 
         return constraints;
     }, [activeTab, filters, pipelineConstraints, usesPipelineOrderBy]);
 
+    const clientFilterContext = useCallback(() => ({
+        activeTab,
+        pipelineSegment,
+        filters,
+        // E2E mode has no real Firebase session; the fixture records are
+        // assigned to the mock admin uid used by DataContext.
+        currentUid: auth.currentUser?.uid || (isE2ETestMode ? 'e2e-company_admin' : null),
+    }), [activeTab, pipelineSegment, filters]);
+
     const fetchListTotalCount = useCallback(async () => {
         if (!companyId || debouncedSearch) return;
         setListCountError('');
+
+        if (isE2ETestMode) {
+            const records = applyClientSideFilters(e2eRecordsForTab(activeTab), clientFilterContext());
+            setListTotalCount(records.length);
+            return;
+        }
+
         try {
             const collectionName = activeTab === 'applications' ? 'applications' : 'leads';
             const baseRef = collection(db, "companies", companyId, collectionName);
-            const constraints = buildConstraints(baseRef, false);
+            const constraints = buildConstraints();
             const snap = await getCountFromServer(query(baseRef, ...constraints));
             setListTotalCount(snap.data().count);
         } catch (e) {
@@ -199,52 +253,95 @@ export function useCompanyDashboard(companyId) {
             setListTotalCount(0);
             setListCountError(e?.message || 'Could not load total count.');
         }
-    }, [companyId, activeTab, debouncedSearch, buildConstraints]);
+    }, [companyId, activeTab, debouncedSearch, buildConstraints, clientFilterContext, e2eRecordsForTab]);
 
     useEffect(() => {
         fetchListTotalCount();
     }, [fetchListTotalCount]);
 
+    /**
+     * Search mode: run the classified term's single-field query plans in
+     * parallel, merge + verify client-side, then apply the active tab scope,
+     * pipeline segment, and toolbar filters. Single-field queries only —
+     * combining search with tabs/filters can never hit a missing composite
+     * index, and nothing downloads the whole collection.
+     */
+    const runSearchQuery = useCallback(async (term) => {
+        const classified = classifySearchTerm(term);
+        if (!classified) return [];
+
+        const collectionName = activeTab === 'applications' ? 'applications' : 'leads';
+        const baseRef = collection(db, "companies", companyId, collectionName);
+
+        const plans = buildSearchPlans(classified);
+        const seenPlanKeys = new Set();
+        const queries = [];
+        for (const plan of plans) {
+            const planKey = `${plan.kind}:${plan.field || ''}:${plan.value}`;
+            if (!plan.value || seenPlanKeys.has(planKey)) continue;
+            seenPlanKeys.add(planKey);
+
+            if (plan.kind === 'docId') {
+                queries.push(
+                    getDocs(query(baseRef, where(documentId(), '==', plan.value), limit(1)))
+                );
+            } else if (plan.kind === 'eq') {
+                queries.push(
+                    getDocs(query(baseRef, where(plan.field, '==', plan.value), limit(SEARCH_PLAN_LIMIT)))
+                );
+            } else if (plan.kind === 'prefix') {
+                queries.push(
+                    getDocs(query(
+                        baseRef,
+                        where(plan.field, '>=', plan.value),
+                        where(plan.field, '<=', plan.value + PREFIX_END),
+                        limit(SEARCH_PLAN_LIMIT),
+                    ))
+                );
+            }
+        }
+
+        const snapshots = await Promise.all(queries);
+        const lists = snapshots.map((snapshot) =>
+            snapshot.docs.map((docSnap) => ({ id: docSnap.id, companyId, ...docSnap.data() }))
+        );
+
+        const merged = mergeSearchResults(lists);
+        const verified = merged.filter((record) => recordMatchesSearch(record, classified));
+        return applyClientSideFilters(verified, clientFilterContext());
+    }, [companyId, activeTab, clientFilterContext]);
+
     const fetchData = useCallback(async () => {
         if (!companyId) return;
 
+        const fetchVersion = ++fetchVersionRef.current;
         setLoading(true);
         setError('');
 
         try {
+            const isSearch = !!debouncedSearch;
+
+            if (isE2ETestMode) {
+                let records = applyClientSideFilters(e2eRecordsForTab(activeTab), clientFilterContext());
+                if (isSearch) {
+                    const classified = classifySearchTerm(debouncedSearch);
+                    records = records.filter((record) => recordMatchesSearch(record, classified));
+                }
+                if (fetchVersion !== fetchVersionRef.current) return;
+                setData(records);
+                if (isSearch) setTotalPages(1);
+                return;
+            }
+
             const collectionName = activeTab === 'applications' ? 'applications' : 'leads';
             const baseRef = collection(db, "companies", companyId, collectionName);
 
-            let q;
-            const isSearch = !!debouncedSearch;
+            let newData;
 
             if (isSearch) {
-                const term = debouncedSearch.trim();
-                let searchConstraints = buildConstraints(baseRef, true);
-
-                const isPhone = /^[0-9+() -]{7,}$/.test(term);
-                const isEmail = term.includes('@');
-
-                if (isEmail) {
-                    searchConstraints.push(where("email", "==", term.toLowerCase()));
-                } else if (isPhone) {
-                    const normalized = normalizePhone(term);
-                    if (normalized) {
-                        searchConstraints.push(where("phoneNormalized", "==", normalized));
-                    } else {
-                        searchConstraints.push(where("phone", "==", term));
-                    }
-                } else {
-                    const termFixed = term.charAt(0).toUpperCase() + term.slice(1);
-                    searchConstraints.push(where("lastName", ">=", termFixed));
-                    searchConstraints.push(where("lastName", "<=", termFixed + '\uf8ff'));
-                }
-
-                searchConstraints.push(limit(50));
-                q = query(baseRef, ...searchConstraints);
-
+                newData = await runSearchQuery(debouncedSearch.trim());
             } else {
-                let constraints = buildConstraints(baseRef, false);
+                let constraints = buildConstraints();
 
                 if (currentPage > 1) {
                     const prevPageLastDoc = lastVisibleDocsRef.current[currentPage - 1];
@@ -257,51 +354,55 @@ export function useCompanyDashboard(companyId) {
                 }
 
                 constraints.push(limit(itemsPerPage));
-                q = query(baseRef, ...constraints);
-            }
-
-            const snapshot = await getDocs(q);
-            let newData = snapshot.docs.map(docSnap => {
-                const d = docSnap.data();
-                return {
-                    id: docSnap.id,
-                    companyId,
-                    ...d,
-                    lastCall: d.lastContactedAt || d.lastCall,
-                    lastCallOutcome: d.lastCallOutcome
-                };
-            });
-
-            if (filters.dateFilter) {
-                const filterDate = new Date(filters.dateFilter + 'T00:00:00');
-                const filterYear = filterDate.getFullYear();
-                const filterMonth = filterDate.getMonth();
-                const filterDay = filterDate.getDate();
-
-                newData = newData.filter(item => {
-                    const ts = item.submittedAt || item.createdAt;
-                    if (!ts) return false;
-                    try {
-                        const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
-                        return d.getFullYear() === filterYear && d.getMonth() === filterMonth && d.getDate() === filterDay;
-                    } catch {
-                        return false;
-                    }
+                const snapshot = await getDocs(query(baseRef, ...constraints));
+                newData = snapshot.docs.map(docSnap => {
+                    const d = docSnap.data();
+                    return {
+                        id: docSnap.id,
+                        companyId,
+                        ...d,
+                    };
                 });
+
+                if (filters.dateFilter) {
+                    const filterDate = new Date(filters.dateFilter + 'T00:00:00');
+                    const filterYear = filterDate.getFullYear();
+                    const filterMonth = filterDate.getMonth();
+                    const filterDay = filterDate.getDate();
+
+                    newData = newData.filter(item => {
+                        const ts = item.submittedAt || item.createdAt;
+                        if (!ts) return false;
+                        try {
+                            const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+                            return d.getFullYear() === filterYear && d.getMonth() === filterMonth && d.getDate() === filterDay;
+                        } catch {
+                            return false;
+                        }
+                    });
+                }
+
+                if (fetchVersion === fetchVersionRef.current && snapshot.docs.length > 0) {
+                    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+                    lastVisibleDocsRef.current[currentPage] = lastDoc;
+                }
             }
 
-            setData(newData);
+            // Drop stale responses — a newer query has already started.
+            if (fetchVersion !== fetchVersionRef.current) return;
 
-            if (!isSearch && snapshot.docs.length > 0) {
-                const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-                lastVisibleDocsRef.current[currentPage] = lastDoc;
-            }
+            setData(newData.map((record) => ({
+                ...record,
+                lastCall: record.lastContactedAt || record.lastCall,
+                lastCallOutcome: record.lastCallOutcome,
+            })));
 
             if (isSearch) {
                 setTotalPages(1);
             }
 
         } catch (err) {
+            if (fetchVersion !== fetchVersionRef.current) return;
             console.error("Dashboard fetch error:", err);
 
             if (err.message && err.message.includes('requires an index')) {
@@ -311,9 +412,11 @@ export function useCompanyDashboard(companyId) {
                 setError(err.message || "Failed to load data.");
             }
         } finally {
-            setLoading(false);
+            if (fetchVersion === fetchVersionRef.current) {
+                setLoading(false);
+            }
         }
-    }, [companyId, activeTab, currentPage, itemsPerPage, debouncedSearch, filters, buildConstraints]);
+    }, [companyId, activeTab, currentPage, itemsPerPage, debouncedSearch, filters, buildConstraints, runSearchQuery, clientFilterContext, e2eRecordsForTab]);
 
     useEffect(() => {
         if (debouncedSearch) {
@@ -337,6 +440,10 @@ export function useCompanyDashboard(companyId) {
     useEffect(() => {
         const fetchTeamMembers = async () => {
             if (!companyId) return;
+            if (isE2ETestMode) {
+                setTeamMembers([{ id: 'e2e-company_admin', name: 'E2E Admin' }]);
+                return;
+            }
             try {
                 const teamRef = collection(db, "companies", companyId, "team");
                 const snapshot = await getDocs(teamRef);
@@ -349,6 +456,8 @@ export function useCompanyDashboard(companyId) {
         fetchTeamMembers();
     }, [companyId]);
 
+    // Any change to scope, search, filters, or pipeline resets pagination and
+    // clears page cursors so stale cursors can never leak across queries.
     useEffect(() => {
         setData([]);
         lastVisibleDocsRef.current = {};

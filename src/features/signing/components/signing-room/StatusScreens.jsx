@@ -51,7 +51,7 @@ export function SigningVoidedScreen() {
     );
 }
 
-export function SigningSuccessScreen({ recipientName }) {
+export function SigningSuccessScreen({ recipientName, onReturnToDocuments }) {
     return (
         <div className="h-screen flex items-center justify-center bg-gray-50 p-4">
             <div className="bg-white p-10 rounded-2xl shadow-xl border border-green-100 text-center max-w-md animate-in zoom-in-95 duration-300">
@@ -62,9 +62,23 @@ export function SigningSuccessScreen({ recipientName }) {
                 <p className="text-gray-600 mb-6">
                     Thank you, <strong>{recipientName}</strong>. The document has been securely sealed and sent to the sender.
                 </p>
-                <button onClick={() => window.close()} className="text-blue-600 font-semibold hover:underline">
-                    Close Window
-                </button>
+                {onReturnToDocuments ? (
+                    <div className="space-y-3">
+                        <button
+                            onClick={onReturnToDocuments}
+                            className="w-full px-5 py-3 bg-blue-600 text-white font-bold rounded-xl shadow hover:bg-blue-700 transition"
+                        >
+                            Return to Required Documents
+                        </button>
+                        <button onClick={() => window.close()} className="text-gray-500 text-sm font-semibold hover:underline">
+                            Close Window
+                        </button>
+                    </div>
+                ) : (
+                    <button onClick={() => window.close()} className="text-blue-600 font-semibold hover:underline">
+                        Close Window
+                    </button>
+                )}
             </div>
         </div>
     );

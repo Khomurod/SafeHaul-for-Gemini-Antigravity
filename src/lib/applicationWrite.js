@@ -13,7 +13,13 @@ import { getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
  *
  * So we write them only on first create and drop them on every update.
  */
-export const APPLICATION_CREATE_ONLY_FIELDS = ['createdAt', 'confirmationNumber', 'status'];
+export const APPLICATION_CREATE_ONLY_FIELDS = [
+    'createdAt',
+    'confirmationNumber',
+    // Derived from confirmationNumber, so it shares its create-only lifecycle.
+    'confirmationNumberNormalized',
+    'status',
+];
 
 /**
  * Create-safe merge write for a driver application.

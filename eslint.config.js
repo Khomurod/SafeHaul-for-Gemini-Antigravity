@@ -5,7 +5,9 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default [
-  { ignores: ['**/dist/**', '**/functions/**', 'public/*.min.mjs'] },
+  // .claude/ holds local agent worktrees (full repo copies) — linting them
+  // double-reports every file and trips on their vendored public/*.min.mjs.
+  { ignores: ['**/dist/**', '**/functions/**', '**/public/*.min.mjs', '.claude/**', '**/playwright-report/**', '**/test-results/**'] },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx,cjs,mjs}'],

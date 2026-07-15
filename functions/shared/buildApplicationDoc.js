@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const functions = require('firebase-functions/v1');
 const { FieldValue } = require('firebase-admin/firestore');
+const { buildApplicationSearchFields } = require('./searchNormalization');
 
 function generateApplicantKey(companyId, email, phone) {
     const normalizedEmail = (email || '').toLowerCase().trim();
@@ -132,6 +133,17 @@ function buildApplicationDoc({
             isGuest: sourceMeta.isGuest ?? true,
             processedViaFunction: true,
         },
+        // Persisted normalized search fields (single source: shared/searchNormalization).
+        // upsertApplicationDoc recomputes the id/confirmation-derived ones if the
+        // final document id or confirmation number changes during upsert.
+        ...buildApplicationSearchFields({
+            firstName: normalizedFormData.firstName,
+            lastName: normalizedFormData.lastName,
+            email,
+            phone,
+            confirmationNumber,
+            applicationId,
+        }),
     });
 
     applicationDoc.updatedAt = now;

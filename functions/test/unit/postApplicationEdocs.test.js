@@ -8,18 +8,25 @@ jest.mock('firebase-functions/v2/https', () => ({
   },
 }));
 
-const mockBatchSet = jest.fn();
-const mockBatchCommit = jest.fn().mockResolvedValue(undefined);
-const mockRequestRef = {
-  id: 'req_123',
-  collection: jest.fn(() => ({
-    doc: jest.fn(() => ({ id: 'token_doc' })),
-  })),
-};
+// --- Firestore mocks -------------------------------------------------------
+// The callable resolves companies/{id}/signing_requests/{deterministicId} and
+// its secrets/token subdoc inside a transaction. The mocks below distinguish
+// the two refs by identity so txn.get can serve the right snapshot.
 
 const mockApplicationGet = jest.fn();
 const mockTemplateGet = jest.fn();
 const mockPublicProfileGet = jest.fn();
+const mockRequestTxnGet = jest.fn();
+const mockTokenTxnGet = jest.fn();
+const mockTxnSet = jest.fn();
+const mockTxnUpdate = jest.fn();
+
+const mockTokenRef = { __kind: 'token' };
+let mockLastRequestDocId = null;
+const mockRequestRef = {
+  get id() { return mockLastRequestDocId; },
+  collection: jest.fn(() => ({ doc: jest.fn(() => mockTokenRef) })),
+};
 
 jest.mock('../../firebaseAdmin', () => ({
   admin: {
@@ -28,7 +35,7 @@ jest.mock('../../firebaseAdmin', () => ({
         serverTimestamp: jest.fn(() => ({ __ts: true })),
       },
       Timestamp: {
-        fromMillis: jest.fn((n) => ({ __millis: n })),
+        fromMillis: jest.fn((n) => ({ __millis: n, toMillis: () => n })),
       },
     },
   },
@@ -52,7 +59,12 @@ jest.mock('../../firebaseAdmin', () => ({
                 return { doc: jest.fn(() => ({ get: mockTemplateGet })) };
               }
               if (sub === 'signing_requests') {
-                return { doc: jest.fn(() => mockRequestRef) };
+                return {
+                  doc: jest.fn((id) => {
+                    mockLastRequestDocId = id;
+                    return mockRequestRef;
+                  }),
+                };
               }
               return { doc: jest.fn() };
             }),
@@ -61,9 +73,10 @@ jest.mock('../../firebaseAdmin', () => ({
       }
       return { doc: jest.fn() };
     }),
-    batch: jest.fn(() => ({
-      set: (...args) => mockBatchSet(...args),
-      commit: (...args) => mockBatchCommit(...args),
+    runTransaction: jest.fn(async (fn) => fn({
+      get: jest.fn(async (ref) => (ref === mockTokenRef ? mockTokenTxnGet() : mockRequestTxnGet())),
+      set: mockTxnSet,
+      update: mockTxnUpdate,
     })),
   },
 }));
@@ -76,9 +89,19 @@ jest.mock('../../shared/companyTenant', () => ({
   assertCompanyAcceptingIntake: jest.fn().mockResolvedValue({ companyName: 'Demo Co', isActive: true }),
 }));
 
-const { createPostApplicationSigningRequest } = require('../../postApplicationEdocs');
+const { createPostApplicationSigningRequest, __private } = require('../../postApplicationEdocs');
 const { checkRateLimit } = require('../../shared/rateLimiter');
 const { assertCompanyAcceptingIntake } = require('../../shared/companyTenant');
+
+const requestPayloadFromTxnSet = () => {
+  const call = mockTxnSet.mock.calls.find(([ref]) => ref === mockRequestRef);
+  return call ? call[1] : null;
+};
+
+const tokenPayloadFromTxnSet = () => {
+  const call = mockTxnSet.mock.calls.find(([ref]) => ref === mockTokenRef);
+  return call ? call[1] : null;
+};
 
 describe('createPostApplicationSigningRequest', () => {
   const baseReq = {
@@ -94,6 +117,7 @@ describe('createPostApplicationSigningRequest', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLastRequestDocId = null;
     mockPublicProfileGet.mockResolvedValue({
       exists: true,
       data: () => ({
@@ -127,23 +151,125 @@ describe('createPostApplicationSigningRequest', () => {
         ],
       }),
     });
+    // Default: no pre-existing signing request / token.
+    mockRequestTxnGet.mockResolvedValue({ exists: false, data: () => null });
+    mockTokenTxnGet.mockResolvedValue({ exists: false, data: () => null });
   });
 
-  it('creates a signing request with resolved placeholders', async () => {
+  it('creates a signing request with resolved placeholders under a deterministic id', async () => {
     const res = await createPostApplicationSigningRequest(baseReq);
 
     expect(res.success).toBe(true);
-    expect(res.requestId).toBe('req_123');
+    expect(res.requestId).toBe('postapp_app1_tpl1');
     expect(res.accessToken).toBeTruthy();
-    expect(mockBatchSet).toHaveBeenCalledTimes(2);
+    expect(res.alreadyCompleted).toBeUndefined();
 
-    const firstSetPayload = mockBatchSet.mock.calls[0][1];
-    expect(firstSetPayload.title).toBe('W-9 Form');
-    expect(firstSetPayload.source).toBe('post_application_success');
-    expect(firstSetPayload.fields.find((f) => f.id === 'f1').defaultValue).toBe('Anthony Collins');
-    expect(firstSetPayload.fields.find((f) => f.id === 'f2').defaultValue).toBe('driver@example.com');
+    const requestPayload = requestPayloadFromTxnSet();
+    expect(requestPayload.title).toBe('W-9 Form');
+    expect(requestPayload.source).toBe('post_application_success');
+    expect(requestPayload.sourceApplicationId).toBe('app1');
+    expect(requestPayload.sourceConfirmationNumber).toBe('SAF-2026-ABCDE');
+    expect(requestPayload.fields.find((f) => f.id === 'f1').defaultValue).toBe('Anthony Collins');
+    expect(requestPayload.fields.find((f) => f.id === 'f2').defaultValue).toBe('driver@example.com');
     expect(checkRateLimit).toHaveBeenCalled();
     expect(assertCompanyAcceptingIntake).toHaveBeenCalledWith(expect.anything(), 'co1');
+  });
+
+  it('never stores the access token on the request doc — secrets subdoc only', async () => {
+    const res = await createPostApplicationSigningRequest(baseReq);
+    const requestPayload = requestPayloadFromTxnSet();
+    expect(requestPayload.accessToken).toBeUndefined();
+    expect(JSON.stringify(requestPayload)).not.toContain(res.accessToken);
+    expect(tokenPayloadFromTxnSet()).toEqual({ accessToken: res.accessToken });
+  });
+
+  it('repeated clicks reuse the pending request and token (no duplicates)', async () => {
+    mockRequestTxnGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        status: 'sent',
+        title: 'W-9 Form',
+        expiresAt: { toMillis: () => Date.now() + 60000 },
+      }),
+    });
+    mockTokenTxnGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ accessToken: 'existing-token-123' }),
+    });
+
+    const res = await createPostApplicationSigningRequest(baseReq);
+    expect(res.requestId).toBe('postapp_app1_tpl1');
+    expect(res.accessToken).toBe('existing-token-123');
+    expect(mockTxnSet).not.toHaveBeenCalled();
+    expect(mockTxnUpdate).not.toHaveBeenCalled();
+  });
+
+  it('reports alreadyCompleted (without any token) once the document is signed', async () => {
+    mockRequestTxnGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ status: 'signed', title: 'W-9 Form' }),
+    });
+
+    const res = await createPostApplicationSigningRequest(baseReq);
+    expect(res.alreadyCompleted).toBe(true);
+    expect(res.requestId).toBe('postapp_app1_tpl1');
+    expect(res.accessToken).toBeUndefined();
+    expect(mockTxnSet).not.toHaveBeenCalled();
+  });
+
+  it('re-issues a fresh token when the pending link has expired', async () => {
+    mockRequestTxnGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        status: 'sent',
+        title: 'W-9 Form',
+        expiresAt: { toMillis: () => Date.now() - 60000 },
+      }),
+    });
+    mockTokenTxnGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ accessToken: 'stale-token' }),
+    });
+
+    const res = await createPostApplicationSigningRequest(baseReq);
+    expect(res.accessToken).toBeTruthy();
+    expect(res.accessToken).not.toBe('stale-token');
+    expect(mockTxnUpdate).toHaveBeenCalledWith(mockRequestRef, expect.objectContaining({ status: 'sent' }));
+    expect(tokenPayloadFromTxnSet()).toEqual({ accessToken: res.accessToken });
+  });
+
+  it('re-issues a token when the secrets doc is missing on a pending request', async () => {
+    mockRequestTxnGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        status: 'sent',
+        title: 'W-9 Form',
+        expiresAt: { toMillis: () => Date.now() + 60000 },
+      }),
+    });
+    mockTokenTxnGet.mockResolvedValue({ exists: false, data: () => null });
+
+    const res = await createPostApplicationSigningRequest(baseReq);
+    expect(res.accessToken).toBeTruthy();
+    expect(tokenPayloadFromTxnSet()).toEqual({ accessToken: res.accessToken });
+  });
+
+  it('rejects voided documents with a clear failed-precondition', async () => {
+    mockRequestTxnGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ status: 'voided' }),
+    });
+    await expect(createPostApplicationSigningRequest(baseReq)).rejects.toMatchObject({
+      code: 'failed-precondition',
+    });
+  });
+
+  it('rejects when the company is invalid / not accepting intake', async () => {
+    const { HttpsError } = require('firebase-functions/v2/https');
+    assertCompanyAcceptingIntake.mockRejectedValueOnce(new HttpsError('not-found', 'Company not found.'));
+    await expect(createPostApplicationSigningRequest(baseReq)).rejects.toMatchObject({
+      code: 'not-found',
+    });
   });
 
   it('rejects when rate limit blocks request', async () => {
@@ -217,9 +343,9 @@ describe('createPostApplicationSigningRequest', () => {
       }),
     });
     await createPostApplicationSigningRequest(baseReq);
-    const firstSetPayload = mockBatchSet.mock.calls[0][1];
-    expect(firstSetPayload.fields[0].defaultValue).toBe('Anthony Collins');
-    expect(firstSetPayload.fields[0].readOnly).toBe(true);
+    const requestPayload = requestPayloadFromTxnSet();
+    expect(requestPayload.fields[0].defaultValue).toBe('Anthony Collins');
+    expect(requestPayload.fields[0].readOnly).toBe(true);
   });
 
   it('rejects templates that are not enabled on public profile', async () => {
@@ -266,7 +392,38 @@ describe('createPostApplicationSigningRequest', () => {
         data: { ...baseReq.data, companyId: '' },
       })
     ).rejects.toMatchObject({ code: 'invalid-argument' });
-    expect(mockBatchSet).not.toHaveBeenCalled();
+    expect(mockTxnSet).not.toHaveBeenCalled();
   });
 });
 
+describe('normalizePostSubmitTemplateConfig — required backward compatibility', () => {
+  const { normalizePostSubmitTemplateConfig, buildPostApplicationRequestId } = __private;
+
+  it('legacy strings and objects without a flag default to required', () => {
+    const out = normalizePostSubmitTemplateConfig(['tpl1', { templateId: 'tpl2', enabled: true }]);
+    expect(out).toEqual([
+      expect.objectContaining({ templateId: 'tpl1', enabled: true, required: true }),
+      expect.objectContaining({ templateId: 'tpl2', enabled: true, required: true }),
+    ]);
+  });
+
+  it('explicit required:false is honored', () => {
+    const [tpl] = normalizePostSubmitTemplateConfig([{ templateId: 'tpl1', required: false }]);
+    expect(tpl.required).toBe(false);
+  });
+
+  it('preserves order (explicit order field, index fallback)', () => {
+    const out = normalizePostSubmitTemplateConfig([
+      { templateId: 'a' },
+      { templateId: 'b', order: 9 },
+    ]);
+    expect(out[0].order).toBe(0);
+    expect(out[1].order).toBe(9);
+  });
+
+  it('buildPostApplicationRequestId is deterministic per application+template', () => {
+    expect(buildPostApplicationRequestId('app1', 'tpl1')).toBe('postapp_app1_tpl1');
+    expect(buildPostApplicationRequestId('app1', 'tpl1')).toBe(buildPostApplicationRequestId('app1', 'tpl1'));
+    expect(buildPostApplicationRequestId('app1', 'tpl2')).not.toBe(buildPostApplicationRequestId('app1', 'tpl1'));
+  });
+});

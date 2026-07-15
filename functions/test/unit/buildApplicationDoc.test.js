@@ -79,6 +79,28 @@ describe('buildApplicationDoc', () => {
     expect(built.applicationDoc.lifecycle.clientVersion).toBe('telegram-1.0');
   });
 
+  it('persists normalized search fields from the shared normalizer', () => {
+    const built = buildApplicationDoc({
+      companyId: 'co1',
+      companyName: 'Tenant Co',
+      email: ' DRIVER@Example.COM ',
+      phone: '+1 (555) 123-4567',
+      signature: 'data:image/png;base64,AAA',
+      formData: { firstName: '  Ada ', lastName: 'LOVELACE' },
+    });
+
+    expect(built.applicationDoc).toMatchObject({
+      firstNameNormalized: 'ada',
+      lastNameNormalized: 'lovelace',
+      fullNameNormalized: 'ada lovelace',
+      emailNormalized: 'driver@example.com',
+      phoneNormalized: '5551234567',
+      applicationIdNormalized: built.applicationId.toLowerCase(),
+    });
+    expect(built.applicationDoc.confirmationNumberNormalized)
+      .toBe(built.confirmationNumber.toUpperCase());
+  });
+
   it('rejects missing required uploads with the existing message shape', () => {
     expect(() => assertRequiredUploads(
       {

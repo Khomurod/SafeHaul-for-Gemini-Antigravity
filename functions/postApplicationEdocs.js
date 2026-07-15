@@ -147,11 +147,12 @@ function resolveFieldForPostSubmit(field = {}, context = {}) {
 function normalizePostSubmitTemplateConfig(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((item) => {
+    .map((item, index) => {
       if (typeof item === 'string') {
         const templateId = item.trim();
         if (!templateId) return null;
-        return { templateId, enabled: true, title: '' };
+        // Legacy string entries predate the required flag: default REQUIRED.
+        return { templateId, enabled: true, required: true, title: '', order: index };
       }
       if (!item || typeof item !== 'object') return null;
       const templateId = normalizeString(item.templateId || item.id).trim();
@@ -159,11 +160,33 @@ function normalizePostSubmitTemplateConfig(raw) {
       return {
         templateId,
         enabled: item.enabled !== false,
+        // Backward compatible: entries without an explicit required flag are
+        // REQUIRED; companies must explicitly mark a form optional.
+        required: item.required !== false,
         title: normalizeString(item.title).trim(),
+        order: typeof item.order === 'number' ? item.order : index,
       };
     })
     .filter(Boolean);
 }
+
+/**
+ * Deterministic signing-request id for a (application, template) pair. Repeat
+ * clicks — including across page reloads and devices — address the SAME
+ * document, which is what makes createPostApplicationSigningRequest idempotent.
+ */
+function buildPostApplicationRequestId(applicationId, templateId) {
+  return `postapp_${applicationId}_${templateId}`;
+}
+
+/** Signing-request statuses that mean the applicant has already submitted. */
+const COMPLETED_REQUEST_STATUSES = new Set([
+  'pending_seal',
+  'signed',
+  'sealed',
+  'completed',
+  'error_sealing', // applicant DID submit; sealing retry is a company-side concern
+]);
 
 exports.createPostApplicationSigningRequest = onCall({ cors: true }, async (request) => {
   const {
@@ -256,11 +279,11 @@ exports.createPostApplicationSigningRequest = onCall({ cors: true }, async (requ
     );
   }
 
-  const accessToken = globalThis.crypto?.randomUUID
+  const mintToken = () => (globalThis.crypto?.randomUUID
     ? globalThis.crypto.randomUUID()
-    : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    : `${Date.now()}_${Math.random().toString(36).slice(2)}`);
   const now = admin.firestore.FieldValue.serverTimestamp();
-  const expiresAt = admin.firestore.Timestamp.fromMillis(
+  const buildExpiry = () => admin.firestore.Timestamp.fromMillis(
     Date.now() + 7 * 24 * 60 * 60 * 1000
   );
   const baseUrl = normalizeString(appBaseUrl).trim() || 'https://app.safehaul.io';
@@ -268,45 +291,111 @@ exports.createPostApplicationSigningRequest = onCall({ cors: true }, async (requ
     `${application.firstName || ''} ${application.lastName || ''}`
   ).trim();
 
-  const requestRef = db.collection('companies').doc(companyId).collection('signing_requests').doc();
-  const requestDoc = {
-    companyId,
-    templateId,
-    source: 'post_application_success',
-    sourceApplicationId: applicationId,
-    sourceConfirmationNumber: confirmationNumber,
-    title: normalizeString(template.title || 'Follow-up Document').trim(),
-    status: 'sent',
-    storagePath: template.storagePath,
-    fields: resolvedFields,
-    fieldValues: resolvedFields.reduce((acc, field) => {
-      if (isPresent(field.defaultValue)) acc[field.id] = field.defaultValue;
-      return acc;
-    }, {}),
-    recipientName: recipientName || null,
-    recipientEmail: normalizeString(application.email).trim() || null,
-    recipientPhone: normalizeString(application.phone || application.phoneNumber).trim() || null,
-    sendEmail: false,
-    sendSms: false,
-    deliveryMethod: 'in_app_post_submit',
-    appBaseUrl: baseUrl,
-    senderName: 'SafeHaul Auto-Followup',
-    senderId: null,
-    createdAt: now,
-    updatedAt: now,
-    expiresAt,
-  };
+  // Idempotency: one deterministic request per (application, template) pair.
+  // Repeat clicks reuse the pending request (and its token) instead of piling
+  // up duplicates, and a completed request short-circuits to alreadyCompleted.
+  const requestRef = db
+    .collection('companies')
+    .doc(companyId)
+    .collection('signing_requests')
+    .doc(buildPostApplicationRequestId(applicationId, templateId));
+  const tokenRef = requestRef.collection('secrets').doc('token');
+  const requestTitle = normalizeString(template.title || 'Follow-up Document').trim();
 
-  const batch = db.batch();
-  batch.set(requestRef, requestDoc);
-  batch.set(requestRef.collection('secrets').doc('token'), { accessToken });
-  await batch.commit();
+  const outcome = await db.runTransaction(async (txn) => {
+    const existingSnap = await txn.get(requestRef);
+
+    if (existingSnap.exists) {
+      const existing = existingSnap.data() || {};
+      const status = normalizeString(existing.status).trim();
+
+      if (COMPLETED_REQUEST_STATUSES.has(status)) {
+        return { kind: 'completed', title: existing.title || requestTitle };
+      }
+      if (status === 'voided') {
+        return { kind: 'voided' };
+      }
+
+      // Pending ('sent' / self-healing 'processing'): reuse. Re-mint the token
+      // when it is missing or the link has expired; the confirmation-number
+      // check above is the applicant's proof of identity for re-issue.
+      const tokenSnap = await txn.get(tokenRef);
+      const storedToken = tokenSnap.exists ? tokenSnap.data().accessToken : null;
+      const isExpired = existing.expiresAt && existing.expiresAt.toMillis() < Date.now();
+
+      if (storedToken && !isExpired) {
+        return { kind: 'reused', accessToken: storedToken, title: existing.title || requestTitle };
+      }
+
+      const accessToken = mintToken();
+      txn.update(requestRef, {
+        status: 'sent',
+        expiresAt: buildExpiry(),
+        updatedAt: now,
+      });
+      txn.set(tokenRef, { accessToken });
+      return { kind: 'reissued', accessToken, title: existing.title || requestTitle };
+    }
+
+    const accessToken = mintToken();
+    const requestDoc = {
+      companyId,
+      templateId,
+      source: 'post_application_success',
+      sourceApplicationId: applicationId,
+      sourceConfirmationNumber: confirmationNumber,
+      title: requestTitle,
+      status: 'sent',
+      storagePath: template.storagePath,
+      fields: resolvedFields,
+      fieldValues: resolvedFields.reduce((acc, field) => {
+        if (isPresent(field.defaultValue)) acc[field.id] = field.defaultValue;
+        return acc;
+      }, {}),
+      recipientName: recipientName || null,
+      recipientEmail: normalizeString(application.email).trim() || null,
+      recipientPhone: normalizeString(application.phone || application.phoneNumber).trim() || null,
+      sendEmail: false,
+      sendSms: false,
+      deliveryMethod: 'in_app_post_submit',
+      appBaseUrl: baseUrl,
+      senderName: 'SafeHaul Auto-Followup',
+      senderId: null,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: buildExpiry(),
+    };
+    txn.set(requestRef, requestDoc);
+    txn.set(tokenRef, { accessToken });
+    return { kind: 'created', accessToken, title: requestTitle };
+  });
+
+  // Structured diagnostics for support — ids only, never tokens or PII.
+  console.log(
+    `[createPostApplicationSigningRequest] outcome=${outcome.kind} companyId=${companyId} templateId=${templateId} requestId=${requestRef.id}`
+  );
+
+  if (outcome.kind === 'voided') {
+    throw new HttpsError(
+      'failed-precondition',
+      'This document is no longer available. Please contact the company for a new copy.'
+    );
+  }
+
+  if (outcome.kind === 'completed') {
+    return {
+      success: true,
+      requestId: requestRef.id,
+      alreadyCompleted: true,
+      title: outcome.title,
+    };
+  }
 
   return {
     success: true,
     requestId: requestRef.id,
-    accessToken,
-    title: requestDoc.title,
+    accessToken: outcome.accessToken,
+    title: outcome.title,
   };
 });
 
@@ -315,5 +404,6 @@ exports.__private = {
   buildPrefillContextFromApplication,
   resolveFieldForPostSubmit,
   normalizePostSubmitTemplateConfig,
+  buildPostApplicationRequestId,
 };
 

@@ -4,7 +4,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { db, storage, auth } from '@lib/firebase';
 import { logActivity } from '@shared/utils/activityLogger';
 import { useToast } from '@shared/components/feedback';
-import { normalizePhone } from '@shared/utils/helpers';
+import { buildApplicationSearchFields } from '@shared/utils/searchNormalization';
 
 const simpleRetry = async (fn, retries = 3, delay = 1000) => {
   for (let i = 0; i < retries; i++) {
@@ -127,7 +127,13 @@ export function useAppActions({
 
   const computeDiff = (oldData, newData) => {
     const changes = [];
-    const ignoreFields = ['updatedAt', 'lastModified', 'activity_logs', 'id'];
+    const ignoreFields = [
+      'updatedAt', 'lastModified', 'activity_logs', 'id',
+      // Derived search fields — noise in human-facing change logs.
+      'firstNameNormalized', 'lastNameNormalized', 'fullNameNormalized',
+      'emailNormalized', 'phoneNormalized', 'confirmationNumberNormalized',
+      'applicationIdNormalized',
+    ];
 
     Object.keys(newData).forEach(key => {
       if (ignoreFields.includes(key)) return;
@@ -149,11 +155,18 @@ export function useAppActions({
     try {
       const docRef = getDocRef();
 
-      // Auto-normalize phone if changed
+      // Refresh ALL persisted normalized search fields (name/email/phone/
+      // confirmation/id) so recruiter edits keep search working — this also
+      // lazily backfills legacy documents that predate normalized fields.
       let finalData = { ...appData };
-      if (finalData.phone) {
-        finalData.phoneNormalized = normalizePhone(finalData.phone);
-      }
+      Object.assign(finalData, buildApplicationSearchFields({
+        firstName: finalData.firstName,
+        lastName: finalData.lastName,
+        email: finalData.email,
+        phone: finalData.phone,
+        confirmationNumber: finalData.confirmationNumber,
+        applicationId: finalData.applicationId || applicationId,
+      }));
 
       const diff = computeDiff(originalData || {}, finalData);
 

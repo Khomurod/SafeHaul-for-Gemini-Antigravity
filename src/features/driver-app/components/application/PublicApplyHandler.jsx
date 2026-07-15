@@ -15,7 +15,17 @@ import {
   parseIsoFromLooseDate,
   fileToDataUrl,
   buildE2EPublicProfile,
+  buildPostApplyDocErrorMessage,
 } from './publicApplyHelpers';
+import {
+  DOC_STATUS,
+  savePostApplySession,
+  readPostApplySession,
+  clearPostApplySession,
+  markRequestSigned,
+  isRequestSigned,
+  setSigningReturnPath,
+} from './postApplyDocsStorage';
 import {
   ApplyLoadingScreen,
   ApplyLinkErrorScreen,
@@ -75,6 +85,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
   const [submittedConfirmationNumber, setSubmittedConfirmationNumber] = useState('');
   const [openingTemplateId, setOpeningTemplateId] = useState('');
+  // Per-template progress for the post-submission Required Documents checklist:
+  // { [templateId]: { status: DOC_STATUS.*, requestId?: string, error?: string } }
+  const [postSubmitDocs, setPostSubmitDocs] = useState({});
   const [sandboxSubmission, setSandboxSubmission] = useState(null);
   const hasStarted = useRef(false);
   const isSubmittingRef = useRef(false);
@@ -88,6 +101,42 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const consentStepIndex = customQuestions.length > 0 ? 9 : 8;
   const cdlUploadConfig = getFieldConfig(company?.applicationConfig, 'cdlUpload', true);
   const medCardConfig = getFieldConfig(company?.applicationConfig, 'medCardUpload', true);
+
+  /**
+   * Restore a recent submission (and its document checklist) after the driver
+   * navigated to the signing room and came back — the round trip unmounts this
+   * component, so React state alone cannot carry the checklist across.
+   * Completion markers written by SigningRoom are merged in here.
+   */
+  const restorePostApplySession = useCallback((companyData) => {
+    if (!companyData?.id) return false;
+    const session = readPostApplySession(companyData.id);
+    if (!session) return false;
+    if (session.slug && slug && session.slug !== slug) return false;
+
+    const mergedDocs = {};
+    for (const [templateId, docState] of Object.entries(session.docs || {})) {
+      if (!docState) continue;
+      if (docState.requestId && isRequestSigned(companyData.id, docState.requestId)) {
+        mergedDocs[templateId] = { ...docState, status: DOC_STATUS.COMPLETED, error: null };
+      } else if (docState.status === DOC_STATUS.OPENING) {
+        // Navigation away was interrupted — allow re-opening.
+        mergedDocs[templateId] = { ...docState, status: DOC_STATUS.NOT_STARTED };
+      } else {
+        mergedDocs[templateId] = docState;
+      }
+    }
+
+    setPostSubmitDocs(mergedDocs);
+    setSubmittedApplicationId(session.applicationId);
+    setSubmittedConfirmationNumber(session.confirmationNumber || '');
+    if (session.confirmationNumber) {
+      sessionStorage.setItem('lastConfirmationNumber', session.confirmationNumber);
+    }
+    setSubmissionStatus('success');
+    savePostApplySession(companyData.id, { ...session, docs: mergedDocs });
+    return true;
+  }, [slug]);
 
   // 1. Load Company Info from Slug (or fixed SANDBOX public profile when `sandbox`)
   useEffect(() => {
@@ -139,6 +188,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
             setCurrentCompanyProfile(mockCompany);
           }
           sessionStorage.setItem('pending_application_company', mockCompany.id);
+          restorePostApplySession(mockCompany);
           if (getE2EQueryParam('e2eIntake', 'manual') !== 'choice') {
             setIntakeMode('manual');
           }
@@ -192,6 +242,10 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
           setCurrentCompanyProfile(companyData);
         }
 
+        // Returning from the signing room (or a reload right after submitting):
+        // bring back the success screen + required-documents checklist.
+        restorePostApplySession(companyData);
+
         // P2-5 FIX: Recover saved draft from localStorage on page revisit
         try {
           const savedDraft = localStorage.getItem(`draft_${slug}`);
@@ -220,7 +274,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       }
     }
     loadCompany();
-  }, [slug, sandbox, searchParams, setCurrentCompanyProfile]);
+  }, [slug, sandbox, searchParams, setCurrentCompanyProfile, restorePostApplySession]);
 
   // 2. Form Handlers
   const handleUpdateFormData = (name, value) => {
@@ -488,6 +542,13 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       sessionStorage.setItem('lastConfirmationNumber', confirmationNumber);
       setSubmittedConfirmationNumber(confirmationNumber);
       setSubmittedApplicationId('e2e-application-id');
+      setPostSubmitDocs({});
+      savePostApplySession(company.id, {
+        applicationId: 'e2e-application-id',
+        confirmationNumber,
+        slug,
+        docs: {},
+      });
       localStorage.removeItem(`draft_${slug}`);
       sessionStorage.removeItem('pending_application_recruiter');
       setSubmissionStatus('success');
@@ -614,9 +675,22 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
           });
 
           const finalConfirm = serverData.confirmationNumber || confirmationNumber;
+          const finalApplicationId = serverData.applicationId || applicationId;
           sessionStorage.setItem('lastConfirmationNumber', finalConfirm);
-          setSubmittedApplicationId(serverData.applicationId || applicationId);
+          setSubmittedApplicationId(finalApplicationId);
           setSubmittedConfirmationNumber(finalConfirm);
+
+          if (!sandbox) {
+            // Seed the required-documents session so the checklist survives
+            // the navigation round trip through the signing room.
+            setPostSubmitDocs({});
+            savePostApplySession(company.id, {
+              applicationId: finalApplicationId,
+              confirmationNumber: finalConfirm,
+              slug,
+              docs: {},
+            });
+          }
 
           if (sandbox) {
             setSandboxSubmission({
@@ -662,6 +736,34 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     }
   };
 
+  /** Update one template's checklist state and persist the session snapshot. */
+  const updatePostSubmitDoc = useCallback((templateId, patch) => {
+    setPostSubmitDocs((prev) => {
+      const next = { ...prev, [templateId]: { ...(prev[templateId] || {}), ...patch } };
+      if (company?.id && submittedApplicationId && !sandbox) {
+        savePostApplySession(company.id, {
+          applicationId: submittedApplicationId,
+          confirmationNumber:
+            submittedConfirmationNumber || sessionStorage.getItem('lastConfirmationNumber') || '',
+          slug,
+          docs: next,
+        });
+      }
+      return next;
+    });
+  }, [company?.id, submittedApplicationId, submittedConfirmationNumber, slug, sandbox]);
+
+  const handleStartNewApplication = useCallback(() => {
+    if (company?.id) clearPostApplySession(company.id);
+    sessionStorage.removeItem('lastConfirmationNumber');
+    setSubmissionStatus(null);
+    setSubmittedApplicationId('');
+    setSubmittedConfirmationNumber('');
+    setPostSubmitDocs({});
+    setFormData({});
+    setCurrentStep(0);
+  }, [company?.id]);
+
   const handleOpenPostApplicationTemplate = async (template) => {
     if (!template?.templateId || !company?.id || !submittedApplicationId) {
       showError('Could not open this form yet. Please refresh and try again.');
@@ -674,12 +776,25 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       return;
     }
 
+    // One document at a time; also guards rapid double-clicks (the backend is
+    // additionally idempotent per application+template, so even a race cannot
+    // create duplicate signing requests).
+    if (openingTemplateId) return;
+
+    const returnPath = sandbox ? '/sandbox/apply' : `/apply/${slug}`;
+
     try {
       setOpeningTemplateId(template.templateId);
+      updatePostSubmitDoc(template.templateId, { status: DOC_STATUS.OPENING, error: null });
+
       if (isE2ETestMode) {
-        navigate(`/sign/${company.id}/e2e-post-app-req?token=e2e-token&e2eSign=mock`);
+        const requestId = `e2e-post-app-req-${template.templateId}`;
+        setSigningReturnPath(company.id, requestId, returnPath);
+        updatePostSubmitDoc(template.templateId, { status: DOC_STATUS.IN_PROGRESS, requestId });
+        navigate(`/sign/${company.id}/${requestId}?token=e2e-token&e2eSign=mock`);
         return;
       }
+
       const createSigningRequest = httpsCallable(functions, 'createPostApplicationSigningRequest', { timeout: 60000 });
       const { data } = await createSigningRequest({
         companyId: company.id,
@@ -689,13 +804,40 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
         appBaseUrl: window.location.origin,
       });
 
+      // Idempotent backend: an already-signed document reports completion
+      // instead of minting a duplicate request.
+      if (data?.alreadyCompleted && data?.requestId) {
+        markRequestSigned(company.id, data.requestId);
+        updatePostSubmitDoc(template.templateId, {
+          status: DOC_STATUS.COMPLETED,
+          requestId: data.requestId,
+          error: null,
+        });
+        showSuccess('This document is already completed.');
+        return;
+      }
+
       if (!data?.requestId || !data?.accessToken) {
         throw new Error('Could not generate signing link.');
       }
+
+      setSigningReturnPath(company.id, data.requestId, returnPath);
+      updatePostSubmitDoc(template.templateId, {
+        status: DOC_STATUS.IN_PROGRESS,
+        requestId: data.requestId,
+      });
       navigate(`/sign/${company.id}/${data.requestId}?token=${data.accessToken}`);
     } catch (error) {
-      console.error('[PublicApplyHandler] Post-application e-doc launch failed:', error);
-      showError(error?.message || 'Could not open this form. Please try again.');
+      // Structured diagnostics (ids + code only — never tokens, SSNs, or signatures).
+      console.error('[PublicApplyHandler] Post-application e-doc launch failed:', {
+        code: error?.code || 'unknown',
+        templateId: template.templateId,
+        companyId: company.id,
+        message: error?.message,
+      });
+      const friendly = buildPostApplyDocErrorMessage(error);
+      updatePostSubmitDoc(template.templateId, { status: DOC_STATUS.ERROR, error: friendly });
+      showError(friendly);
     } finally {
       setOpeningTemplateId('');
     }
@@ -707,18 +849,6 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
 
   if (isParsingCdl) {
     return <ParsingCdlScreen autoFillStoragePath={autoFillStoragePath} />;
-  }
-
-  if (!intakeMode) {
-    return (
-      <IntakeChooser
-        companyName={company.companyName}
-        onChooseAutoFill={handleChooseAutoFill}
-        onChooseManual={handleChooseManual}
-        cdlInputRef={cdlAutoFillInputRef}
-        onCdlFileChange={handleCdlAutoFillFileChange}
-      />
-    );
   }
 
   if (sandbox && sandboxSubmission) {
@@ -736,14 +866,33 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     );
   }
 
+  // The success screen (with the required-documents checklist) must render
+  // before the intake chooser: a restored post-submission session has no
+  // intakeMode, and the driver must land back on their checklist, not on a
+  // fresh application chooser.
   if (submissionStatus === 'success') {
     return (
       <SubmissionSuccessScreen
         postApplicationTemplates={postApplicationTemplates}
         submittedApplicationId={submittedApplicationId}
+        docStates={postSubmitDocs}
         openingTemplateId={openingTemplateId}
         handleOpenPostApplicationTemplate={handleOpenPostApplicationTemplate}
         onGoHome={() => navigate('/')}
+        onStartNewApplication={handleStartNewApplication}
+        confirmationNumber={submittedConfirmationNumber}
+      />
+    );
+  }
+
+  if (!intakeMode) {
+    return (
+      <IntakeChooser
+        companyName={company.companyName}
+        onChooseAutoFill={handleChooseAutoFill}
+        onChooseManual={handleChooseManual}
+        cdlInputRef={cdlAutoFillInputRef}
+        onCdlFileChange={handleCdlAutoFillFileChange}
       />
     );
   }

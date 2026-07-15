@@ -107,6 +107,12 @@ service cloud.firestore {
         'offerDetails', 'offerResponseDate', 'status',
         // Non-privileged presentation metadata
         'sourceType', 'sourceSlug',
+        // Derived, non-privileged normalized search fields (kept in sync with
+        // the profile/contact fields above by shared/searchNormalization).
+        // applicationIdNormalized is included so a driver RE-submission can
+        // lazily add it to legacy documents that predate normalized fields.
+        'firstNameNormalized', 'lastNameNormalized', 'fullNameNormalized',
+        'emailNormalized', 'phoneNormalized', 'applicationIdNormalized',
         // Lifecycle + timestamps related to self-submission
         'submittedAt', 'updatedAt', 'lifecycle'
       ];

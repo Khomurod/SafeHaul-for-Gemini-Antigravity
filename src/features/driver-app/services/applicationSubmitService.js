@@ -16,6 +16,7 @@ import {
     generateApplicationId,
     generateConfirmationNumber
 } from '@lib/applicationId';
+import { buildApplicationSearchFields } from '@shared/utils/searchNormalization';
 
 /**
  * Authenticated driver application upload + submit.
@@ -197,6 +198,15 @@ export async function submitDriverApplication(currentUser, formData, activeCompa
             submittedAt: new Date().toISOString(),
             clientVersion: '2.0-bulletproof',
         },
+        // Persisted normalized search fields (single source: shared/utils/searchNormalization).
+        ...buildApplicationSearchFields({
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email,
+            phone,
+            confirmationNumber,
+            applicationId,
+        }),
     });
 
     // P0-5 FIX: Use ISO string for queue (IndexedDB can't serialize FieldValue sentinels).

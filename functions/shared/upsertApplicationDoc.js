@@ -1,3 +1,8 @@
+const {
+    normalizeSearchApplicationId,
+    normalizeSearchConfirmation,
+} = require('./searchNormalization');
+
 async function upsertApplicationDoc({
     db,
     companyId,
@@ -74,6 +79,16 @@ async function upsertApplicationDoc({
                 lastResubmittedAt: new Date().toISOString(),
             };
         }
+    }
+
+    // Keep id/confirmation-derived search fields in sync with the FINAL values
+    // (collision suffixing can change the id; dedup preserves the previous
+    // confirmation number).
+    applicationDoc.applicationIdNormalized = normalizeSearchApplicationId(finalApplicationId);
+    if (applicationDoc.confirmationNumber) {
+        applicationDoc.confirmationNumberNormalized = normalizeSearchConfirmation(
+            applicationDoc.confirmationNumber
+        );
     }
 
     await finalDocRef.set(applicationDoc, { merge: true });

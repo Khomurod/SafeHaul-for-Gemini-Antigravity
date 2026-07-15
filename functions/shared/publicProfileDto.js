@@ -40,17 +40,25 @@ function buildPublicProfileDto(companyData = {}, updatedAt = null) {
         brandColor: companyData.brandColor || '#1e40af',
         applicationConfig,
         customQuestions: Array.isArray(companyData.customQuestions) ? companyData.customQuestions : [],
-        // Optional post-application e-sign forms offered to the driver on the
-        // success screen. Project ONLY the fields the public page needs
-        // (templateId/title/enabled) — never the full template config.
+        // Post-application e-sign forms shown to the driver on the success
+        // screen. Project ONLY the fields the public page needs
+        // (templateId/title/enabled/required) — never the full template config.
+        // `required` defaults to TRUE for backward compatibility: templates
+        // configured before the flag existed are treated as required unless the
+        // company explicitly marks them optional.
         postApplicationTemplates: Array.isArray(companyData.postApplicationTemplates)
             ? companyData.postApplicationTemplates
                 .map((t) => {
-                    if (typeof t === 'string') return { templateId: t, title: 'Complete Form', enabled: true };
+                    if (typeof t === 'string') return { templateId: t, title: 'Complete Form', enabled: true, required: true };
                     if (!t || typeof t !== 'object') return null;
                     const templateId = String(t.templateId || t.id || '').trim();
                     if (!templateId) return null;
-                    return { templateId, title: String(t.title || 'Complete Form'), enabled: t.enabled !== false };
+                    return {
+                        templateId,
+                        title: String(t.title || 'Complete Form'),
+                        enabled: t.enabled !== false,
+                        required: t.required !== false,
+                    };
                 })
                 .filter(Boolean)
             : [],

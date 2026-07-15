@@ -73,8 +73,11 @@ function staleContactMeta(item) {
     }
 }
 
+// Segment ids map to APPLICATION_STATUS_GROUPS in @shared/utils/applicationStatus
+// ('new' covers 'New' + 'New Application', 'hired' covers 'Hired' + 'Approved', ...).
 const APPLICATION_PIPELINE_TABS = [
     { id: 'all', label: 'All Applications' },
+    { id: 'new', label: 'New' },
     { id: 'hired', label: 'Hired' },
     { id: 'terminated', label: 'Terminated' },
     { id: 'declined', label: 'Declined' },
