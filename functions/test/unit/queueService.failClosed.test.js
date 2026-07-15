@@ -53,3 +53,48 @@ describe('enqueueWorker fail-closed on missing BULK_WORKER_SECRET', () => {
         expect(task.httpRequest.headers['X-SafeHaul-Internal-Auth']).toBe('unit-secret');
     });
 });
+
+describe('assertWorkerConfig (fail-fast before session work)', () => {
+    const ORIGINAL_SECRET = process.env.BULK_WORKER_SECRET;
+    const ORIGINAL_URL = process.env.PROCESS_BULK_BATCH_URL;
+    const ORIGINAL_EMULATOR = process.env.FUNCTIONS_EMULATOR;
+
+    afterEach(() => {
+        if (ORIGINAL_SECRET === undefined) delete process.env.BULK_WORKER_SECRET;
+        else process.env.BULK_WORKER_SECRET = ORIGINAL_SECRET;
+        if (ORIGINAL_URL === undefined) delete process.env.PROCESS_BULK_BATCH_URL;
+        else process.env.PROCESS_BULK_BATCH_URL = ORIGINAL_URL;
+        if (ORIGINAL_EMULATOR === undefined) delete process.env.FUNCTIONS_EMULATOR;
+        else process.env.FUNCTIONS_EMULATOR = ORIGINAL_EMULATOR;
+    });
+
+    it('throws failed-precondition naming every missing var', () => {
+        delete process.env.FUNCTIONS_EMULATOR;
+        delete process.env.BULK_WORKER_SECRET;
+        delete process.env.PROCESS_BULK_BATCH_URL;
+        const { assertWorkerConfig } = require('../../bulkActions/services/queueService');
+
+        expect(() => assertWorkerConfig()).toThrow(/BULK_WORKER_SECRET and PROCESS_BULK_BATCH_URL/);
+        try {
+            assertWorkerConfig();
+        } catch (e) {
+            expect(e.code).toBe('failed-precondition');
+        }
+    });
+
+    it('passes when both vars are set', () => {
+        delete process.env.FUNCTIONS_EMULATOR;
+        process.env.BULK_WORKER_SECRET = 's';
+        process.env.PROCESS_BULK_BATCH_URL = 'https://example.test/worker';
+        const { assertWorkerConfig } = require('../../bulkActions/services/queueService');
+        expect(() => assertWorkerConfig()).not.toThrow();
+    });
+
+    it('is a no-op in the emulator (URL is derived there)', () => {
+        process.env.FUNCTIONS_EMULATOR = 'true';
+        delete process.env.BULK_WORKER_SECRET;
+        delete process.env.PROCESS_BULK_BATCH_URL;
+        const { assertWorkerConfig } = require('../../bulkActions/services/queueService');
+        expect(() => assertWorkerConfig()).not.toThrow();
+    });
+});

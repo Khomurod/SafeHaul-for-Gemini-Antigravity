@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("../../firebaseAdmin");
 const { assertCompanyAdminStrict } = require("../../shared/companyAccess");
+const { isSuperAdminClaims } = require("../../shared/claims");
 const { normalizePhone } = require("../../utils/phoneUtils");
 const { isCanonicalPhoneLedgerKey } = require("../helpers/phoneLedger");
 
@@ -112,8 +113,10 @@ exports.backfillAllSmsSentPhones = onCall(
     async (request) => {
         if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in.');
 
-        const roles = request.auth.token?.roles || {};
-        if (roles.globalRole !== 'super_admin') {
+        // Dual claim shape (top-level globalRole or roles.globalRole), matching
+        // firestore.rules isSuperAdmin() — the nested-only check denied super
+        // admins whose claims use the documented top-level shape.
+        if (!isSuperAdminClaims(request.auth.token)) {
             throw new HttpsError('permission-denied', 'Super Admin only.');
         }
 

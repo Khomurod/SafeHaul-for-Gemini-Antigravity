@@ -3,6 +3,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db } = require("./firebaseAdmin");
 const { SCHEMA_DEFINITIONS } = require("./schemaConfig");
+const { isSuperAdminClaims } = require("./shared/claims");
 
 // RUNTIME OPTIONS (Long timeout for database repair)
 const RUNTIME_OPTS = {
@@ -72,8 +73,10 @@ async function repairCollection(collectionName, schemaKey, isSubcollection = fal
 
 // --- MAIN EXPORTED FUNCTION ---
 exports.syncSystemStructure = onCall(RUNTIME_OPTS, async (request) => {
-    // 1. Security Check
-    if (!request.auth || request.auth.token.roles?.globalRole !== 'super_admin') {
+    // 1. Security Check — accepts both claim shapes (top-level globalRole and
+    // roles.globalRole), matching firestore.rules isSuperAdmin(). The previous
+    // nested-only check denied super admins with top-level claims.
+    if (!request.auth || !isSuperAdminClaims(request.auth.token)) {
         throw new HttpsError("permission-denied", "Super Admin Access Required.");
     }
 
@@ -160,8 +163,8 @@ exports.runSecurityAudit = onCall({
     memory: '512MiB',
     cors: true
 }, async (request) => {
-    // 1. Security Check
-    if (!request.auth || request.auth.token.roles?.globalRole !== 'super_admin') {
+    // 1. Security Check — dual claim shape, see syncSystemStructure above.
+    if (!request.auth || !isSuperAdminClaims(request.auth.token)) {
         throw new HttpsError("permission-denied", "Super Admin Access Required.");
     }
     const { db } = require("./firebaseAdmin");

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mergeApplicationDoc, APPLICATION_CREATE_ONLY_FIELDS } from './applicationWrite';
 
-const { getDocMock, setDocMock } = vi.hoisted(() => ({
+const { getDocMock, setDocMock, claimCallableMock } = vi.hoisted(() => ({
     getDocMock: vi.fn(),
     setDocMock: vi.fn(),
+    claimCallableMock: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -11,6 +12,23 @@ vi.mock('firebase/firestore', () => ({
     setDoc: (...a) => setDocMock(...a),
     serverTimestamp: () => '__ServerTS__',
 }));
+
+vi.mock('firebase/functions', () => ({
+    httpsCallable: (_functions, name) => {
+        if (name !== 'claimGuestApplication') throw new Error(`unexpected callable ${name}`);
+        return claimCallableMock;
+    },
+}));
+
+vi.mock('@lib/firebase', () => ({
+    functions: {},
+}));
+
+function permissionDenied() {
+    const err = new Error('Missing or insufficient permissions.');
+    err.code = 'permission-denied';
+    return err;
+}
 
 const REF = { path: 'companies/co1/applications/app1' };
 const basePayload = {
@@ -68,5 +86,63 @@ describe('mergeApplicationDoc (FUNC-005)', () => {
 
     it('lists exactly the create-only fields it protects', () => {
         expect(APPLICATION_CREATE_ONLY_FIELDS).toEqual(['createdAt', 'confirmationNumber', 'status']);
+    });
+
+    describe('guest-claim fallback (P1 fix)', () => {
+        beforeEach(() => {
+            claimCallableMock.mockReset().mockResolvedValue({ data: { success: true, claimed: true } });
+        });
+
+        it('falls back to claimGuestApplication when the READ is permission-denied', async () => {
+            getDocMock.mockRejectedValue(permissionDenied());
+
+            const res = await mergeApplicationDoc(REF, { ...basePayload });
+
+            expect(res).toEqual({ isNew: false, claimed: true });
+            expect(setDocMock).not.toHaveBeenCalled();
+            expect(claimCallableMock).toHaveBeenCalledTimes(1);
+            const arg = claimCallableMock.mock.calls[0][0];
+            expect(arg.companyId).toBe('co1');
+            expect(arg.applicationId).toBe('app1');
+            // Create-only fields are stripped before sending to the server.
+            for (const f of APPLICATION_CREATE_ONLY_FIELDS) {
+                expect(arg.formData).not.toHaveProperty(f);
+            }
+            expect(arg.formData.phone).toBe('111');
+        });
+
+        it('falls back to claimGuestApplication when the UPDATE write is permission-denied', async () => {
+            getDocMock.mockResolvedValue({ exists: () => true });
+            setDocMock.mockRejectedValue(permissionDenied());
+
+            const res = await mergeApplicationDoc(REF, { ...basePayload });
+
+            expect(res).toEqual({ isNew: false, claimed: true });
+            expect(claimCallableMock).toHaveBeenCalledTimes(1);
+        });
+
+        it('does NOT fall back on a denied CREATE (doc did not exist)', async () => {
+            getDocMock.mockResolvedValue({ exists: () => false });
+            setDocMock.mockRejectedValue(permissionDenied());
+
+            await expect(mergeApplicationDoc(REF, { ...basePayload })).rejects.toThrow(/permission/i);
+            expect(claimCallableMock).not.toHaveBeenCalled();
+        });
+
+        it('rethrows non-permission read errors without calling the fallback', async () => {
+            const netErr = new Error('unavailable');
+            netErr.code = 'unavailable';
+            getDocMock.mockRejectedValue(netErr);
+
+            await expect(mergeApplicationDoc(REF, { ...basePayload })).rejects.toThrow('unavailable');
+            expect(claimCallableMock).not.toHaveBeenCalled();
+        });
+
+        it('propagates callable failure so retries/queueing still engage', async () => {
+            getDocMock.mockRejectedValue(permissionDenied());
+            claimCallableMock.mockRejectedValue(new Error('claim failed'));
+
+            await expect(mergeApplicationDoc(REF, { ...basePayload })).rejects.toThrow('claim failed');
+        });
     });
 });

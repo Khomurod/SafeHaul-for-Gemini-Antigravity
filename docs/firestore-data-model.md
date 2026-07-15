@@ -61,7 +61,9 @@ erDiagram
 | `notifications` | auto | **read/update/delete:** recipient · **create:** denied (server-only) | Per-user inbox |
 | `verification_requests` | token | **read:** super only · **write:** denied | PEV; all portal access via callables |
 | `verification_requests/{token}/responses` | `responseId` | same as parent | PEV responses |
-| `analytics` | `docId` | **read:** super · **write:** denied | Platform analytics |
+| `change_reviews` | token | **read:** super only · **write:** denied | Driver review of company-proposed edits; access via `getChangeReview`/`submitChangeResolution` callables |
+| `telegram_sessions` | `sessionId` | **read/write:** denied (server-only) | Telegram Apply bot/Mini App state |
+| `analytics` | `docId` | **read:** super · **write:** denied | Platform analytics (rule reserved — no code currently writes this collection) |
 | `system_settings` | `settingId` | **read:** staff or super · **write:** super | Global settings |
 | `recruiter_links` | `code` | **read:** public · **write:** staff/super | Recruiter attribution URLs |
 | `job_posts` | `postId` | **read:** public · **write:** company team for own `companyId` | Job board |
@@ -84,7 +86,7 @@ Used by Cloud Functions with Admin SDK:
 | Subcollection | Access (summary) | Notes |
 |---------------|------------------|-------|
 | `templates/{id}` | read: team · write: admin | Hiring offer/form templates |
-| `message_templates/{id}` | read: team · write: admin | Campaign message templates |
+| `message_templates/{id}` | read: team · write: admin | Campaign message templates (rule reserved — no code currently reads/writes this collection) |
 | `bulk_sessions/{id}` | read/write: team | Bulk SMS/email sessions |
 | `bulk_sessions/{id}/logs/{id}` | read: team | Per-message send logs |
 | `campaign_drafts/{id}` | read/write: team | Campaign wizard persistence |
@@ -109,6 +111,14 @@ Used by Cloud Functions with Admin SDK:
 |------|---------|
 | `companies/{id}/blacklist/{phone}` | Company opt-out list |
 | `companies/{id}/inbound_messages/{id}` | Inbound SMS (STOP handling trigger) |
+| `companies/{id}/sms_sent_phones/{key}` | 7-day SMS dedupe ledger (bulk campaigns) |
+| `companies/{id}/email_sent_addresses/{key}` | 7-day email dedupe ledger (bulk campaigns) |
+| `companies/{id}/bulk_sessions/{id}/targets/{id}` | Import-type campaign target snapshots |
+| `companies/{id}/stats_daily/{date}/processed_signals/{logId}` | Stats aggregator idempotency markers |
+| `companies/{id}/internal_stats/dashboard/processed_events/{eventId}` | Dashboard rollup idempotency markers |
+| `companies/{id}/integrations/sms_provider/keychain/{sanitizedPhone}` | Encrypted per-line SMS credentials |
+| `drivers/{id}/pending_updates/{id}` | Driver sync staging (server-only) |
+| `drivers/{id}/merged_profiles/{id}` | Onboarding profile merge audit (server-only) |
 
 ---
 

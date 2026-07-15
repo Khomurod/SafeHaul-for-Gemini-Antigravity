@@ -104,6 +104,10 @@ exports.onLeadAtsContactSms = atsContactSms.onLeadAtsContactSms;
 
 // 4b. Guest Application Submission (Admin SDK — bypasses rules)
 exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
+// P1 FIX: authenticated driver re-submitting over a guest-created application —
+// the direct client merge is (correctly) rejected by the driver self-update
+// rules, so this callable proves ownership server-side and merges via Admin SDK.
+exports.claimGuestApplication = require('./claimGuestApplication').claimGuestApplication;
 exports.parseCdlWithGroq = require('./cdlParser').parseCdlWithGroq;
 exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').createPostApplicationSigningRequest;
 exports.backfillApplicationSearchFields = require('./searchFieldsBackfill').backfillApplicationSearchFields;

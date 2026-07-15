@@ -9,6 +9,32 @@ const TASKS_CLIENT_OPTS = {};
 // Initialize client with fallback if needed, but usually default is fine in Cloud Functions
 const tasksClient = new CloudTasksClient(TASKS_CLIENT_OPTS);
 
+/**
+ * P2 audit fix: validate the worker's required configuration BEFORE any
+ * session work happens. Previously a missing PROCESS_BULK_BATCH_URL /
+ * BULK_WORKER_SECRET only surfaced after the full (potentially expensive)
+ * targeting phase, as an opaque internal error and a session doc stuck in
+ * 'failed' with a vague message. These env vars can only be set after the
+ * first deploy of the V2 worker, so a fresh environment hits this path.
+ *
+ * Throws HttpsError('failed-precondition') with an operator-actionable
+ * message. No-op in the emulator (the worker URL is derived there).
+ */
+function assertWorkerConfig() {
+    if (process.env.FUNCTIONS_EMULATOR) return;
+    const missing = [];
+    if (!process.env.BULK_WORKER_SECRET) missing.push('BULK_WORKER_SECRET');
+    if (!process.env.PROCESS_BULK_BATCH_URL) missing.push('PROCESS_BULK_BATCH_URL');
+    if (missing.length > 0) {
+        const { HttpsError } = require('firebase-functions/v2/https');
+        throw new HttpsError(
+            'failed-precondition',
+            `Bulk campaigns are not configured on this environment: missing ${missing.join(' and ')} ` +
+            '(functions/.env). Set them and redeploy the bulk functions — see the production readiness runbook.'
+        );
+    }
+}
+
 // AUDIT FIX #4: Accept workerGeneration to forward in task payload
 async function enqueueWorker(companyId, sessionId, delaySeconds, workerGeneration = null) {
     // Fail-closed: never enqueue a task without the shared worker secret. Sending an
@@ -89,4 +115,4 @@ async function enqueueWorker(companyId, sessionId, delaySeconds, workerGeneratio
     }
 }
 
-module.exports = { enqueueWorker, PROJECT_ID, LOCATION, QUEUE_NAME };
+module.exports = { enqueueWorker, assertWorkerConfig, PROJECT_ID, LOCATION, QUEUE_NAME };

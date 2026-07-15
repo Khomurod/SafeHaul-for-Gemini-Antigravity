@@ -50,3 +50,83 @@ describe('dashboardStatsRollup deltas', () => {
     expect(computeLeadRollupDeltas(snap(true, { a: 1 }), snap(true, { a: 2 }))).toBeNull();
   });
 });
+
+describe('applyDashboardIncrements idempotency', () => {
+  const { applyDashboardIncrements } = require('../../dashboardStatsRollup');
+
+  // In-memory fake Firestore: tracks processed_events markers and counts
+  // how many times the dashboard doc receives an increment write.
+  function makeFakeDb() {
+    const markers = new Set();
+    const dashboardWrites = [];
+
+    const dashboardRef = {
+      collection: (name) => {
+        expect(name).toBe('processed_events');
+        return {
+          doc: (eventId) => ({ __marker: true, eventId }),
+        };
+      },
+      set: (payload, opts) => {
+        dashboardWrites.push({ payload, opts, via: 'direct' });
+      },
+    };
+
+    const database = {
+      collection: () => ({
+        doc: () => ({
+          collection: () => ({
+            doc: () => dashboardRef,
+          }),
+        }),
+      }),
+      runTransaction: async (fn) => {
+        const transaction = {
+          get: async (ref) => ({ exists: markers.has(ref.eventId) }),
+          set: (ref, payload, opts) => {
+            if (ref.__marker) {
+              markers.add(ref.eventId);
+            } else {
+              dashboardWrites.push({ payload, opts, via: 'txn' });
+            }
+          },
+        };
+        return fn(transaction);
+      },
+    };
+
+    return { database, markers, dashboardWrites };
+  }
+
+  test('applies increments once and skips duplicate event deliveries', async () => {
+    const { database, dashboardWrites } = makeFakeDb();
+    const deltas = { applicationsTotal: 1, hiredTotal: 0 };
+
+    await applyDashboardIncrements('company-1', deltas, 'event-abc', database);
+    await applyDashboardIncrements('company-1', deltas, 'event-abc', database); // retry
+
+    expect(dashboardWrites).toHaveLength(1);
+    expect(dashboardWrites[0].via).toBe('txn');
+    expect(dashboardWrites[0].payload.applicationsTotal).toBeDefined();
+  });
+
+  test('distinct events each apply', async () => {
+    const { database, dashboardWrites } = makeFakeDb();
+    await applyDashboardIncrements('company-1', { leadsTotal: 1 }, 'event-1', database);
+    await applyDashboardIncrements('company-1', { leadsTotal: 1 }, 'event-2', database);
+    expect(dashboardWrites).toHaveLength(2);
+  });
+
+  test('falls back to a direct write when eventId is missing', async () => {
+    const { database, dashboardWrites } = makeFakeDb();
+    await applyDashboardIncrements('company-1', { leadsTotal: 1 }, undefined, database);
+    expect(dashboardWrites).toHaveLength(1);
+    expect(dashboardWrites[0].via).toBe('direct');
+  });
+
+  test('no-op deltas write nothing', async () => {
+    const { database, dashboardWrites } = makeFakeDb();
+    await applyDashboardIncrements('company-1', { applicationsTotal: 0, hiredTotal: 0 }, 'e', database);
+    expect(dashboardWrites).toHaveLength(0);
+  });
+});

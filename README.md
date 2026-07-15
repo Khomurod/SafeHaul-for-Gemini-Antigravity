@@ -95,15 +95,13 @@ SafeHaul is a **multi-tenant SaaS platform** built for trucking companies to man
 | Vite | 7 | Build tool & dev server |
 | React Router | 7 | Client-side routing |
 | TailwindCSS | 3.4 | Utility-first styling |
-| Framer Motion | 12 | Animations & transitions |
 | Recharts | 3.6 | Data visualization |
 | Lucide React | 0.552 | Icon library |
 | jsPDF | 4.0 | Client-side PDF generation |
 | ExcelJS | 4.4 | Spreadsheet parsing for bulk imports |
 | React Signature Canvas | 1.1 | Signature capture |
-| TipTap | 3.17 | Rich text editor |
 | React Virtuoso | 4.18 | Virtualized lists |
-| Sentry | 10.32 | Error monitoring |
+| Sentry (React) | 10.32 | Error monitoring (frontend) |
 
 ### Backend (Firebase)
 | Technology | Version | Purpose |
@@ -114,8 +112,7 @@ SafeHaul is a **multi-tenant SaaS platform** built for trucking companies to man
 | Firebase Auth | — | Authentication with custom claims (RBAC) |
 | Firebase Storage | — | File uploads (CDL, medical cards, etc.) |
 | Firebase Hosting | — | Static site hosting |
-| Nodemailer | 7.0 | Email delivery |
-| Sentry Node | 10.32 | Server-side error tracking |
+| Nodemailer | 9.0 | Email delivery |
 | Joi | 18.0 | Request validation |
 | pdf-lib | 1.17 | Server-side PDF manipulation |
 
@@ -172,8 +169,9 @@ SafeHaul/
 │   ├── context/                  # React Context (DataContext — auth, roles, company)
 │   ├── hooks/                    # Global custom hooks
 │   ├── lib/                      # Core libraries
-│   │   ├── firebase.js           # Firebase SDK initialization
+│   │   ├── firebase/             # Firebase SDK initialization (config, auth, storage)
 │   │   ├── applicationId.js      # Deterministic ID generator (SHA-256)
+│   │   ├── applicationWrite.js   # Create-safe application merge (+ guest claim fallback)
 │   │   ├── submissionQueue.js    # IndexedDB offline queue
 │   │   └── signature.js          # Signature canvas utilities
 │   ├── shared/                   # Shared components & utilities
@@ -202,8 +200,7 @@ SafeHaul/
 │   ├── firebaseAdmin.js          # Admin SDK singleton
 │   ├── driverSync.js             # Application → Profile trigger
 │   ├── guestApplication.js       # Guest submission handler
-│   ├── leadDistribution.js       # Scheduled lead dealing
-│   ├── leadLogic.js              # Distribution algorithms
+│   ├── claimGuestApplication.js  # Authenticated merge over a guest-created application
 │   ├── bulkActions/              # Bulk messaging worker system
 │   ├── integrations/             # SMS adapters (RingCentral, 8x8)
 │   ├── emailService.js           # Email delivery (Nodemailer)
@@ -261,8 +258,12 @@ cd functions && npm install && cd ..
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | FCM sender ID |
 | `VITE_FIREBASE_APP_ID` | Firebase app ID |
 | `VITE_SENTRY_DSN` | Sentry error tracking DSN |
+| `VITE_SENTRY_TRACES_SAMPLE_RATE` | Optional Sentry tracing sample rate |
 | `VITE_FACEBOOK_APP_ID` | Facebook Lead Ads integration |
-| `VITE_SUPER_ADMIN_EMAIL` | Super admin fallback email |
+| `VITE_DRIVER_APP_URL` | Base URL used when composing driver-facing links |
+| `VITE_SOCRATA_APP_TOKEN` | Public app token for FMCSA employer autocomplete (Socrata) |
+| `VITE_USE_DASHBOARD_SUMMARY` | Optional flag preferring the `internal_stats` dashboard rollup |
+| `VITE_RELEASE_SHA` | Release identifier stamped by CI for Sentry |
 
 #### Cloud Functions (`functions/.env`)
 
@@ -270,12 +271,15 @@ cd functions && npm install && cd ..
 |----------|-------------|
 | `PROCESS_BULK_BATCH_URL` | Cloud Run URL for `processBulkBatch` (required for bulk campaigns) |
 | `BULK_WORKER_SECRET` | Shared secret for bulk worker HTTP auth (same on `initBulkSession` and `processBulkBatch`) |
+| `BULK_SESSION_MAX_SENDS` | Optional per-session send ceiling for the bulk worker circuit breaker |
 | `GROQ_API_KEY` | Groq vision API for CDL parsing |
+| `GROQ_VISION_MODEL` | Optional override of the Groq vision model used for CDL parsing |
 | `SMS_ENCRYPTION_KEY` | AES key for encrypting SMS provider credentials |
-| `SENTRY_DSN` | Sentry DSN for server-side error tracking |
+| `APP_BASE_URL` | Base URL used in signing/notification links (defaults to the hosted app) |
 | `TELEGRAM_BOT_TOKEN` | Optional Telegram bot token for Telegram Apply beta (leave empty until configured) |
-| `TELEGRAM_BOT_USERNAME` | Optional Telegram bot username for deep links |
+| `TELEGRAM_MINI_APP_URL` | Optional override for the Telegram signature Mini App URL |
 | `TELEGRAM_WEBHOOK_SECRET` | Optional Telegram webhook secret token |
+| `FACEBOOK_APP_SECRET_VALUE` / `FACEBOOK_VERIFY_TOKEN_VALUE` | Facebook Lead Ads webhook verification (v1 webhook) |
 
 > **Bulk campaigns:** See [docs/production-readiness-runbook.md](docs/production-readiness-runbook.md#bulk-sms--email-campaigns) for Cloud Tasks queue setup and verification.
 
@@ -292,8 +296,9 @@ Manual setup after a bot is created:
 ```bash
 # functions/.env only; never put these in VITE_* frontend env vars
 TELEGRAM_BOT_TOKEN=
-TELEGRAM_BOT_USERNAME=
 TELEGRAM_WEBHOOK_SECRET=
+# Optional: override the Mini App URL opened for signatures
+TELEGRAM_MINI_APP_URL=
 ```
 
 Operators will create the bot in BotFather, set the Functions env values, register the webhook with the deployed `telegramWebhook` URL and optional secret token, and set the Mini App URL to `https://truckerapp-system.web.app/telegram/sign`.
@@ -318,18 +323,20 @@ firebase emulators:start
 
 ## Cloud Functions
 
-SafeHaul uses **40+ Cloud Functions** organized by domain. Key function groups:
+SafeHaul uses **100+ Cloud Functions** organized by domain (see `functions/index.js`
+for the full registry and `docs/callable-frontend-map.md` for the frontend contract).
+Key function groups:
 
 | Group | Functions | Trigger |
 |-------|-----------|---------|
-| **Driver Sync** | `onApplicationCreated` | Firestore trigger (v2) |
-| **Guest Application** | `submitGuestApplication` | Callable (v1) |
-| **Bulk Actions** | `startBulkSession`, `processBulkBatch` | Callable (v2) |
-| **SMS Integration** | `sendDirectSms` | Callable (v2) |
-| **Email Service** | `sendCustomEmail` | Callable |
-| **Stats** | `aggregateStats`, `rebuildLeadStats` | Trigger + Scheduled |
-| **E-Signatures** | `generateSigningRequest`, `processSignedDocument` | Callable + Trigger |
-| **Admin** | `setUserRole`, `addTeamMember`, `createCompany` | Callable |
+| **Driver Sync** | `onApplicationSubmitted`, `onApplicationUpdated` | Firestore trigger (v2) |
+| **Guest Application** | `submitGuestApplication`, `claimGuestApplication` | Callable |
+| **Bulk Actions** | `initBulkSession`, `processBulkBatch` (worker) | Callable + HTTP (Cloud Tasks) |
+| **SMS Integration** | `sendSMS`, `sendTestSMS`, `saveIntegrationConfig` | Callable (v2) |
+| **Email Service** | `sendAutomatedEmail`, `saveEmailSettings`, `testEmailConnection` | Callable |
+| **Stats** | `onActivityLogCreated`, `backfillCompanyStats`, `onApplicationWrittenDashboardRollup` | Trigger + Callable |
+| **E-Signatures** | `getPublicEnvelope`, `submitPublicEnvelope`, `sealDocument`, `notifySigner` | Callable + Trigger |
+| **Admin** | `createPortalUser`, `updatePortalUser`, `deleteCompany` | Callable |
 
 ### Deploying Individual Functions
 
@@ -377,7 +384,9 @@ Custom Claims Structure:
 
 The app is deployed to **Firebase Hosting** at [truckerapp-system.web.app](https://truckerapp-system.web.app/).
 
-Pushes to `main` now deploy Hosting automatically from GitHub Actions after the existing Functions checks and frontend build pass.
+Pushes to `main` deploy Hosting, Firestore/Storage rules + indexes, **and Cloud
+Functions (incremental)** automatically from GitHub Actions after the checks and
+frontend build pass (see `.github/workflows/main.yml`).
 
 ```bash
 # Full deployment (frontend + functions + rules)
@@ -393,13 +402,18 @@ firebase deploy --only firestore:rules
 firebase deploy --only storage
 ```
 
-### Automatic GitHub Deploys (Hosting + Rules)
+### Automatic GitHub Deploys (Hosting + Rules + Functions)
 
-The workflow in `.github/workflows/main.yml` deploys both Hosting and Firebase rules on successful pushes to `main`:
+The workflow in `.github/workflows/main.yml` deploys Hosting, Firebase rules and
+Cloud Functions on successful pushes to `main`. Rules and indexes are deployed in
+two separate steps (indexes need broader IAM and are allowed to fail without
+blocking the rules deploy):
 
 ```bash
 npx firebase-tools deploy --only hosting --project truckerapp-system --non-interactive
-npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project truckerapp-system --non-interactive
+npx firebase-tools deploy --only firestore:rules,storage --project truckerapp-system --non-interactive
+npx firebase-tools deploy --only firestore:indexes --project truckerapp-system --non-interactive
+# Functions deploy incrementally via scripts/deploy-functions-incremental.mjs
 ```
 
 One-time GitHub setup is still required:
@@ -445,10 +459,12 @@ npm run lint
 
 ## Known Issues & Audit Findings
 
-> **Last Audited:** March 4, 2026  
-> **Status:** ✅ All identified issues have been resolved.
+> **Last Audited:** July 9, 2026  
+> **Status:** ✅ P1/P2 issues from the July 2026 full audit have been resolved; remaining
+> items are tracked in `docs/` (guest-upload hardening deferred by owner decision).
 
-All critical, high, medium, and low issues from previous audits have been addressed. See git history for details on each fix.
+See `docs/FULL_APPLICATION_AUDIT_REPORT.md` and `docs/PRODUCTION_AUDIT_REPORT.md`
+for prior point-in-time audits, and git history for details on each fix.
 
 ### Resolved Issues Summary
 

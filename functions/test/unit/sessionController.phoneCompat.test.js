@@ -74,7 +74,8 @@ jest.mock('../../bulkActions/helpers/auth', () => ({
 }));
 
 jest.mock('../../bulkActions/services/queueService', () => ({
-    enqueueWorker: (...args) => mockEnqueueWorker(...args)
+    enqueueWorker: (...args) => mockEnqueueWorker(...args),
+    assertWorkerConfig: () => {}, // config presence is not under test here
 }));
 
 jest.mock('../../shared/rateLimiter', () => ({

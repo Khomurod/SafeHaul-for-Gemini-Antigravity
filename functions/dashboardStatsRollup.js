@@ -63,13 +63,27 @@ function computeLeadRollupDeltas(beforeSnap, afterSnap) {
   return null;
 }
 
-async function applyDashboardIncrements(companyId, deltas) {
+/**
+ * Apply counter increments exactly once per trigger event.
+ *
+ * Cloud Functions deliver Firestore events at-least-once, so a retried event
+ * would double-count with bare FieldValue.increment. Mirroring the
+ * statsAggregator processed_signals pattern, a marker doc keyed by the
+ * CloudEvent id is claimed inside the same transaction that applies the
+ * increments — duplicate deliveries see the marker and skip.
+ *
+ * Marker path: companies/{id}/internal_stats/dashboard/processed_events/{eventId}
+ * (a subcollection under the dashboard doc — no client rule matches it, so it
+ * stays server-only). processedAt is set for an optional Firestore TTL policy:
+ *   firebase firestore:ttl:create ... processed_events processedAt
+ */
+async function applyDashboardIncrements(companyId, deltas, eventId, database = db) {
   const apps = deltas.applicationsTotal || 0;
   const hired = deltas.hiredTotal || 0;
   const leads = deltas.leadsTotal || 0;
   if (apps === 0 && hired === 0 && leads === 0) return;
 
-  const ref = db.collection('companies').doc(companyId).collection(INTERNAL_STATS).doc(DASHBOARD_DOC_ID);
+  const ref = database.collection('companies').doc(companyId).collection(INTERNAL_STATS).doc(DASHBOARD_DOC_ID);
   const payload = {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     schemaVersion: 1,
@@ -78,7 +92,25 @@ async function applyDashboardIncrements(companyId, deltas) {
   if (hired !== 0) payload.hiredTotal = admin.firestore.FieldValue.increment(hired);
   if (leads !== 0) payload.leadsTotal = admin.firestore.FieldValue.increment(leads);
 
-  await ref.set(payload, { merge: true });
+  if (!eventId) {
+    // Defensive fallback — v2 events always carry an id, but never drop a
+    // legitimate count if one is somehow missing.
+    await ref.set(payload, { merge: true });
+    return;
+  }
+
+  const markerRef = ref.collection('processed_events').doc(eventId);
+  await database.runTransaction(async (transaction) => {
+    const marker = await transaction.get(markerRef);
+    if (marker.exists) {
+      console.log(`[dashboardRollup] Event ${eventId} already processed for ${companyId}. Skipping.`);
+      return;
+    }
+    transaction.set(markerRef, {
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.set(ref, payload, { merge: true });
+  });
 }
 
 exports.onApplicationWrittenDashboardRollup = onDocumentWritten(
@@ -93,7 +125,7 @@ exports.onApplicationWrittenDashboardRollup = onDocumentWritten(
     const deltas = computeApplicationRollupDeltas(change.before, change.after);
     if (!deltas) return;
     try {
-      await applyDashboardIncrements(companyId, deltas);
+      await applyDashboardIncrements(companyId, deltas, event.id);
     } catch (e) {
       console.error('[dashboardRollup] application write failed:', companyId, e);
     }
@@ -112,7 +144,7 @@ exports.onLeadWrittenDashboardRollup = onDocumentWritten(
     const deltas = computeLeadRollupDeltas(change.before, change.after);
     if (!deltas) return;
     try {
-      await applyDashboardIncrements(companyId, deltas);
+      await applyDashboardIncrements(companyId, deltas, event.id);
     } catch (e) {
       console.error('[dashboardRollup] lead write failed:', companyId, e);
     }
@@ -173,3 +205,4 @@ exports.reconcileCompanyDashboardStats = onCall(
 
 exports.computeApplicationRollupDeltas = computeApplicationRollupDeltas;
 exports.computeLeadRollupDeltas = computeLeadRollupDeltas;
+exports.applyDashboardIncrements = applyDashboardIncrements;

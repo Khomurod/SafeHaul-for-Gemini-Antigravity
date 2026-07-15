@@ -373,42 +373,23 @@ exports.submitVerificationResponse = onCall({ cors: true, memory: '1GiB', timeou
             logger.error('[PEV] PDF generation failed (non-blocking):', pdfError);
         }
 
-        // Update the employer's verification status in the application document
+        // Update the employer's verification status in the application document.
+        // PEV-SEC-3 FIX (preserved): the raw verification token is never stored on
+        // the application doc — team members must not be able to reuse it.
         try {
-            const appRef = db.collection('companies')
-                .doc(verificationData.companyId)
-                .collection(verificationData.collectionName || 'applications')
-                .doc(verificationData.applicationId);
-
-            const appSnap = await appRef.get();
-            if (appSnap.exists) {
-                const appData = appSnap.data();
-                const employers = [...(appData.employers || [])];
-                const idx = verificationData.employerIndex;
-
-                if (employers[idx]) {
-                    if (!employers[idx].verification) {
-                        employers[idx].verification = { history: [] };
-                    }
-                    employers[idx].verification.status = 'Completed';
-                    employers[idx].verification.completedAt = new Date().toISOString();
-                    employers[idx].verification.resultUrl = pdfPath || null;
-                    // PEV-SEC-3 FIX: Do NOT store the raw verification token in the application document.
-                    // The application doc is readable by all company team members; storing the token
-                    // here would allow any team member to reuse it to re-submit or tamper with the
-                    // verification response. Reference the verification by the respondent name only.
-                    employers[idx].verification.respondentName = formResponse.respondentName;
-                    employers[idx].verification.history = employers[idx].verification.history || [];
-                    employers[idx].verification.history.push({
-                        action: 'Completed via Portal',
-                        respondent: formResponse.respondentName,
-                        timestamp: new Date().toISOString(),
-                        url: pdfPath || null,
-                    });
-
-                    await appRef.update({ employers });
-                }
-            }
+            await applyEmployerVerificationUpdate(verificationData, (verification) => {
+                verification.status = 'Completed';
+                verification.completedAt = new Date().toISOString();
+                verification.resultUrl = pdfPath || null;
+                verification.respondentName = formResponse.respondentName;
+                verification.history = verification.history || [];
+                verification.history.push({
+                    action: 'Completed via Portal',
+                    respondent: formResponse.respondentName,
+                    timestamp: new Date().toISOString(),
+                    url: pdfPath || null,
+                });
+            });
         } catch (updateError) {
             logger.error('[PEV] Failed to update application (non-blocking):', updateError);
         }
@@ -564,35 +545,61 @@ exports.processVerificationReminders = onSchedule("every 24 hours", async () => 
 
 
 // ============================================================
-// HELPER: Update application verification status
+// HELPER: Transactionally mutate one employer's verification block
 // ============================================================
-async function updateApplicationVerificationStatus(verificationData, statusText) {
-    try {
-        const appRef = db.collection('companies')
-            .doc(verificationData.companyId)
-            .collection(verificationData.collectionName || 'applications')
-            .doc(verificationData.applicationId);
+/**
+ * PEV-RACE FIX: the employers array on the application doc was previously
+ * updated with a plain read-modify-write (get → mutate array → update).
+ * Two verifications completing concurrently for DIFFERENT employer indices
+ * on the same application raced last-write-wins, silently dropping one
+ * result. The whole read+mutate+write now runs inside a transaction, so
+ * concurrent completions retry and both land.
+ *
+ * @param {object} verificationData - must carry companyId, collectionName,
+ *   applicationId, employerIndex
+ * @param {(verification: object, employer: object) => void} mutate - receives
+ *   the employer's verification object (created if absent) to modify in place
+ * @returns {Promise<boolean>} true if the application/employer existed and
+ *   the update was applied
+ */
+async function applyEmployerVerificationUpdate(verificationData, mutate) {
+    const appRef = db.collection('companies')
+        .doc(verificationData.companyId)
+        .collection(verificationData.collectionName || 'applications')
+        .doc(verificationData.applicationId);
 
-        const appSnap = await appRef.get();
-        if (!appSnap.exists) return;
+    return db.runTransaction(async (txn) => {
+        const appSnap = await txn.get(appRef);
+        if (!appSnap.exists) return false;
 
         const appData = appSnap.data();
         const employers = [...(appData.employers || [])];
         const idx = verificationData.employerIndex;
+        if (!employers[idx]) return false;
 
-        if (employers[idx]) {
-            if (!employers[idx].verification) {
-                employers[idx].verification = { history: [] };
-            }
-            employers[idx].verification.status = statusText;
-            employers[idx].verification.history = employers[idx].verification.history || [];
-            employers[idx].verification.history.push({
+        if (!employers[idx].verification) {
+            employers[idx].verification = { history: [] };
+        }
+        mutate(employers[idx].verification, employers[idx]);
+
+        txn.update(appRef, { employers });
+        return true;
+    });
+}
+
+// ============================================================
+// HELPER: Update application verification status
+// ============================================================
+async function updateApplicationVerificationStatus(verificationData, statusText) {
+    try {
+        await applyEmployerVerificationUpdate(verificationData, (verification) => {
+            verification.status = statusText;
+            verification.history = verification.history || [];
+            verification.history.push({
                 action: statusText,
                 timestamp: new Date().toISOString(),
             });
-
-            await appRef.update({ employers });
-        }
+        });
     } catch (e) {
         logger.error('[PEV] Failed to update app verification status:', e.message);
     }

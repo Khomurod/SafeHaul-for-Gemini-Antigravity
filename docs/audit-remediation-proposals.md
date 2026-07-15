@@ -32,7 +32,12 @@ on each `rate_limits` doc — the same TTL pattern we reuse for B1.
 
 ## P0 — Security correctness, small diffs, high confidence
 
-### A1 · Telegram webhook fails open `[Verified]`
+### A1 · Telegram webhook fails open `[Verified]` — ✅ RESOLVED
+
+> **Status (July 2026):** implemented. `functions/telegram/webhook.js` now
+> fails **closed** when `TELEGRAM_WEBHOOK_SECRET` is unset and compares the
+> header with `crypto.timingSafeEqual` ("A1 FIX" comment in the file). The
+> original finding below is kept for historical context.
 
 **Problem.** `functions/telegram/webhook.js:7`:
 ```js

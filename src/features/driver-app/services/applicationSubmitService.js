@@ -117,7 +117,7 @@ function sanitizeData(data) {
  * @param {Object} formData - Complete form data
  * @param {string} activeCompanyId - Target company ID
  * @param {Object} job - Optional job posting info
- * @returns {Promise<{success: boolean, applicationId: string, confirmationNumber: string, queueId?: string}>}
+ * @returns {Promise<{success: boolean, applicationId: string, confirmationNumber: string, queueId?: string, queued?: boolean, error?: string}>}
  */
 export async function submitDriverApplication(currentUser, formData, activeCompanyId, job) {
     const email = formData.email || currentUser?.email || '';
