@@ -20,6 +20,9 @@ const basePayload = {
     phone: '111',
     status: 'New Application',
     confirmationNumber: 'ABC123',
+    // Derived from confirmationNumber by shared/utils/searchNormalization and
+    // written on the submit payload, so it must ride the same create-only path.
+    confirmationNumberNormalized: 'abc123',
     createdAt: '2026-01-01T00:00:00.000Z',
     submittedAt: '2026-01-01T00:00:00.000Z',
 };
@@ -42,13 +45,15 @@ describe('mergeApplicationDoc (FUNC-005)', () => {
         // Create-only fields kept on first create.
         expect(payload.status).toBe('New Application');
         expect(payload.confirmationNumber).toBe('ABC123');
+        // Normalized confirmation identity is preserved on create so search works.
+        expect(payload.confirmationNumberNormalized).toBe('abc123');
         expect(payload.createdAt).toBe('__ServerTS__');
         expect(payload.submittedAt).toBe('__ServerTS__');
         expect(payload.updatedAt).toBe('__ServerTS__');
         expect(payload.phone).toBe('111');
     });
 
-    it('UPDATE: drops createdAt/status/confirmationNumber, keeps edited + timestamps', async () => {
+    it('UPDATE: drops createdAt/status/confirmationNumber(+normalized), keeps edited + timestamps', async () => {
         getDocMock.mockResolvedValue({ exists: () => true });
 
         const res = await mergeApplicationDoc(REF, { ...basePayload, phone: '222' });
@@ -58,6 +63,10 @@ describe('mergeApplicationDoc (FUNC-005)', () => {
         for (const f of APPLICATION_CREATE_ONLY_FIELDS) {
             expect(payload).not.toHaveProperty(f);
         }
+        // confirmationNumberNormalized in particular MUST be stripped: it is NOT
+        // in firestore.rules applicationDriverSelfUpdateAllowedKeys(), so leaving
+        // it on the update payload would make the whole driver write fail hasOnly().
+        expect(payload).not.toHaveProperty('confirmationNumberNormalized');
         // Edited allow-listed field + server timestamps survive.
         expect(payload.phone).toBe('222');
         expect(payload.submittedAt).toBe('__ServerTS__');
@@ -66,7 +75,38 @@ describe('mergeApplicationDoc (FUNC-005)', () => {
         expect(payload.companyId).toBe('co1');
     });
 
+    it('UPDATE with merge:true never erases protected values (no create-only keys written)', async () => {
+        getDocMock.mockResolvedValue({ exists: () => true });
+
+        // A "reset" payload that blanks identity fields must not reach Firestore.
+        await mergeApplicationDoc(REF, {
+            ...basePayload,
+            confirmationNumber: '',
+            confirmationNumberNormalized: '',
+            status: '',
+            createdAt: undefined,
+        });
+
+        const [, payload, opts] = setDocMock.mock.calls[0];
+        // merge:true preserves the stored doc; create-only keys are absent so the
+        // existing confirmation identity / status / createdAt cannot be blanked.
+        expect(opts).toEqual({ merge: true });
+        expect(payload).not.toHaveProperty('confirmationNumber');
+        expect(payload).not.toHaveProperty('confirmationNumberNormalized');
+        expect(payload).not.toHaveProperty('status');
+        expect(payload).not.toHaveProperty('createdAt');
+    });
+
     it('lists exactly the create-only fields it protects', () => {
-        expect(APPLICATION_CREATE_ONLY_FIELDS).toEqual(['createdAt', 'confirmationNumber', 'status']);
+        // confirmationNumberNormalized is create-only because it is DERIVED from
+        // the immutable confirmationNumber. It shares that field's create-only
+        // lifecycle and is intentionally excluded from the driver self-update
+        // rules allow-list, so an update that re-sent it would be rejected.
+        expect(APPLICATION_CREATE_ONLY_FIELDS).toEqual([
+            'createdAt',
+            'confirmationNumber',
+            'confirmationNumberNormalized',
+            'status',
+        ]);
     });
 });
