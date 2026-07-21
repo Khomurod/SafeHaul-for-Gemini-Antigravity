@@ -57,9 +57,8 @@ function normalizeSearchApplicationId(value) {
 
 /**
  * Build the persisted normalized search fields for an application document.
- * Every application write path (guest callable, telegram, authenticated driver
- * submit, recruiter edit, backfill) must funnel through this so queries and
- * writes can never drift.
+ * Every application write path (guest callable, recruiter edit, backfill) must
+ * funnel through this so queries and writes can never drift.
  *
  * @param {{firstName?: unknown, lastName?: unknown, email?: unknown, phone?: unknown,
  *   confirmationNumber?: unknown, applicationId?: unknown}} [identity]

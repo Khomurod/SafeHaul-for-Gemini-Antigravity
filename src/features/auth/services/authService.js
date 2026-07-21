@@ -7,70 +7,12 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { auth, db } from '@lib/firebase';
-import { normalizePhone } from '@shared/utils/helpers'; // Import normalization
 
 // --- LOGIN ---
 export async function loginUser(email, password) {
     try {
         const result = await signInWithEmailAndPassword(auth, email, password);
         return result.user;
-    } catch (error) {
-        throw mapAuthError(error);
-    }
-}
-
-// --- DRIVER REGISTRATION ---
-export async function registerDriver({ email, password, firstName, lastName, phone }) {
-    try {
-        // 1. Create Auth User
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        const fullName = `${firstName} ${lastName}`;
-
-        // 2. Update Auth Profile
-        await updateProfile(user, { displayName: fullName });
-        const timestamp = serverTimestamp();
-
-        // 3. Create Public User Profile
-        await setDoc(doc(db, "users", user.uid), {
-            name: fullName,
-            email: email,
-            role: 'driver', // Explicit marker
-            createdAt: timestamp
-        });
-
-        // 4. Create Master Driver Profile (The detailed record)
-        // FIX: Generate normalized phone for consistent matching
-        const cleanPhone = normalizePhone(phone);
-
-        // --- SHADOW PROFILE MERGE LOGIC ---
-        // MOVED TO SERVER: functions/userOnboarding.js (onDriverProfileCreated)
-        // Client no longer attempts to read/delete other users' docs.
-
-        // Create a clean profile. Shadow-profile merging (history, source, recruiterId)
-        // is handled server-side by functions/userOnboarding.js → onDriverProfileCreated.
-        const newProfileData = {
-            personalInfo: {
-                firstName,
-                lastName,
-                email,
-                phone: phone || '',
-                normalizedPhone: cleanPhone,
-                firstName_lower: firstName.toLowerCase(),
-                lastName_lower: lastName.toLowerCase()
-            },
-            driverProfile: {
-                status: 'active',
-                isBulkUpload: false,
-                source: 'web_signup'
-            },
-            createdAt: timestamp,
-            updatedAt: timestamp,
-            claimedAt: timestamp
-        };
-
-        await setDoc(doc(db, "drivers", user.uid), newProfileData);
-        return user;
     } catch (error) {
         throw mapAuthError(error);
     }

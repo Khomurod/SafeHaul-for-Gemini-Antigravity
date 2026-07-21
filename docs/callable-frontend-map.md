@@ -18,9 +18,8 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `backfillPublicProfiles` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Sync all companies → `public_profiles` |
 | `cancelBulkSession` | [`CampaignDetails.jsx`](../src/features/campaigns/components/CampaignDetails.jsx) | Stop bulk campaign |
 | `checkImportPhones` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js) | CSV import phone dedup check |
-| `confirmDriverInterest` | [`InterestPage.jsx`](../src/features/driver-app/components/InterestPage.jsx) | Lead interest confirmation |
 | `connectFacebookPage` | [`IntegrationsTab.jsx`](../src/features/settings/components/IntegrationsTab.jsx) | Facebook Lead Ads OAuth |
-| `createPortalUser` | [`CreateView.jsx`](../src/features/super-admin/components/CreateView.jsx), [`TeamManagementTab.jsx`](../src/features/settings/components/TeamManagementTab.jsx), [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Provision HR/recruiter/driver user |
+| `createPortalUser` | [`CreateView.jsx`](../src/features/super-admin/components/CreateView.jsx), [`TeamManagementTab.jsx`](../src/features/settings/components/TeamManagementTab.jsx), [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Provision HR/recruiter/company user |
 | `createPostApplicationSigningRequest` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Post-submit e-doc envelope |
 | `createChangeReview` | [`useApplicationChanges.js`](../src/features/applications/hooks/useApplicationChanges.js) | Mint a token link for the driver to review company edits |
 | `deleteApplication` | [`useApplicationDelete.js`](../src/features/applications/hooks/useApplicationDelete.js) | Company-admin hard delete of an application/lead (cascade + storage) |
@@ -28,7 +27,6 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `deleteCompany` | [`DeleteCompanyModal.jsx`](../src/features/super-admin/components/modals/DeleteCompanyModal.jsx) | Remove tenant |
 | `deletePortalUser` | [`DeleteUserModal.jsx`](../src/features/super-admin/components/modals/DeleteUserModal.jsx), [`ManageTeamModal.jsx`](../src/shared/components/modals/ManageTeamModal.jsx), [`EditUserNameForm.jsx`](../src/features/super-admin/components/users/EditUserNameForm.jsx) | Delete portal account |
 | `deleteSandboxApplication` | [`SandboxActionPanel.jsx`](../src/features/sandbox/SandboxActionPanel.jsx) | Sandbox cleanup |
-| `completeTelegramApplication` | [`SignatureApp.jsx`](../src/telegram/SignatureApp.jsx) | Telegram Mini App signature submit |
 | `getEmailSettingsMeta` | [`EmailSettingsTab.jsx`](../src/features/settings/components/EmailSettingsTab.jsx) | Load SMTP meta (no password) |
 | `getFilteredLeadsPage` | [`VirtualLeadList.jsx`](../src/features/campaigns/components/VirtualLeadList.jsx) | Paginated campaign audience |
 | `getFilterCount` | [`useCampaignTargeting.js`](../src/features/campaigns/hooks/useCampaignTargeting.js) | Audience size preview |
@@ -39,7 +37,6 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `getSignedPevUrl` | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) | Signed URL for PEV PDF |
 | `getSignedUploadUrl` | [`PublicApplyHandler.jsx`](../src/features/driver-app/components/application/PublicApplyHandler.jsx) | Auth/guest upload URL |
 | `getSigningLink` | [`EnvelopeHistory.jsx`](../src/features/signing/components/EnvelopeHistory.jsx) | Resolve link with secret token |
-| `getTelegramSessionStatus` | [`SignatureApp.jsx`](../src/telegram/SignatureApp.jsx) | Telegram Mini App session load |
 | `getVerificationRequest` | [`VerificationPortal.jsx`](../src/features/verification/VerificationPortal.jsx) | PEV portal load |
 | `initBulkSession` | [`LaunchPad.jsx`](../src/features/campaigns/components/LaunchPad.jsx) | Start bulk SMS/email session |
 | `listSandboxTenantCompanies` | [`SandboxActionPanel.jsx`](../src/features/sandbox/SandboxActionPanel.jsx) | List sandbox tenants |
@@ -53,7 +50,6 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | `saveEmailSettings` | [`EmailSettingsTab.jsx`](../src/features/settings/components/EmailSettingsTab.jsx) | Persist SMTP config |
 | `saveIntegrationConfig` | [`IntegrationManager.jsx`](../src/features/super-admin/components/integrations/IntegrationManager.jsx) | Save encrypted SMS credentials |
 | `sendAutomatedEmail` | [`useCallOutcome.js`](../src/shared/hooks/useCallOutcome.js) | Template email from dossier/call flow |
-| `sendDriverInvite` | [`DriverProfileView.jsx`](../src/features/drivers/components/DriverProfileView.jsx) | Invite driver to portal |
 | `sendSMS` | [`DocumentsManager.jsx`](../src/features/company-admin/views/DocumentsManager.jsx), [`EnvelopeCreator.jsx`](../src/features/signing/EnvelopeCreator.jsx) | Outbound SMS |
 | `sendTestSMS` | [`SMSDiagnosticModal.jsx`](../src/features/settings/components/SMSDiagnosticModal.jsx), [`IntegrationManager.jsx`](../src/features/super-admin/components/integrations/IntegrationManager.jsx) | SMS connectivity test |
 | `sendVerificationRequest` | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) | Start PEV request |
@@ -91,7 +87,6 @@ These are exported and may be used by **scripts**, **future UI**, **legacy clien
 |--------|------|------------|
 | `processBulkBatch` | HTTP `onRequest` | Cloud Tasks → POST with `X-SafeHaul-Internal-Auth` |
 | `facebookWebhook`, `facebookWebhookV1` | HTTP | Facebook Lead Ads |
-| `telegramWebhook` | HTTP | Telegram Bot updates; no-op safe until `TELEGRAM_BOT_TOKEN` is configured |
 | `trackVerificationOpen` | HTTP | 1×1 tracking pixel |
 | `onApplicationSubmitted`, `onLeadWrittenDashboardRollup`, … | Firestore triggers | Automatic on writes |
 | `enforceFeatureSchedules`, `cleanupOrphanedSignatures`, `processVerificationReminders` | Scheduled | Cloud Scheduler |

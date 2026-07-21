@@ -16,7 +16,7 @@ Run on **staging** after automated tiers 1–4 pass on CI. Record date, tester, 
 
 | ID | Scenario | Pass | Tester / Date |
 |----|----------|------|---------------|
-| A1 | Apply from job board link with `pending_application_company` in session | ☐ | |
+| A1 | Apply from public application link (`/apply/:slug`) with `pending_application_company` in session | ☐ | |
 | A2 | Save & Exit mid-wizard → dashboard → resume | ☐ | |
 | A3 | Custom questions required → cannot skip dynamic step | ☐ | |
 | A4 | Modal wizard (`isOpen`) vs full-page route — both paths | ☐ | |

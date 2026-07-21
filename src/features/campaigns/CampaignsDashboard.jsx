@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Plus, Rocket, History, LayoutGrid, Search,
-    Users, Zap, TrendingUp, BarChart3, Loader2
+    Plus, Rocket, History, LayoutGrid,
+    Users, Zap, Loader2
 } from 'lucide-react';
 import { collection, query, orderBy, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '@lib/firebase';
@@ -114,8 +114,6 @@ export function CampaignsDashboard({ companyId }) {
     // Stats Calculation
     const liveCount = sessions.filter(s => ['active', 'queued', 'scheduled'].includes(s.status)).length;
     const totalOutreach = sessions.reduce((acc, s) => acc + (s.progress?.processedCount || 0), 0);
-    // Approximate response rate (mock calculation for now, or need real data source)
-    const responseRate = '0%';
 
     // 2. Create New Campaign Draft
     const handleNewCampaign = async () => {
@@ -209,12 +207,10 @@ export function CampaignsDashboard({ companyId }) {
             </div>
 
             {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-                {[  
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+                {[
                     { label: 'Live Campaigns', value: liveCount, icon: Zap, bgColor: 'bg-blue-50', textColor: 'text-blue-600', ringColor: 'ring-blue-100' },
                     { label: 'Total Outreach', value: totalOutreach, icon: Users, bgColor: 'bg-emerald-50', textColor: 'text-emerald-600', ringColor: 'ring-emerald-100' },
-                    { label: 'Response Rate', value: responseRate, icon: TrendingUp, bgColor: 'bg-amber-50', textColor: 'text-amber-600', ringColor: 'ring-amber-100' },
-                    { label: 'Carrier Score', value: '100', icon: BarChart3, bgColor: 'bg-indigo-50', textColor: 'text-indigo-600', ringColor: 'ring-indigo-100' },
                 ].map((stat, i) => (
                     <div key={i} className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm flex items-center gap-5">
                         <div className={`w-14 h-14 rounded-2xl ${stat.bgColor} flex items-center justify-center ${stat.textColor} ring-1 ${stat.ringColor}`}>
@@ -243,17 +239,6 @@ export function CampaignsDashboard({ companyId }) {
                     >
                         <History size={16} /> Past Sequences
                     </button>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search campaigns..."
-                            className="pl-11 pr-6 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-100 outline-none w-64"
-                        />
-                    </div>
                 </div>
             </div>
 

@@ -27,10 +27,6 @@ export const featureScreens = Object.freeze({
     () => import('@features/company-admin/views/CompanyCandidatesListPage'),
     'CompanyCandidatesListPage',
   ),
-  searchDriversPage: lazyNamed(
-    () => import('@features/company-admin/views/SearchDriversPage'),
-    'SearchDriversPage',
-  ),
   companyCampaignsPage: lazyNamed(
     () => import('@features/campaigns/pages/CompanyCampaignsPage'),
     'CompanyCampaignsPage',
@@ -51,21 +47,9 @@ export const featureScreens = Object.freeze({
     () => import('@features/settings/components/CompanySettings'),
     'CompanySettings',
   ),
-  driverDashboard: lazyNamed(
-    () => import('@features/driver-app/components/DriverDashboard'),
-    'DriverDashboard',
-  ),
-  driverApplicationWizard: lazyNamed(
-    () => import('@features/driver-app/components/application/DriverApplicationWizard'),
-    'DriverApplicationWizard',
-  ),
   publicApplyHandler: lazyNamed(
     () => import('@features/driver-app/components/application/PublicApplyHandler'),
     'PublicApplyHandler',
-  ),
-  interestPage: lazyNamed(
-    () => import('@features/driver-app/components/InterestPage'),
-    'InterestPage',
   ),
   signingRoom: lazyDefault(() => import('@features/signing/SigningRoom')),
   verificationPortal: lazyNamed(

@@ -538,6 +538,16 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     setSubmissionStatus('submitting');
 
     if (isE2ETestMode && !sandbox) {
+      // Deterministic offline-queue path for E2E: mimic "all direct submits failed
+      // but the submission is safely queued" without touching the network.
+      if (getE2EQueryParam('e2eForceQueue', '') === '1') {
+        localStorage.removeItem(`draft_${slug}`);
+        sessionStorage.removeItem('pending_application_recruiter');
+        setSubmissionStatus('queued');
+        showSuccess('Application saved! It will be submitted automatically when connection is restored.');
+        isSubmittingRef.current = false;
+        return;
+      }
       const confirmationNumber = generateConfirmationNumber();
       sessionStorage.setItem('lastConfirmationNumber', confirmationNumber);
       setSubmittedConfirmationNumber(confirmationNumber);

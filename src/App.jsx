@@ -37,10 +37,7 @@ function RootRedirect() {
 
   if (userRole === 'super_admin') return <Navigate to="/super-admin" />;
   if (isCompanyWorkspaceRole(userRole)) return <Navigate to="/company/dashboard" />;
-  if (userRole === 'driver') return <Navigate to="/driver/dashboard" />;
 
-  // P0 FIX: If role is null (pending selection modal), don't show infinite loader
-  // The RoleSelectionModal in DataContext will handle this case
   if (!userRole) return null;
 
   return <Navigate to="/login" />;
@@ -157,6 +154,9 @@ function AppRoutes() {
               />
             );
           })}
+          {/* Unknown company sub-paths (including removed routes like /company/search)
+              redirect to the dashboard rather than rendering an empty workspace. */}
+          <Route path="*" element={<Navigate to="/company/dashboard" replace />} />
           </Route>
         )}
 

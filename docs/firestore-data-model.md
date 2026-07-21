@@ -64,7 +64,7 @@ erDiagram
 | `analytics` | `docId` | **read:** super · **write:** denied | Platform analytics |
 | `system_settings` | `settingId` | **read:** staff or super · **write:** super | Global settings |
 | `recruiter_links` | `code` | **read:** public · **write:** staff/super | Recruiter attribution URLs |
-| `job_posts` | `postId` | **read:** public · **write:** company team for own `companyId` | Job board |
+| `job_posts` | `postId` | **read:** public · **write:** company team for own `companyId` | Legacy (unused; internal job board removed) |
 
 ### Server-only top-level (no rules → client denied)
 
@@ -147,7 +147,7 @@ Same activity/DQ/note subcollections as applications (team/super).
 
 | Subcollection | Access |
 |---------------|--------|
-| `drafts`, `saved_jobs`, `documents` | owner or super |
+| `drafts`, `saved_jobs` (legacy/unused), `documents` | owner or super |
 
 ---
 

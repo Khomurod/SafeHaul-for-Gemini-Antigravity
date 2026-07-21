@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, Briefcase } from 'lucide-react';
+import { HelpCircle } from 'lucide-react';
 import { CustomQuestionsBuilder } from '../questions/CustomQuestionsBuilder';
 import { StandardQuestionsConfig } from '../questions/StandardQuestionsConfig';
 
@@ -52,27 +52,6 @@ export function QuestionsTabContent({
                         <p>Only Company Admins can edit application questions.</p>
                     </div>
                 )}
-            </div>
-        </div>
-    );
-}
-
-export function HiringTabContent() {
-    return (
-        <div className="animate-in slide-in-from-bottom-2">
-            <div className="mb-6">
-                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <Briefcase size={20} className="text-blue-600" /> Hiring Positions & Offers
-                </h3>
-                <p className="text-sm text-gray-500">This section has moved to the new Job Board.</p>
-            </div>
-
-            <div className="p-10 bg-blue-50 border border-blue-100 rounded-xl text-center">
-                <Briefcase size={40} className="mx-auto text-blue-500 mb-4" />
-                <h3 className="text-lg font-bold text-gray-900 mb-2">We've moved!</h3>
-                <p className="text-gray-600 max-w-md mx-auto mb-6">
-                    Job postings are now managed in the dedicated <strong>Job Board</strong> section of your company settings.
-                </p>
             </div>
         </div>
     );

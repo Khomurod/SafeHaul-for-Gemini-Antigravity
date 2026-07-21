@@ -36,13 +36,6 @@ export const COMPANY_ROUTE_MANIFEST = Object.freeze([
     nav: { kind: 'group-item', group: 'applications', label: 'My Leads', icon: 'User' },
   },
   {
-    id: 'searchDrivers',
-    path: 'search',
-    screen: 'searchDriversPage',
-    featureName: 'Search Drivers',
-    nav: { kind: 'item', section: 'main', label: 'Search For Drivers', icon: 'Search', featureFlag: 'searchDB' },
-  },
-  {
     id: 'campaigns',
     path: 'campaigns',
     screen: 'companyCampaignsPage',

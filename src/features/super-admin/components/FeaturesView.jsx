@@ -181,9 +181,6 @@ export function FeaturesView({ companyList, onDataUpdate }) {
     };
 
     const ALL_FEATURES = [
-        { key: 'searchDB', label: 'Search Drivers' },
-        { key: 'driverApp', label: 'Driver Application' },
-        { key: 'telegramApply', label: 'Telegram Apply' },
         { key: 'pev', label: 'PEV' },
         { key: 'campaignsEnabled', label: 'Campaigns' },
         { key: 'eDocs', label: 'E-Docs' },

@@ -5,7 +5,6 @@ import { auth, db } from '@lib/firebase';
 import { doc, getDoc, collection, getCountFromServer } from 'firebase/firestore';
 import { SafeHaulLoader } from '@shared/components/SafeHaulLoader';
 import { CompanyChooserModal } from '@shared/components/modals';
-import { RoleSelectionModal } from '@shared/components/modals/RoleSelectionModal';
 import { SESSION_KEYS } from './dataContext/sessionKeys';
 import { extractRoleContext, getPrimaryCompanyRole } from './dataContext/claims';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
@@ -56,11 +55,6 @@ export function DataProvider({ children }) {
   const [currentCompanyProfile, setCurrentCompanyProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showCompanyChooser, setShowCompanyChooser] = useState(false);
-
-  const [hasDriverProfile, setHasDriverProfile] = useState(false);
-  const [hasEmployerProfile, setHasEmployerProfile] = useState(false);
-  const [showRoleSelection, setShowRoleSelection] = useState(false);
-  const [selectedPortal, setSelectedPortal] = useState(null);
 
   // Prevent stale async auth callbacks from overriding state.
   const authVersionRef = useRef(0);
@@ -123,11 +117,7 @@ export function DataProvider({ children }) {
         setCurrentUserClaims(null);
         setCurrentCompanyProfile(null);
         setUserRole(null);
-        setHasDriverProfile(false);
-        setHasEmployerProfile(false);
-        setSelectedPortal(null);
         setShowCompanyChooser(false);
-        setShowRoleSelection(false);
         setLoading(false);
         return () => {};
       }
@@ -135,13 +125,11 @@ export function DataProvider({ children }) {
       const mockClaimsByMode = {
         super_admin: { globalRole: 'super_admin', roles: { globalRole: 'super_admin' } },
         company_admin: { roles: { [mockCompany.id]: 'company_admin' } },
-        driver: { roles: {} },
       };
       const modeClaims = mockClaimsByMode[e2eAuthMode] || { roles: {} };
       const userRoleByMode = {
         super_admin: 'super_admin',
         company_admin: 'company_admin',
-        driver: 'driver',
       };
       const userRoleForMode = userRoleByMode[e2eAuthMode] || null;
 
@@ -152,14 +140,10 @@ export function DataProvider({ children }) {
       });
       setCurrentUserClaims(modeClaims);
       setUserRole(userRoleForMode);
-      setHasDriverProfile(e2eAuthMode === 'driver');
-      setHasEmployerProfile(e2eAuthMode === 'super_admin' || e2eAuthMode === 'company_admin');
-      setSelectedPortal(e2eAuthMode === 'driver' ? 'driver' : 'employer');
       setCurrentCompanyProfile(
         e2eAuthMode === 'company_admin' || e2eAuthMode === 'super_admin' ? mockCompany : null,
       );
       setShowCompanyChooser(false);
-      setShowRoleSelection(false);
       setLoading(false);
       return () => {};
     }
@@ -174,12 +158,7 @@ export function DataProvider({ children }) {
           setCurrentCompanyProfile(null);
           setUserRole(null);
           setShowCompanyChooser(false);
-          setHasDriverProfile(false);
-          setHasEmployerProfile(false);
-          setShowRoleSelection(false);
-          setSelectedPortal(null);
           localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
-          localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
           localStorage.removeItem(SESSION_KEYS.PLATFORM_STATS);
           return;
         }
@@ -192,14 +171,8 @@ export function DataProvider({ children }) {
         const claims = idTokenResult.claims;
         const { roles, hasCompanyRoles, isSuperAdmin } = extractRoleContext(claims);
 
-        const driverDoc = await getDoc(doc(db, 'drivers', user.uid));
-        if (authVersionRef.current !== thisVersion) return;
-        const isDriver = driverDoc.exists();
-
         setCurrentUser(user);
         setCurrentUserClaims(claims);
-        setHasDriverProfile(isDriver);
-        setHasEmployerProfile(isSuperAdmin || hasCompanyRoles);
 
         if (isSuperAdmin) {
           try {
@@ -219,11 +192,8 @@ export function DataProvider({ children }) {
           }
         }
 
-        const savedPortal = localStorage.getItem(SESSION_KEYS.SELECTED_PORTAL);
-
         if (isSuperAdmin) {
           setUserRole('super_admin');
-          setSelectedPortal('employer');
           const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
           if (savedCompanyId) {
             await loginToCompany(savedCompanyId, null, true);
@@ -231,33 +201,8 @@ export function DataProvider({ children }) {
           return;
         }
 
-        if (isDriver && hasCompanyRoles) {
-          if (savedPortal === 'driver') {
-            setUserRole('driver');
-            setSelectedPortal('driver');
-            return;
-          }
-
-          if (savedPortal === 'employer') {
-            setUserRole(getPrimaryCompanyRole(claims));
-            setSelectedPortal('employer');
-            const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
-            if (savedCompanyId) {
-              await loginToCompany(savedCompanyId, null, true);
-            } else {
-              setShowCompanyChooser(true);
-            }
-            return;
-          }
-
-          setShowRoleSelection(true);
-          setUserRole(null);
-          return;
-        }
-
         if (hasCompanyRoles) {
           setUserRole(getPrimaryCompanyRole(claims));
-          setSelectedPortal('employer');
           const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
           if (savedCompanyId) {
             await loginToCompany(savedCompanyId, null, true);
@@ -267,15 +212,8 @@ export function DataProvider({ children }) {
           return;
         }
 
-        if (isDriver) {
-          setUserRole('driver');
-          setSelectedPortal('driver');
-          return;
-        }
-
-        // Fallback for users with no explicit claim mapping yet.
-        setUserRole(roles.globalRole || 'driver');
-        setSelectedPortal('driver');
+        // No company access and not a super admin: no workspace to route to.
+        setUserRole(roles.globalRole || null);
       } catch (error) {
         console.error('Error initializing user data:', error);
       } finally {
@@ -292,42 +230,11 @@ export function DataProvider({ children }) {
 
   // Handlers wrapped in useCallback so their identity is stable — required for
   // the memoized context slices below to actually prevent re-renders.
-  const handlePortalSelection = useCallback(async (portal) => {
-    setSelectedPortal(portal);
-    localStorage.setItem(SESSION_KEYS.SELECTED_PORTAL, portal);
-    setShowRoleSelection(false);
-
-    if (portal === 'driver') {
-      setUserRole('driver');
-      window.location.href = '/driver/dashboard';
-      return;
-    }
-
-    const actualRole = getPrimaryCompanyRole(currentUserClaims || {});
-    setUserRole(actualRole);
-
-    const savedCompanyId = localStorage.getItem(SESSION_KEYS.SELECTED_COMPANY_ID);
-    if (savedCompanyId) {
-      await loginToCompany(savedCompanyId, null, true);
-      window.location.href = '/company/dashboard';
-    } else {
-      setShowCompanyChooser(true);
-    }
-  }, [currentUserClaims, loginToCompany]);
-
-  const switchPortal = useCallback(() => {
-    localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
-    setSelectedPortal(null);
-    setUserRole(null);
-    setShowRoleSelection(true);
-  }, []);
-
   const handleLogout = useCallback(async () => {
     try {
       companyProfileCacheRef.current = { companyId: null, data: null, fetchedAt: 0 };
       await auth.signOut();
       localStorage.removeItem(SESSION_KEYS.SELECTED_COMPANY_ID);
-      localStorage.removeItem(SESSION_KEYS.SELECTED_PORTAL);
       window.location.href = '/login';
     } catch (e) {
       console.error('Logout failed', e);
@@ -341,24 +248,16 @@ export function DataProvider({ children }) {
     setShowCompanyChooser(true);
   }, []);
 
-  const canSwitchPortals = hasDriverProfile && hasEmployerProfile;
-
   // --- Memoized context slices (split by change-cadence) ---
   const authValue = useMemo(() => ({
     currentUser,
     currentUserClaims,
     userRole,
     loading,
-    hasDriverProfile,
-    hasEmployerProfile,
-    selectedPortal,
-    canSwitchPortals,
-    switchPortal,
     handleLogout,
     logout: handleLogout,
   }), [
-    currentUser, currentUserClaims, userRole, loading, hasDriverProfile,
-    hasEmployerProfile, selectedPortal, canSwitchPortals, switchPortal, handleLogout,
+    currentUser, currentUserClaims, userRole, loading, handleLogout,
   ]);
 
   const companyValue = useMemo(() => ({
@@ -387,15 +286,9 @@ export function DataProvider({ children }) {
     returnToCompanyChooser,
     setShowCompanyChooser,
     loading,
-    hasDriverProfile,
-    hasEmployerProfile,
-    selectedPortal,
-    switchPortal,
-    canSwitchPortals,
   }), [
     currentUser, currentUserClaims, userRole, currentCompanyProfile, loginToCompany,
-    handleLogout, returnToCompanyChooser, loading, hasDriverProfile, hasEmployerProfile,
-    selectedPortal, switchPortal, canSwitchPortals,
+    handleLogout, returnToCompanyChooser, loading,
   ]);
 
   // All hooks are declared above this point — the loading early-return must come
@@ -418,11 +311,7 @@ export function DataProvider({ children }) {
           <DataContext.Provider value={dataValue}>
             {children}
 
-            {currentUser && showRoleSelection && !loading && (
-              <RoleSelectionModal onSelect={handlePortalSelection} />
-            )}
-
-            {currentUser && showCompanyChooser && !loading && selectedPortal === 'employer' && !showRoleSelection && (
+            {currentUser && showCompanyChooser && !loading && (
               <CompanyChooserModal />
             )}
           </DataContext.Provider>

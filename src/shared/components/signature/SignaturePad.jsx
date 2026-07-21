@@ -11,7 +11,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
  *    string when the user finishes a stroke, and with `null` when cleared.
  *  - The canvas is 150px tall and stretches to its parent's width.
  *
- * NOTE: The driver application / offer modal / Telegram flows use
+ * NOTE: The public application flow uses
  * `src/lib/signature.js` (DOM-id based) and the signing room uses
  * `react-signature-canvas` (SignatureSheet). Those have different visuals and
  * validation semantics and are intentionally NOT migrated to this component.
