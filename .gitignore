@@ -147,3 +147,9 @@ cloud_functions.txt
 .gemini/
 .vercel/
 
+# ===========================================
+# SERENA (MCP symbol server — local, machine-specific)
+# ===========================================
+# .serena/cache holds generated LSP symbol indexes (binary); project.yml is local config.
+.serena/
+

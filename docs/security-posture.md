@@ -1,10 +1,38 @@
 # Security posture (guest and public flows)
 
-## Firebase App Check — intentionally not used
+## Firebase App Check — previously used, intentionally removed
 
-SafeHaul **does not use Firebase App Check** (no `initializeAppCheck`, no `enforceAppCheck` on callables, no `request.app` / `request.appcheck` in security rules, no reCAPTCHA Enterprise env vars).
+SafeHaul does **not** currently use Firebase App Check (no `initializeAppCheck`, no
+`enforceAppCheck` on callables, no `request.app` / `request.appcheck` in security
+rules, no reCAPTCHA Enterprise env vars).
 
-This is a **product and architecture choice**, not an oversight. Automated audits and security reviews should **not** report missing App Check as a bug, error, or vulnerability.
+### Decision history and rationale (why it was removed)
+
+App Check **was previously implemented** in SafeHaul. In production it **blocked or
+disrupted legitimate document uploads** for a meaningful number of real drivers —
+most visibly the **CDL** and **medical-card** uploads on the public driver
+application. The result was **failed applications and driver frustration**: drivers
+who could not attach their documents could not complete or submit an application.
+
+Because the public application is the top of the recruiting funnel, **reliable driver
+application submission is deliberately prioritized over strict App Check
+enforcement**. App Check was therefore removed. The current guest-upload access model
+is a **conscious, accepted business-and-security tradeoff**, not an oversight or a
+regression.
+
+### This is an accepted risk — not a defect
+
+Automated audits and security reviews should **not** report the absence of App Check,
+or the existence of unauthenticated guest uploads, as a **newly discovered bug,
+vulnerability, or accidental oversight**. It may be listed as an **accepted,
+documented risk** alongside the compensating controls below — but it must not be
+presented as an error to be "fixed" by re-enabling App Check or blocking guest
+uploads.
+
+The compensating controls below **must remain in place**, and audits should verify
+*those* instead: file-type (MIME) allowlist, size limit, storage path isolation,
+per-company tenant/intake gating, rate limiting, no public Storage read, and the
+Admin-SDK server submit path.
 
 ## Guest and public intake controls
 
@@ -27,6 +55,21 @@ This is a **product and architecture choice**, not an oversight. Automated audit
 ## Tradeoff
 
 Without App Check, automated clients can invoke public callables. Mitigations are rate limiting, strict path validation, and no broad Storage read access. Re-enabling App Check would be a deliberate product change requiring client, rules, functions, and Console alignment.
+
+## When to revisit this decision
+
+Re-open this decision **only** when one of the following is true:
+
+- The **guest-upload architecture changes** (e.g. uploads move fully behind a
+  server-minted signed-URL / token flow, off direct Storage-rule writes), or
+- A **reliable App Check / bot-mitigation configuration becomes available that does
+  not block legitimate drivers** from uploading CDL and medical-card documents
+  (verified against real mobile-camera, HEIC, and large-scan upload paths).
+
+Absent one of those, the absence of App Check is the **intended current design** and
+should be left as-is. Any future change here must be validated end-to-end against the
+public CDL and medical-card upload flow **before** enforcement is turned on, so the
+original driver-upload failures are not reintroduced.
 
 ## Related files
 

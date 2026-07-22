@@ -5,6 +5,18 @@
 **Branch audited:** `claude/safehaul-comprehensive-audit-g67cal`
 **Latest commit at audit time:** `4f59ba0` (SMS line-assignment backfill fix, PR #70)
 
+> ⚠️ **HISTORICAL / SUPERSEDED — Telegram application intake.** After this audit,
+> the **Telegram application-intake feature was removed from this repository**
+> (commit `5a4c8dd`). The `functions/telegram/*` files referenced below
+> (`webhook.js`, `conversationEngine.js`, `sessionService.js`, `schemaAdapter.js`,
+> `validateInitData.js`, etc.) and their tests **no longer exist on `main`**. Any
+> part of this report that describes Telegram intake — its webhook, sessions,
+> schema adapter, or "mostly working" status — is a point-in-time record only and
+> does **not** reflect the current codebase. This note is scoped to Telegram
+> *application intake in this repository*; it makes no claim about unrelated
+> Telegram functionality that may still be active elsewhere in the wider SafeHaul
+> ecosystem.
+
 > **This document was newly created by this audit.** No earlier
 > `FULL_APPLICATION_AUDIT_REPORT.md` existed. A separate, older
 > `docs/PRODUCTION_AUDIT_REPORT.md` exists and was left untouched.

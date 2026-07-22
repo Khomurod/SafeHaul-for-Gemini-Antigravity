@@ -32,7 +32,15 @@ on each `rate_limits` doc — the same TTL pattern we reuse for B1.
 
 ## P0 — Security correctness, small diffs, high confidence
 
-### A1 · Telegram webhook fails open `[Verified]`
+### A1 · Telegram webhook fails open `[Verified]` — ⚠️ SUPERSEDED (feature removed)
+
+> **This remediation is obsolete and no longer applies to this repository.** The
+> Telegram application-intake feature — including `functions/telegram/webhook.js`
+> referenced throughout this section — was **removed from this repo** in commit
+> `5a4c8dd`. There is no longer a Telegram webhook in this codebase to harden, so
+> A1 is retained below for historical context only. (Scoped to Telegram
+> *application intake in this repository*; unrelated Telegram functionality that may
+> exist elsewhere in the SafeHaul ecosystem is not addressed by this note.)
 
 **Problem.** `functions/telegram/webhook.js:7`:
 ```js

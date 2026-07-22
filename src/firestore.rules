@@ -386,7 +386,14 @@ service cloud.firestore {
         // submissions go through the submitGuestApplication callable (Admin SDK),
         // so there is no unauthenticated create branch here.
         allow create: if (isSignedIn() && isValidAuthenticatedApplication() && isDeterministicApplicationId(companyId, applicationId)) ||
-                         (isCompanyTeam(companyId) && (isSuperAdmin() || applicationCompanyTeamUpdateAllowed()));
+                         (isCompanyTeam(companyId) &&
+                          // Tenant binding (mirrors leads at line ~434): staff / super-admin
+                          // manual entry must stamp companyId matching the {companyId} path, so
+                          // an application can never be filed under one company's path while its
+                          // companyId claims another tenant. The driver branch above already
+                          // binds companyId via isDeterministicApplicationId.
+                          tenantCompanyIdMatches(companyId) &&
+                          (isSuperAdmin() || applicationCompanyTeamUpdateAllowed()));
 
         // READ:
         // 1. Company Team
@@ -477,9 +484,10 @@ service cloud.firestore {
       allow create, update: if (isSignedIn() && request.auth.uid == driverId) || isSuperAdmin();
       allow delete: if isSuperAdmin();
       
-      // Subcollections (Drafts, Saved Jobs)
+      // Subcollections (Drafts, Documents)
+      // NOTE: `saved_jobs` removed — the driver saved-jobs / job-board feature was
+      // deleted (commit 5a4c8dd); the path now relies on Firestore default-deny.
       match /drafts/{draftId} { allow read, write: if isOwner(driverId) || isSuperAdmin(); }
-      match /saved_jobs/{jobId} { allow read, write: if isOwner(driverId) || isSuperAdmin(); }
       match /documents/{docId} { allow read, write: if isOwner(driverId) || isSuperAdmin(); }
     }
 
@@ -562,16 +570,13 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
-    // --- JOB POSTS (Public Job Board) ---
-    match /job_posts/{postId} {
-      // Public read for the job board (drivers browsing jobs)
-      allow read: if true;
-      
-      // Only company team members can create/update their own company's job posts
-      allow create: if isSignedIn() && isCompanyTeam(request.resource.data.companyId);
-      allow update: if isSignedIn() && isCompanyTeam(resource.data.companyId);
-      allow delete: if isSignedIn() && (isCompanyAdmin(resource.data.companyId) || isSuperAdmin());
-    }
+    // --- JOB POSTS (REMOVED) ---
+    // The public Job Board feature was removed (commit 5a4c8dd). The former
+    // `job_posts` rules (public `read: if true` + company-team write) are deleted
+    // so this path relies on Firestore default-deny. No active code reads or
+    // writes this collection; any historical documents are simply left
+    // unreachable (not deleted). See firestore.rules.security.test.js for the
+    // default-deny regression test.
 
     // --- COLLECTION GROUPS (Queries across all collections) ---
     match /{path=**}/applications/{appId} {

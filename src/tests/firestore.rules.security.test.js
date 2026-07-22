@@ -696,4 +696,91 @@ describeFirestore('firestore.rules security regressions', () => {
       }),
     );
   });
+
+  // ===================================================================
+  // APP-COMPANYID: application create must stamp companyId matching the path
+  // (mirrors the leads tenant binding; blocks staff cross-tenant misfiling)
+  // ===================================================================
+
+  it('APP-COMPANYID: staff cannot create an application whose companyId != path', async () => {
+    const staffA = testEnv.authenticatedContext('rec-a', {
+      roles: { 'company-a': 'recruiter' },
+    }).firestore();
+
+    // (1) Spoofed companyId in the body (company-b) under the company-a path -> DENIED.
+    await assertFails(
+      setDoc(doc(staffA, 'companies', 'company-a', 'applications', 'spoof-1'), {
+        companyId: 'company-b', applicantId: 'spoof-1', firstName: 'Spoof', status: 'New Lead',
+      }),
+    );
+    // (2) Missing companyId entirely -> DENIED (tenant binding requires the field).
+    await assertFails(
+      setDoc(doc(staffA, 'companies', 'company-a', 'applications', 'nocid-1'), {
+        applicantId: 'nocid-1', firstName: 'NoCid', status: 'New Lead',
+      }),
+    );
+    // (3) Correct companyId matching the path -> ALLOWED (legit manual entry preserved).
+    await assertSucceeds(
+      setDoc(doc(staffA, 'companies', 'company-a', 'applications', 'ok-1'), {
+        companyId: 'company-a', applicantId: 'ok-1', firstName: 'Ok', status: 'New Lead',
+      }),
+    );
+  });
+
+  it('APP-COMPANYID: driver deterministic-id create still binds companyId to the path', async () => {
+    const driverDb = testEnv
+      .authenticatedContext('driver-7', { email: 'd7@x.com', email_verified: true })
+      .firestore();
+
+    // Mismatched companyId on the deterministic-id path -> DENIED.
+    await assertFails(
+      setDoc(doc(driverDb, 'companies', 'company-a', 'applications', 'driver-7'), {
+        companyId: 'company-b', applicantId: 'driver-7', driverId: 'driver-7', status: 'New Application',
+      }),
+    );
+    // Matching companyId -> ALLOWED (unchanged legitimate self-submission).
+    await assertSucceeds(
+      setDoc(doc(driverDb, 'companies', 'company-a', 'applications', 'driver-7'), {
+        companyId: 'company-a', applicantId: 'driver-7', driverId: 'driver-7', status: 'New Application',
+      }),
+    );
+  });
+
+  // ===================================================================
+  // REMOVED-FEATURES: obsolete rules deleted -> Firestore default-deny applies
+  // (public Job Board + driver Saved Jobs were removed in commit 5a4c8dd)
+  // ===================================================================
+
+  it('REMOVED: job_posts collection is fully default-denied (former public read is gone)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'job_posts', 'post1'), {
+        companyId: 'company-a', title: 'Legacy Job',
+      });
+    });
+
+    const guestDb = testEnv.unauthenticatedContext().firestore();
+    const staffA = testEnv.authenticatedContext('rec-a', { roles: { 'company-a': 'recruiter' } }).firestore();
+    const superDb = testEnv.authenticatedContext('super-1', { globalRole: 'super_admin' }).firestore();
+
+    // Previously `allow read: if true` — now denied for guest, staff, and super admin.
+    await assertFails(getDoc(doc(guestDb, 'job_posts', 'post1')));
+    await assertFails(getDoc(doc(staffA, 'job_posts', 'post1')));
+    await assertFails(getDoc(doc(superDb, 'job_posts', 'post1')));
+    // Previously company-team writable — now denied.
+    await assertFails(setDoc(doc(staffA, 'job_posts', 'post2'), { companyId: 'company-a', title: 'New' }));
+  });
+
+  it('REMOVED: drivers/{id}/saved_jobs is default-denied even for the owner (drafts still work)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'drivers', 'driver-1', 'saved_jobs', 'job1'), { title: 'Saved' });
+    });
+
+    const ownerDb = testEnv.authenticatedContext('driver-1').firestore();
+
+    // Previously owner read/write — now denied (feature removed).
+    await assertFails(getDoc(doc(ownerDb, 'drivers', 'driver-1', 'saved_jobs', 'job1')));
+    await assertFails(setDoc(doc(ownerDb, 'drivers', 'driver-1', 'saved_jobs', 'job2'), { title: 'x' }));
+    // Control: the still-active drafts subcollection remains owner-accessible.
+    await assertSucceeds(setDoc(doc(ownerDb, 'drivers', 'driver-1', 'drafts', 'draft1'), { data: 1 }));
+  });
 });
