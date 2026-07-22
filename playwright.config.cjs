@@ -43,8 +43,11 @@ module.exports = defineConfig({
             use: { ...devices['iPhone 13'] },
         },
         {
+            // Chromium-based (Pixel 7) — must honor the same PW_CHROMIUM_EXECUTABLE
+            // override as the desktop `chromium` project so a system Chromium is used
+            // for the mobile lane too (CI/sandbox parity).
             name: 'mobile-chrome',
-            use: { ...devices['Pixel 7'] },
+            use: { ...devices['Pixel 7'], ...chromiumLaunchOverride },
         },
     ],
     /* Run your local dev server before starting the tests */

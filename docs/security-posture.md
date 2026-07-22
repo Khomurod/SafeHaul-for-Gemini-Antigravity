@@ -46,11 +46,44 @@ Admin-SDK server submit path.
 | Short-lived preview URLs | `getSignedGuestUploadUrl` — 15-minute signed read URLs, path-validated |
 | Primary submit path | `submitGuestApplication` via Admin SDK (Firestore client rules are fallback only) |
 
+## Accepted gap: a direct Storage upload can bypass the backend helper
+
+The controls above are the intended, best-effort path. The SafeHaul app calls the
+`getSignedUploadUrl` backend helper (`functions/storageSecure.js`), which
+**rate-limits per IP** (`checkRateLimit`) and **checks the company is accepting
+intake** (`assertCompanyAcceptingIntake`) before returning an approved storage path.
+A well-behaved client always goes through that helper.
+
+However, the **actual file write** is a Firebase Storage SDK `uploadBytes` call
+authorized by the **Storage rules** — not by a server-minted token.
+`src/storage.rules` permits an **unauthenticated** `create` under
+`companies/{companyId}/{applications|autofill}/guest_uploads/**` for any file that
+passes the MIME-type and 20 MB size checks. A client that calls `uploadBytes`
+**directly**, skipping `getSignedUploadUrl`, therefore **bypasses the backend rate
+limit and the intake gate**; only the Storage-rule checks (file type, size, path
+shape) apply on that direct path.
+
+**This gap is understood and currently accepted** — it is the same
+business/security tradeoff described above. App Check, the control that would close
+it, blocked legitimate CDL and medical-card uploads, so it was removed, and reliable
+driver submission is prioritized over closing this bypass.
+
+- The current direct guest-upload behavior **must not be blocked or tightened**.
+  Doing so risks re-introducing the exact upload failures that prevented drivers
+  from submitting.
+- Future audits may cite this **only as a documented, accepted risk** — never as an
+  accidental defect or oversight.
+- It should be **reconsidered only when a reliable replacement** can protect the
+  direct-upload path (e.g. server-minted signed upload URLs, or an App Check /
+  bot-mitigation configuration) **without blocking legitimate drivers** — verified
+  against real mobile-camera, HEIC, and large-scan uploads before any enforcement.
+
 ## What is not a finding
 
 - Absence of `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY` or App Check debug tokens
 - Guest Storage writes without `request.app`
 - Unauthenticated callables for guest upload path, signed read URL, and application submit (with rate limits and validation)
+- A direct Storage `uploadBytes` bypassing the `getSignedUploadUrl` rate limit / intake gate — see "Accepted gap" above (documented accepted risk, not a defect)
 
 ## Tradeoff
 
