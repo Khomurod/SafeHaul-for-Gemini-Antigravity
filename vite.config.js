@@ -46,7 +46,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
-        telegramSign: path.resolve(__dirname, 'telegram-sign.html'),
       },
       output: {
         manualChunks: {

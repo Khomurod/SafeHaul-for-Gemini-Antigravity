@@ -44,8 +44,7 @@ describe('DataContext split (D2)', () => {
         for (const k of [
             'currentUser', 'currentUserClaims', 'userRole', 'currentCompanyProfile',
             'setCurrentCompanyProfile', 'loginToCompany', 'handleLogout', 'logout',
-            'returnToCompanyChooser', 'setShowCompanyChooser', 'loading', 'hasDriverProfile',
-            'hasEmployerProfile', 'selectedPortal', 'switchPortal', 'canSwitchPortals',
+            'returnToCompanyChooser', 'setShowCompanyChooser', 'loading',
         ]) {
             expect(keys).toContain(k);
         }

@@ -58,7 +58,7 @@ describe('buildApplicationDoc', () => {
     expect(built.applicationDoc.updatedAt).toEqual({ __srv: true });
   });
 
-  it('honors Telegram source metadata', () => {
+  it('honors provided source metadata', () => {
     const built = buildApplicationDoc({
       companyId: 'co1',
       companyName: 'Tenant Co',
@@ -67,16 +67,16 @@ describe('buildApplicationDoc', () => {
       signature: 'data:image/png;base64,AAA',
       formData: {},
       sourceMeta: {
-        sourceType: 'Telegram Bot',
+        sourceType: 'Public Application',
         sourceSlug: 'tenant',
         recruiterCode: 'rec1',
-        clientVersion: 'telegram-1.0',
+        clientVersion: '2.0-bulletproof',
       },
     });
-    expect(built.applicationDoc.sourceType).toBe('Telegram Bot');
+    expect(built.applicationDoc.sourceType).toBe('Public Application');
     expect(built.applicationDoc.sourceSlug).toBe('tenant');
     expect(built.applicationDoc.recruiterCode).toBe('rec1');
-    expect(built.applicationDoc.lifecycle.clientVersion).toBe('telegram-1.0');
+    expect(built.applicationDoc.lifecycle.clientVersion).toBe('2.0-bulletproof');
   });
 
   it('persists normalized search fields from the shared normalizer', () => {

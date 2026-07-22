@@ -1,6 +1,5 @@
 import {
   COMPANY_WORKSPACE_ROLES,
-  DRIVER_ROLES,
   SUPER_ADMIN_ROLES,
 } from '@app/auth/roles';
 
@@ -15,12 +14,6 @@ export const PUBLIC_FEATURE_ROUTE_MANIFEST = Object.freeze([
     path: '/apply/:slug',
     screen: 'publicApplyHandler',
     featureName: 'Driver Application',
-  },
-  {
-    id: 'interestPage',
-    path: '/interest/:slug',
-    screen: 'interestPage',
-    featureName: 'Interest Page',
   },
   {
     id: 'signingRoom',
@@ -61,27 +54,6 @@ export const PROTECTED_FEATURE_ROUTE_MANIFEST = Object.freeze([
     screen: 'superAdminDashboard',
     featureName: 'Super Admin',
     allowedRoles: SUPER_ADMIN_ROLES,
-  },
-  {
-    id: 'driverDashboard',
-    path: '/driver/dashboard',
-    screen: 'driverDashboard',
-    featureName: 'Driver Dashboard',
-    allowedRoles: DRIVER_ROLES,
-  },
-  {
-    id: 'driverApply',
-    path: '/driver/apply',
-    screen: 'driverApplicationWizard',
-    featureName: 'Driver Application',
-    allowedRoles: DRIVER_ROLES,
-  },
-  {
-    id: 'driverApplyCompany',
-    path: '/driver/apply/:companyId',
-    screen: 'driverApplicationWizard',
-    featureName: 'Driver Application',
-    allowedRoles: DRIVER_ROLES,
   },
 ]);
 

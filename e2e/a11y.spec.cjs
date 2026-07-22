@@ -33,10 +33,4 @@ test.describe('@a11y mobile-critical journeys (no serious/critical violations)',
         await expect(page.locator('[data-signing-page="1"]')).toBeVisible({ timeout: 10_000 });
         expect(await seriousViolations(page)).toEqual([]);
     });
-
-    test('authenticated driver application', async ({ page }) => {
-        await page.goto('/driver/apply/e2e-company?e2eAuth=driver');
-        await page.waitForLoadState('networkidle');
-        expect(await seriousViolations(page)).toEqual([]);
-    });
 });

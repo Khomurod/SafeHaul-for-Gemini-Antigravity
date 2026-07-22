@@ -108,12 +108,6 @@ exports.parseCdlWithGroq = require('./cdlParser').parseCdlWithGroq;
 exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').createPostApplicationSigningRequest;
 exports.backfillApplicationSearchFields = require('./searchFieldsBackfill').backfillApplicationSearchFields;
 
-// 4c. Telegram Driver Application Channel (additive public intake)
-const telegramApplication = require('./telegram/application');
-exports.telegramWebhook = require('./telegram/webhook').telegramWebhook;
-exports.getTelegramSessionStatus = telegramApplication.getTelegramSessionStatus;
-exports.completeTelegramApplication = telegramApplication.completeTelegramApplication;
-
 // 4d. Sandbox applications (Super Admin maintenance)
 const sandboxApplication = require('./sandboxApplication');
 exports.listSandboxTenantCompanies = sandboxApplication.listSandboxTenantCompanies;
@@ -231,6 +225,4 @@ exports.enforceFeatureSchedules = featureScheduler.enforceFeatureSchedules;
 
 // 19. Legacy Compatibility Callables (frontend contract preservation)
 exports.updateBulkSessionStatus = legacyCompat.updateBulkSessionStatus;
-exports.confirmDriverInterest = legacyCompat.confirmDriverInterest;
-exports.sendDriverInvite = legacyCompat.sendDriverInvite;
 exports.backfillEmployerFields = legacyCompat.backfillEmployerFields;

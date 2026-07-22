@@ -4,4 +4,3 @@ export { FeatureLockedModal } from './FeatureLockedModal';
 export { CallOutcomeModal } from './CallOutcomeModal';
 export { CallOutcomeModalUI } from './CallOutcomeModalUI';
 export { ManageTeamModal } from './ManageTeamModal';
-export { RoleSelectionModal } from './RoleSelectionModal';

@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { saveCompanySettings } from '@features/companies';
 import { uploadCompanyLogo } from '@lib/firebase';
-import { Save, Loader2, Edit2, Info, ListChecks, Briefcase } from 'lucide-react';
+import { Save, Loader2, Edit2, Info, ListChecks } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
 import { useData } from '@/context/DataContext';
-import { INITIAL_HIRING_STATE } from './hiring/HiringConfig';
-import { CompanyInfoSection, QuestionsTabContent, HiringTabContent } from './profile';
+import { CompanyInfoSection, QuestionsTabContent } from './profile';
 
 export function CompanyProfileTab({ currentCompanyProfile }) {
     const { showSuccess, showError } = useToast();
@@ -35,7 +34,6 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
                 companyLogoUrl: currentCompanyProfile.companyLogoUrl || '',
                 applicationConfig: currentCompanyProfile.applicationConfig || {},
                 customQuestions: currentCompanyProfile.customQuestions || [],
-                hiringPositions: currentCompanyProfile.hiringPositions || INITIAL_HIRING_STATE
             });
         }
     }, [currentCompanyProfile]);
@@ -50,7 +48,6 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
                 legal: { mcNumber: compData.mcNumber, dotNumber: compData.dotNumber },
                 applicationConfig: compData.applicationConfig,
                 customQuestions: compData.customQuestions,
-                hiringPositions: compData.hiringPositions,
                 companyLogoUrl: compData.companyLogoUrl
             };
             await saveCompanySettings(currentCompanyProfile.id, payload);
@@ -125,9 +122,6 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
             )}
             {activeTab === 'questions' && (
                 <QuestionsTabContent compData={compData} isCompanyAdmin={isCompanyAdmin} onConfigChange={(newConfig) => setCompData(prev => ({ ...prev, applicationConfig: newConfig }))} onQuestionsChange={(updatedQuestions) => setCompData(prev => ({ ...prev, customQuestions: updatedQuestions }))} onSave={handleSaveCompany} loading={loading} />
-            )}
-            {activeTab === 'hiring' && (
-                <HiringTabContent compData={compData} isCompanyAdmin={isCompanyAdmin} onHiringChange={(newData) => setCompData(prev => ({ ...prev, hiringPositions: newData }))} />
             )}
         </div>
     );

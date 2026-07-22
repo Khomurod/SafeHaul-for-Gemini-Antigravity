@@ -17,9 +17,6 @@ Defined in `ALL_FEATURES` in [`FeaturesView.jsx`](../src/features/super-admin/co
 
 | Key | Label (admin UI) | Enforced in product |
 |-----|------------------|---------------------|
-| `searchDB` | Search Drivers | Sidebar (`featureFlag`), [`SearchDriversPage.jsx`](../src/features/company-admin/views/SearchDriversPage.jsx) requires `=== true`, dashboard quick link |
-| `driverApp` | Driver Application | **Super-admin toggle only** — no `src/` gate found on `/apply/:slug` or driver wizard |
-| `telegramApply` | Telegram Apply | Server-side Telegram bot intake requires `companies/{companyId}.features.telegramApply === true`; does not affect `/apply/:slug` |
 | `pev` | PEV | [`PEVTab.jsx`](../src/features/company-admin/components/tabs/PEVTab.jsx) blocks when `=== false` |
 | `campaignsEnabled` | Campaigns | Sidebar; [`CampaignsDashboard.jsx`](../src/features/campaigns/CampaignsDashboard.jsx) uses `!== false` (default on) |
 | `eDocs` | E-Docs | Sidebar; [`DocumentsManager.jsx`](../src/features/company-admin/views/DocumentsManager.jsx) when `=== false` |
@@ -43,7 +40,7 @@ if (nav.featureFlag && featureFlags[nav.featureFlag] === false) return false;
 - Missing key or `undefined` → nav item **shown**
 - Explicit `false` → nav item **hidden**
 
-Manifest flags: `searchDB`, `campaignsEnabled`, `eDocs`, `importLeads` ([`companyRouteManifest.js`](../src/app/routes/companyRouteManifest.js)).
+Manifest flags: `campaignsEnabled`, `eDocs`, `importLeads` ([`companyRouteManifest.js`](../src/app/routes/companyRouteManifest.js)).
 
 ### 2. Page-level guards
 
@@ -51,20 +48,18 @@ Stricter checks on direct URL access:
 
 | Page | Condition to allow |
 |------|-------------------|
-| Search Drivers | `features.searchDB === true` |
 | Import Leads | `features.importLeads !== false` (implicit default on) |
 | E-Docs | `features.eDocs !== false` |
 | Campaigns | `features.campaignsEnabled !== false` |
 | PEV tab | `features.pev !== false` |
 | Call tracking settings | `features.callTracking !== false` |
 
-**Asymmetry:** `searchDB` is opt-in (`=== true`); most others opt-out (`=== false` disables).
+**Asymmetry:** most flags opt-out (`=== false` disables).
 
-### 3. Public / driver surfaces
+### 3. Public surfaces
 
 - `public_profiles` sync **strips** `features` and `featureSchedules` ([`buildPublicProfileDto`](../functions/companyAdmin.js) / tests in `publicProfileDto.test.js`).
-- Guest apply and authenticated driver routes are **not** gated by `features.driverApp` or `features.telegramApply` in frontend code today.
-- Telegram bot intake is gated server-side by `features.telegramApply === true`.
+- The public application (`/apply/:slug`) is **not** gated by any `features` flag.
 
 ---
 
@@ -144,14 +139,11 @@ Mounted from company shell (see `CompanyAppShell` / dashboard layout).
 {
   "companyName": "Acme Trucking",
   "features": {
-    "searchDB": true,
     "campaignsEnabled": true,
     "eDocs": true,
     "pev": true,
     "importLeads": true,
-    "callTracking": true,
-    "driverApp": true,
-    "telegramApply": false
+    "callTracking": true
   },
   "featureSchedules": {
     "campaignsEnabled": "2026-06-01T04:00:00.000Z"
@@ -185,7 +177,5 @@ After scheduler runs past June 1:
 
 ## Gaps / implementation notes
 
-1. **`driverApp`** — toggled in super admin but not enforced on public apply or driver portal; treat as operational/metadata unless server-side checks are added.
-2. **`telegramApply`** — opt-in for the Telegram bot channel only; web apply remains unchanged.
-3. **Default-on vs default-off** — `searchDB` requires explicit `true`; other flags disable only on explicit `false`.
-4. **Scale** — scheduler loads all companies each run; acceptable at current scale per code comment; would need indexing if tenant count grows large.
+1. **Default-on** — flags disable only on explicit `false`; a missing key means the feature is on.
+2. **Scale** — scheduler loads all companies each run; acceptable at current scale per code comment; would need indexing if tenant count grows large.

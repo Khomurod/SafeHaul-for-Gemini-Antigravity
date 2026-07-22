@@ -2,7 +2,7 @@
  * useApplicationSchema Hook
  * 
  * Fetches and merges global schema with company overrides.
- * Used by DriverApplicationWizard and ApplicationDetailViewV2.
+ * Used by the public application steps and ApplicationDetailViewV2.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';

@@ -11,7 +11,6 @@ import {
     AlertCircle,
     Clock,
     Mail,
-    Send,
     Building2,
     History
 } from 'lucide-react';
@@ -39,9 +38,6 @@ export function DossierSidebar({
     // Contact Logic
     const email = appData?.email || '';
     const phone = appData?.phone || '';
-
-    // Sanitize for Telegram (remove non-digits)
-    const telegramLink = phone ? `https://t.me/+${phone.replace(/\D/g, '')}` : '#';
 
     return (
         <div className="flex flex-col h-full">
@@ -82,7 +78,7 @@ export function DossierSidebar({
 
             {/* Contact Footer (Grid Layout) */}
             <div className="p-4 border-t border-gray-200 bg-white">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                     {/* Phone */}
                     <a
                         href={`tel:${phone}`}
@@ -107,21 +103,6 @@ export function DossierSidebar({
                     >
                         <Mail size={18} className="mb-1" />
                         <span className="text-[10px] font-bold">Email</span>
-                    </a>
-
-                    {/* Telegram */}
-                    <a
-                        href={telegramLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-colors ${phone
-                            ? 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700 hover:text-blue-700'
-                            : 'border-gray-100 bg-gray-50 text-gray-300 pointer-events-none'
-                            }`}
-                        title="Open Telegram"
-                    >
-                        <Send size={18} className="mb-1" />
-                        <span className="text-[10px] font-bold">Telegram</span>
                     </a>
                 </div>
             </div>

@@ -9,11 +9,11 @@ const {
   submitApplication,
 } = require('./helpers/wizardHelpers.cjs');
 
-test.describe('authenticated offline queue submit', () => {
+test.describe('guest offline queue submit', () => {
   test.describe.configure({ timeout: 90_000 });
 
   test('shows queued message when forced queue mode on final submit', async ({ page, context }) => {
-    await page.goto('/driver/apply/e2e-company?e2eAuth=driver&e2eForceQueue=1');
+    await page.goto('/apply/e2e-company?e2eForceQueue=1');
     await expect(page.locator('#step-title')).toHaveText('Step 1 of 9: Personal Information', {
       timeout: 30_000,
     });
@@ -30,6 +30,6 @@ test.describe('authenticated offline queue submit', () => {
 
     await context.setOffline(true);
     await submitApplication(page);
-    await expect(page.getByText('Application saved!')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Application Saved')).toBeVisible({ timeout: 15_000 });
   });
 });

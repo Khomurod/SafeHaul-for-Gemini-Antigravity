@@ -89,8 +89,6 @@ export async function saveCompanySettings(companyId, settingsData) {
   // NEW: Save application configuration (Required/Optional fields)
   if (settingsData.applicationConfig) payload.applicationConfig = settingsData.applicationConfig;
 
-  // NEW: Save hiring positions structure
-  if (settingsData.hiringPositions) payload.hiringPositions = settingsData.hiringPositions;
   if (settingsData.postApplicationTemplates) {
     payload.postApplicationTemplates = settingsData.postApplicationTemplates;
   }

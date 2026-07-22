@@ -47,9 +47,9 @@ describe('canonical status values (stored data — must not change)', () => {
 describe('firestore.rules stays in sync with frontend-created statuses', () => {
     const rules = read('src/firestore.rules');
 
-    it('driver self-update whitelist accepts exactly the offer response statuses the app sends', () => {
-        // The driver-side offer flow (DriverOfferModal -> respondToOffer) writes
-        // these statuses; the rules whitelist them for driver self-updates.
+    it('driver self-update whitelist accepts exactly the offer response statuses', () => {
+        // The application status vocabulary still includes these offer response
+        // statuses; the rules whitelist them for the driver self-update path.
         const whitelist = rules.match(/request\.resource\.data\.status in \[([^\]]*)\]/);
         expect(whitelist).toBeTruthy();
         expect(whitelist[1]).toContain(`'${OFFER_ACCEPTED_STATUS}'`);

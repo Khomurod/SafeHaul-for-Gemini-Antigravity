@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Phone, X, Save, Loader2, MessageSquare, CheckCircle, XCircle,
-  Clock, AlertCircle, Ban, ThumbsDown, Truck, ExternalLink, Briefcase,
-  BellPlus, Send, Copy, Check, User
+  Clock, AlertCircle, Ban, ThumbsDown, Briefcase,
+  BellPlus, User
 } from 'lucide-react';
-import { normalizePhone, formatPhoneNumber } from '@shared/utils/helpers';
-import { auth } from '@lib/firebase';
+import { formatPhoneNumber } from '@shared/utils/helpers';
 import { EXPERIENCE_OPTIONS } from '../../../config/form-options';
 
 const OUTCOMES_CONFIG = [
@@ -73,13 +72,6 @@ const POSITIONS = [
 
 
 
-const getTelegramLink = (rawPhone) => {
-  if (!rawPhone) return '';
-  let cleaned = normalizePhone(rawPhone);
-  if (cleaned.length === 10) cleaned = '1' + cleaned;
-  return `https://t.me/+${cleaned}`;
-};
-
 export function CallOutcomeModalUI({
   lead,
   onClose,
@@ -99,11 +91,7 @@ export function CallOutcomeModalUI({
 
   showDetailInputs,
   showCallbackSelect,
-  onQuickReminder,
-  companySlug
 }) {
-
-  const [copied, setCopied] = useState(false);
 
   const handleQuickReminder = () => {
     const now = new Date();
@@ -115,18 +103,6 @@ export function CallOutcomeModalUI({
     setCallbackTime(timeStr);
     setOutcome('callback');
     setNotes('Quick reminder set: No Answer (1 hr follow-up)');
-  };
-
-  const driverAppBase = import.meta.env.VITE_DRIVER_APP_URL || window.location.origin;
-  const currentRecruiterId = auth.currentUser?.uid;
-  const safeSlug = companySlug || 'general';
-
-  const recruiterLink = `${driverAppBase.replace(/\/$/, '')}/interest/${safeSlug}?r=${currentRecruiterId}&l=${lead.id}`;
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(recruiterLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -188,28 +164,6 @@ export function CallOutcomeModalUI({
               );
             })}
           </div>
-
-          {outcome === 'interested' && (
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl animate-in fade-in slide-in-from-top-2">
-              <div className="flex gap-3 items-start">
-                <div className="bg-blue-100 p-2 rounded-lg text-blue-600 shrink-0">
-                  <Send size={20} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-bold text-blue-900">Next Step: Send Invite</h4>
-                  <p className="text-xs text-blue-700 mt-1 mb-3 break-words">
-                    Send this specific link. It asks "Are you interested?" and assigns them to <strong>YOU</strong> upon confirmation.
-                  </p>
-                  <div className="flex items-center gap-2 bg-white p-2 rounded border border-blue-100 w-full">
-                    <code className="flex-1 text-xs font-mono text-gray-500 truncate block">{recruiterLink}</code>
-                    <button type="button" onClick={copyLink} className="text-blue-600 hover:text-blue-800 shrink-0">
-                      {copied ? <Check size={14} /> : <Copy size={14} />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {outcome === 'no_answer' && (
             <div className="flex justify-center animate-in fade-in">
@@ -312,19 +266,6 @@ export function CallOutcomeModalUI({
             ></textarea>
           </div>
 
-          {outcome === 'interested' && lead.phone && (
-            <div className="bg-green-50 p-3 rounded-lg border border-green-100 text-sm text-green-800 animate-in fade-in flex justify-between items-center">
-              <span className="text-xs font-medium">Chat open?</span>
-              <a
-                href={getTelegramLink(lead.phone)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-green-700 hover:text-green-900 hover:underline font-bold"
-              >
-                <ExternalLink size={12} /> Open Telegram
-              </a>
-            </div>
-          )}
         </form>
 
         <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 shrink-0">

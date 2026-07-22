@@ -87,21 +87,13 @@ export function LoginScreen() {
         return;
       }
 
-      // P2-3 FIX: Check actual role from claims for proper role-based routing
-      const isDriver = token.claims.driver === true || userDoc?.role === 'driver';
       const hasCompanyAccess = !membershipsSnap.empty;
 
-      if (isDriver && hasCompanyAccess) {
-        // User is BOTH a driver and an employee -> Show Selection Screen
-        navigate('/', { replace: true });
-      } else if (hasCompanyAccess) {
-        // User is ONLY an employee -> Go to Company Dashboard
+      if (hasCompanyAccess) {
+        // Employee / recruiter / company admin -> Company workspace
         navigate('/company/dashboard', { replace: true });
-      } else if (isDriver) {
-        // User is ONLY a driver -> Go to Driver Dashboard
-        navigate('/driver/dashboard', { replace: true });
       } else {
-        // Fallback
+        // Fallback: let the root redirect resolve where to send them.
         navigate('/', { replace: true });
       }
 
