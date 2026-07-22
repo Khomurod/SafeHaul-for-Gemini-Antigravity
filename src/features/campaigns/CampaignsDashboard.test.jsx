@@ -18,6 +18,7 @@ vi.mock('@/context/DataContext', () => ({
 
 // Mock Firestore
 const mockOnSnapshot = vi.fn();
+const mockDeleteDoc = vi.fn();
 vi.mock('firebase/firestore', () => ({
     collection: vi.fn(),
     query: vi.fn(),
@@ -28,16 +29,37 @@ vi.mock('firebase/firestore', () => ({
     },
     doc: vi.fn(),
     setDoc: vi.fn(),
+    deleteDoc: (...args) => mockDeleteDoc(...args),
     serverTimestamp: vi.fn()
 }));
 
-vi.mock('@lib/firebase', () => ({
-    db: {}
+const mockCancelCallable = vi.fn().mockResolvedValue({ data: { success: true } });
+vi.mock('firebase/functions', () => ({
+    httpsCallable: (_functions, name) => (...args) => {
+        if (name === 'cancelBulkSession') return mockCancelCallable(...args);
+        throw new Error(`Unexpected callable in test: ${name}`);
+    },
 }));
 
-// Mock child components
+vi.mock('@lib/firebase', () => ({
+    db: {},
+    functions: {}
+}));
+
+// Mock child components — surface the cancel/delete affordances so the
+// dashboard handlers can be exercised.
 vi.mock('./components/CampaignCard', () => ({
-    CampaignCard: ({ campaign }) => <div data-testid="campaign-card">{campaign.name} - {campaign.status}</div>
+    CampaignCard: ({ campaign, onCancel, onDelete }) => (
+        <div data-testid="campaign-card">
+            {campaign.name} - {campaign.status}
+            {onCancel && (
+                <button onClick={() => onCancel(campaign)}>cancel {campaign.id}</button>
+            )}
+            {onDelete && (
+                <button onClick={() => onDelete(campaign)}>delete {campaign.id}</button>
+            )}
+        </div>
+    )
 }));
 
 vi.mock('./CampaignEditor', () => ({
@@ -113,6 +135,76 @@ describe('CampaignsDashboard', () => {
         // Check Stats (Live Campaigns = 1)
         expect(screen.getByText('1')).toBeInTheDocument(); // Value for Live Campaigns
         expect(screen.getByText('50')).toBeInTheDocument(); // Value for Total Outreach
+    });
+});
+
+describe('CampaignsDashboard cancel vs delete', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockCancelCallable.mockResolvedValue({ data: { success: true } });
+        // happy-dom does not implement confirm; provide one.
+        window.confirm = vi.fn(() => true);
+    });
+
+    async function renderWithSessions(sessions) {
+        let draftCallback;
+        let sessionCallback;
+        mockOnSnapshot.mockImplementation((q, cb) => {
+            if (!draftCallback) draftCallback = cb;
+            else sessionCallback = cb;
+            return vi.fn();
+        });
+
+        render(<CampaignsDashboard companyId="co1" />);
+        await React.act(async () => {
+            draftCallback({ docs: [] });
+            sessionCallback({
+                docs: sessions.map((s) => ({ id: s.id, data: () => s })),
+            });
+        });
+        fireEvent.click(screen.getByText(/Past Sequences/i));
+    }
+
+    it.each(['queued', 'active'])(
+        'cancels a %s session through cancelBulkSession instead of deleting the doc',
+        async (status) => {
+            await renderWithSessions([
+                { id: 's1', name: 'Live One', status, createdAt: { toDate: () => new Date() } },
+            ]);
+
+            fireEvent.click(screen.getByText('cancel s1'));
+
+            await waitFor(() => {
+                expect(mockCancelCallable).toHaveBeenCalledWith({ companyId: 'co1', sessionId: 's1' });
+            });
+            expect(mockDeleteDoc).not.toHaveBeenCalled();
+        },
+    );
+
+    it('refuses to delete a live session outright', async () => {
+        await renderWithSessions([
+            { id: 's1', name: 'Live One', status: 'active', createdAt: { toDate: () => new Date() } },
+        ]);
+
+        fireEvent.click(screen.getByText('delete s1'));
+
+        await waitFor(() => {
+            expect(mockDeleteDoc).not.toHaveBeenCalled();
+        });
+        expect(mockCancelCallable).not.toHaveBeenCalled();
+    });
+
+    it('still allows deleting a terminal (cancelled) session record', async () => {
+        await renderWithSessions([
+            { id: 's2', name: 'Old One', status: 'cancelled', createdAt: { toDate: () => new Date() } },
+        ]);
+
+        fireEvent.click(screen.getByText('delete s2'));
+
+        await waitFor(() => {
+            expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+        });
+        expect(mockCancelCallable).not.toHaveBeenCalled();
     });
 });
 

@@ -27,6 +27,20 @@ export const LAST_CALL_RESULTS = [
     { id: 'not_interested', label: 'Not Interested', value: 'Not Interested' }
 ];
 
+/**
+ * Bulk session lifecycle buckets.
+ *
+ * Live sessions may still send messages (the worker only processes 'active',
+ * but queued/scheduled/paused sessions can transition back to it), so they must
+ * be CANCELLED through the supported cancelBulkSession flow — never deleted
+ * outright. Terminal sessions are inert history and may be deleted explicitly.
+ */
+export const CANCELLABLE_SESSION_STATUSES = ['active', 'queued', 'scheduled', 'paused'];
+export const TERMINAL_SESSION_STATUSES = ['completed', 'cancelled', 'failed'];
+
+export const isCancellableSessionStatus = (status) =>
+    CANCELLABLE_SESSION_STATUSES.includes(status);
+
 export const CAMPAIGN_MODES = {
     DASHBOARD: 'dashboard',
     WIZARD: 'wizard',

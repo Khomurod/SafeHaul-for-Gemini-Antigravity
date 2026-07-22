@@ -310,3 +310,24 @@ export function buildPrefillOverridesForSend(
 
   return overridesByFieldId;
 }
+
+/**
+ * Resolve every field for delivery in one pass, collecting the labels of
+ * locked required fields whose prefill data is missing (senders must fix
+ * those before the document can go out). Shared by the template send flow
+ * (DocumentsManager) and the envelope creator so the block-list logic can
+ * never drift between them.
+ *
+ * @returns {{ fields: object[], missingLockedRequired: string[] }}
+ */
+export function resolveFieldsForSend(fields = [], context = {}, options = {}) {
+  const missingLockedRequired = [];
+  const resolvedFields = fields.map((field) => {
+    const resolved = resolveFieldForSend(field, context, options);
+    if (resolved.meta.shouldBlockMissingLockedRequired) {
+      missingLockedRequired.push(field.label || field.id || 'Unnamed field');
+    }
+    return resolved.field;
+  });
+  return { fields: resolvedFields, missingLockedRequired };
+}

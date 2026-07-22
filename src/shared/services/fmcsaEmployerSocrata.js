@@ -158,7 +158,7 @@ export function buildFmcsaEmployerLikeSearchUrl(
 /**
  * Map a Socrata row to employer step field values.
  * @param {object} row
- * @param {string[]} [statesAllowlist] — e.g. two-letter codes from useUtils().states
+ * @param {string[]} [statesAllowlist] - e.g. two-letter codes from useUtils().states
  */
 export function mapFmcsaRowToEmployerFields(row, statesAllowlist = []) {
   const companyName = String(row?.legal_name ?? '').trim();
@@ -219,7 +219,9 @@ async function fetchJson(url, headers, signal) {
   const res = await fetch(url, { method: 'GET', headers, signal });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    const err = new Error(`FMCSA lookup failed (${res.status}): ${text.slice(0, 200)}`);
+    const err = /** @type {Error & { status?: number, body?: string }} */ (
+      new Error(`FMCSA lookup failed (${res.status}): ${text.slice(0, 200)}`)
+    );
     err.status = res.status;
     err.body = text;
     throw err;

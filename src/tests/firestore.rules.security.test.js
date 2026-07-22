@@ -280,32 +280,6 @@ describeFirestore('firestore.rules security regressions', () => {
     );
   });
 
-  it('blocks all client access to telegram_sessions', async () => {
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const adminDb = context.firestore();
-      await setDoc(doc(adminDb, 'telegram_sessions', 'sess1'), {
-        telegramChatId: '123',
-        companyId: 'co1',
-        status: 'active',
-      });
-    });
-
-    const guestDb = testEnv.unauthenticatedContext().firestore();
-    const driverDb = testEnv.authenticatedContext('driver-1').firestore();
-    const companyAdminDb = testEnv.authenticatedContext('admin-1', {
-      roles: { co1: 'company_admin' },
-    }).firestore();
-    const superDb = testEnv.authenticatedContext('super-1', {
-      globalRole: 'super_admin',
-    }).firestore();
-
-    await assertFails(getDoc(doc(guestDb, 'telegram_sessions', 'sess1')));
-    await assertFails(getDoc(doc(driverDb, 'telegram_sessions', 'sess1')));
-    await assertFails(getDoc(doc(companyAdminDb, 'telegram_sessions', 'sess1')));
-    await assertFails(getDoc(doc(superDb, 'telegram_sessions', 'sess1')));
-    await assertFails(setDoc(doc(companyAdminDb, 'telegram_sessions', 'sess2'), { status: 'active' }));
-  });
-
   it('blocks driver from updating another users signing request', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();

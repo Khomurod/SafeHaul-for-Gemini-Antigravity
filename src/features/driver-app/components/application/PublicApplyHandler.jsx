@@ -1,22 +1,26 @@
 // src/features/driver-app/components/application/PublicApplyHandler.jsx
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes } from 'firebase/storage';
-import { db, functions, storage } from '@lib/firebase';
+import { db, functions } from '@lib/firebase';
 import Stepper from '@shared/components/layout/Stepper';
 import { IntakeChooser } from './IntakeChooser';
 import {
   getFieldConfig,
   hasUploadedFile,
-  AUTO_FILL_IMAGE_TYPES,
   normalizePostApplicationTemplates,
-  parseIsoFromLooseDate,
-  fileToDataUrl,
   buildE2EPublicProfile,
   buildPostApplyDocErrorMessage,
 } from './publicApplyHelpers';
+import {
+  readApplicationDraft,
+  saveApplicationDraft,
+  clearApplicationDraft,
+} from './applicationDraftStorage';
+import { fetchPublicProfileBySlug } from '../../services/publicProfileService';
+import { useGuestFileUpload } from '../../hooks/useGuestFileUpload';
+import { useCdlAutoFill } from '../../hooks/useCdlAutoFill';
 import {
   DOC_STATUS,
   savePostApplySession,
@@ -38,8 +42,6 @@ import { useData } from '@/context/DataContext';
 import { isValidEmail, isValidPhone } from '@shared/utils/validation';
 import * as Sentry from '@sentry/react';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
-import { resolveGuestUploadMimeType } from '@shared/utils/guestUploadMime';
-import { parseAddressPartsFromCdl } from '@shared/utils/parseCdlAddress';
 
 // Bulletproof submission imports
 import {
@@ -77,10 +79,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const [company, setCompany] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({});
-  const [isUploading, setIsUploading] = useState(false);
   const [intakeMode, setIntakeMode] = useState(null); // null | manual
-  const [isParsingCdl, setIsParsingCdl] = useState(false);
-  const [autoFillStoragePath, setAutoFillStoragePath] = useState('');
   const [submissionStatus, setSubmissionStatus] = useState(null);
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
   const [submittedConfirmationNumber, setSubmittedConfirmationNumber] = useState('');
@@ -91,8 +90,23 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const [sandboxSubmission, setSandboxSubmission] = useState(null);
   const hasStarted = useRef(false);
   const isSubmittingRef = useRef(false);
-  const cdlAutoFillInputRef = useRef(null);
-  const e2eUploadMode = getE2EQueryParam('e2eUpload', 'allow');
+
+  const { isUploading, handleFileUpload } = useGuestFileUpload(company?.id);
+  const {
+    isParsingCdl,
+    autoFillStoragePath,
+    cdlInputRef: cdlAutoFillInputRef,
+    handleChooseAutoFill,
+    handleCdlFileChange: handleCdlAutoFillFileChange,
+  } = useCdlAutoFill({
+    companyId: company?.id,
+    onAutoFilled: (updater) => {
+      setFormData(updater);
+      setCurrentStep(0);
+      setIntakeMode('manual');
+    },
+    onReturnToChooser: () => setIntakeMode(null),
+  });
 
   // #7 FIX: Derive custom questions from company profile for public applicants
   const customQuestions = company?.customQuestions || [];
@@ -160,16 +174,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
           if (setCurrentCompanyProfile) {
             setCurrentCompanyProfile(companyData);
           }
-          try {
-            const savedDraft = localStorage.getItem(`draft_${slug}`);
-            if (savedDraft) {
-              const parsed = JSON.parse(savedDraft);
-              if (parsed && typeof parsed === 'object') {
-                setFormData((prev) => ({ ...prev, ...parsed }));
-              }
-            }
-          } catch (draftErr) {
-            console.warn('[PublicApplyHandler] Failed to load sandbox draft:', draftErr);
+          const sandboxDraft = readApplicationDraft(slug);
+          if (sandboxDraft) {
+            setFormData((prev) => ({ ...prev, ...sandboxDraft }));
           }
           const recruiter = searchParams.get('r') || searchParams.get('recruiter');
           if (recruiter) {
@@ -192,43 +199,18 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
           if (getE2EQueryParam('e2eIntake', 'manual') !== 'choice') {
             setIntakeMode('manual');
           }
-          try {
-            const savedDraft = localStorage.getItem(`draft_${slug}`);
-            if (savedDraft) {
-              const parsed = JSON.parse(savedDraft);
-              if (parsed && typeof parsed === 'object') {
-                setFormData((prev) => ({ ...prev, ...parsed }));
-                if (typeof parsed.lastStep === 'number') {
-                  setCurrentStep(parsed.lastStep);
-                }
-              }
+          const e2eDraft = readApplicationDraft(slug);
+          if (e2eDraft) {
+            setFormData((prev) => ({ ...prev, ...e2eDraft }));
+            if (typeof e2eDraft.lastStep === 'number') {
+              setCurrentStep(e2eDraft.lastStep);
             }
-          } catch (draftErr) {
-            console.warn('[PublicApplyHandler] E2E draft restore failed:', draftErr);
           }
           setLoading(false);
           return;
         }
 
-        let companyData = null;
-        let companyId = null;
-
-        const q = query(collection(db, "public_profiles"), where("appSlug", "==", slug), limit(1));
-        const snapshot = await getDocs(q);
-
-        if (!snapshot.empty) {
-          companyId = snapshot.docs[0].id;
-          companyData = { id: companyId, ...snapshot.docs[0].data() };
-        } else {
-          const docRef = doc(db, "public_profiles", slug);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            companyId = docSnap.id;
-            companyData = { id: companyId, ...docSnap.data() };
-          }
-        }
-
-
+        const companyData = await fetchPublicProfileBySlug(slug);
 
         if (!companyData) {
           setError("Company not found.");
@@ -247,16 +229,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
         restorePostApplySession(companyData);
 
         // P2-5 FIX: Recover saved draft from localStorage on page revisit
-        try {
-          const savedDraft = localStorage.getItem(`draft_${slug}`);
-          if (savedDraft) {
-            const parsed = JSON.parse(savedDraft);
-            if (parsed && typeof parsed === 'object') {
-              setFormData(prev => ({ ...prev, ...parsed }));
-            }
-          }
-        } catch (draftErr) {
-          console.warn('[PublicApplyHandler] Failed to load draft:', draftErr);
+        const savedDraft = readApplicationDraft(slug);
+        if (savedDraft) {
+          setFormData(prev => ({ ...prev, ...savedDraft }));
         }
 
         const recruiter = searchParams.get('r') || searchParams.get('recruiter');
@@ -264,7 +239,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
           sessionStorage.setItem('pending_application_recruiter', recruiter);
         }
 
-        sessionStorage.setItem('pending_application_company', companyId);
+        sessionStorage.setItem('pending_application_company', companyData.id);
         setLoading(false);
 
       } catch (err) {
@@ -286,15 +261,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
 
   const persistLocalDraft = (stepIndex) => {
     if (!slug || sandbox) return;
-    const { ssn: _ssn, signature: _sig, ...draftPayload } = formData;
-    try {
-      localStorage.setItem(
-        `draft_${slug}`,
-        JSON.stringify({ ...draftPayload, lastStep: stepIndex }),
-      );
-    } catch (draftErr) {
-      console.warn('[PublicApplyHandler] Local draft save failed:', draftErr);
-    }
+    saveApplicationDraft(slug, formData, { lastStep: stepIndex });
   };
 
   const handleNavigate = (direction) => {
@@ -321,182 +288,12 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     setIntakeMode('manual');
   };
 
-  const handleChooseAutoFill = () => {
-    // Keep the user on the choice screen until a file is actually selected.
-    // This prevents an accidental fallback into the manual wizard when the
-    // picker is dismissed or blocked by the browser.
-    cdlAutoFillInputRef.current?.click();
-  };
-
-  const handleCdlAutoFillFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-
-    if (!file) {
-      // User closed chooser without selecting a file -> return to first choice screen.
-      setIntakeMode(null);
-      return;
-    }
-
-    if (!AUTO_FILL_IMAGE_TYPES.has(file.type)) {
-      showError('Please upload a JPG, PNG, or WEBP image for CDL auto-fill.');
-      setIntakeMode(null);
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      showError('CDL image is too large. Please use an image under 8MB.');
-      setIntakeMode(null);
-      return;
-    }
-
-    try {
-      if (!company?.id) {
-        throw new Error('Company is missing. Please refresh and try again.');
-      }
-
-      setIsParsingCdl(true);
-
-      // 1) Upload to temporary guest autofill path (for reliability/audit/debug)
-      const prepareUpload = httpsCallable(functions, 'getSignedUploadUrl');
-      const { data: uploadData } = await prepareUpload({
-        companyId: company.id,
-        fileName: file.name,
-        fileType: file.type,
-        folder: 'autofill',
-      });
-      const storagePath = uploadData?.storagePath;
-      if (!storagePath) {
-        throw new Error('Could not reserve upload path.');
-      }
-      const uploadRef = ref(storage, storagePath);
-      await uploadBytes(uploadRef, file, { contentType: file.type });
-      setAutoFillStoragePath(storagePath);
-
-      // 2) Send image to secure Groq parser callable (no API key in frontend)
-      const imageDataUrl = await fileToDataUrl(file);
-      const parseFn = httpsCallable(functions, 'parseCdlWithGroq', { timeout: 60000 });
-      const { data } = await parseFn({
-        companyId: company.id,
-        imageDataUrl,
-        storagePath,
-      });
-      const fields = data?.fields || {};
-      const dobIso = parseIsoFromLooseDate(fields.dateOfBirth);
-      const cdlExpIso = parseIsoFromLooseDate(fields.expirationDate);
-      const addr = parseAddressPartsFromCdl(fields.fullAddress);
-
-      setFormData((prev) => ({
-        ...prev,
-        firstName: fields.firstName || prev.firstName || '',
-        lastName: fields.lastName || prev.lastName || '',
-        dob: dobIso || prev.dob || '',
-        street: addr.street || prev.street || '',
-        city: addr.city || prev.city || '',
-        state: addr.state || prev.state || '',
-        zip: addr.zip || prev.zip || '',
-        cdlNumber: fields.cdlNumber || prev.cdlNumber || '',
-        cdlExpiration: cdlExpIso || prev.cdlExpiration || '',
-        // Best-effort: when address parsing yields a valid state, mirror to CDL state too.
-        cdlState: addr.state || prev.cdlState || '',
-      }));
-
-      showSuccess('CDL auto-fill complete. Please review your information.');
-      setCurrentStep(0);
-      setIntakeMode('manual');
-    } catch (err) {
-      console.error('[PublicApplyHandler] CDL auto-fill failed:', err);
-      const msg = err?.message || 'Could not auto-fill from CDL. You can continue manually.';
-      showError(msg);
-      // Keep user on the choice screen when OCR fails so they don't feel
-      // force-routed into the full manual wizard unexpectedly.
-      setIntakeMode(null);
-    } finally {
-      setIsParsingCdl(false);
-    }
-  };
-
-  const handleFileUpload = async (fieldName, file) => {
-    if (!file) return null;
-    setIsUploading(true);
-    try {
-      if (!company?.id) {
-        throw new Error('Company context is missing.');
-      }
-
-      if (isE2ETestMode) {
-        if (e2eUploadMode === 'deny') {
-          const permissionError = new Error('E2E upload blocked by mock permission guard.');
-          permissionError.code = 'permission-denied';
-          throw permissionError;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 120));
-        const fileData = {
-          name: file.name,
-          url: typeof URL !== 'undefined' ? URL.createObjectURL(file) : '',
-          storagePath: `companies/${company.id}/applications/e2e/${fieldName}/${Date.now()}-${file.name}`,
-        };
-        showSuccess("File uploaded successfully.");
-        return fileData;
-      }
-
-      // Guest upload: server reserves path + validates tenant/rate limits; client uploads via Firebase SDK.
-      // Avoids browser PUT to storage.googleapis.com (bucket CORS / signed URL extension headers).
-      const fileType = resolveGuestUploadMimeType(file);
-      if (!fileType) {
-        throw new Error('Could not detect file type. Please use PDF, PNG, JPEG, WEBP, or HEIC.');
-      }
-
-      const prepareGuestUpload = httpsCallable(functions, 'getSignedUploadUrl');
-
-      const { data: { storagePath } } = await prepareGuestUpload({
-        companyId: company.id,
-        fileName: file.name,
-        fileType,
-        folder: 'applications'
-      });
-
-      if (!storagePath) {
-        throw new Error('Upload prepare failed: missing storage path.');
-      }
-
-      const fileRef = ref(storage, storagePath);
-      await uploadBytes(fileRef, file, { contentType: fileType });
-
-      const getGuestReadUrl = httpsCallable(functions, 'getSignedGuestUploadUrl');
-      const { data: readData } = await getGuestReadUrl({ companyId: company.id, storagePath });
-      if (!readData?.url) {
-        throw new Error('Upload preview URL failed.');
-      }
-
-      const fileData = { name: file.name, url: readData.url, storagePath };
-      showSuccess("File uploaded successfully.");
-      return fileData;
-    } catch (error) {
-      console.error("Upload Error:", error);
-      if (error?.code === 'functions/resource-exhausted') {
-        showError("Too many upload attempts. Please wait a moment and try again.");
-      } else if (error?.code === 'storage/unauthorized') {
-        showError("Upload was denied by Firebase Storage. Please refresh and try again.");
-      } else {
-        showError("Upload failed. Please try again.");
-      }
-      throw error;
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const handlePartialSubmit = () => {
-    // SEC-2: Never persist SSN or signature in localStorage — they are PII/biometric data
-    // accessible to any JavaScript on the page (XSS vector) and persisted across sessions.
-    // DL-1: Wrap in try/catch so a QuotaExceededError is surfaced rather than silently swallowed.
-    const { ssn: _ssn, signature: _sig, ...draftPayload } = formData;
-    try {
-      localStorage.setItem(`draft_${slug}`, JSON.stringify(draftPayload));
+    // SEC-2/DL-1 live in applicationDraftStorage: ssn/signature are stripped and a
+    // QuotaExceededError is surfaced (false) rather than silently swallowed.
+    if (saveApplicationDraft(slug, formData)) {
       showSuccess("Progress saved.");
-    } catch (err) {
-      console.warn('[PublicApplyHandler] Draft save failed (quota or privacy policy):', err);
+    } else {
       showError("Could not save progress locally. Your data is still here — please continue filling the form.");
     }
   };
@@ -538,14 +335,32 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     setSubmissionStatus('submitting');
 
     if (isE2ETestMode && !sandbox) {
-      // Deterministic offline-queue path for E2E: mimic "all direct submits failed
-      // but the submission is safely queued" without touching the network.
+      // Deterministic offline-queue path for E2E: "all direct submits failed but
+      // the submission is safely queued". The submission is written through the
+      // real IndexedDB queue so the test verifies actual queue behavior — the
+      // queued screen only renders if the enqueue genuinely succeeded.
       if (getE2EQueryParam('e2eForceQueue', '') === '1') {
-        localStorage.removeItem(`draft_${slug}`);
-        sessionStorage.removeItem('pending_application_recruiter');
-        setSubmissionStatus('queued');
-        showSuccess('Application saved! It will be submitted automatically when connection is restored.');
-        isSubmittingRef.current = false;
+        try {
+          if (!isQueueSupported()) {
+            throw new Error('Submission queue is not supported in this browser.');
+          }
+          await initQueue();
+          await enqueueSubmission(
+            { ...formData, companyId: company.id, sourceSlug: slug },
+            company.id,
+            { type: 'guest', userId: null },
+          );
+          clearApplicationDraft(slug);
+          sessionStorage.removeItem('pending_application_recruiter');
+          setSubmissionStatus('queued');
+          showSuccess('Application saved! It will be submitted automatically when connection is restored.');
+        } catch (queueError) {
+          console.error('[PublicApplyHandler] E2E force-queue enqueue failed:', queueError);
+          setSubmissionStatus('error');
+          showError('Failed to submit application. Please try again.');
+        } finally {
+          isSubmittingRef.current = false;
+        }
         return;
       }
       const confirmationNumber = generateConfirmationNumber();
@@ -559,7 +374,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
         slug,
         docs: {},
       });
-      localStorage.removeItem(`draft_${slug}`);
+      clearApplicationDraft(slug);
       sessionStorage.removeItem('pending_application_recruiter');
       setSubmissionStatus('success');
       return;
@@ -672,7 +487,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
             }
           }
 
-          localStorage.removeItem(`draft_${slug}`);
+          clearApplicationDraft(slug);
           sessionStorage.removeItem('pending_application_recruiter');
 
           Sentry.addBreadcrumb({

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, MessageSquare, ChevronRight, MoreVertical, Trash2 } from 'lucide-react';
+import { Calendar, Users, MessageSquare, ChevronRight, MoreVertical, Trash2, Ban } from 'lucide-react';
+import { isCancellableSessionStatus } from '../constants/campaignConstants';
 
-export function CampaignCard({ campaign, onClick, onDelete, onViewReport }) {
+export function CampaignCard({ campaign, onClick, onDelete, onCancel, onViewReport }) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef(null);
 
@@ -44,12 +45,23 @@ export function CampaignCard({ campaign, onClick, onDelete, onViewReport }) {
 
                     {showMenu && (
                         <div className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-10 animate-in fade-in zoom-in-95 duration-200">
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete && onDelete(campaign); }}
-                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium text-left"
-                            >
-                                <Trash2 size={14} /> Delete Campaign
-                            </button>
+                            {/* Live sessions must be cancelled (worker stops safely, history
+                                is kept); only drafts and stopped sessions can be deleted. */}
+                            {onCancel && isCancellableSessionStatus(campaign.status) ? (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowMenu(false); onCancel(campaign); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 font-medium text-left"
+                                >
+                                    <Ban size={14} /> Cancel Campaign
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete && onDelete(campaign); }}
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium text-left"
+                                >
+                                    <Trash2 size={14} /> Delete Campaign
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>

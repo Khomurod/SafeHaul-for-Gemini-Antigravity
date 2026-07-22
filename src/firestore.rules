@@ -255,12 +255,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // --- TELEGRAM SESSIONS (Server-only bot/Mini App state) ---
-    // All access goes through Cloud Functions with Admin SDK.
-    match /telegram_sessions/{sessionId} {
-      allow read, write: if false;
-    }
-
     // --- COMPANIES (Locked down — sensitive data) ---
     match /companies/{companyId} {
       // LOCKED: Only team members and super admins can read company data

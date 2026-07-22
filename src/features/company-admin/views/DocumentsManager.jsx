@@ -12,7 +12,7 @@ import {
     buildPrefillOverridesForSend,
     initialGroupedPrefillState,
     initialPlainPrefillState,
-    resolveFieldForSend,
+    resolveFieldsForSend,
 } from '@features/signing/utils/prefillEngine';
 import { GlobalLoadingState } from '@shared/components/feedback';
 import { FileSignature, History, ArrowLeft, Plus, FileText } from 'lucide-react';
@@ -210,14 +210,11 @@ export default function DocumentsManager() {
                 prefillValuesByGroupKey,
             });
 
-            const missingLockedRequired = [];
-            const autoFilledFields = (selectedTemplate.fields || []).map((field) => {
-                const resolved = resolveFieldForSend(field, prefillContext, { overridesByFieldId });
-                if (resolved.meta.shouldBlockMissingLockedRequired) {
-                    missingLockedRequired.push(field.label || field.id || 'Unnamed field');
-                }
-                return resolved.field;
-            });
+            const { fields: autoFilledFields, missingLockedRequired } = resolveFieldsForSend(
+                selectedTemplate.fields || [],
+                prefillContext,
+                { overridesByFieldId },
+            );
 
             if (missingLockedRequired.length > 0) {
                 showError(`Cannot send this template yet. Missing locked prefill data: ${missingLockedRequired.join(', ')}.`);
