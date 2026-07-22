@@ -16,6 +16,14 @@ export const PUBLIC_FEATURE_ROUTE_MANIFEST = Object.freeze([
     featureName: 'Driver Application',
   },
   {
+    // Compatibility only: old "Are You Interested?" links forward to the
+    // public application. See LegacyInterestRedirect.
+    id: 'legacyInterestRedirect',
+    path: '/interest/:slug',
+    screen: 'legacyInterestRedirect',
+    featureName: 'Driver Application',
+  },
+  {
     id: 'signingRoom',
     path: '/sign/:companyId/:requestId',
     screen: 'signingRoom',

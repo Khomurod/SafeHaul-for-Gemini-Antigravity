@@ -4,7 +4,9 @@ import {
     Users, Zap, Loader2
 } from 'lucide-react';
 import { collection, query, orderBy, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
-import { db } from '@lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@lib/firebase';
+import { isCancellableSessionStatus } from './constants/campaignConstants';
 import { CampaignCard } from './components/CampaignCard';
 import { CampaignEditor } from './CampaignEditor';
 import { CampaignDetails } from './components/CampaignDetails';
@@ -138,20 +140,42 @@ export function CampaignsDashboard({ companyId }) {
         }
     };
 
+    // Cancel a live (active/queued/scheduled/paused) session through the supported
+    // backend flow. The worker checks session status at claim time, mid-batch, and
+    // post-batch, so a cancelled session stops sending; the record is kept for
+    // reporting/audit. cancelBulkSession is idempotent — re-cancelling is harmless.
+    const handleCancelCampaign = async (campaign) => {
+        if (!companyId || !campaign.id) return;
+        if (!window.confirm(`Cancel "${campaign.name}"? Sending stops and the campaign record is kept for reporting.`)) return;
+
+        try {
+            const cancelFn = httpsCallable(functions, 'cancelBulkSession');
+            await cancelFn({ companyId, sessionId: campaign.id });
+            showSuccess('Campaign cancelled. No further messages will be sent.');
+        } catch (err) {
+            showError('Failed to cancel campaign: ' + err.message);
+        }
+    };
+
     const handleDeleteCampaign = async (campaign) => {
         if (!companyId || !campaign.id) return;
+
+        // Never delete a live session outright: the worker must observe the
+        // cancelled status and stop through the supported path, and reporting
+        // history must be preserved. (The card menu offers Cancel instead, so
+        // this is a defensive backstop.)
+        if (activeTab !== 'drafts' && isCancellableSessionStatus(campaign.status)) {
+            showError('This campaign is still live. Cancel it first — it can be deleted once it has stopped.');
+            return;
+        }
+
         if (!window.confirm(`Are you sure you want to delete "${campaign.name}"?`)) return;
 
         try {
-            // Determine collection based on activeTab or campaign data
             if (activeTab === 'drafts') {
                 await deleteDoc(doc(db, 'companies', companyId, 'campaign_drafts', campaign.id));
                 showSuccess("Campaign draft deleted");
             } else {
-                // User requested ability to delete queued campaigns.
-                // If it's active/queued, we should ideally cancel the cloud task,
-                // but since we don't have a direct cancel endpoint ready,
-                // deleting the doc will cause the worker to 404 and stop processing (safe fail).
                 await deleteDoc(doc(db, 'companies', companyId, 'bulk_sessions', campaign.id));
                 showSuccess("Campaign record deleted");
             }
@@ -272,6 +296,7 @@ export function CampaignsDashboard({ companyId }) {
                             campaign={campaign}
                             onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : setViewingSession(campaign)}
                             onDelete={handleDeleteCampaign}
+                            onCancel={activeTab === 'drafts' ? undefined : handleCancelCampaign}
                             onViewReport={() => setSelectedReportSessionId(campaign.id)}
                         />
                     ))}

@@ -13,7 +13,7 @@ describe('public profile DTO (A4 projection)', () => {
       companyName: 'Acme',
       isActive: false,
       revenue: 99999,
-      featureSchedules: { searchDB: false },
+      featureSchedules: { campaignsEnabled: false },
       postApplicationTemplates: [{ id: 'x' }],
       applicationConfig: {
         cdlUpload: { required: true },

@@ -42,9 +42,9 @@ export function subscribeToNotifications(userId, callback) {
   );
   return onSnapshot(q, (snapshot) => {
       const notifications = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .map(doc => /** @type {{ id: string, status?: string }} */ ({ id: doc.id, ...doc.data() }))
         .filter(n => n.status !== 'dismissed');
-      
+
       callback(notifications);
   });
 }

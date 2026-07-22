@@ -73,4 +73,35 @@ describe('CampaignCard', () => {
 
         expect(onDelete).toHaveBeenCalledWith(campaign);
     });
+
+    it.each(['active', 'queued', 'scheduled', 'paused'])(
+        'offers Cancel (not Delete) for a live %s session',
+        (status) => {
+            const onCancel = vi.fn();
+            const onDelete = vi.fn();
+            const campaign = { id: '4', name: 'Live', status };
+
+            render(<CampaignCard campaign={campaign} onCancel={onCancel} onDelete={onDelete} />);
+            fireEvent.click(screen.getAllByRole('button')[0]);
+
+            expect(screen.queryByText('Delete Campaign')).not.toBeInTheDocument();
+            fireEvent.click(screen.getByText('Cancel Campaign'));
+            expect(onCancel).toHaveBeenCalledWith(campaign);
+            expect(onDelete).not.toHaveBeenCalled();
+        },
+    );
+
+    it('offers Delete for a terminal session even when onCancel is wired', () => {
+        const onCancel = vi.fn();
+        const onDelete = vi.fn();
+        const campaign = { id: '5', name: 'Done', status: 'completed' };
+
+        render(<CampaignCard campaign={campaign} onCancel={onCancel} onDelete={onDelete} />);
+        fireEvent.click(screen.getAllByRole('button')[0]);
+
+        expect(screen.queryByText('Cancel Campaign')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByText('Delete Campaign'));
+        expect(onDelete).toHaveBeenCalledWith(campaign);
+        expect(onCancel).not.toHaveBeenCalled();
+    });
 });

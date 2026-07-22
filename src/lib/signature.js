@@ -1,4 +1,8 @@
-let canvas, ctx, drawing = false;
+/** @type {HTMLCanvasElement | null} */
+let canvas;
+/** @type {CanvasRenderingContext2D | null} */
+let ctx;
+let drawing = false;
 let lastPos;
 
 function getMousePos(canvasDom, mouseEvent) {
@@ -53,7 +57,7 @@ export function initializeSignatureCanvas() {
     abortController = new AbortController();
     const { signal } = abortController;
 
-    canvas = document.getElementById('signature-canvas');
+    canvas = /** @type {HTMLCanvasElement | null} */ (document.getElementById('signature-canvas'));
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();

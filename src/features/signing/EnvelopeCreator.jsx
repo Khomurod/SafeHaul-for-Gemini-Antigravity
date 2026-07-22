@@ -9,7 +9,7 @@ import { useToast } from '@shared/components/feedback';
 import {
     buildPrefillContext,
     normalizePrefillPolicy,
-    resolveFieldForSend,
+    resolveFieldsForSend,
 } from '@features/signing/utils/prefillEngine';
 import {
     cloneFieldWithoutId,
@@ -377,18 +377,11 @@ export default function EnvelopeCreator({
 
         let processedFields = [];
         if (shouldResolveForDelivery) {
-            const missingLockedRequired = [];
-            processedFields = fields.map((field) => {
-                const resolved = resolveFieldForSend(field, prefillContext);
-                if (resolved.meta.shouldBlockMissingLockedRequired) {
-                    missingLockedRequired.push(field.label || field.id || 'Unnamed field');
-                }
-
-                return {
-                    ...resolved.field,
-                    bindingKey: field.bindingKey || '',
-                };
-            });
+            const { fields: resolvedFields, missingLockedRequired } = resolveFieldsForSend(fields, prefillContext);
+            processedFields = resolvedFields.map((resolvedField, index) => ({
+                ...resolvedField,
+                bindingKey: fields[index].bindingKey || '',
+            }));
 
             if (missingLockedRequired.length > 0) {
                 showError(

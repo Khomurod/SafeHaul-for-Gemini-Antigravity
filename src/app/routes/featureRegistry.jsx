@@ -1,5 +1,6 @@
 import React from 'react';
 import { COMPANY_ROUTE_MANIFEST } from './companyRouteManifest';
+import { LegacyInterestRedirect } from './LegacyInterestRedirect';
 
 const lazyNamed = (loader, exportName) =>
   React.lazy(() => loader().then((module) => ({ default: module[exportName] })));
@@ -51,6 +52,8 @@ export const featureScreens = Object.freeze({
     () => import('@features/driver-app/components/application/PublicApplyHandler'),
     'PublicApplyHandler',
   ),
+  // Tiny synchronous redirect — not worth a lazy chunk.
+  legacyInterestRedirect: LegacyInterestRedirect,
   signingRoom: lazyDefault(() => import('@features/signing/SigningRoom')),
   verificationPortal: lazyNamed(
     () => import('@features/verification/VerificationPortal'),

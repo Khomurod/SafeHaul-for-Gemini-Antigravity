@@ -7,7 +7,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { isFieldLocked } from '@features/signing/utils/prefillEngine';
-import { normalizeSignerField } from '@features/signing/utils/signerFieldStyle';
+import { useSigningEnvelope, E2E_MOCK_PDF_URL } from '@features/signing/hooks/useSigningEnvelope';
 import {
     sortFieldsForFlow,
     isFieldComplete,
@@ -25,15 +25,11 @@ import {
     SigningSuccessScreen,
     EsignConsentScreen,
 } from '@features/signing/components/signing-room/StatusScreens';
-import { readDraft, writeDraft, clearDraft } from '@features/signing/utils/signingDraft';
+import { writeDraft, clearDraft } from '@features/signing/utils/signingDraft';
 import { usePdfZoomGestures } from '@features/signing/hooks/usePdfZoomGestures';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { useIsMobile } from '@shared/hooks';
 import { useToast } from '@shared/components/feedback';
-
-const E2E_MOCK_PDF_URL =
-    'data:application/pdf;base64,' +
-    btoa('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n');
 import { Document, Page, pdfjs } from 'react-pdf';
 import {
     Loader2, CheckCircle, ChevronDown, AlertTriangle, ZoomIn, ZoomOut, RefreshCw,
@@ -77,9 +73,13 @@ export default function SigningRoom() {
     // their success screen keeps the plain "Close Window" behavior.
     const postApplyReturnPath = readSigningReturnPath(companyId, requestId);
 
-    const [request, setRequest] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    // Envelope loading + field-value initialization (draft merge, locked-field
+    // seeding, E2E mock) live in useSigningEnvelope.
+    const { request, fieldValues, setFieldValues, loading, error } = useSigningEnvelope({
+        companyId,
+        requestId,
+        accessToken,
+    });
     const [numPages, setNumPages] = useState(null);
 
     // ESIGN-8 FIX: Track electronic consent before allowing signing.
@@ -87,9 +87,6 @@ export default function SigningRoom() {
     // to use electronic records/signatures. Without this screen, e-signatures may not be
     // legally enforceable in disputes.
     const [hasEsignConsent, setHasEsignConsent] = useState(false);
-
-    // Data State
-    const [fieldValues, setFieldValues] = useState({});
     // { fieldId, kind: 'signature' | 'initial' } while the drawing sheet is open
     const [activeSignature, setActiveSignature] = useState(null);
     const [submitting, setSubmitting] = useState(false);
@@ -160,110 +157,6 @@ export default function SigningRoom() {
         }
         setDocError(null);
     }, [request?.pdfUrl]);
-
-    // 1. Load Document via Public API
-    useEffect(() => {
-        async function load() {
-            if (!accessToken) {
-                setError("Invalid Link: No access token provided.");
-                setLoading(false);
-                return;
-            }
-
-            if (isE2ETestMode && getE2EQueryParam('e2eSign', '') === 'mock') {
-                const mockFields = [
-                    { id: 'text1', type: 'text', pageNumber: 1, required: true, xPosition: 10, yPosition: 10, width: 20, height: 5 },
-                    { id: 'date1', type: 'date', pageNumber: 1, required: true, xPosition: 10, yPosition: 20, width: 20, height: 5 },
-                    { id: 'check1', type: 'checkbox', pageNumber: 1, required: true, xPosition: 10, yPosition: 30, width: 4, height: 3 },
-                    { id: 'sig1', type: 'signature', pageNumber: 1, required: true, xPosition: 10, yPosition: 40, width: 20, height: 8 },
-                    // Edge-anchored optional fields so e2e can verify overlays
-                    // hug the page corners at any viewport / zoom.
-                    { id: 'corner_tl', type: 'text', pageNumber: 1, required: false, xPosition: 0, yPosition: 0, width: 12, height: 4 },
-                    { id: 'corner_br', type: 'checkbox', pageNumber: 1, required: false, xPosition: 93, yPosition: 95, width: 6, height: 4 },
-                ].map(normalizeSignerField);
-                setRequest({
-                    title: 'E2E Test Document',
-                    recipientName: 'E2E Signer',
-                    status: 'sent',
-                    pdfUrl: E2E_MOCK_PDF_URL,
-                    fields: mockFields,
-                });
-                setFieldValues({
-                    text1: 'Jane Doe',
-                    date1: '2026-05-21',
-                    check1: true,
-                    sig1: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-                });
-                setLoading(false);
-                return;
-            }
-
-            try {
-                const getEnvelopeFn = httpsCallable(functions, 'getPublicEnvelope');
-                const result = await getEnvelopeFn({
-                    companyId,
-                    requestId,
-                    accessToken
-                });
-
-                const data = result.data;
-
-                // PROD-FIX: Normalize pageNumber to a number to prevent type-mismatch rendering bugs.
-                // Firestore sometimes stores numbers as strings, causing strict === to fail
-                // in the per-page field filter and making fields invisible.
-                if (data.fields) {
-                    data.fields = data.fields.filter(f => f != null).map(normalizeSignerField);
-                }
-
-                setRequest(data);
-
-                // Initialize Fields - filter out null/undefined entries
-                if (data.fields) {
-                    const initial = {};
-                    data.fields.forEach(f => {
-                        if (f.type === 'checkbox') {
-                            initial[f.id] = false;
-                            return;
-                        }
-
-                        if (f.type === 'text' || f.type === 'date') {
-                            if (isFieldLocked(f)) {
-                                initial[f.id] = String(f.defaultValue ?? '');
-                            } else if (f.defaultValue) {
-                                initial[f.id] = String(f.defaultValue);
-                            } else {
-                                initial[f.id] = '';
-                            }
-                            return;
-                        }
-
-                        initial[f.id] = '';
-                    });
-
-                    // Merge any persisted draft over the freshly-initialized defaults.
-                    // Only restore values for fields that still exist; ignore locked fields
-                    // (their value must come from the server-side defaultValue, not the client).
-                    const draft = readDraft(companyId, requestId);
-                    if (draft) {
-                        data.fields.forEach((f) => {
-                            if (!f || isFieldLocked(f)) return;
-                            if (Object.prototype.hasOwnProperty.call(draft, f.id)) {
-                                initial[f.id] = draft[f.id];
-                            }
-                        });
-                    }
-
-                    setFieldValues(initial);
-                }
-            } catch (err) {
-                console.error("Load Error:", err);
-                setError("Document not found or link expired.");
-            } finally {
-                setLoading(false);
-            }
-        }
-        load();
-    }, [companyId, requestId, accessToken]);
 
     const handleFieldChange = useCallback((id, value) => {
         setFieldValues(prev => {

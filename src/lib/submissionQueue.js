@@ -51,7 +51,7 @@ export async function initQueue() {
         };
 
         request.onupgradeneeded = (event) => {
-            const database = event.target.result;
+            const database = /** @type {IDBOpenDBRequest} */ (event.target).result;
 
             if (!database.objectStoreNames.contains(STORE_NAME)) {
                 const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });

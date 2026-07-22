@@ -1,6 +1,13 @@
 // @ts-check
 const { defineConfig, devices } = require('@playwright/test');
 
+// Sandboxed/CI-adjacent environments may provide a system Chromium instead of
+// Playwright-managed downloads. When set, chromium-based projects use it.
+const chromiumExecutablePath = process.env.PW_CHROMIUM_EXECUTABLE;
+const chromiumLaunchOverride = chromiumExecutablePath
+    ? { launchOptions: { executablePath: chromiumExecutablePath } }
+    : {};
+
 /**
  * @see https://playwright.dev/docs/test-configuration
  */
@@ -19,7 +26,7 @@ module.exports = defineConfig({
     projects: [
         {
             name: 'chromium',
-            use: { ...devices['Desktop Chrome'] },
+            use: { ...devices['Desktop Chrome'], ...chromiumLaunchOverride },
         },
         {
             name: 'firefox',
