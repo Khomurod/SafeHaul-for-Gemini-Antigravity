@@ -3,6 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from '@lib/firebase';
 import { Save, Loader2, Link as LinkIcon, Copy, CheckCircle } from 'lucide-react';
+import {
+    Button,
+    Card,
+    FormField,
+    FormSection,
+    Input,
+} from '@/design-system/components';
+import { PageHeader, Stack } from '@/design-system/layouts';
 import { useToast } from '@shared/components/feedback';
 
 export function PersonalProfileTab({ currentUser, currentCompanyProfile }) {
@@ -101,80 +109,107 @@ export function PersonalProfileTab({ currentUser, currentCompanyProfile }) {
     };
 
     return (
-        <div className="space-y-8 max-w-4xl animate-in fade-in">
-            <div className="border-b border-gray-200 pb-4 mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Personal Profile</h2>
-                <p className="text-sm text-gray-500 mt-1">Update your personal details and access your recruiting tools.</p>
-            </div>
+        <div className="max-w-4xl animate-in fade-in">
+            <Stack gap="lg">
+                <PageHeader
+                    title="Personal Profile"
+                    description="Update your personal details and access your recruiting tools."
+                />
 
-            <div className="border rounded-xl p-6 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100">
-                <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg shadow-sm bg-white text-blue-600">
-                        <LinkIcon size={24} />
-                    </div>
-                    <div className="flex-1">
-                        <h3 className="text-lg font-bold mb-1 text-blue-900">
-                            Your Short Recruiting Link
-                        </h3>
+                <Card
+                    className="border-ds-status-info-border bg-ds-status-info-bg"
+                    aria-labelledby="personal-recruiting-link-title"
+                >
+                    <div className="flex items-start gap-4">
+                        <div
+                            className="p-3 rounded-ds-md shadow-ds-xs bg-ds-surface text-ds-status-info-fg shrink-0"
+                            aria-hidden="true"
+                        >
+                            <LinkIcon size={24} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h2
+                                id="personal-recruiting-link-title"
+                                className="text-ds-heading-sm font-bold mb-1 text-ds-status-info-fg"
+                            >
+                                Your Short Recruiting Link
+                            </h2>
 
-                        <p className="text-sm text-blue-700 mb-4">
-                            Share this link. Drivers who apply will be <strong>automatically assigned to you</strong>.
-                        </p>
+                            <p className="text-ds-sm text-ds-status-info-fg mb-4">
+                                Share this link. Drivers who apply will be <strong>automatically assigned to you</strong>.
+                            </p>
 
-                        {linkLoading ? (
-                            <div className="flex items-center gap-2 text-sm text-gray-500">
-                                <Loader2 className="animate-spin" size={16} /> Generating unique code...
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-blue-200">
-                                <code className="flex-1 text-xs sm:text-sm font-mono text-gray-600 truncate px-2">
-                                    {uniqueLink}
-                                </code>
-
-                                <button 
-                                    onClick={handleCopyLink}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-md transition-all flex items-center gap-2"
+                            {linkLoading ? (
+                                <div
+                                    className="flex items-center gap-2 text-ds-sm text-ds-content-secondary"
+                                    role="status"
                                 >
-                                    {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
-                                    {copied ? "Copied" : "Copy"}
-                                </button>
-                            </div>
-                        )}
+                                    <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+                                    Generating unique code...
+                                </div>
+                            ) : (
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-ds-surface p-2 rounded-ds-md border border-ds-status-info-border">
+                                    <code
+                                        className="flex-1 min-w-0 text-ds-xs sm:text-ds-sm font-mono text-ds-content-secondary truncate px-2"
+                                        title={uniqueLink}
+                                    >
+                                        {uniqueLink}
+                                    </code>
+
+                                    <Button
+                                        variant="primary"
+                                        size="sm"
+                                        onClick={handleCopyLink}
+                                        aria-live="polite"
+                                    >
+                                        {copied
+                                            ? <CheckCircle size={16} aria-hidden="true" />
+                                            : <Copy size={16} aria-hidden="true" />}
+                                        {copied ? "Copied" : "Copy"}
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            </div>
+                </Card>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-8 space-y-6 shadow-sm">
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name</label>
-                    <input 
-                        type="text" 
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={personalData.name} 
-                        onChange={(e) => setPersonalData({...personalData, name: e.target.value})} 
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-                    <input 
-                        type="text" 
-                        className="w-full p-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
-                        value={currentUser?.email || ''} 
-                        readOnly 
-                    />
-                    <p className="text-xs text-gray-400 mt-1">Email cannot be changed directly.</p>
-                </div>
+                <FormSection
+                    title="Profile details"
+                    description="Your name appears in the Company workspace. Your sign-in email is read-only here."
+                >
+                    <FormField id="personal-profile-name" label="Full Name">
+                        <Input
+                            type="text"
+                            value={personalData.name}
+                            onChange={(e) => setPersonalData({ ...personalData, name: e.target.value })}
+                        />
+                    </FormField>
 
-                <div className="flex justify-end pt-4">
-                    <button 
-                        onClick={handleSavePersonal} 
-                        disabled={loading} 
-                        className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-md transition-all"
+                    <FormField
+                        id="personal-profile-email"
+                        label="Email"
+                        description="Email cannot be changed directly."
                     >
-                        {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />} Update Profile
-                    </button>
-                </div>
-            </div>
+                        <Input
+                            type="email"
+                            value={currentUser?.email || ''}
+                            readOnly
+                        />
+                    </FormField>
+
+                    <div className="flex justify-end pt-2">
+                        <Button
+                            variant="primary"
+                            size="lg"
+                            onClick={handleSavePersonal}
+                            loading={loading}
+                        >
+                            {!loading && <Save size={18} aria-hidden="true" />}
+                            Update Profile
+                        </Button>
+                    </div>
+                </FormSection>
+            </Stack>
         </div>
     );
 }

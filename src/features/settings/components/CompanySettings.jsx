@@ -151,7 +151,7 @@ export function CompanySettings() {
                         </div>
                     </aside>
 
-                    <main className="flex-1 min-h-[600px] relative">
+                    <main className="flex-1 min-w-0 min-h-[600px] relative">
                         {successMsg && (
                             <div className="fixed bottom-8 right-8 bg-green-600 text-white px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
                                 <CheckCircle size={20} /> {successMsg}

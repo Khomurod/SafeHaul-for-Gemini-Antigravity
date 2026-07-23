@@ -13,6 +13,11 @@ implementations. Their APIs, unit/axe tests, and usage documentation exist, but
 the families remain in-progress until the project selects a component catalog
 and approves durable visual baselines.
 
-The remaining migration candidates include form controls and Dialog. Existing
-`src/shared/components` implementations remain compatibility sources until
-each consumer is migrated.
+`form/` contains the native-event FormField, Label, FieldMessage, Input,
+Textarea, Select, and FormSection foundation. Existing shared form components
+remain compatibility adapters for callback and file behavior; Checkbox, Radio,
+Switch, and file-input contracts remain open.
+
+The remaining migration candidates include those form controls and Dialog.
+Existing `src/shared/components` implementations remain compatibility sources
+until each consumer is migrated.

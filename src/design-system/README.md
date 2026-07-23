@@ -52,6 +52,9 @@ verified.
 - Company candidate lists consume `DataTable`.
 - The Company workspace shell and dashboard consume workspace/page layouts,
   Button/IconButton, Card/MetricCard, Badge, and DataTable.
+- The Company Settings Personal Profile compatibility slice consumes the
+  native-event form foundation, Card, Button, PageHeader, and Stack while its
+  Firestore and clipboard behavior remains feature-owned.
 
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and

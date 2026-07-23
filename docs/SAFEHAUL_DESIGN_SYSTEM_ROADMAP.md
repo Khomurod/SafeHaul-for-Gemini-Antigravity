@@ -411,7 +411,7 @@ The reverse directions are prohibited.
     codebase knowledge-graph architecture review; source/tag/style/test/CI
     inventory; official design-system and accessibility research.
   - Visual/mobile/a11y: assessment only; no runtime change.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 - [x] Define permanent layer ownership and the no-business-knowledge boundary.
   - Complete when: the target tree, allowed dependencies, feature ownership,
@@ -423,7 +423,7 @@ The reverse directions are prohibited.
   - Verification: architecture test passed (1 test); final full-suite evidence
     is recorded in the completion log.
   - Visual/mobile/a11y: not applicable; no rendered output.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 ### Phase 1 — design-system foundation and token v2 bridge
 
@@ -436,7 +436,7 @@ The reverse directions are prohibited.
   - Verification: build, lint, typecheck, token tests, architecture test, and
     diff review; exact results are in the completion log.
   - Visual/mobile/a11y: not applicable; documentation and resolver-only change.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 - [x] Add a namespaced primitive/semantic token contract and Tailwind bridge
   without changing existing screens.
@@ -459,7 +459,7 @@ The reverse directions are prohibited.
   - Notes: `src/shared/styles/designTokens.css` remains loaded as a temporary
     compatibility layer. Blue 600, rather than Blue 500, is the new primary
     semantic action color because white text meets normal-text AA contrast.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 - [ ] Reconcile legacy token names and values into explicit compatibility
   aliases.
@@ -508,11 +508,34 @@ The reverse directions are prohibited.
 
 ### Phase 4 — forms
 
-- [ ] Define Field, Label, HelpText, FieldError, Input, Select, Textarea,
+- [~] In progress — Define Field, Label, HelpText, FieldError, Input, Select, Textarea,
   Checkbox, Radio, and file-input contracts.
   - Complete when: accessible names/descriptions/errors, required semantics,
     disabled/read-only states, focus, autofill, validation timing, touch size,
     stories, unit/axe tests, and mobile keyboard behavior pass.
+  - Progress: the native-event `FormField`, `Label`, `FieldMessage`, `Input`,
+    `Textarea`, `Select`, and `FormSection` contract is implemented and proven
+    by the Company Settings Personal Profile compatibility slice. Checkbox,
+    Radio, Switch, file input, autofill policy, component-catalog examples, and
+    durable visual baselines remain open, so the family is not complete.
+  - [x] Establish the native-event form foundation required by the first
+    compatibility slice.
+    - Completed: 2026-07-23.
+    - Files: `src/design-system/components/form/**`,
+      `src/design-system/components/index.js`,
+      `src/design-system/components/README.md`,
+      `src/design-system/README.md`.
+    - Verification: 4 form primitive tests passed, including native events,
+      label/description/error/required relationships, disabled/read-only
+      behavior, Select/Textarea parity, FormSection semantics, and axe.
+    - Visual/mobile/a11y: 44 px controls, semantic token styling, focus ring,
+      invalid/read-only/disabled states, wrapping, and mobile single-column
+      layout were reviewed through the first consumer at 1440×900, 1024×768,
+      and 412×915.
+    - Notes: these components emit native events and contain no Firebase,
+      Company, user, recruiter, validation, or save logic. Existing shared
+      callback/file controls remain compatibility adapters.
+    - Commit/PR: current compatibility-slice changes are not yet committed.
 
 - [ ] Adapt existing shared form controls without changing data contracts.
   - Complete when: existing `(name, value)` callbacks, file behavior, date
@@ -571,7 +594,7 @@ The reverse directions are prohibited.
     reviewed through the candidate consumer on desktop and Mobile Chrome.
   - Notes: feature renderers retain feature-specific formatting and actions;
     the contract remains business-neutral.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 - [~] In progress — build approved semantic Table/DataTable primitives.
   - Complete when: native-table versus interactive-grid behavior is explicit;
@@ -681,7 +704,7 @@ The reverse directions are prohibited.
   - Verification: focused test passed; full frontend suite result is recorded
     in the completion log.
   - Visual/mobile/a11y: not applicable.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 - [ ] Add ratcheting rules for arbitrary colors and unsupported type sizes.
   - Complete when: the baseline cannot increase; design-system internals and
@@ -705,7 +728,7 @@ The reverse directions are prohibited.
   - Files: `AGENTS.md`, `CLAUDE.md`.
   - Verification: instruction diff reviewed; no runtime behavior.
   - Visual/mobile/a11y: not applicable.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 ### Phase 13 — feature-by-feature migration order
 
@@ -738,7 +761,7 @@ The reverse directions are prohibited.
     Admin still consumes it. The mobile review exposed the existing Company
     shell/sidebar width defect; the Company workspace shell/dashboard phase
     resolved and verified it on 2026-07-23.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
 - [x] Company workspace shell and dashboard.
   - Complete when: layout/card/button/status primitives are adopted and route,
@@ -787,12 +810,73 @@ The reverse directions are prohibited.
     Firestore leaderboard query remain feature-owned. No backend, Firebase
     rules, database, integration, or workflow behavior changed. Component
     families remain in progress until catalog/visual-baseline approval.
-  - Commit/PR: not yet available.
+  - Commit/PR: checkpoint `d993804`.
 
-- [ ] Company settings and profile.
+- [~] In progress — Company settings and profile.
   - Complete when: form/table/dialog primitives are adopted and all save,
     integration, phone assignment, question, role, and validation behavior
     remains covered.
+  - [x] Audit the active settings/profile controls and select the first
+    compatibility slice.
+    - Completed: 2026-07-23.
+    - Files: `src/features/settings/components/**`,
+      `src/features/settings/hooks/useLineAssignments.js`,
+      `src/features/company-admin/views/UserProfilePage.jsx`, this roadmap.
+    - Verification: codebase graph architecture/dependency review; exact
+      inventory of inputs, selects, textareas, checkboxes, button-based
+      switches, uploads, labels, direct Firebase/Auth/Storage/callable access,
+      tiny text, and existing tests.
+    - Visual/mobile/a11y: source audit identified missing label associations,
+      locally repeated focus/disabled/read-only states, button-based switches
+      without switch semantics, 10 px settings navigation labels, and the
+      keyboard-inaccessible avatar upload surface. Runtime review is required
+      per migrated slice.
+    - Notes: Personal Profile inside Company Settings is the first low-risk
+      compatibility slice. The separate `/company/profile` account-security
+      screen remains higher risk because it combines avatar upload,
+      Authentication reauthentication/email/password changes, uniqueness
+      lookup, and Firestore writes.
+    - Commit/PR: checkpoint `d993804` contains the prior completed phases; this
+      audit is not yet committed.
+  - [x] Migrate the Company Settings Personal Profile tab as the first
+    compatibility slice.
+    - Complete when: name load/edit/save, read-only email, recruiting-link
+      generation/copy, loading/success/error behavior, field relationships,
+      keyboard order, desktop/mobile layout, axe, existing data contracts, and
+      final diff are verified without changing Firebase behavior.
+    - Completed: 2026-07-23.
+    - Files: `src/features/settings/components/PersonalProfileTab.jsx`,
+      `src/features/settings/components/PersonalProfileTab.test.jsx`,
+      `src/features/settings/components/CompanySettings.jsx`,
+      `src/design-system/components/form/**`,
+      `src/design-system/components/index.js`,
+      `src/design-system/components/README.md`,
+      `src/design-system/README.md`,
+      `e2e/company-settings-profile.spec.cjs`, this roadmap.
+    - Verification: 2 focused files / 9 tests passed; full frontend coverage
+      passed with 82 files / 527 tests and the existing 2 files / 48
+      emulator-dependent rules tests skipped; lint passed with 0 errors and
+      169 existing frontend warnings; backend lint, typecheck, production
+      build, and `git diff --check` passed. Chromium and Mobile Chrome
+      regression passed 5 checks with 3 intentional viewport-specific skips.
+    - Visual/mobile/a11y: manually reviewed at 1440×900, 1024×768, and 412×915.
+      Labels and fields align, controls are 44 px high, read-only email is
+      distinct and described, focus is visible, text wraps, mobile is
+      single-column, and document/workspace horizontal overflow is absent.
+      Unit axe reported no violations; scoped real-browser axe reported no
+      serious or critical violations in the migrated content.
+    - Notes: the original user-document read, generated recruiting-code
+      payloads, recruiter-link mapping, name-only `{ name }` write, clipboard
+      URL, success/error messages, routes, and admin gate are unchanged. The
+      only shell-adjacent change is `min-w-0` on the existing settings content
+      flex item to remove verified 1024 px nested overflow. No backend,
+      Firebase rules, storage, database, permissions, or data-format changes.
+      The legacy 10 px settings navigation headings and their failed contrast
+      remain documented for the next bounded shell slice.
+    - Commit/PR: current compatibility-slice changes are not yet committed.
+  - Notes: Company Profile, Team & Users, Email, SMS/number assignment,
+    Automated SMS, Integrations, Billing, question configuration, and
+    `/company/profile` remain separate slices and must not be migrated together.
 
 - [ ] Campaigns.
   - Complete when: campaign cards/editor/results/report dialogs migrate without
@@ -911,6 +995,27 @@ short, long, empty, loading, error, and representative numeric/date data.
 | `super-admin/views/AnalyticsView.jsx` | Analytics DataTables | High | High | Charts/number/date format | Not started | Numeric and date alignment, periods, empty states, mobile |
 | `shared/components/admin/BulkUploadLayout.jsx` | Preview DataTable pattern | Medium | High | Upload/feedback | Not started | Large data, truncation, headers, errors, performance |
 
+### 5.4 Company settings/profile form migration inventory
+
+This inventory records the 2026-07-23 bounded audit. Counts describe raw native
+controls in the named presentation files; nested components are listed in their
+own rows. Data and workflow ownership stays in the feature.
+
+| Screen / slice | Current controls and presentation | Data / behavior coupling | Main risks | Priority / risk | Status | Verification needed |
+|---|---|---|---|---|---|---|
+| Company Settings shell | Local sidebar buttons, 4 unsupported 10 px group labels, local success toast, billing card | Admin role redirect, feature-flag visibility, tab state, Manage Team dialog | Tab semantics, focus/current state, mobile sticky navigation, live success announcement | High / Medium | Audited; not migrated | Admin redirect, every tab route/state, mobile navigation, keyboard, success timing |
+| Company Profile — info | 9 text inputs and 9 visual labels in `CompanyInfoSection`; local edit/save controls | `saveCompanySettings`, nested contact/address/legal/application payload | Label associations, edit/read-only distinction, payload parity, long company/address values | High / High | Audited; not migrated | Load/edit/cancel/save, payload shape, validation, desktop/mobile |
+| Company Profile — branding | File input and logo preview in `BrandingSection` | `uploadCompanyLogo`, upload progress/error, saved logo URL | File naming, keyboard upload, preview/alt text, file/type/size behavior | High / High | Audited; not migrated | Exact upload contract, progress/error, keyboard/mobile, preview |
+| Company Profile — questions | Text/select/textarea previews, 4 native checkboxes, button-based required/hidden switches, question editors | Application configuration and custom-question state passed through Company Profile save | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Audited; not migrated | All question tests, keyboard toggles, validation, save payload, mobile |
+| Team & Users | 3 inputs, 1 role select, local buttons | Direct Firestore user/team reads and writes; Manage Team dialog | Permissions, required fields, role changes, duplicate/error states | High / Very high | Audited; not migrated | Role gates, add/manage flows, validation, dialog, desktop/mobile |
+| Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings shell still has tiny low-contrast navigation headings | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
+| Email Settings | 4 inputs, 1 textarea, local test/save buttons | Firestore settings plus callable test/save behavior and retained secret handling | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Audited; not migrated | Existing email tests/contracts, secret preservation, validation, errors, mobile |
+| SMS / number assignment | 2 selects in assignment rows/default line, raw table, verify/save/diagnostic controls | `useLineAssignments` owns Firestore/callable behavior and legacy token compatibility | Table/control alignment, redacted line tokens, verification states, accessible select labels | High / Very high | Audited; not migrated | Existing 15-case suite, save/backfill/verify, DataTable, keyboard/mobile |
+| Automated SMS | 1 textarea and save button | Direct Firestore load/save of message template | Template preservation, loading/error state, textarea description/limits | Medium / High | Audited; not migrated | Exact text round-trip, save/error, keyboard/mobile |
+| Integrations | Connection cards and buttons, including disabled states | Firebase callable/SDK connection workflows and feature availability | External SDK state, disabled explanation, destructive/reconnect behavior | Medium / Very high | Audited; not migrated | Integration mocks/contracts, permissions, loading/error, mobile |
+| Billing | Informational card only | Plan value display | Empty/long plan content and support messaging | Low / Low | Audited; not migrated | Plan variants, mobile/heading review |
+| `/company/profile` account profile/security | 8 inputs, 8 labels, avatar file input, 6 buttons, password/email forms | Firebase Auth profile/email/password, reauthentication, Storage upload, Firestore user writes/query | Keyboard-inaccessible avatar surface, nested click targets, validation/error association, security/autofill, upload and reauth regressions | High / Very high | Audited; defer until form/upload/dialog foundations are proven | Auth/storage mocks, validation branches, save/email/password/upload workflows, keyboard/autofill, desktop/mobile |
+
 ---
 
 ## 6. Verification matrix
@@ -955,7 +1060,7 @@ Apply checks proportionally, but never claim an unrun check:
   `--bg-page` compatibility token are present.
 - Diff review: `git diff --check` passed; changed-file and focused source diffs
   contained no unrelated application/backend changes.
-- Commit/PR: not yet available.
+- Commit/PR: checkpoint `d993804`.
 
 ### Company candidate-list/DataTable pilot completion log
 
@@ -998,7 +1103,7 @@ Apply checks proportionally, but never claim an unrun check:
   database, integration, or Firebase behavior changed.
 - Diff review: final whitespace and changed-file review required no unrelated
   application/backend changes.
-- Commit/PR: not yet available.
+- Commit/PR: checkpoint `d993804`.
 
 ### Company workspace shell/dashboard completion log
 
@@ -1053,7 +1158,60 @@ Apply checks proportionally, but never claim an unrun check:
 - Diff review: `git diff --check` passed; added UI source was checked for new
   arbitrary colors and 9px/10px/11px text; the design-system architecture test
   passed; no unrelated backend or Firebase files changed.
-- Commit/PR: not yet available.
+- Commit/PR: checkpoint `d993804`.
+
+### Company Settings Personal Profile compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: prior verified design-system, DataTable, Company
+  shell/dashboard, and leaderboard work was reviewed, cleaned, and committed
+  separately as `d993804` (`feat: establish design system and migrate company
+  workspace`) before this slice began.
+- Audit: all active Company Settings tabs plus `/company/profile` were
+  inventoried for native controls, uploads, labels/messages, presentation/data
+  coupling, direct Firebase/Auth/Storage/callable access, tests, mobile, and
+  accessibility risk. The inventory is in section 5.4.
+- Selected slice: Company Settings Personal Profile; it has one editable name,
+  one read-only email, recruiting-link generation/copy, and no upload,
+  password, role, integration, or question workflow.
+- Focused tests: 2 files passed, 9 tests passed (4 form primitive and 5 feature
+  compatibility tests).
+- Full frontend coverage gate: 82 files passed, 2 files skipped; 527 tests
+  passed and 48 emulator-dependent rules tests skipped by their existing
+  environment guard. Coverage was 25.61% statements, 23.61% branches, 24.53%
+  functions, and 26.13% lines.
+- Frontend and backend lint: passed. Frontend reported 0 errors and 169
+  existing warnings, including the pre-existing Personal Profile effect
+  dependency warning; backend lint reported no error.
+- Typecheck: passed (`tsc -p jsconfig.json --noEmit`).
+- Production build: passed; Vite transformed 2,634 modules. Existing warnings
+  remain for stale Browserslist data and chunks over 500 kB.
+- Chromium and Mobile Chrome regression: 5 passed, 3 intentionally skipped
+  because desktop/laptop/mobile assertions run only in their matching
+  viewport project.
+- Behavior: existing name load/edit/name-only write, generated recruiter-link
+  mapping and user-code write, clipboard URL, read-only email, and success and
+  error feedback passed focused tests. No new validation or business rule was
+  introduced.
+- Accessibility: labels, descriptions, read-only state, native keyboard order,
+  44 px controls, visible focus, and FormSection landmarks passed. Unit axe
+  reported no violations; scoped real-browser axe reported no serious or
+  critical violations in the migrated content.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  passed for alignment, spacing, wrapping, read-only contrast, control density,
+  single-column mobile layout, and document/workspace overflow. The initial
+  1024 px review found nested settings overflow; `min-w-0` on the existing
+  flex content slot fixed it and a regression assertion now covers both client
+  and scroll width.
+- Visual regression: no durable screenshot baseline was claimed because the
+  catalog/baseline ownership decision remains open; deterministic Chromium and
+  Mobile Chrome geometry plus manual rendered review were completed instead.
+- Backend/Firebase rules tests: not applicable; no backend, rules, database,
+  storage, callable, integration, or Firebase contract changed.
+- Diff review: `git diff --check` passed; generated `coverage/`, `dist/`, and
+  `test-results/` artifacts were removed; no unrelated source or backend file
+  is present.
+- Commit/PR: current compatibility-slice changes are not yet committed.
 
 ---
 
@@ -1082,30 +1240,26 @@ related CI enforcement permanently blocking.
 
 ## 8. Safest next phase
 
-The Company workspace shell/dashboard phase completed on 2026-07-23. The next
-implementation phase in the approved feature order is Company settings and
-profile. It is high risk because it combines forms, validation, integrations,
-phone assignment, questions, roles, tables, and dialogs, so it must begin with
-a bounded audit and the smallest compatibility-first form-control slice rather
-than a settings-wide redesign.
+The Company Settings Personal Profile compatibility slice completed on
+2026-07-23. The safest next bounded slice is the Company Settings shell and
+navigation presentation, before migrating a larger data-writing form.
 
 Sequence:
 
-1. audit `UserProfilePage`, `CompanySettings`, every settings tab, shared input
-   wrapper, callback/data contracts, validation, save/error behavior, dialogs,
-   tables, role gates, integrations, and existing tests before changing code;
-2. define the business-neutral Field/Label/HelpText/FieldError and native input
-   contracts required by one low-risk settings/profile slice, retaining
-   compatibility adapters for existing `(name, value)` callbacks;
-3. choose one independently verifiable slice with no backend/Firebase contract
-   change—prefer the personal profile presentation and controls before phone
-   assignment, questions, roles, or integrations;
-4. preserve feature-owned validation, save calls, permissions, and messaging;
-5. run its existing functional tests plus focused component/axe checks and
-   desktop Chromium/Mobile Chrome visual, keyboard, autofill, and error-state
-   review;
-6. update this roadmap before selecting the next settings slice.
+1. replace the four legacy 10 px, low-contrast navigation group headings with
+   approved typography and semantic content tokens;
+2. define explicit navigation/current-item semantics and visible focus without
+   changing the existing local active-tab state, feature flag, admin gate, or
+   rendered tab content;
+3. review the nested settings navigation at 1440×900, 1024×768, and 412×915,
+   including long labels, scroll position, touch targets, and content access;
+4. add focused keyboard/axe/Chromium/Mobile Chrome coverage and keep the
+   `min-w-0` overflow regression;
+5. after that shell slice is verified, migrate Company Profile information as
+   a separate form slice, preserving its nested save payload and edit/cancel
+   behavior.
 
-Do not migrate all settings tabs together. Phone assignment, questions, roles,
-integrations, signing, public application, and Super Admin remain separate
-high-risk slices with their own behavior-preservation evidence.
+Do not combine Company Profile branding upload, application questions, team
+roles, email secrets, phone assignment, integrations, or `/company/profile`
+account security with either slice. Those remain independent high-risk items
+with their own behavior-preservation evidence.
