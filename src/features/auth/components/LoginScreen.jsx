@@ -1,12 +1,34 @@
 // src/features/auth/components/LoginScreen.jsx
-import React, { useState } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import React, { useRef, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { loginUser, resetPassword } from '../services/authService';
 import { getPortalUser, getMembershipsForUser } from '../services/userService';
-import { Mail, Lock, ArrowRight, Loader2, CheckCircle2, Users, Briefcase, ArrowLeft, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import {
+  ArrowRight,
+  CheckCircle2,
+  Users,
+  Briefcase,
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  AlertCircle,
+} from 'lucide-react';
 
 import { Logo } from '@shared/components/Logo';
+import { Modal } from '@shared/components/modals/Modal';
+import {
+  Button,
+  Card,
+  FormField,
+  IconButton,
+  Input,
+  Label,
+} from '@/design-system/components';
 
+// Stable id for the reset dialog's current heading. Only one heading is
+// rendered at a time, so the id names whichever state (form or success) is
+// visible and gives the shared Modal an accessible name via aria-labelledby.
+const RESET_DIALOG_TITLE_ID = 'reset-password-dialog-title';
 
 export function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -21,6 +43,7 @@ export function LoginScreen() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
+  const resetEmailRef = useRef(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -105,89 +128,76 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex bg-ds-canvas">
 
       {/* Left Side - Login Form */}
-      <div className="w-full lg:w-[45%] flex flex-col justify-center px-6 sm:px-12 lg:px-16 xl:px-24 bg-white">
+      <div className="w-full lg:w-[45%] flex flex-col justify-center px-6 sm:px-12 lg:px-16 xl:px-24 bg-ds-surface">
         <div className="max-w-sm w-full mx-auto">
 
           <div className="mb-10">
             <div className="flex items-center gap-3 mb-8">
               <Logo className="w-10 h-10" />
-              <span className="text-xl font-bold text-slate-900">SafeHaul</span>
+              <span className="text-xl font-bold text-ds-content">SafeHaul</span>
             </div>
 
-            <h1 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">
+            <h1 className="text-3xl font-extrabold text-ds-content mb-2 tracking-tight">
               Welcome Back
             </h1>
-            <p className="text-slate-500 text-sm font-medium">
+            <p className="text-ds-content-muted text-ds-body font-medium">
               Sign in to access your portal
             </p>
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-              <div className="w-8 h-8 bg-red-100 text-red-600 rounded-full flex items-center justify-center shrink-0">
-                <AlertCircle size={18} />
-              </div>
-              <p className="text-sm text-red-600 font-semibold">{error}</p>
+            <div
+              role="alert"
+              className="mb-6 flex items-center gap-3 rounded-ds-lg border border-ds-status-danger-border bg-ds-status-danger-bg p-ds-4 animate-in fade-in slide-in-from-top-2"
+            >
+              <AlertCircle size={18} className="shrink-0 text-ds-status-danger-fg" aria-hidden="true" />
+              <p className="text-ds-sm font-semibold text-ds-status-danger-fg">{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-                Email address
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Mail size={18} className="text-slate-400" />
-                </div>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
+          <form onSubmit={handleSubmit} className="space-y-ds-5">
+            <FormField id="email" label="Email address" required>
+              <Input
+                name="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </FormField>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1.5">
-                Password
-              </label>
+            <div className="grid gap-ds-2">
+              <Label htmlFor="password" required>Password</Label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Lock size={18} className="text-slate-400" />
-                </div>
-                <input
+                <Input
                   id="password"
                   name="password"
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
                   placeholder="Enter your password"
+                  style={{ paddingInlineEnd: 'var(--ds-space-12)' }}
                 />
-                <button
-                  type="button"
+                <IconButton
+                  variant="ghost"
+                  label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute right-1 top-1/2 -translate-y-1/2"
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+                  {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+                </IconButton>
               </div>
-              <div className="mt-2 text-right">
+              <div className="text-right">
                 <button
                   type="button"
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-ds-sm font-medium text-ds-content-link hover:underline focus-visible:outline-none focus-visible:shadow-ds-focus rounded-ds-sm"
                   onClick={openForgotPassword}
                 >
                   Forgot password?
@@ -195,44 +205,39 @@ export function LoginScreen() {
               </div>
             </div>
 
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={loading}
             >
-              {loading ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <>
-                  Sign In
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
+              Sign In
+              {!loading && <ArrowRight size={18} aria-hidden="true" />}
+            </Button>
           </form>
 
-          <div className="mt-12 pt-8 border-t border-slate-100">
-            <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100">
-              <p className="text-sm text-slate-600 font-medium mb-1">
+          <div className="mt-12 pt-8 border-t border-ds-border-subtle">
+            <Card padding="md">
+              <p className="text-ds-sm text-ds-content font-medium mb-1">
                 New to SafeHaul?
               </p>
-              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              <p className="text-ds-xs text-ds-content-muted mb-4 leading-relaxed">
                 Contact our administration team to set up a new company account.
               </p>
               <a
                 href="mailto:info@safehaul.io"
-                className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-bold transition-all hover:gap-3"
+                className="inline-flex items-center gap-2 text-ds-sm text-ds-content-link hover:gap-3 font-bold transition-all"
               >
-                Contact SafeHaul <ArrowRight size={16} />
+                Contact SafeHaul <ArrowRight size={16} aria-hidden="true" />
               </a>
-            </div>
+            </Card>
           </div>
 
         </div>
       </div>
 
-      {/* Right Side - Hero / Marketing */}
-      {/* CHANGED: Background color to dark slate to avoid clashing with the Blue/Teal logo */}
+      {/* Right Side - Hero / Marketing (branded artwork, presentation preserved) */}
       <div className="hidden lg:flex lg:w-[55%] bg-slate-900 relative overflow-hidden">
 
         {/* Background Effects */}
@@ -282,7 +287,6 @@ export function LoginScreen() {
                 <div className="text-sm text-white/60">Active Drivers</div>
               </div>
               <div className="text-center">
-                {/* CHANGED: 500+ -> 10+ */}
                 <div className="text-2xl xl:text-3xl font-bold text-[#0BE2A4] mb-1">10+</div>
                 <div className="text-sm text-white/60">Partner Carriers</div>
               </div>
@@ -303,81 +307,83 @@ export function LoginScreen() {
         </div>
       </div>
 
-      {/* Forgot Password Modal */}
+      {/* Forgot Password Modal — shared accessible dialog (focus trap, Escape,
+          backdrop dismiss, focus restore). Reset workflow behavior is preserved. */}
       {showForgotPassword && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 animate-in fade-in zoom-in-95 duration-200">
+        <Modal
+          onClose={closeForgotPassword}
+          labelledBy={RESET_DIALOG_TITLE_ID}
+          initialFocusRef={resetEmailSent ? undefined : resetEmailRef}
+          className="w-full max-w-md overflow-hidden rounded-ds-xl bg-ds-surface shadow-ds-lg"
+        >
+          <div className="p-8">
             {resetEmailSent ? (
               <div className="text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 size={32} className="text-green-600" />
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-ds-status-success-bg">
+                  <CheckCircle2 size={32} className="text-ds-status-success-fg" aria-hidden="true" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Check your email</h3>
-                <p className="text-slate-500 mb-6">
-                  We've sent password reset instructions to <strong className="text-slate-700">{resetEmail}</strong>
+                <h3 id={RESET_DIALOG_TITLE_ID} className="mb-2 text-ds-heading-md font-bold text-ds-content">
+                  Check your email
+                </h3>
+                <p className="mb-6 text-ds-body text-ds-content-muted">
+                  We've sent password reset instructions to{' '}
+                  <strong className="text-ds-content">{resetEmail}</strong>
                 </p>
-                <button
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
                   onClick={closeForgotPassword}
-                  className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all"
                 >
                   Back to Sign In
-                </button>
+                </Button>
               </div>
             ) : (
               <>
                 <button
+                  type="button"
                   onClick={closeForgotPassword}
-                  className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
+                  className="mb-4 inline-flex items-center gap-1 rounded-ds-sm text-ds-sm text-ds-content-muted hover:text-ds-content focus-visible:outline-none focus-visible:shadow-ds-focus"
                 >
-                  <ArrowLeft size={16} /> Back to login
+                  <ArrowLeft size={16} aria-hidden="true" /> Back to login
                 </button>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Reset your password</h3>
-                <p className="text-slate-500 mb-6">
+                <h3 id={RESET_DIALOG_TITLE_ID} className="mb-2 text-ds-heading-md font-bold text-ds-content">
+                  Reset your password
+                </h3>
+                <p className="mb-6 text-ds-body text-ds-content-muted">
                   Enter your email address and we'll send you a link to reset your password.
                 </p>
 
-                {resetError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-lg">
-                    <p className="text-sm text-red-600">{resetError}</p>
-                  </div>
-                )}
-
-                <form onSubmit={handleForgotPassword}>
-                  <div className="mb-4">
-                    <label htmlFor="reset-email" className="block text-sm font-medium text-slate-700 mb-1.5">
-                      Email address
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Mail size={18} className="text-slate-400" />
-                      </div>
-                      <input
-                        id="reset-email"
-                        type="email"
-                        value={resetEmail}
-                        onChange={(e) => setResetEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                        placeholder="you@example.com"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={resetLoading}
-                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                <form onSubmit={handleForgotPassword} className="space-y-ds-4">
+                  <FormField
+                    id="reset-email"
+                    label="Email address"
+                    required
+                    error={resetError || undefined}
                   >
-                    {resetLoading ? (
-                      <Loader2 size={20} className="animate-spin" />
-                    ) : (
-                      'Send Reset Link'
-                    )}
-                  </button>
+                    <Input
+                      ref={resetEmailRef}
+                      type="email"
+                      autoComplete="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="you@example.com"
+                    />
+                  </FormField>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    fullWidth
+                    loading={resetLoading}
+                  >
+                    Send Reset Link
+                  </Button>
                 </form>
               </>
             )}
           </div>
-        </div>
+        </Modal>
       )}
 
     </div>
