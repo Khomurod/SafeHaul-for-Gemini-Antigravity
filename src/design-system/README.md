@@ -61,6 +61,9 @@ verified.
 - The Company Settings Billing informational card consumes FormSection,
   FieldDisplay, Badge, and FieldMessage while the plan mapping and support copy
   remain feature-owned.
+- The Company Settings Automated SMS templates form consumes FormSection,
+  FormField, Textarea, Button, and FieldMessage while the three template names,
+  Firestore read/write, placeholder meaning, and messages remain feature-owned.
 
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
