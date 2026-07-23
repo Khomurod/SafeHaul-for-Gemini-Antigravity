@@ -535,7 +535,7 @@ The reverse directions are prohibited.
     - Notes: these components emit native events and contain no Firebase,
       Company, user, recruiter, validation, or save logic. Existing shared
       callback/file controls remain compatibility adapters.
-    - Commit/PR: current compatibility-slice changes are not yet committed.
+    - Commit/PR: checkpoint `0d22a0d`.
 
 - [ ] Adapt existing shared form controls without changing data contracts.
   - Complete when: existing `(name, value)` callbacks, file behavior, date
@@ -836,8 +836,7 @@ The reverse directions are prohibited.
       screen remains higher risk because it combines avatar upload,
       Authentication reauthentication/email/password changes, uniqueness
       lookup, and Firestore writes.
-    - Commit/PR: checkpoint `d993804` contains the prior completed phases; this
-      audit is not yet committed.
+    - Commit/PR: checkpoint `0d22a0d`.
   - [x] Migrate the Company Settings Personal Profile tab as the first
     compatibility slice.
     - Complete when: name load/edit/save, read-only email, recruiting-link
@@ -871,9 +870,51 @@ The reverse directions are prohibited.
       only shell-adjacent change is `min-w-0` on the existing settings content
       flex item to remove verified 1024 px nested overflow. No backend,
       Firebase rules, storage, database, permissions, or data-format changes.
-      The legacy 10 px settings navigation headings and their failed contrast
-      remain documented for the next bounded shell slice.
-    - Commit/PR: current compatibility-slice changes are not yet committed.
+      The legacy 10 px settings navigation headings identified by this slice
+      were subsequently migrated in the bounded shell checkpoint `334b5c6`.
+    - Commit/PR: checkpoint `0d22a0d`.
+  - [x] Migrate the Company Settings shell and grouped navigation presentation.
+    - Complete when: group headings use supported typography and semantic
+      tokens; navigation/current-item semantics, keyboard focus movement,
+      visible focus, tab switching, feature-flag visibility, admin redirect,
+      desktop/tablet/mobile layouts, overflow, axe, and final diff are verified
+      without changing settings state or behavior.
+    - Completed: 2026-07-23.
+    - Files: `src/design-system/components/section-navigation/**`,
+      `src/design-system/components/index.js`,
+      `src/design-system/components/README.md`,
+      `src/design-system/README.md`,
+      `src/features/settings/components/CompanySettings.jsx`,
+      `src/features/settings/components/CompanySettings.test.jsx`,
+      `src/features/settings/components/CompanyProfileTab.jsx`,
+      `e2e/company-settings-navigation.spec.cjs`,
+      `e2e/company-settings-profile.spec.cjs`, this roadmap.
+    - Verification: 2 shell-focused unit files / 9 tests passed; final
+      design-system gate passed with 11 files / 46 tests; final full frontend
+      gate passed with 84 files / 536 tests and the existing 2 files / 48
+      emulator-dependent rules tests skipped; frontend lint passed with 0
+      errors and 169 existing warnings; typecheck, production build, and
+      `git diff --check` passed. Combined settings Chromium/Mobile Chrome
+      regression passed 10 checks with 6 intentional viewport-specific skips;
+      the shell/navigation spec contributed 5 passes and 3 skips.
+    - Visual/mobile/a11y: manually reviewed at 1440×900, 1024×768, and
+      412×915. Desktop retains the side navigation; tablet uses a four-group
+      grid above content; mobile uses a two-column grid. Group headings are
+      12 px, targets are at least 44 px, long labels wrap, the current section
+      is visually and semantically identified, focus remains visible and is
+      retained through selection, and document/workspace/nested horizontal
+      overflow is absent. Unit axe reported no violations; scoped real-browser
+      axe reported no serious or critical violations.
+    - Notes: `SectionNavigation` is business-neutral and owns only generic
+      grouped navigation appearance, current-item semantics, responsive
+      presentation, disabled state, and Arrow/Home/End focus movement.
+      Company Settings still owns labels, feature-flag visibility, the existing
+      `activeTab` state, tab content, admin gate, Manage Team behavior, and
+      success feedback. The Company Profile tab strip now stacks on mobile only
+      to remove its verified nested scroller; its tab identifiers and content
+      switching are unchanged. No routes, data loading, uploads, saves,
+      permissions, Firebase code, backend code, rules, or data formats changed.
+    - Commit/PR: checkpoint `334b5c6`.
   - Notes: Company Profile, Team & Users, Email, SMS/number assignment,
     Automated SMS, Integrations, Billing, question configuration, and
     `/company/profile` remain separate slices and must not be migrated together.
@@ -1003,12 +1044,12 @@ own rows. Data and workflow ownership stays in the feature.
 
 | Screen / slice | Current controls and presentation | Data / behavior coupling | Main risks | Priority / risk | Status | Verification needed |
 |---|---|---|---|---|---|---|
-| Company Settings shell | Local sidebar buttons, 4 unsupported 10 px group labels, local success toast, billing card | Admin role redirect, feature-flag visibility, tab state, Manage Team dialog | Tab semantics, focus/current state, mobile sticky navigation, live success announcement | High / Medium | Audited; not migrated | Admin redirect, every tab route/state, mobile navigation, keyboard, success timing |
+| Company Settings shell | Approved `SectionNavigation`, semantic shell tokens, feature-owned grouped item definitions, existing local success toast and billing card | Admin role redirect, feature-flag visibility, tab state, Manage Team dialog remain feature-owned | Live success announcement remains for a later feedback slice | High / Medium | Shell/navigation compatibility slice completed 2026-07-23 | 9 focused unit tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, keyboard/focus/current state, admin redirect, feature flag, axe, overflow passed |
 | Company Profile — info | 9 text inputs and 9 visual labels in `CompanyInfoSection`; local edit/save controls | `saveCompanySettings`, nested contact/address/legal/application payload | Label associations, edit/read-only distinction, payload parity, long company/address values | High / High | Audited; not migrated | Load/edit/cancel/save, payload shape, validation, desktop/mobile |
 | Company Profile — branding | File input and logo preview in `BrandingSection` | `uploadCompanyLogo`, upload progress/error, saved logo URL | File naming, keyboard upload, preview/alt text, file/type/size behavior | High / High | Audited; not migrated | Exact upload contract, progress/error, keyboard/mobile, preview |
 | Company Profile — questions | Text/select/textarea previews, 4 native checkboxes, button-based required/hidden switches, question editors | Application configuration and custom-question state passed through Company Profile save | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Audited; not migrated | All question tests, keyboard toggles, validation, save payload, mobile |
 | Team & Users | 3 inputs, 1 role select, local buttons | Direct Firestore user/team reads and writes; Manage Team dialog | Permissions, required fields, role changes, duplicate/error states | High / Very high | Audited; not migrated | Role gates, add/manage flows, validation, dialog, desktop/mobile |
-| Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings shell still has tiny low-contrast navigation headings | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
+| Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings forms remain locally styled | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
 | Email Settings | 4 inputs, 1 textarea, local test/save buttons | Firestore settings plus callable test/save behavior and retained secret handling | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Audited; not migrated | Existing email tests/contracts, secret preservation, validation, errors, mobile |
 | SMS / number assignment | 2 selects in assignment rows/default line, raw table, verify/save/diagnostic controls | `useLineAssignments` owns Firestore/callable behavior and legacy token compatibility | Table/control alignment, redacted line tokens, verification states, accessible select labels | High / Very high | Audited; not migrated | Existing 15-case suite, save/backfill/verify, DataTable, keyboard/mobile |
 | Automated SMS | 1 textarea and save button | Direct Firestore load/save of message template | Template preservation, loading/error state, textarea description/limits | Medium / High | Audited; not migrated | Exact text round-trip, save/error, keyboard/mobile |
@@ -1211,7 +1252,58 @@ Apply checks proportionally, but never claim an unrun check:
 - Diff review: `git diff --check` passed; generated `coverage/`, `dist/`, and
   `test-results/` artifacts were removed; no unrelated source or backend file
   is present.
-- Commit/PR: current compatibility-slice changes are not yet committed.
+- Commit/PR: checkpoint `0d22a0d`.
+
+### Company Settings shell/navigation compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: Personal Profile and the native-event form foundation
+  were committed separately as `0d22a0d` before this slice began.
+- Selected slice: only the Company Settings shell, grouped navigation, and the
+  directly observed Company Profile mobile tab-strip overflow were changed.
+- Component contract: added business-neutral `SectionNavigation` with labelled
+  navigation/groups, current-item and content-region semantics, 44 px targets,
+  semantic token styling, disabled state, visible focus, Arrow Up/Down,
+  Home/End focus movement, and stack/grid responsive modes. Settings labels,
+  feature flags, permissions, tab state, and content remain feature-owned.
+- Focused tests: 2 shell-focused files passed, 9 tests passed. The broader
+  focused settings regression including Personal Profile passed 3 files /
+  14 tests.
+- Design-system tests: 11 files passed, 46 tests passed.
+- Full frontend gate: 84 files passed, 2 files skipped; 536 tests passed and 48
+  emulator-dependent rules tests skipped by their existing environment guard.
+- Frontend lint: passed with 0 errors and 169 existing warnings. No warning was
+  added by this slice.
+- Typecheck: passed (`tsc -p jsconfig.json --noEmit`).
+- Production build: passed; Vite transformed 2,637 modules. Existing stale
+  Browserslist-data and chunk-size warnings remain.
+- Chromium and Mobile Chrome regression: the combined navigation and Personal
+  Profile run passed 10 checks with 6 intentional viewport-specific skips; the
+  navigation spec contributed 5 passes and 3 skips.
+- Behavior: active-tab identifiers and `setActiveTab` ownership, Company
+  Profile/Team/Email/SMS/Automated SMS/Integrations/Billing/Personal content,
+  `callTracking` visibility, company-admin redirect, routes, Manage Team,
+  success feedback, data loading, saves, uploads, permissions, and Firebase
+  behavior are unchanged.
+- Desktop/laptop/mobile: manual rendered review passed at 1440×900, 1024×768,
+  and 412×915. Desktop is side-by-side; tablet is a four-group navigation grid;
+  mobile is a two-column grid. All eight items remain reachable, long labels
+  wrap, selection remains obvious, focus is visible, touch targets are at least
+  44 px, and no document, workspace, shell, or nested horizontal scroller
+  remains.
+- Accessibility: unit axe reported no violations; scoped Chromium/Mobile Chrome
+  axe reported no serious or critical violations. `aria-current="page"`,
+  `aria-controls`, labelled groups, native buttons, logical Tab order, and
+  Arrow/Home/End focus movement were verified.
+- Visual regression: no durable screenshot baseline was claimed because the
+  catalog/baseline ownership decision remains open; manual screenshots and
+  deterministic geometry assertions were completed instead.
+- Backend/Firebase rules tests: not applicable; no backend, rules, database,
+  storage, callable, integration, or Firebase contract changed.
+- Diff review: `git diff --check` passed; generated `playwright-report/` and
+  `test-results/` artifacts were removed; no unrelated source or backend file
+  was included.
+- Commit/PR: checkpoint `334b5c6`.
 
 ---
 
@@ -1240,26 +1332,24 @@ related CI enforcement permanently blocking.
 
 ## 8. Safest next phase
 
-The Company Settings Personal Profile compatibility slice completed on
-2026-07-23. The safest next bounded slice is the Company Settings shell and
-navigation presentation, before migrating a larger data-writing form.
+The Company Settings shell/navigation compatibility slice completed on
+2026-07-23. The safest next bounded slice is Company Profile information,
+excluding branding upload and application-form questions.
 
 Sequence:
 
-1. replace the four legacy 10 px, low-contrast navigation group headings with
-   approved typography and semantic content tokens;
-2. define explicit navigation/current-item semantics and visible focus without
-   changing the existing local active-tab state, feature flag, admin gate, or
-   rendered tab content;
-3. review the nested settings navigation at 1440×900, 1024×768, and 412×915,
-   including long labels, scroll position, touch targets, and content access;
-4. add focused keyboard/axe/Chromium/Mobile Chrome coverage and keep the
-   `min-w-0` overflow regression;
-5. after that shell slice is verified, migrate Company Profile information as
-   a separate form slice, preserving its nested save payload and edit/cancel
-   behavior.
+1. audit and freeze the exact Company information load, edit, cancel, and save
+   payload contract before changing presentation;
+2. migrate only `CompanyInfoSection` labels, inputs, read-only presentation,
+   validation messages, and edit/save/cancel controls to approved form, card,
+   button, and layout primitives;
+3. preserve `saveCompanySettings`, nested contact/address/legal/application
+   payloads, existing field names, default values, and success/error behavior;
+4. add focused payload-parity, edit/cancel, label/error, keyboard, axe, and
+   responsive coverage;
+5. verify at 1440×900, 1024×768, and 412×915 before marking the slice complete.
 
 Do not combine Company Profile branding upload, application questions, team
 roles, email secrets, phone assignment, integrations, or `/company/profile`
-account security with either slice. Those remain independent high-risk items
+account security with this slice. Those remain independent high-risk items
 with their own behavior-preservation evidence.
