@@ -1244,7 +1244,7 @@ Status `Not started` means audited but not migrated.
 | Super Admin `/super-admin/*` | feature-local view router, tables, forms, modals, analytics | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | Not started | Permissions, maintenance actions, integrations, analytics, desktop/mobile |
 | Public application `/apply/:slug` | `PublicApplyHandler`, shared feature-coupled `Stepper`, step forms | Feature-owned wizard using Progress, Field, Button, Card, PageState | Critical | Very high | Forms, feedback, layout, compatibility plan | Not started | Draft/offline/upload/validation/submission/consent, full mobile E2E |
 | Signing room `/sign/...` | specialized PDF/document-first workflow | Approved controls/states around feature-owned document canvas | Medium | Very high | Controls, dialog, feedback; signing QA | Not started | Existing signing unit/E2E, coordinates, zoom/touch/signature, mobile |
-| Verification portal `/verify/:token` | feature-local cards/radios/status screens | Card, Field/Radio, Button, PageState | Medium | High | Forms, cards, feedback | Not started | Token states, submit, errors, keyboard/mobile |
+| Verification portal `/verify/:token` | `VerificationPortal` + status screens + 4 sections now consume `Card`, `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `FieldDisplay`, `FieldMessage`, `Badge`, `Button`, `Stack`; feature-local `RadioGroup` accessibility-hardened; `SignaturePad`/hook untouched | Card, form primitives, Badge, Button, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 24 focused tests (hook token-load/submit contract + portal integration + status screens), full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, single h1 per state, radio grouping + keyboard, associated labels, validation focus, axe, overflow |
 | Change review `/review-change/:token` | local form/card/actions with direct data logic | Card, Field, Button, PageState | Medium | High | Forms, cards, feedback | Not started | Approve/reject/error/expired states, keyboard/mobile |
 | Sandbox application | production-like application plus test controls | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | Not started | E2E fixtures, no production leakage, mobile |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
@@ -2165,6 +2165,119 @@ Apply checks proportionally, but never claim an unrun check:
 - Remaining edge screens: the sandbox application screen and the verification /
   change-review token result cards are still unmigrated.
 
+### Public Verification Portal completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: `origin/main` at `93aa651` (the merged Sandbox Transfer
+  Success PR #80) with a clean working tree before this slice began. Work was
+  done on the designated `claude/safehaul-design-system-g1vr3a` branch, restarted
+  from `origin/main`.
+- Audit findings: `/verify/:token` (public, token-based, no login) is an
+  FMCSA 49 CFR §391.23 employer-verification form. Logic lives entirely in
+  `hooks/useVerificationPortal.js`; the token comes from `useParams()`. Page
+  states: loading, error, expired, already-completed, completed, and the main
+  form. The main form has four sections (Employment, conditional Safety,
+  Additional, Respondent + signature) with conditional sub-fields
+  (`wasEmployed`, `subjectToDotTesting`, `hadDrugAlcoholViolations`,
+  `hadAccidents`). Pre-migration a11y gaps: sibling `<label>`s not associated
+  with controls, a custom `RadioGroup` with `sr-only` inputs and no
+  fieldset/legend, no visible radio focus, no error association, and no
+  validation focus move. There is no retry mechanism (load runs once on mount)
+  and no separate duplicate-submit guard beyond the `submitting` flag + the
+  completed transition.
+- Exact token-load contract (frozen, unchanged): `httpsCallable(functions,
+  'getVerificationRequest')({ token })` → `result.data`; `data.status ===
+  'completed'` → already-completed, else stored as `verificationData`. Errors:
+  `functions/deadline-exceeded` → expired; `functions/not-found` → "This
+  verification link is invalid or has been removed."; otherwise `err.message ||
+  'Failed to load verification request.'`. No token → "No verification token
+  provided." An `?e2eVerify=mock` E2E path returns fixture data.
+- Exact submission contract (frozen, unchanged): `httpsCallable(functions,
+  'submitVerificationResponse')({ token, response: formData })` on a passing
+  custom `validate()`; success → completed + scroll to top; failure →
+  `err.message || 'Failed to submit response. Please try again.'`. The hook's
+  boolean (`true`/`false`/`null`), string (`'yes'`/`'no'`/`'in_progress'`,
+  select values), and empty-string field representations and the full 19-field
+  `response` shape are asserted verbatim in tests.
+- Go/no-go decision: **GO**. Both callables are mockable; every page and
+  conditional state is testable; the custom validation and the shared
+  `SignaturePad` are preserved unchanged; no backend, callable, or Firebase-rules
+  change is required; and the whole workflow stays feature-owned.
+- Presentation changes: `VerificationPortal.jsx` (tokenized page, `role="alert"`
+  error summary that receives focus on a fresh validation failure, `Button`
+  submit), `PortalStatusScreens.jsx` (each state is a `Card as="main"` with one
+  `<h1>`, tinted status icon, and an inner `role="status"`/`role="alert"` live
+  region), `ApplicantDetailsCard.jsx` (`Card` + `FieldDisplay`), the four
+  sections (`FormSection` + `FormField` + `Input`/`Select`/`Textarea`, which now
+  associate labels and errors), and `RadioGroup.jsx` (a11y-hardened in place).
+- Behavior preserved: `useVerificationPortal.js` and `SignaturePad` were **not**
+  changed; every `updateField(field, value)` call, `formData`/`formErrors` read,
+  option value, placeholder, conditional guard, the `validate()` rules, the token
+  footer display, and all user-visible messages are identical. Native `required`
+  was deliberately **not** added (it would bypass the custom error summary and
+  break the flow); required state is exposed via `aria-required` + a visual
+  asterisk instead.
+- Radio decision: no approved design-system radio primitive exists (Phase 4
+  Radio/Checkbox is not started), so the feature-local `RadioGroup` was hardened
+  in place — `<fieldset>`/`<legend>` grouping, native radios grouped by `name`
+  (arrow-key nav preserved), a `focus-within` visible focus ring, and
+  `aria-describedby` error/description association — and remains feature-owned.
+  No competing design-system RadioGroup was created.
+- Privacy/security: the route token is not logged, stored, or sent to analytics;
+  no hidden backend fields were added; the public route stays unauthenticated and
+  token validation is unchanged. All tests use artificial names, employers,
+  phones, and tokens (`token-abc`/`token-xyz`, "Artificial Applicant",
+  `555-000-1111`); no real data or token appears in any artifact.
+- Focused tests: 24 new across 2 files. `useVerificationPortal.test.js` (10):
+  exact token request, loading, valid/completed/not-found/expired/generic-failure
+  loads, no-token guard, validation-blocked submit with exact `formErrors`, and
+  the exact `{ token, response }` submit payload + completion + submit failure.
+  `VerificationPortal.test.jsx` (14): token-from-route, single `<h1>` + applicant
+  display, grouped radios with legend + preserved labels, conditional employment
+  and drug/alcohol reveals, validation error summary receiving focus without
+  submitting, full submit-to-success, the invalid-link error screen, loaded-form
+  axe, and one-h1 + axe for all five status screens.
+- Full frontend gate: 94 files passed, 2 skipped; **654 tests passed** and 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate `vitest run --coverage` passed at 28.68% statements / 26.62% branches /
+  27.62% functions / 29.34% lines — no threshold regressed. The
+  callable-contract check passed (`OK | mapped 101 | raw 101`); no backend
+  changed.
+- Lint (0 errors, 168 pre-existing warnings), typecheck, production build, and
+  `git diff --check` passed with only the pre-existing build warnings.
+- Chromium and Mobile Chrome regression: the extended
+  `e2e/pev-request-and-portal-response.spec.cjs` passed 7 checks with 3
+  intentional viewport-specific skips across both projects — the original
+  mock-mode complete-response flow, a grouped keyboard-focusable employment
+  question with visible focus, desktop/tablet and mobile overflow, and scoped
+  loaded-form axe on both projects.
+- Server hygiene: port 5000 was confirmed free before use; the browser checks
+  ran against a fresh `vite dev` server in E2E test mode serving the current
+  working tree via the pre-installed system Chromium (`PW_CHROMIUM_EXECUTABLE`).
+  No unknown process was terminated.
+- Accessibility: one `<h1>` per state; section `<h2>`s under it; radios grouped
+  by `<fieldset>`/`<legend>` with visible focus and associated errors; text/date/
+  select/textarea labels associated via `FormField`; `aria-required` on required
+  controls; a focused `role="alert"` error summary on validation failure; status
+  screens use `role="status"`/`role="alert"`; success and errors read as text,
+  not colour alone; all interface text is ≥12 px. Unit axe reported no
+  violations; scoped Chromium/Mobile Chrome axe reported no serious or critical
+  violations.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed the branded header, the FMCSA banner + `FieldDisplay` applicant grid,
+  tokenized sections, the untouched SignaturePad, a single-column mobile layout,
+  and no document or horizontal overflow.
+- Backend tests: not applicable; no callable implementation, Firestore/Storage
+  rule, data shape, route, or token behavior changed. The callable request/
+  response contracts are asserted in the focused tests via mocks.
+- Diff review: only the nine verification presentation files (portal, status
+  screens, applicant card, RadioGroup, four sections), the two new test files,
+  and the PEV e2e spec changed; the hook and `SignaturePad` were untouched; no
+  generated artifact, real token, or personal data entered any artifact.
+- Remaining Verification work: adopting a design-system Radio/Checkbox primitive
+  would retire the feature-local RadioGroup; the Change Review Portal
+  (`/review-change/:token`) remains a separate, not-yet-migrated slice.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2230,17 +2343,27 @@ consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single
 `<h1>`/`<main>`, preserving the company-name fallback chain, the `New
 Application` status wording, and both navigations.
 
-The recommended next bounded slice is one of the remaining low-risk screens: the
-**verification** (`/verify/:token`) / **change-review** (`/review-change/:token`)
-token result cards (Medium/High: Card, Field/Radio, Button, PageState) — token
-state, submit, and error screens that extend the proven `Card`/`Button`/form
-presentation without editable tables. The **sandbox application** screen remains
-tied to the public-application migration. Within Settings/Profile, **Team &
-Users** is the next lowest-risk in-phase option; Company Profile application
-questions remains higher risk (switch semantics + destructive actions) and needs
-its own audit. The Phase 3 link-style Button variant (Login text-link and
-reveal-adornment exceptions) and a design-system file-input primitive (the
-branding-upload exception) stay independently tracked.
+The **public Verification Portal** (`/verify/:token`) was migrated and verified
+on 2026-07-23 (completion log in section 6): the portal, its five status
+screens, and the four FMCSA form sections now consume `Card`, `FormSection`,
+`FormField`, `Input`/`Select`/`Textarea`, `FieldDisplay`, `FieldMessage`,
+`Badge`, and `Button`; the feature-local `RadioGroup` was accessibility-hardened
+in place (fieldset/legend, visible focus, error/description association) and the
+`useVerificationPortal` hook and shared `SignaturePad` were left untouched, so
+the token-load/validate/submit contracts are unchanged.
+
+The recommended next bounded slice is the **Change Review Portal**
+(`/review-change/:token`) — the sibling token result screen (Card, Field/Radio,
+Button, PageState) explicitly deferred from this diff; it should get its own
+audit and behavior freeze. Other low-risk options: within Settings/Profile,
+**Team & Users** is the next lowest-risk in-phase item; the **sandbox
+application** screen remains tied to the public-application migration; and
+Company Profile application questions remains higher risk (switch semantics +
+destructive actions). The Phase 3 link-style Button variant (Login text-link and
+reveal-adornment exceptions), a design-system file-input primitive (the
+branding-upload exception), and a design-system Radio/Checkbox primitive (which
+would retire the verification RadioGroup's feature-local status) stay
+independently tracked. The SMS number-assignment NO-GO is unchanged.
 
 Sequence (whichever slice the owner selects):
 
