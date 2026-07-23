@@ -994,9 +994,68 @@ The reverse directions are prohibited.
       Firebase rules, storage, database, permissions, route, or data-format
       change was made.
     - Commit/PR: checkpoint `a98954d`.
+  - [x] Migrate the Company Settings Automated SMS templates form.
+    - Complete when: the three-template Firestore read/write contract is frozen
+      and preserved exactly; the three textareas, their labels, guidance, and the
+      save action move to approved form/section/button primitives with
+      programmatic label association, an announced loading state, an accessible
+      saving state, and correct error/help semantics; template round-trip, empty
+      fallbacks, save contract, save states, all three messages, missing-company
+      behavior, keyboard order, axe, and desktop/tablet/mobile layout are verified.
+    - Completed: 2026-07-23.
+    - Files: `src/features/settings/components/AutomatedSmsTab.jsx`,
+      `src/features/settings/components/AutomatedSmsTab.test.jsx`,
+      `e2e/company-settings-automated-sms.spec.cjs`, this roadmap.
+    - Firestore behavior preserved (frozen before migration): read
+      `getDoc(doc(db, 'companies', companyId, 'settings', 'automated_sms'))`
+      with an `snap.exists()` guard, `templateContactAttempt1/2/3` each falling
+      back to `''`, and the `cancelled` unmount guard; write
+      `setDoc(<same path>, { templateContactAttempt1, templateContactAttempt2,
+      templateContactAttempt3, updatedAt: serverTimestamp() }, { merge: true })`.
+      The load-error (`Could not load automated SMS templates.`), save-success
+      (`Automated SMS templates saved.`), and save-error
+      (`Failed to save templates.`) messages, the `{driver name}`/`{user name}`
+      placeholders, the SMS-integration/duplicate-send guidance, the `saving`
+      disable, the toast behavior, the `automated_sms` tab id, the admin gate,
+      and routes are unchanged.
+    - Verification: 12 focused AutomatedSmsTab tests passed (path, all-three-load,
+      missing-doc and missing-field empty fallbacks, unique associated ids,
+      independent editing, exact save path/payload/`serverTimestamp`/`{merge:true}`,
+      save-disabled-while-saving with `aria-busy`, save-success, save-error,
+      load-error, missing-`companyId` no-read/no-write, unmount guard, and axe);
+      the CompanySettings shell test (5) and design-system gate (11 files /
+      47 tests) still pass; full frontend gate passed with 87 files / 563 tests
+      and the existing 2 files / 48 emulator-dependent rules tests skipped by
+      their environment guard (no flaky failure this run); coverage gate
+      completed; frontend lint passed with 0 errors on the changed files;
+      typecheck, production build, and `git diff --check` passed. Chromium and
+      Mobile Chrome Playwright passed 7 checks with 3 intentional
+      viewport-specific skips, including loaded-form axe on both projects.
+    - Visual/mobile/a11y: manually reviewed the loaded form at 1440×900,
+      1024×768, and 412×915. Each of the three textareas is programmatically
+      associated with its label (`.labels.length === 1`), is 112 px tall with
+      14 px body text, and wraps long content; the heading is 16 px, the
+      description and inline `{variable}` code and labels are 13 px, and the
+      guidance help text is 12 px, so no 9/10 px text was introduced. The save
+      button is the approved 44 px `Button`, communicates saving via `aria-busy`
+      and disablement, and keyboard order runs template 1 → 2 → 3 → save. No
+      document, content, or nested horizontal overflow exists at any width. The
+      loading state is an announced `role="status"`. Unit axe reported no
+      violations; scoped Chromium/Mobile Chrome axe reported no serious or
+      critical violations.
+    - Notes: template names, template state, Firestore reads/writes, placeholder
+      meaning, SMS guidance, and all messages remain feature-owned; the design
+      system gained no Firebase, SMS, template, or Company knowledge. The three
+      fields were kept as three independent textareas (not merged or turned into
+      a dynamic list). Documented behavior concern: when `companyId` is absent
+      the existing guard performs no read and leaves the tab in its loading
+      state; this pre-existing behavior was preserved unchanged, not altered by
+      this visual slice. No backend, Firebase rules, storage, database,
+      permissions, route, or data-format change was made.
+    - Commit/PR: checkpoint `00fd311`.
   - Notes: Company Profile branding/questions, Team & Users, Email,
-    SMS/number assignment, Automated SMS, Integrations, and
-    `/company/profile` remain separate slices and must not be migrated together.
+    SMS/number assignment, Integrations, and `/company/profile` remain separate
+    slices and must not be migrated together.
 
 - [ ] Campaigns.
   - Complete when: campaign cards/editor/results/report dialogs migrate without
@@ -1131,7 +1190,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings forms remain locally styled | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
 | Email Settings | 4 inputs, 1 textarea, local test/save buttons | Firestore settings plus callable test/save behavior and retained secret handling | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Audited; not migrated | Existing email tests/contracts, secret preservation, validation, errors, mobile |
 | SMS / number assignment | 2 selects in assignment rows/default line, raw table, verify/save/diagnostic controls | `useLineAssignments` owns Firestore/callable behavior and legacy token compatibility | Table/control alignment, redacted line tokens, verification states, accessible select labels | High / Very high | Audited; not migrated | Existing 15-case suite, save/backfill/verify, DataTable, keyboard/mobile |
-| Automated SMS | 1 textarea and save button | Direct Firestore load/save of message template | Template preservation, loading/error state, textarea description/limits | Medium / High | Audited; not migrated | Exact text round-trip, save/error, keyboard/mobile |
+| Automated SMS | Approved `FormSection`, `FormField`, `Textarea`, `Button`, and `FieldMessage` replace the local heading/labels/textareas/save styling for three SMS-template textareas (`templateContactAttempt1/2/3`) and one save action | Three SMS-template textareas and one save action backed by a single Firestore document `companies/{companyId}/settings/automated_sms`; read/write remain feature-owned and unchanged | Template preservation, loading/error state, textarea description/limits | Medium / High | Compatibility slice completed 2026-07-23 | 12 focused contract tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, label association, loading announce, save states, axe, overflow passed |
 | Integrations | Connection cards and buttons, including disabled states | Firebase callable/SDK connection workflows and feature availability | External SDK state, disabled explanation, destructive/reconnect behavior | Medium / Very high | Audited; not migrated | Integration mocks/contracts, permissions, loading/error, mobile |
 | Billing | Approved `FormSection`, `FieldDisplay`, `Badge`, and `FieldMessage` replace the local heading/card/plan/support styling | Plan value display only; `planType` read from the loaded profile, unchanged | Empty/long plan content and support messaging | Low / Low | Compatibility slice completed 2026-07-23 | 7 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, labelled plan/badge status, support copy, axe, overflow passed |
 | `/company/profile` account profile/security | 8 inputs, 8 labels, avatar file input, 6 buttons, password/email forms | Firebase Auth profile/email/password, reauthentication, Storage upload, Firestore user writes/query | Keyboard-inaccessible avatar surface, nested click targets, validation/error association, security/autofill, upload and reauth regressions | High / Very high | Audited; defer until form/upload/dialog foundations are proven | Auth/storage mocks, validation branches, save/email/password/upload workflows, keyboard/autofill, desktop/mobile |
@@ -1495,6 +1554,79 @@ Apply checks proportionally, but never claim an unrun check:
   backend file was included.
 - Commit/PR: checkpoint `a98954d`.
 
+### Company Settings Automated SMS compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: the Billing card was committed as `a98954d` and its
+  roadmap evidence as `00fd366` before this slice began.
+- Roadmap correction: the section 5.4 inventory and section 8 previously
+  described Automated SMS as a single-textarea screen. The screen actually
+  edits three independent templates (`templateContactAttempt1`,
+  `templateContactAttempt2`, `templateContactAttempt3`) through three textareas
+  stored together in one Firestore document. The wording was corrected to
+  "three SMS-template textareas and one save action backed by a single Firestore
+  document" without changing any status merely for the correction.
+- Audit / frozen contract: read
+  `getDoc(doc(db, 'companies', companyId, 'settings', 'automated_sms'))` behind
+  a `snap.exists()` guard, with each of the three templates falling back to `''`
+  and a `cancelled` flag preventing post-unmount state updates; write
+  `setDoc(<same path>, { templateContactAttempt1, templateContactAttempt2,
+  templateContactAttempt3, updatedAt: serverTimestamp() }, { merge: true })`.
+  Load-error, save-success, and save-error messages, the `{driver name}` and
+  `{user name}` placeholders, and the SMS-integration/duplicate-send guidance
+  were frozen before presentation changed.
+- Component contract: reused the business-neutral `FormSection`, `FormField`,
+  `Textarea`, `Button`, and `FieldMessage`. No new design-system component was
+  added; no Firebase, SMS, template, or Company knowledge entered the design
+  system. The three fields remain three independent textareas.
+- Focused tests: 1 file passed, 12 tests passed, asserting the exact read path,
+  all-three load, missing-document and missing-field empty fallbacks, unique
+  programmatically associated ids, independent editing, the exact save
+  path/payload/`serverTimestamp`/`{ merge: true }` contract, save disabled with
+  `aria-busy` while saving, the save-success/save-error/load-error messages, the
+  missing-`companyId` no-read/no-write guard, the unmount cancellation guard,
+  and axe.
+- Shell/design-system regression: the CompanySettings shell test (5) and the
+  design-system gate (11 files / 47 tests) still pass unchanged.
+- Full frontend gate: 87 files passed, 2 files skipped; 563 tests passed and 48
+  emulator-dependent rules tests skipped by their environment guard. The
+  `playwrightConfig` flake did not recur this run.
+- Coverage gate: `vitest run --coverage` completed (26.64% statements, 24.70%
+  branches, 25.72% functions, 27.24% lines); no threshold regressed.
+- Frontend lint: passed with 0 errors on the changed files. Typecheck,
+  production build, and `git diff --check` passed. The build emitted only the
+  existing stale-Browserslist and chunk-size warnings.
+- Chromium and Mobile Chrome regression: the Automated SMS spec passed 7 checks
+  with 3 intentional viewport-specific skips, including loaded-form axe on both
+  projects and an accessible-loading-status assertion. Because the offline E2E
+  project has no emulator, the gating Firestore read rejects with `unavailable`
+  only after the SDK's offline-detection delay (~20s), so the loaded-form waits
+  are intentionally generous; this gating is the existing, preserved behavior.
+- Behavior: the three template names, per-field state, Firestore read/write, the
+  `automated_sms` tab id, admin gate, routes, toast behavior, and all messages
+  are unchanged. No new interactive control, validation, or business rule was
+  introduced.
+- Accessibility: each textarea is programmatically associated with a stable
+  unique label id; the heading is 16 px, description/inline-code/labels 13 px,
+  and help text 12 px, so no 9/10 px text was introduced. The save button is the
+  approved 44 px `Button` communicating saving via `aria-busy` and disablement;
+  keyboard order runs template 1 → 2 → 3 → save; the loading state is an
+  announced `role="status"`. Unit axe reported no violations; scoped
+  Chromium/Mobile Chrome axe reported no serious or critical violations.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed three full-width labelled textareas, aligned labels, 44 px controls,
+  wrapping, and no document, content, or nested horizontal overflow at any width.
+- Documented behavior concern: when `companyId` is absent the existing guard
+  performs no read and leaves the tab in its loading state; this pre-existing
+  behavior was preserved unchanged and asserted, not altered by the visual slice.
+- Backend/Firebase rules tests: the mocked Firestore contract is asserted in the
+  focused unit tests; no emulator rules test was applicable because no rules,
+  data shape, or backend behavior changed.
+- Diff review: `git diff --check` passed; generated `dist/`, `test-results/`,
+  and `playwright-report/` artifacts remain gitignored and were not staged; no
+  unrelated source or backend file was included.
+- Commit/PR: checkpoint `00fd311`.
+
 ---
 
 ## 7. Decisions and blockers
@@ -1522,26 +1654,29 @@ related CI enforcement permanently blocking.
 
 ## 8. Safest next phase
 
-The Company Settings Billing informational-card compatibility slice completed on
-2026-07-23. The safest next bounded slice is the Company Settings Automated SMS
-tab. It is a single textarea plus a save button backed by a direct Firestore
-load/save of one message template, so it is the lowest-coupling remaining
-settings slice and can prove the form-field-plus-save presentation while the
-message round-trip stays feature-owned.
+The Company Settings Automated SMS compatibility slice completed on 2026-07-23.
+The safest next bounded slice is the Company Settings Email Settings tab. It is a
+small fixed set of inputs plus a textarea with distinct test and save actions,
+so — with its secret handling frozen first — it is the most bounded remaining
+settings form and can extend the proven `FormField`/`Input`/`Textarea`/`Button`
+presentation while its callable test/save behavior stays feature-owned.
 
 Sequence:
 
-1. audit and freeze the exact template load, save payload, loading state, and
-   error handling before changing presentation;
-2. migrate only the Automated SMS textarea, its label/description, and the save
-   action to `FormField`, `Textarea`, `FormSection`, and `Button`;
-3. preserve the existing tab identifier, Firestore read/write, template value,
-   settings shell, permissions, routes, and all data behavior;
-4. add focused round-trip, loading, save-success, and error coverage plus axe
-   and responsive coverage;
+1. audit and freeze the exact settings read, the test-versus-save callable
+   contracts, secret/redaction handling, and required-field validation before
+   changing presentation;
+2. migrate only the Email Settings inputs, textarea, and the distinct test/save
+   actions to `FormField`, `Input`, `Textarea`, `FormSection`, and `Button`;
+3. preserve the existing tab identifier, Firestore/callable behavior, secret
+   handling, settings shell, permissions, routes, and all data behavior;
+4. add focused load, secret-preservation, validation, test-versus-save,
+   success, and error coverage plus axe and responsive coverage;
 5. verify at 1440×900, 1024×768, and 412×915 before marking the slice complete.
 
-Do not combine Automated SMS with Company Profile branding upload/application
-questions, team roles, email secrets, phone assignment, integrations, or
-`/company/profile` account security. Those remain independent higher-risk items
-with their own behavior-preservation evidence.
+Do not combine Email Settings with Company Profile branding upload/application
+questions, team roles, phone assignment, automated SMS, integrations, or
+`/company/profile` account security. Those remain independent items with their
+own behavior-preservation evidence. If Email Settings' secret handling proves
+too high-risk to migrate without a separate approved contract review, prefer the
+lower-risk SMS number-assignment table or defer to an explicitly approved order.
