@@ -14,15 +14,9 @@ import { TeamManagementTab } from './TeamManagementTab';
 import { EmailSettingsTab } from './EmailSettingsTab';
 import { PersonalProfileTab } from './PersonalProfileTab';
 import { IntegrationsTab } from './IntegrationsTab';
+import { BillingTab } from './BillingTab';
 import { ManageTeamModal } from '@shared/components/modals';
 import { Button, SectionNavigation } from '@/design-system/components';
-
-const SectionHeader = ({ title, subtitle }) => (
-    <div className="border-b border-gray-200 pb-4 mb-6">
-        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-        <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
-    </div>
-);
 
 export function CompanySettings() {
     const { currentCompanyProfile, currentUser, currentUserClaims } = useData();
@@ -124,16 +118,7 @@ export function CompanySettings() {
             case 'integrations':
                 return <IntegrationsTab />;
             case 'billing':
-                return (
-                    <div className="space-y-8 max-w-4xl animate-in fade-in">
-                        <SectionHeader title="Billing & Plan" subtitle="Manage your subscription." />
-                        <div className="bg-white border border-gray-200 rounded-xl p-10 text-center text-gray-500">
-                            <CreditCard size={48} className="mx-auto mb-4 opacity-20" />
-                            <p>Current Plan: <strong>{currentCompanyProfile?.planType === 'paid' ? 'Pro Plan' : 'Free Plan'}</strong></p>
-                            <p className="text-sm mt-2">To upgrade or cancel, please contact support.</p>
-                        </div>
-                    </div>
-                );
+                return <BillingTab currentCompanyProfile={currentCompanyProfile} />;
             default:
                 return <div className="p-10 text-center text-gray-500">Select a tab to view settings.</div>;
         }

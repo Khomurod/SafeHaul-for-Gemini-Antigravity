@@ -58,6 +58,9 @@ verified.
 - The Company Settings shell consumes SectionNavigation while the settings
   feature retains tab state, labels, feature flags, permissions, and rendered
   content.
+- The Company Settings Billing informational card consumes FormSection,
+  FieldDisplay, Badge, and FieldMessage while the plan mapping and support copy
+  remain feature-owned.
 
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
