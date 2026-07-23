@@ -1285,7 +1285,7 @@ own rows. Data and workflow ownership stays in the feature.
 |---|---|---|---|---|---|---|
 | Company Settings shell | Approved `SectionNavigation`, semantic shell tokens, feature-owned grouped item definitions, existing local success toast and billing card | Admin role redirect, feature-flag visibility, tab state, Manage Team dialog remain feature-owned | Live success announcement remains for a later feedback slice | High / Medium | Shell/navigation compatibility slice completed 2026-07-23 | 9 focused unit tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, keyboard/focus/current state, admin redirect, feature flag, axe, overflow passed |
 | Company Profile — info | Approved `FormField`, `Input`, `FieldDisplay`, `FormSection`, `Card`, and `Button` replace local information-field/card/action styling | `saveCompanySettings`, nested contact/address/legal/application payload remain feature-owned and unchanged | Branding upload and application questions remain separate higher-risk slices | High / High | Compatibility slice completed 2026-07-23 | 17 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, payload parity, keyboard/focus, labels, axe, overflow passed |
-| Company Profile — branding | File input and logo preview in `BrandingSection` | `uploadCompanyLogo`, upload progress/error, saved logo URL | File naming, keyboard upload, preview/alt text, file/type/size behavior | High / High | Audited; not migrated | Exact upload contract, progress/error, keyboard/mobile, preview |
+| Company Profile — branding | Approved `Button` + `FieldMessage` and a labelled, keyboard-triggered file input replace the local `<label>`-wrapped hidden input and raw preview in `BrandingSection`; preview/fallback tokenized | `uploadCompanyLogo` Storage path `company_assets/{companyId}/logo.{ext}` and the `companies/{companyId}.companyLogoUrl` Firestore field via `saveCompanySettings` remain feature-owned and unchanged | Keyboard trigger, no nesting, alt text, uploading announcement, focus return, no client size/type validation (preserved) | High / High | Compatibility slice completed 2026-07-23 | 18 focused tests (9 UI/a11y, 5 upload integration, 4 Storage contract), full suite, coverage, Chromium/Mobile Chrome, 1440/1024/412 px, exact Storage/Firestore contracts, keyboard/focus, axe, overflow passed |
 | Company Profile — questions | Text/select/textarea previews, 4 native checkboxes, button-based required/hidden switches, question editors | Application configuration and custom-question state passed through Company Profile save | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Audited; not migrated | All question tests, keyboard toggles, validation, save payload, mobile |
 | Team & Users | 3 inputs, 1 role select, local buttons | Direct Firestore user/team reads and writes; Manage Team dialog | Permissions, required fields, role changes, duplicate/error states | High / Very high | Audited; not migrated | Role gates, add/manage flows, validation, dialog, desktop/mobile |
 | Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings forms remain locally styled | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
@@ -1952,6 +1952,125 @@ Apply checks proportionally, but never claim an unrun check:
   feature-level reveal exception), and migrate the sandbox and verification/
   change-review edge screens.
 
+### Company Profile branding-upload compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: `origin/main` at `db1d785` (the merged Login/Auth PR #78)
+  with a clean working tree before this slice began. Work was done on the
+  designated `claude/safehaul-design-system-g1vr3a` branch, restarted from
+  `origin/main`.
+- Audit findings: the logo control is a two-part feature composition.
+  `BrandingSection.jsx` (presentation) received `companyLogoUrl`, `isEditing`,
+  `logoUploading`, and `onLogoUpload`; the parent `CompanyProfileTab.jsx`
+  (unchanged) owns `handleLogoUpload`. The pre-migration markup was a raw
+  128 px preview (`<img alt="Logo">` or a `Building` fallback) plus, only in
+  edit mode, a `<label>`-wrapped **`display:none`** `<input type="file"
+  accept="image/*">`. Findings: (a) the file input was keyboard-**inaccessible**
+  because `display:none` removed it from the tab order and the `<label>` is not
+  focusable; (b) there is **no client-side file-type or file-size validation**
+  anywhere (neither the component nor the `uploadCompanyLogo` helper) — the
+  `accept="image/*"` attribute is the only filter; (c) clicking the preview does
+  **not** open the picker; (d) the markup had **no nested buttons** (a label
+  wrapping an input is valid); (e) uploading was not announced; accepted types
+  and current/replacement state were not surfaced; the `alt` text was the
+  generic "Logo".
+- Exact Storage contract (frozen): `uploadCompanyLogo(companyId, file)` in
+  `src/lib/firebase/storage.js` writes to
+  **`company_assets/{companyId}/logo.{ext}`** where `ext` is
+  `file.name.split('.').pop()`, then returns `getDownloadURL`. On failure it
+  throws `File upload failed. Please try again.`; missing id/file throws
+  `Company ID and file are required for upload.`. This helper is **shared** with
+  Super Admin's `EditCompanyModal`, so it was not modified.
+- Exact Firestore contract (frozen): the logo upload calls
+  `saveCompanySettings(companyId, { companyLogoUrl: downloadURL })`, which does
+  `updateDoc(doc(db,'companies',companyId), { companyLogoUrl })` — the single
+  field **`companyLogoUrl`** on `companies/{companyId}`. Messages: success
+  `Logo uploaded successfully!`; failure `Logo upload failed: {message}` via the
+  feature toast (`role="alert"`). Permissions: the upload control shows only in
+  edit mode, and edit is gated by `isCompanyAdmin` (company_admin claim or
+  super_admin global role).
+- Go/no-go decision: **GO**. Both contracts are fully understood and mockable,
+  file behavior is preserved unchanged (no new validation), permissions are
+  untouched, and no Storage-rule, Firestore-rule, or backend change is required.
+  The Storage destination, Firestore field, upload payload, accepted formats
+  (`image/*`), replacement behavior, and messages are all preserved.
+- Presentation changes (only `BrandingSection.jsx`): the edit-mode trigger is
+  now an approved keyboard-accessible `Button` (`variant="secondary"`,
+  `loading={logoUploading}`) that opens a visually hidden but labelled native
+  `<input type="file">` via a ref (`onClick`), so the input is no longer
+  `display:none` and there are no nested interactive elements. Added: an
+  `aria-label="Upload company logo"` on the input; a `FieldMessage` help line
+  explaining current/replacement state and accepted types, associated via
+  `aria-describedby`; a `role="status"` region announcing "Uploading company
+  logo…"; focus return to the trigger after an upload settles; a meaningful
+  `alt="Company logo"` and a `role="img"` "No company logo set" fallback; and
+  `--ds-*` tokens replacing the gray/blue palette. Trigger text is
+  "Upload logo" / "Change logo" / "Uploading…".
+- Behavior preserved: the `onLogoUpload` change event is forwarded verbatim; the
+  parent handler, `uploadCompanyLogo`, `saveCompanySettings`, the Storage path,
+  the `companyLogoUrl` field, the toast messages, the admin gate, and the
+  no-client-validation behavior are all unchanged. The prop interface is
+  identical, so `CompanyProfileTab.jsx` and `CompanyInfoSection.jsx` were not
+  modified.
+- Documented exception: the design system has no approved file-input primitive
+  yet (the forms family lists it as open), so this remains a feature-level
+  composition using approved `Button`/`FieldMessage`. Recorded as a temporary,
+  bounded exception, not a new primitive.
+- Focused tests: 18 new — `BrandingSection.test.jsx` (9: existing-image render +
+  alt, no-image fallback, labelled input + accepted types + described trigger,
+  upload-vs-change label, keyboard trigger with no nesting, verbatim change
+  forwarding, uploading announce + disabled, focus return, axe in both modes);
+  `CompanyProfileTab.test.jsx` (5 added: exact Storage call + exact
+  `{ companyLogoUrl }` Firestore payload + success + preview replacement,
+  no-file no-op, failure message + previous-logo retention, disabled-in-flight,
+  permission-gated absence); `storage.test.js` (4: exact
+  `company_assets/company-1/logo.png` path, extension derivation, id/file guard,
+  stable failure message). All pass.
+- Full frontend gate: 91 files passed, 2 skipped; **621 tests passed** and 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate `vitest run --coverage` passed at 27.74% statements / 25.74% branches /
+  26.34% functions / 28.41% lines — no threshold regressed.
+- Lint (0 errors, 168 pre-existing warnings), typecheck, production build, and
+  `git diff --check` passed with only the pre-existing stale-Browserslist and
+  chunk-size build warnings.
+- Chromium and Mobile Chrome regression: the new
+  `e2e/company-settings-branding.spec.cjs` passed 12 checks with 6 intentional
+  viewport-specific skips across both projects (labelled input + visible
+  accepted types, keyboard-focusable trigger with visible focus and no nesting,
+  desktop/tablet and mobile overflow, and scoped edit-mode axe). The existing
+  `e2e/company-settings-company-info.spec.cjs` regression passed on both
+  projects. The real upload was not triggered in E2E (it needs Firebase
+  Storage); the exact contracts are locked by the vitest suite.
+- Server hygiene: the browser checks ran against the live `vite dev` server on
+  port 5000 in E2E test mode serving the current working tree; the pre-installed
+  system Chromium was used via `PW_CHROMIUM_EXECUTABLE`. No unknown process was
+  terminated.
+- Accessibility: the file input is labelled and keyboard-operable via the
+  Button; there are no nested interactive elements; the preview has meaningful
+  alt / labelled fallback; accepted types and current/replacement state are
+  visible and associated; uploading is announced via `role="status"`; errors and
+  success use the existing `role="alert"` toast (text + not color-only); focus is
+  visible and returns to the trigger after upload; the Button meets the standard
+  control height. Unit axe reported no violations; scoped Chromium/Mobile Chrome
+  axe reported no serious or critical violations in edit mode.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed the tokenized preview, a clear "Upload logo"/"Change logo" trigger,
+  the visible accepted-types help, a single-column mobile identity card, and no
+  document or nested horizontal overflow.
+- Backend/Storage tests: no Storage rule, Firestore rule, data shape, or backend
+  behavior changed. The Storage path and Firestore field contracts are asserted
+  in the focused tests via mocks.
+- Diff review: only `BrandingSection.jsx` (feature) plus the three test files and
+  `e2e/company-settings-branding.spec.cjs` and this roadmap changed; the shared
+  `uploadCompanyLogo` helper, `CompanyProfileTab.jsx`, and `CompanyInfoSection.jsx`
+  were not touched; no generated artifact, real logo, credential, or production
+  Storage URL entered any artifact (tests use `cdn.example.test`).
+- Remaining Settings/Profile work: Company Profile application questions
+  (switch semantics, required/hidden exclusivity, DOT protections, destructive
+  actions), Team & Users, Integrations, and the `/company/profile`
+  account-security screen — each a separate audited slice. A design-system
+  file-input primitive would retire this slice's feature-level exception.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2001,19 +2120,27 @@ The **Login/Auth screen** (`/login`) was migrated and verified on 2026-07-23
 accessible `Modal`, all with authentication, redirects, and reset behavior
 preserved.
 
-The recommended next bounded slice is one of two low-risk options. If the owner
-prefers to stay in the Settings/Profile phase, the **Company Profile
-branding-upload** section is the lowest-risk *in-phase* item (High/High) but
-carries a file-upload and keyboard-accessible-avatar concern that needs its own
-audit first. Otherwise, the lowest-risk remaining screens overall are the small
-public status screens — **Sandbox transfer success** (Low/Low: PageState, Card,
-Button) and the **verification** / **change-review** token result cards
-(Medium/High: Card, Field/Radio, Button, PageState) — each of which extends the
-proven `Card`/`Button`/form presentation without secrets, destructive actions,
-or editable tables. The remaining Login/Auth edge screens (sandbox application
-and the verification/change-review flows) and the Phase 3 link-style Button
-variant that would retire the Login text-link and reveal-adornment exceptions
-stay independently tracked.
+The **Company Profile branding-upload** section was migrated and verified on
+2026-07-23 (completion log in section 6): `BrandingSection` now uses an approved
+`Button` and `FieldMessage` with a labelled, keyboard-triggered file input, and
+the exact `uploadCompanyLogo` Storage path and `companyLogoUrl` Firestore field
+are preserved and locked by tests. The remaining Settings/Profile in-phase items
+are **Company Profile — application questions** (High/Very high: switch
+semantics, required/hidden exclusivity, DOT protections, destructive actions),
+**Team & Users**, **Integrations**, and the separate **`/company/profile`
+account-security** screen — each needing its own audit.
+
+The recommended next bounded slice is one of the lowest-risk remaining screens
+overall: the small public status screens — **Sandbox transfer success**
+(Low/Low: PageState, Card, Button) and the **verification** / **change-review**
+token result cards (Medium/High: Card, Field/Radio, Button, PageState) — each of
+which extends the proven `Card`/`Button`/form presentation without secrets,
+destructive actions, or editable tables. Within Settings/Profile, **Team &
+Users** is the next lowest-risk in-phase option; Company Profile application
+questions remains higher risk (switch semantics + destructive actions) and needs
+its own audit. The Phase 3 link-style Button variant (Login text-link and
+reveal-adornment exceptions) and a design-system file-input primitive (the
+branding-upload exception) stay independently tracked.
 
 Sequence (whichever slice the owner selects):
 

@@ -199,4 +199,91 @@ describe('CompanyProfileTab information compatibility slice', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Edit Profile' }));
         expect((await axe(container)).violations).toEqual([]);
     });
+
+    describe('branding logo upload', () => {
+        const NEW_LOGO_URL = 'https://cdn.example.test/company-1/logo-new.png';
+
+        function enterEditAndGetInput() {
+            const view = renderProfile();
+            fireEvent.click(screen.getByRole('button', { name: 'Edit Profile' }));
+            const input = view.container.querySelector('input[type="file"]');
+            return { ...view, input };
+        }
+
+        it('uploads to Storage then persists only the logo URL to Firestore', async () => {
+            serviceMocks.uploadCompanyLogo.mockResolvedValue(NEW_LOGO_URL);
+            const { input } = enterEditAndGetInput();
+
+            const file = new File(['x'], 'logo.png', { type: 'image/png' });
+            fireEvent.change(input, { target: { files: [file] } });
+
+            await waitFor(() => {
+                expect(serviceMocks.uploadCompanyLogo).toHaveBeenCalledWith('company-1', file);
+            });
+            expect(serviceMocks.saveCompanySettings).toHaveBeenCalledWith('company-1', {
+                companyLogoUrl: NEW_LOGO_URL,
+            });
+            expect(toastMocks.showSuccess).toHaveBeenCalledWith('Logo uploaded successfully!');
+            await waitFor(() => {
+                expect(screen.getByRole('img', { name: 'Company logo' }))
+                    .toHaveAttribute('src', NEW_LOGO_URL);
+            });
+        });
+
+        it('ignores a change event with no selected file', () => {
+            const { input } = enterEditAndGetInput();
+            fireEvent.change(input, { target: { files: [] } });
+            expect(serviceMocks.uploadCompanyLogo).not.toHaveBeenCalled();
+            expect(serviceMocks.saveCompanySettings).not.toHaveBeenCalled();
+        });
+
+        it('preserves the upload failure message and keeps the previous logo', async () => {
+            serviceMocks.uploadCompanyLogo.mockRejectedValueOnce(new Error('storage/unauthorized'));
+            const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const { input } = enterEditAndGetInput();
+
+            fireEvent.change(input, {
+                target: { files: [new File(['x'], 'logo.png', { type: 'image/png' })] },
+            });
+
+            await waitFor(() => {
+                expect(toastMocks.showError)
+                    .toHaveBeenCalledWith('Logo upload failed: storage/unauthorized');
+            });
+            expect(serviceMocks.saveCompanySettings).not.toHaveBeenCalled();
+            expect(screen.getByRole('img', { name: 'Company logo' }))
+                .toHaveAttribute('src', company.companyLogoUrl);
+            expect(screen.getByRole('button', { name: 'Change logo' })).toBeEnabled();
+            consoleError.mockRestore();
+        });
+
+        it('disables the upload controls while the upload is in flight', async () => {
+            let resolveUpload;
+            serviceMocks.uploadCompanyLogo.mockImplementation(
+                () => new Promise((resolve) => { resolveUpload = resolve; }),
+            );
+            const { input } = enterEditAndGetInput();
+
+            fireEvent.change(input, {
+                target: { files: [new File(['x'], 'logo.png', { type: 'image/png' })] },
+            });
+
+            await waitFor(() => {
+                expect(screen.getByRole('button', { name: 'Uploading…' })).toBeDisabled();
+            });
+            expect(input).toBeDisabled();
+
+            resolveUpload(NEW_LOGO_URL);
+            await waitFor(() => {
+                expect(toastMocks.showSuccess).toHaveBeenCalled();
+            });
+        });
+
+        it('hides the logo upload control from members without edit permission', () => {
+            renderProfile({ claims: { roles: { 'company-1': 'company_member' } } });
+            expect(screen.queryByRole('button', { name: /change logo|upload logo/i }))
+                .not.toBeInTheDocument();
+            expect(document.querySelector('input[type="file"]')).toBeNull();
+        });
+    });
 });
