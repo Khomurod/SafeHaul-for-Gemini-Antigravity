@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { httpsCallable } from "firebase/functions";
 import { functions } from '@lib/firebase';
-import { Save, Loader2, AlertTriangle, CheckCircle, Mail, Server, Lock, HelpCircle, ChevronDown, ChevronUp, TestTube } from 'lucide-react';
+import {
+    Save, Loader2, CheckCircle, AlertTriangle, Mail, Server,
+    HelpCircle, ChevronDown, ChevronUp, TestTube,
+} from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
+import {
+    Badge,
+    Button,
+    Card,
+    FormField,
+    FormSection,
+    Input,
+    Textarea,
+} from '@/design-system/components';
 
 export function EmailSettingsTab({ currentCompanyProfile }) {
     const { showSuccess, showError } = useToast();
@@ -159,207 +171,194 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
         }
     };
 
-    // Show loading skeleton while callable fetches settings
+    // Show loading state while callable fetches settings
     if (settingsLoading) {
         return (
-            <div className="space-y-8 max-w-4xl animate-in fade-in">
-                <div className="border-b border-gray-200 pb-4 mb-6">
-                    <h2 className="text-xl font-bold text-gray-900">Email Integration</h2>
-                    <p className="text-sm text-gray-500 mt-1">Loading email settings...</p>
-                </div>
-                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-center h-48">
-                    <Loader2 className="animate-spin text-blue-500" size={32} />
-                </div>
+            <div className="max-w-4xl animate-in fade-in" data-testid="email-settings">
+                <header className="border-b border-ds-border-subtle pb-ds-4">
+                    <h2 className="text-ds-heading-lg font-bold text-ds-content">Email Integration</h2>
+                    <p className="mt-ds-1 text-ds-sm text-ds-content-muted">Loading email settings…</p>
+                </header>
+                <p
+                    role="status"
+                    className="flex items-center justify-center gap-ds-2 py-24 text-ds-content-muted"
+                >
+                    <Loader2 className="animate-spin" size={32} aria-hidden="true" />
+                    Loading email settings…
+                </p>
             </div>
         );
     }
 
+    const isConnected = emailSettings.isVerified && emailSettings.smtpUser;
+
     return (
-        <div className="space-y-8 max-w-4xl animate-in fade-in">
-            <div className="border-b border-gray-200 pb-4 mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Email Integration</h2>
-                <p className="text-sm text-gray-500 mt-1">Configure your company's email server to send automated messages directly from your domain.</p>
-            </div>
+        <div className="max-w-4xl animate-in fade-in space-y-ds-8 pb-12" data-testid="email-settings">
+            <header className="border-b border-ds-border-subtle pb-ds-4">
+                <h2 className="text-ds-heading-lg font-bold text-ds-content">Email Integration</h2>
+                <p className="mt-ds-1 text-ds-sm text-ds-content-muted">
+                    Configure your company&apos;s email server to send automated messages directly from your domain.
+                </p>
+            </header>
 
             {/* Connection Status Banner */}
-            {emailSettings.isVerified && emailSettings.smtpUser ? (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
-                    <div className="bg-green-100 p-2 rounded-full">
-                        <CheckCircle className="text-green-600" size={24} />
+            <Card padding="md" aria-label="Email connection status">
+                {isConnected ? (
+                    <div className="flex flex-col gap-ds-2">
+                        <Badge tone="success" icon={CheckCircle}>Successfully Linked</Badge>
+                        <p className="text-ds-sm text-ds-content">
+                            Currently linked and sending emails as: <strong>{emailSettings.smtpUser}</strong>
+                        </p>
+                        <p className="text-ds-sm text-ds-content">
+                            This email account is automatically being used to safely send **E-Docs** and **Previous Employment Verification (PEV)** forms.
+                        </p>
                     </div>
-                    <div>
-                        <h3 className="font-bold text-green-800">Successfully Linked</h3>
-                        <p className="text-sm text-green-700">Currently linked and sending emails as: <strong>{emailSettings.smtpUser}</strong></p>
-                        <p className="text-sm text-green-700 mt-1">This email account is automatically being used to safely send **E-Docs** and **Previous Employment Verification (PEV)** forms.</p>
+                ) : (
+                    <div className="flex flex-col gap-ds-2">
+                        <Badge tone="warning" icon={AlertTriangle}>Not Connected / Unverified</Badge>
+                        <p className="text-ds-sm text-ds-content">
+                            Please enter your credentials and run a Test Connection to verify your email setup.
+                        </p>
                     </div>
-                </div>
-            ) : (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center gap-3">
-                    <div className="bg-yellow-100 p-2 rounded-full">
-                        <AlertTriangle className="text-yellow-700" size={24} />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-yellow-800">Not Connected / Unverified</h3>
-                        <p className="text-sm text-yellow-700">Please enter your credentials and run a Test Connection to verify your email setup.</p>
-                    </div>
-                </div>
-            )}
+                )}
+            </Card>
 
-            {/* SMTP Configuration Card */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
-                <h3 className="font-bold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
-                    <Server size={20} className="text-blue-600" />
-                    SMTP Server Configuration
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            SMTP Host <span className="text-red-500">*</span>
-                        </label>
-                        <input
+            {/* SMTP Configuration */}
+            <FormSection title="SMTP Server Configuration">
+                <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-2">
+                    <FormField
+                        className="md:col-span-2"
+                        id="email-smtp-host"
+                        label="SMTP Host"
+                        required
+                        description="Example: smtp.gmail.com, smtp.office365.com"
+                    >
+                        <Input
                             type="text"
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={emailSettings.smtpHost || ''}
                             onChange={e => setEmailSettings({ ...emailSettings, smtpHost: e.target.value, isVerified: false })}
                             placeholder="smtp.gmail.com"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Example: smtp.gmail.com, smtp.office365.com</p>
-                    </div>
+                    </FormField>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            SMTP Port <span className="text-red-500">*</span>
-                        </label>
-                        <input
+                    <FormField
+                        id="email-smtp-port"
+                        label="SMTP Port"
+                        required
+                        description="Common: 587 (TLS), 465 (SSL), 25"
+                    >
+                        <Input
                             type="number"
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            min="1"
+                            max="65535"
                             value={emailSettings.smtpPort || 587}
                             onChange={e => setEmailSettings({ ...emailSettings, smtpPort: parseInt(e.target.value), isVerified: false })}
                             placeholder="587"
-                            min="1"
-                            max="65535"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Common: 587 (TLS), 465 (SSL), 25</p>
-                    </div>
+                    </FormField>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <Mail size={14} />
-                            SMTP Username <span className="text-red-500">*</span>
-                        </label>
-                        <input
+                    <FormField id="email-smtp-user" label="SMTP Username" required>
+                        <Input
                             type="email"
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={emailSettings.smtpUser || ''}
                             onChange={e => setEmailSettings({ ...emailSettings, smtpUser: e.target.value, isVerified: false })}
                             placeholder="your-email@company.com"
                         />
-                    </div>
+                    </FormField>
 
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <Lock size={14} />
-                            SMTP Password {!hasExistingPassword && <span className="text-red-500">*</span>}
-                        </label>
-                        <input
+                    <FormField
+                        className="md:col-span-2"
+                        id="email-smtp-password"
+                        label="SMTP Password"
+                        required={!hasExistingPassword}
+                        description={hasExistingPassword
+                            ? 'Password already saved. Enter a new password only if you want to change it.'
+                            : 'For Gmail, use an App Password, not your regular password.'}
+                    >
+                        <Input
                             type="password"
-                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             value={smtpPassInput}
                             onChange={e => { setSmtpPassInput(e.target.value); setEmailSettings(prev => ({ ...prev, isVerified: false })); }}
                             placeholder={hasExistingPassword ? 'Password is saved but hidden. Enter new to rotate.' : '••••••••••••'}
                         />
-                        {hasExistingPassword ? (
-                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                <CheckCircle size={12} /> Password already saved. Enter a new password only if you want to change it.
-                            </p>
-                        ) : (
-                            <p className="text-xs text-gray-500 mt-1">
-                                For Gmail, use an <strong>App Password</strong>, not your regular password.
-                            </p>
-                        )}
-                    </div>
+                    </FormField>
                 </div>
 
-                {/* Test Connection Section */}
-                <div className="pt-4 border-t border-gray-200">
-                    <button
+                {/* Test Connection */}
+                <div className="border-t border-ds-border-subtle pt-ds-4">
+                    <Button
                         type="button"
+                        variant="secondary"
+                        size="lg"
+                        loading={testing}
+                        disabled={!emailSettings.smtpHost || !emailSettings.smtpUser || !smtpPassInput}
                         onClick={handleTestConnection}
-                        disabled={testing || !emailSettings.smtpHost || !emailSettings.smtpUser || !smtpPassInput}
-                        className="px-6 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all"
                     >
-                        {testing ? (
-                            <>
-                                <Loader2 className="animate-spin" size={18} />
-                                Testing Connection...
-                            </>
-                        ) : (
-                            <>
-                                <TestTube size={18} />
-                                Test Connection
-                            </>
-                        )}
-                    </button>
+                        {!testing && <TestTube size={18} aria-hidden="true" />}
+                        Test Connection
+                    </Button>
 
                     {testResult && (
-                        <div className={`mt-4 p-4 rounded-lg border ${testResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                            <div className="flex items-start gap-2">
-                                {testResult.success ? (
-                                    <CheckCircle size={20} className="text-green-600 shrink-0 mt-0.5" />
-                                ) : (
-                                    <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
-                                )}
-                                <div>
-                                    <p className={`font-bold ${testResult.success ? 'text-green-800' : 'text-red-800'}`}>
-                                        {testResult.success ? 'Connection Connected & Saved!' : 'Connection Failed'}
-                                    </p>
-                                    <p className={`text-sm ${testResult.success ? 'text-green-700' : 'text-red-700'} mt-1`}>
-                                        {testResult.message}
-                                    </p>
-                                </div>
-                            </div>
+                        <div
+                            role={testResult.success ? 'status' : 'alert'}
+                            className={`mt-ds-4 rounded-ds-lg border p-ds-4 ${testResult.success
+                                ? 'border-ds-status-success-border bg-ds-status-success-bg'
+                                : 'border-ds-status-danger-border bg-ds-status-danger-bg'}`}
+                        >
+                            <Badge
+                                tone={testResult.success ? 'success' : 'danger'}
+                                icon={testResult.success ? CheckCircle : AlertTriangle}
+                            >
+                                {testResult.success ? 'Connection Connected & Saved!' : 'Connection Failed'}
+                            </Badge>
+                            <p className="mt-ds-2 text-ds-sm text-ds-content">{testResult.message}</p>
                         </div>
                     )}
                 </div>
-            </div>
+            </FormSection>
 
             {/* Email Signature */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
-                <h3 className="font-bold text-gray-800 border-b pb-2 mb-4">Email Signature (Optional)</h3>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Default Signature</label>
-                    <textarea
-                        className="w-full p-3 border border-gray-300 rounded-lg h-24 focus:ring-2 focus:ring-blue-500 outline-none"
+            <FormSection title="Email Signature (Optional)">
+                <FormField
+                    id="email-signature"
+                    label="Default Signature"
+                    description="This signature will be automatically appended to all outgoing emails."
+                >
+                    <Textarea
                         value={emailSettings.signature || ''}
                         onChange={e => setEmailSettings({ ...emailSettings, signature: e.target.value })}
                         placeholder={"Best regards,\n[Your Name]\n[Your Company]"}
                     />
-                    <p className="text-xs text-gray-500 mt-1">This signature will be automatically appended to all outgoing emails.</p>
-                </div>
-            </div>
+                </FormField>
+            </FormSection>
 
-            {/* Setup Guide */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 shadow-sm">
-                <button
-                    type="button"
-                    onClick={() => setShowGuide(!showGuide)}
-                    className="w-full flex items-center justify-between text-left group"
-                >
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-600 rounded-lg">
-                            <HelpCircle className="text-white" size={24} />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-gray-900 text-lg">How to Set Up SMTP</h3>
-                            <p className="text-sm text-gray-600">Step-by-step guides for Gmail, Outlook, and SendGrid</p>
-                        </div>
-                    </div>
-                    {showGuide ? <ChevronUp className="text-blue-600" size={24} /> : <ChevronDown className="text-blue-600" size={24} />}
-                </button>
+            {/* Setup Guide (feature-owned content) */}
+            <Card padding="md">
+                <h3 className="m-0">
+                    <button
+                        type="button"
+                        onClick={() => setShowGuide(!showGuide)}
+                        aria-expanded={showGuide}
+                        aria-controls="email-setup-guide"
+                        className="flex w-full items-center justify-between gap-ds-3 rounded-ds-lg text-left focus-visible:outline-none focus-visible:shadow-ds-focus"
+                    >
+                        <span className="flex items-center gap-ds-3">
+                            <span className="rounded-ds-md bg-ds-action-primary p-2">
+                                <HelpCircle className="text-ds-content-inverse" size={24} aria-hidden="true" />
+                            </span>
+                            <span>
+                                <span className="block text-ds-heading-sm font-bold text-ds-content">How to Set Up SMTP</span>
+                                <span className="block text-ds-sm text-ds-content-muted">Step-by-step guides for Gmail, Outlook, and SendGrid</span>
+                            </span>
+                        </span>
+                        {showGuide
+                            ? <ChevronUp className="text-ds-content-link" size={24} aria-hidden="true" />
+                            : <ChevronDown className="text-ds-content-link" size={24} aria-hidden="true" />}
+                    </button>
+                </h3>
 
                 {showGuide && (
-                    <div className="mt-6 space-y-6 animate-in fade-in slide-in-from-top-2">
+                    <div id="email-setup-guide" className="mt-6 space-y-6 animate-in fade-in slide-in-from-top-2">
                         {/* Gmail Guide */}
                         <div className="bg-white rounded-lg p-5 border border-gray-200 shadow-sm">
                             <h4 className="font-bold text-gray-900 text-lg mb-3 flex items-center gap-2">
@@ -432,18 +431,21 @@ export function EmailSettingsTab({ currentCompanyProfile }) {
                         </div>
                     </div>
                 )}
-            </div>
+            </Card>
 
-            {/* Save Button */}
-            <div className="pt-4 flex justify-end gap-3">
-                <button
+            {/* Save */}
+            <div className="flex justify-end pt-ds-2">
+                <Button
+                    type="button"
+                    variant="primary"
+                    size="lg"
+                    loading={loading}
+                    disabled={!emailSettings.smtpHost || !emailSettings.smtpUser || (!smtpPassInput && !hasExistingPassword)}
                     onClick={handleSaveEmailSettings}
-                    disabled={loading || !emailSettings.smtpHost || !emailSettings.smtpUser || (!smtpPassInput && !hasExistingPassword)}
-                    className="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-all"
                 >
-                    {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />}
+                    {!loading && <Save size={18} aria-hidden="true" />}
                     Save Settings
-                </button>
+                </Button>
             </div>
         </div>
     );

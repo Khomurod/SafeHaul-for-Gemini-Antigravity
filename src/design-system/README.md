@@ -64,6 +64,10 @@ verified.
 - The Company Settings Automated SMS templates form consumes FormSection,
   FormField, Textarea, Button, and FieldMessage while the three template names,
   Firestore read/write, placeholder meaning, and messages remain feature-owned.
+- The Company Settings Email Settings form consumes FormSection, FormField,
+  Input, Textarea, Button, Badge, Card, and FieldMessage while the SMTP fields,
+  callable contracts, password rules, provider setup guide, test/save workflows,
+  status mapping, and messages remain feature-owned.
 
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
