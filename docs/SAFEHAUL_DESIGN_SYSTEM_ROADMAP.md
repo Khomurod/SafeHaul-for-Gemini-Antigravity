@@ -1161,9 +1161,29 @@ The reverse directions are prohibited.
     and system states migrate without changing elevated permissions or
     maintenance actions.
 
-- [ ] Auth, sandbox, and remaining edge screens.
+- [~] In progress — Auth, sandbox, and remaining edge screens.
   - Complete when: visual primitives migrate and login/redirect/test-only
     behavior remains unchanged.
+  - [x] Migrate the Login `/login` screen to approved form/button/card
+    primitives and the shared accessible dialog.
+    - Complete when: email/password login, password visibility, authentication
+      errors and loading, smart role-based and requested-route redirects, and
+      the full password-reset workflow are preserved while presentation adopts
+      FormField/Input/Button/IconButton/Card and the shared Modal.
+    - Completed: 2026-07-23.
+    - Files: `src/features/auth/components/LoginScreen.jsx`,
+      `src/features/auth/components/LoginScreen.test.jsx`,
+      `e2e/login.spec.cjs`, `src/design-system/README.md`, this roadmap.
+    - Verification: 16 focused Login tests plus the 5 existing auth tests, the
+      full frontend suite, design-system/route/modal-adoption gates, lint,
+      typecheck, production build, `git diff --check`, Chromium and Mobile
+      Chrome E2E (login spec + access-control regression), unit and scoped
+      real-browser axe, and rendered review at 1440×900, 1024×768, and 412×915.
+      Detailed evidence is in the completion log.
+    - Notes: the reset modal was migrated to the shared accessible Modal;
+      sandbox and remaining edge screens stay open.
+  - Remaining: sandbox application/transfer-success and the verification and
+    change-review token screens are still unmigrated.
 
 ### Phase 14 — cleanup and durable documentation
 
@@ -1193,7 +1213,7 @@ Status `Not started` means audited but not migrated.
 
 | Screen / area | Current implementation | Target component or pattern | Priority | Risk | Dependencies | Status | Verification needed |
 |---|---|---|---|---|---|---|---|
-| Login `/login` | `features/auth/components/LoginScreen.jsx`; local inputs/buttons/card/branding | Field, Button, Card, AuthLayout, PageState | Medium | Medium | Tokens, controls, forms, cards | Not started | Auth/redirect tests, keyboard, autofill, error, desktop/mobile visual |
+| Login `/login` | `features/auth/components/LoginScreen.jsx` now consumes `FormField`, `Input`, `Button`, `IconButton`, `Card`, and the shared accessible `Modal`; branded marketing panel preserved | Field, Button, Card, shared Modal | Medium | Medium | Tokens, controls, forms, cards | Compatibility slice completed 2026-07-23 | Verified: 16 focused + 5 existing auth tests, login/requested-route/super-admin/company/root redirects, password visibility, loading/errors, reset open/submit/success/failure/close, focus, autofill, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
@@ -1836,6 +1856,102 @@ Apply checks proportionally, but never claim an unrun check:
 - Outcome: marked audited-but-not-migrated; no source changed; this is a
   documentation-only checkpoint.
 
+### Login/Auth compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: local `main` and `origin/main` both resolved to
+  `9e9da5e` (the SMS number-assignment NO-GO checkpoint) with a clean working
+  tree before this slice began. Work was done on the designated
+  `claude/safehaul-design-system-g1vr3a` branch, which started at `9e9da5e`.
+- Audit / frozen contract: `LoginScreen.jsx` was audited in full before any
+  presentation change. The frozen behavior is: `loginUser(email, password)`;
+  the `location.state?.from` requested-route redirect with `{ replace: true }`;
+  the smart redirect using `getPortalUser`, `getMembershipsForUser`, and
+  `user.getIdTokenResult()` — Super Admin via `claims.super_admin === true` or
+  the `userDoc.role === 'super_admin'` Firestore fallback to `/super-admin`,
+  company membership to `/company/dashboard`, and the no-membership fallback to
+  `/`; authentication error mapping and the loading state; password visibility
+  toggling; and the full reset workflow (login-email pre-fill,
+  `resetPassword(resetEmail)`, empty-email validation, reset loading, success,
+  error, and close/reset).
+- Go/no-go decision: safe to migrate whole. The screen has no secrets, no
+  destructive actions, and no editable table; the services are mockable at the
+  feature boundary; every redirect branch and the reset workflow are assertable;
+  and no route, role name, claim, permission, Firebase, or Cloud Function
+  change is required. The two handlers (`handleSubmit`, `handleForgotPassword`)
+  and all open/close/reset helpers were preserved logic-for-logic; only
+  presentation and imports changed.
+- Component contract: reused `FormField`, `Input`, `Button`, `IconButton`, and
+  `Card` from the design system and migrated the password-reset overlay from a
+  local `fixed inset-0` panel to the shared accessible `Modal`
+  (`@shared/components/modals/Modal`). No new design-system component was added;
+  no auth, redirect, role, or Firebase knowledge entered the design system.
+- Reset modal migration: the local overlay was replaced by the shared Modal,
+  which adds focus trap, Escape and backdrop dismissal, and focus restoration to
+  the trigger while preserving the reset business logic and messages. Initial
+  focus is placed on the reset email field; the dialog is named via
+  `aria-labelledby` on the current heading. This removes one of the baseline
+  local `fixed inset-0` overlays.
+- Documented exceptions: the trailing password-reveal control is a feature-level
+  `IconButton` positioned over the design-system `Input` (with inline
+  `padding-inline-end`) because the form family has no input-adornment slot yet;
+  the "Forgot password?", "Contact SafeHaul", and "Back to login" text links
+  remain feature-level controls pending the Phase 3 link-style Button variant.
+  Both are recorded here as temporary, bounded exceptions, not new primitives.
+- Preserved presentation: the branded desktop marketing panel (SafeHaul
+  navy/mint artwork, stats, DOT/FMCSA) is unchanged; the "Welcome Back" heading,
+  "Sign In" label, and `you@example.com` / `Enter your password` placeholders
+  that existing auth and access-control tests depend on are retained.
+- Focused tests: 1 new file, 16 tests passed — labelled/autofill controls plus
+  unit axe, the login service call, the requested-route/super-admin(claims)/
+  super-admin(Firestore fallback)/company/root redirects, error + re-enable,
+  the loading-disabled state, password visibility with an accessible pressed
+  toggle, and reset open/pre-fill/focus, empty validation, success, failure, and
+  both close paths. The 5 existing `src/tests/auth.test.jsx` tests still pass.
+- Full frontend gate: 89 files passed, 2 files skipped; 603 tests passed and 48
+  emulator-dependent rules tests skipped by their environment guard. The
+  design-system, route (`app/routes`), and `modalAdoption` gates pass unchanged.
+- Frontend lint: passed with 0 errors; warnings dropped from the 169 baseline to
+  168 (the unused `Link` import was removed and none were added). Typecheck,
+  production build, and `git diff --check` passed with only the pre-existing
+  stale-Browserslist and chunk-size build warnings.
+- Chromium and Mobile Chrome regression: the new `e2e/login.spec.cjs` passed 12
+  checks with 4 intentional viewport-specific skips across both projects
+  (autofill attributes, desktop keyboard order + visible focus + label/control
+  alignment, password reveal/hide, reset dialog initial focus + Escape close +
+  focus restoration, desktop marketing-panel visibility, tablet and mobile
+  overflow, and scoped axe on the page and with the reset dialog open). The
+  existing `e2e/access-control.spec.cjs` redirect-to-login regression passed on
+  both projects.
+- Server hygiene: the browser/Playwright checks ran against the live `vite dev`
+  server on port 5000 in E2E test mode serving the current working tree; the
+  pre-installed system Chromium was used via `PW_CHROMIUM_EXECUTABLE`. No
+  unknown process was terminated.
+- Accessibility: email and password have associated labels (via `FormField` and
+  `Label`); required fields expose `aria-required`; the reveal control is a
+  labelled `IconButton` with `aria-pressed`; the authentication error is a
+  token-styled `role="alert"` banner (not color alone); the reset dialog uses
+  the shared Modal's dialog semantics, focus trap, and restoration; keyboard
+  order runs email → password → reveal → forgot → sign-in; and all interface
+  text is ≥12 px. Unit axe reported no violations; scoped Chromium/Mobile Chrome
+  axe reported no serious or critical violations on the page or with the reset
+  dialog open.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed 44 px controls, a visible focus ring, the trailing reveal control
+  clear of the masked value, a single-column mobile layout with the marketing
+  panel hidden below `lg`, and no document, content, or nested horizontal
+  overflow. The reset dialog is centered and constrained at all three widths.
+- Backend/Cloud Function tests: not applicable; no callable implementation,
+  rules, data shape, route, permission, or backend behavior changed.
+- Diff review: `git diff --check` passed; only `LoginScreen.jsx` (feature),
+  `LoginScreen.test.jsx`, `e2e/login.spec.cjs`, `src/design-system/README.md`,
+  and this roadmap changed; generated artifacts were not committed; no secret
+  value entered any artifact.
+- Remaining Login/Auth work: adopt the Phase 3 link-style Button variant for the
+  text links, add an input-adornment slot to the form family (to retire the
+  feature-level reveal exception), and migrate the sandbox and verification/
+  change-review edge screens.
+
 ---
 
 ## 7. Decisions and blockers
@@ -1879,15 +1995,25 @@ and entanglement with the out-of-scope secret-entry `LineManager`. No partial
 table conversion was forced; its contracts are frozen in section 6 for a future
 slice once the owner decision lands.
 
-The recommended next bounded slice is the **Company Settings Login/Auth screen**
-(`/login`) or, if the owner prefers to stay in the Settings/Profile phase, the
-**Company Profile branding-upload** section. The Login screen is the genuinely
-lowest-risk remaining roadmap slice (Medium/Medium in section 5.1): local
-inputs/buttons/card with no secrets, no destructive actions, and no editable
-table, so it extends the proven `FormField`/`Input`/`Button`/`Card` presentation
-directly. Branding upload is the lowest-risk *in-phase* option (High/High) but
+The **Login/Auth screen** (`/login`) was migrated and verified on 2026-07-23
+(completion log in section 6): it now consumes `FormField`, `Input`, `Button`,
+`IconButton`, and `Card`, and its password-reset overlay moved to the shared
+accessible `Modal`, all with authentication, redirects, and reset behavior
+preserved.
+
+The recommended next bounded slice is one of two low-risk options. If the owner
+prefers to stay in the Settings/Profile phase, the **Company Profile
+branding-upload** section is the lowest-risk *in-phase* item (High/High) but
 carries a file-upload and keyboard-accessible-avatar concern that needs its own
-audit first.
+audit first. Otherwise, the lowest-risk remaining screens overall are the small
+public status screens — **Sandbox transfer success** (Low/Low: PageState, Card,
+Button) and the **verification** / **change-review** token result cards
+(Medium/High: Card, Field/Radio, Button, PageState) — each of which extends the
+proven `Card`/`Button`/form presentation without secrets, destructive actions,
+or editable tables. The remaining Login/Auth edge screens (sandbox application
+and the verification/change-review flows) and the Phase 3 link-style Button
+variant that would retire the Login text-link and reveal-adornment exceptions
+stay independently tracked.
 
 Sequence (whichever slice the owner selects):
 
