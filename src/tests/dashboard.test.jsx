@@ -1,9 +1,40 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { CompanyAdminDashboard } from '@features/company-admin/components/CompanyAdminDashboard';
-import { DataProvider } from '@/context/DataContext';
 import { ToastProvider } from '@shared/components/feedback/ToastProvider';
+
+const dashboardState = vi.hoisted(() => ({
+    counts: {
+        applications: 8,
+        companyLeads: 2,
+        myLeads: 1,
+        hired: 2,
+    },
+    statsFetchError: '',
+    refreshData: vi.fn(),
+}));
+
+const onboardingState = vi.hoisted(() => ({
+    showTour: false,
+    completeTour: vi.fn(),
+}));
+
+vi.mock('@features/companies', () => ({
+    useCompanyDashboard: () => dashboardState,
+}));
+
+vi.mock('@features/onboarding/hooks/useOnboarding', () => ({
+    useOnboarding: () => onboardingState,
+}));
+
+vi.mock('@features/onboarding/components/OnboardingTour', () => ({
+    OnboardingTour: () => <div role="dialog" aria-label="Onboarding tour">Tour</div>,
+}));
+
+vi.mock('@features/company-admin/components/InlineLeaderboard', () => ({
+    InlineLeaderboard: () => <section aria-label="Team leaderboard">Leaderboard</section>,
+}));
 
 // Mock Firebase with complete auth state management
 vi.mock('firebase/auth', () => ({
@@ -36,7 +67,7 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('@lib/firebase', () => ({
     auth: {
         onAuthStateChanged: vi.fn((callback) => {
-            callback({ uid: 'test-user', email: 'test@example.com' });
+            callback(null);
             return () => { };
         }),
     },
@@ -130,10 +161,56 @@ describe('CompanyAdminDashboard Smoke Tests', () => {
             </BrowserRouter>
         );
 
-        // Verify the component structure is rendered
-        // (Specific assertions depend on actual dashboard layout)
-        const container = document.body;
-        expect(container).toBeTruthy();
-        expect(container.textContent).toBeTruthy();
+        expect(screen.getByRole('heading', { name: 'Welcome back, Admin User' }))
+            .toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Applications: 8' }))
+            .toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Company Leads: 2' }))
+            .toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'My Leads: 1' }))
+            .toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Hired: 2' }))
+            .toBeInTheDocument();
+        expect(screen.getByLabelText('Team leaderboard')).toBeInTheDocument();
+    });
+
+    it('keeps metric navigation keyboard-accessible', () => {
+        const mockCompanyProfile = {
+            id: 'test-company-123',
+            companyName: 'Test Logistics',
+        };
+
+        render(
+            <BrowserRouter>
+                <MockDataProvider value={{ currentCompanyProfile: mockCompanyProfile }}>
+                    <CompanyAdminDashboard />
+                </MockDataProvider>
+            </BrowserRouter>
+        );
+
+        const applications = screen.getByRole('button', { name: 'Applications: 8' });
+        applications.focus();
+        fireEvent.keyDown(applications, { key: 'Enter' });
+        fireEvent.click(applications);
+        expect(window.location.pathname).toBe('/company/drivers/applications');
+    });
+
+    it('preserves onboarding composition when the feature hook requests it', () => {
+        onboardingState.showTour = true;
+        const mockCompanyProfile = {
+            id: 'test-company-123',
+            companyName: 'Test Logistics',
+        };
+
+        render(
+            <BrowserRouter>
+                <MockDataProvider value={{ currentCompanyProfile: mockCompanyProfile }}>
+                    <CompanyAdminDashboard />
+                </MockDataProvider>
+            </BrowserRouter>
+        );
+
+        expect(screen.getByRole('dialog', { name: 'Onboarding tour' })).toBeInTheDocument();
+        onboardingState.showTour = false;
     });
 });

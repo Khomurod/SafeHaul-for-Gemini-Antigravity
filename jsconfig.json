@@ -20,6 +20,7 @@
       "@app/*": ["src/app/*"],
       "@features/*": ["src/features/*"],
       "@shared/*": ["src/shared/*"],
+      "@design-system/*": ["src/design-system/*"],
       "@lib/*": ["src/lib/*"]
     }
   },

@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Button, IconButton } from '@/design-system/components';
 import {
   LayoutDashboard,
   Users,
@@ -15,6 +16,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   GitBranch,
+  X,
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 import { isCompanyAdminForRoute } from '@app/auth/roles';
@@ -24,7 +26,6 @@ import {
   COMPANY_NAV_LAYOUT,
 } from '@app/routes/companyRouteManifest';
 
-const SIDEBAR_STORAGE_KEY = 'companySidebarMode';
 const ICON_MAP = Object.freeze({
   LayoutDashboard,
   Users,
@@ -52,12 +53,11 @@ function stripEdgeDividers(entries) {
   return cleaned;
 }
 
-export const CompanySidebar = () => {
-  const [isExpanded, setIsExpanded] = useState(() => {
-    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-    return stored ? stored === 'expanded' : true;
-  });
-
+export const CompanySidebar = ({
+  isExpanded,
+  onExpandedChange,
+  onNavigate,
+}) => {
   const [expandedGroups, setExpandedGroups] = useState({
     applications: true
   });
@@ -69,17 +69,16 @@ export const CompanySidebar = () => {
     () => new Map(COMPANY_ROUTE_MANIFEST.map((route) => [route.id, route])),
     [],
   );
-  const featureFlags = currentCompanyProfile?.features || {};
+  const featureFlags = useMemo(
+    () => currentCompanyProfile?.features || {},
+    [currentCompanyProfile?.features],
+  );
 
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_STORAGE_KEY, isExpanded ? 'expanded' : 'minimized');
-  }, [isExpanded]);
-
-  const toggleSidebar = () => setIsExpanded(!isExpanded);
+  const toggleSidebar = () => onExpandedChange(!isExpanded);
 
   const toggleGroup = (group) => {
     if (!isExpanded) {
-      setIsExpanded(true);
+      onExpandedChange(true);
       setExpandedGroups(prev => ({ ...prev, [group]: true }));
     } else {
       setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
@@ -91,20 +90,20 @@ export const CompanySidebar = () => {
   // menu and direct-URL access can never disagree.
   const isCompanyAdmin = isCompanyAdminForRoute(currentUserClaims, companyId);
 
-  const isRouteVisible = (route) => {
+  const isRouteVisible = useCallback((route) => {
     const nav = route?.nav;
     if (!nav) return false;
     if (nav.adminOnly && !isCompanyAdmin) return false;
     if (nav.featureFlag && featureFlags[nav.featureFlag] === false) return false;
     return true;
-  };
+  }, [featureFlags, isCompanyAdmin]);
 
-  const toMenuItem = (route) => ({
+  const toMenuItem = useCallback((route) => ({
     id: route.id,
     label: route.nav.label,
     icon: ICON_MAP[route.nav.icon] || FileText,
     path: `/company/${route.path}`,
-  });
+  }), []);
 
   const menuEntries = useMemo(() => {
     const entries = [];
@@ -144,24 +143,31 @@ export const CompanySidebar = () => {
       }
     }
     return stripEdgeDividers(entries);
-  }, [featureFlags, isCompanyAdmin, routeLookup]);
+  }, [isRouteVisible, routeLookup, toMenuItem]);
 
   const NavItem = ({ item, isChild = false }) => {
     return (
       <NavLink
         to={item.path}
+        onClick={onNavigate}
         className={({ isActive }) => `
-          flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group relative
+          min-h-10 flex items-center gap-3 px-3 py-2 rounded-ds-md transition-colors duration-200 group relative
           ${isActive
-            ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
-            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 border-l-2 border-transparent'}
+            ? 'bg-ds-status-info-bg text-ds-status-info-fg border-l-2 border-ds-action-primary'
+            : 'text-ds-content-secondary hover:text-ds-content hover:bg-ds-surface-subtle border-l-2 border-transparent'}
           ${isChild ? 'pl-9 text-sm' : ''}
           ${!isExpanded && !isChild ? 'justify-center' : ''}
         `}
       >
         {({ isActive }) => (
           <>
-            <item.icon size={20} className={isActive ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-900'} />
+            <item.icon
+              size={20}
+              aria-hidden="true"
+              className={isActive
+                ? 'text-ds-action-primary'
+                : 'text-ds-content-muted group-hover:text-ds-content'}
+            />
 
             {isExpanded && (
               <span className="whitespace-nowrap overflow-hidden text-ellipsis">
@@ -170,7 +176,7 @@ export const CompanySidebar = () => {
             )}
 
             {!isExpanded && (
-              <div className="absolute left-full ml-2 px-2 py-1 bg-white text-gray-900 text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none z-50 whitespace-nowrap border border-gray-200 shadow-lg">
+              <div className="absolute left-full ml-2 px-2 py-1 bg-ds-surface text-ds-content text-ds-xs rounded-ds-md opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none z-50 whitespace-nowrap border border-ds-border-subtle shadow-ds-lg">
                 {item.label}
               </div>
             )}
@@ -181,41 +187,54 @@ export const CompanySidebar = () => {
   };
 
   return (
-    <div
-      className={`
-        h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-300
-        ${isExpanded ? 'w-64' : 'w-16'}
-      `}
-    >
+    <div className="h-full bg-ds-surface flex flex-col" data-testid="company-sidebar">
       {/* Top Header */}
-      <div className="h-16 flex items-center px-4 border-b border-gray-200">
+      <div className="min-h-16 flex items-center px-4 border-b border-ds-border-subtle">
         <div className="flex items-center gap-3 w-full overflow-hidden">
-          <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">
+          <div className="flex-shrink-0 w-8 h-8 bg-ds-action-primary rounded-ds-md flex items-center justify-center text-ds-content-inverse font-bold" aria-hidden="true">
             {(currentCompanyProfile?.companyName || currentCompanyProfile?.name || 'C').charAt(0)}
           </div>
 
           {isExpanded && (
             <div className="flex flex-col min-w-0">
-              <span className="text-gray-900 font-medium truncate">
+              <span className="text-ds-content font-medium truncate">
                 {currentCompanyProfile?.companyName || currentCompanyProfile?.name || 'Company'}
               </span>
-              <button onClick={() => navigate('/company/settings')} className={`text-xs text-blue-600 hover:text-blue-700 text-left truncate ${!isCompanyAdmin ? 'hidden' : ''}`}>
-                Company Settings
-              </button>
-              <button onClick={() => navigate('/company/dashboard')} className={`text-xs text-gray-500 hover:text-gray-700 text-left truncate ${isCompanyAdmin ? 'hidden' : ''}`}>
-                {/* Placeholder for non-admins if needed, or just hide the button above */}
-                Team Member
-              </button>
+              {isCompanyAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/company/settings');
+                    onNavigate?.();
+                  }}
+                  className="text-ds-xs text-ds-content-link hover:underline text-left truncate focus-visible:outline-none focus-visible:shadow-ds-focus rounded-ds-sm"
+                >
+                  Company Settings
+                </button>
+              ) : (
+                <span className="text-ds-xs text-ds-content-muted truncate">Team Member</span>
+              )}
             </div>
           )}
         </div>
+        <IconButton
+          label="Close navigation"
+          variant="ghost"
+          className="md:hidden"
+          onClick={onNavigate}
+        >
+          <X size={20} aria-hidden="true" />
+        </IconButton>
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 py-4 overflow-y-auto overflow-x-hidden space-y-1 custom-scrollbar">
+      <nav
+        className="flex-1 py-4 overflow-y-auto overflow-x-hidden space-y-1 custom-scrollbar"
+        aria-label="Company sections"
+      >
         {menuEntries.map((entry, idx) => {
           if (entry.type === 'divider') {
-            return <div key={`divider-${idx}`} className="my-2 border-t border-gray-200"></div>;
+            return <div key={`divider-${idx}`} className="my-2 border-t border-ds-border-subtle" aria-hidden="true" />;
           }
 
           if (entry.type === 'group') {
@@ -226,22 +245,34 @@ export const CompanySidebar = () => {
 
             return (
               <div key={group.id} className="mb-2">
-                <button
+                <Button
+                  variant="ghost"
+                  fullWidth
+                  justify="start"
                   onClick={() => toggleGroup(group.id)}
                   className={`
-                            w-full flex items-center gap-3 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors
+                            rounded-none px-3
                             ${!isExpanded ? 'justify-center' : ''}
-                            ${hasActiveChild ? 'text-blue-700' : ''}
+                            ${hasActiveChild ? 'text-ds-status-info-fg' : ''}
                         `}
+                  aria-expanded={isExpanded ? isGroupActive : false}
                 >
-                  <GroupIcon size={20} className={hasActiveChild ? 'text-blue-600' : 'text-gray-500'} />
+                  <GroupIcon
+                    size={20}
+                    aria-hidden="true"
+                    className={hasActiveChild ? 'text-ds-action-primary' : 'text-ds-content-muted'}
+                  />
                   {isExpanded && (
                     <>
                       <span className="flex-1 text-left font-medium text-sm">{group.label}</span>
-                      {isGroupActive ? <ChevronRight size={16} className="rotate-90 transition-transform" /> : <ChevronRight size={16} className="transition-transform" />}
+                      <ChevronRight
+                        size={16}
+                        aria-hidden="true"
+                        className={isGroupActive ? 'rotate-90 transition-transform' : 'transition-transform'}
+                      />
                     </>
                   )}
-                </button>
+                </Button>
 
                 {/* Children */}
                 {isExpanded && isGroupActive && (
@@ -257,16 +288,19 @@ export const CompanySidebar = () => {
 
           return <NavItem key={entry.item.id} item={entry.item} />;
         })}
-      </div>
+      </nav>
 
       {/* Footer / Toggle */}
-      <div className="p-3 border-t border-gray-200">
-        <button
+      <div className="p-3 border-t border-ds-border-subtle hidden md:flex justify-center">
+        <IconButton
+          label={isExpanded ? 'Collapse navigation' : 'Expand navigation'}
+          variant="ghost"
           onClick={toggleSidebar}
-          className="w-full flex items-center justify-center p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
         >
-          {isExpanded ? <ChevronsLeft size={20} /> : <ChevronsRight size={20} />}
-        </button>
+          {isExpanded
+            ? <ChevronsLeft size={20} aria-hidden="true" />
+            : <ChevronsRight size={20} aria-hidden="true" />}
+        </IconButton>
       </div>
     </div>
   );

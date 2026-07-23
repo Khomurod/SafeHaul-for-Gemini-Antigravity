@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DashboardToolbar, useCompanyDashboard } from '@features/companies';
-import { ModernDriverTable } from '@shared/components/table';
+import { DataTable, defineTableColumns } from '@/design-system/components';
 import { useData } from '@/context/DataContext';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 
@@ -8,7 +8,7 @@ import { CallOutcomeModal } from '@shared/components/modals/CallOutcomeModal';
 import { LeadAssignmentModal } from '../components/LeadAssignmentModal';
 import { DriverProfileModal } from '../components/modals/driver-dossier/DriverProfileModal';
 import {
-    Phone, Lock, Zap, User, Briefcase, MapPin, Calendar, ArrowUp, ArrowDown
+    Phone, User, Briefcase, MapPin, Calendar, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { getFieldValue, formatPhoneNumber, toTitleCase } from '@shared/utils/helpers';
 import { getStatusIcon } from '@shared/components/badges/statusIcon';
@@ -17,33 +17,37 @@ import { getStatusIcon } from '@shared/components/badges/statusIcon';
 const getStatusPillStyle = (status) => {
     const s = (status || '').toLowerCase();
     if (s.includes('hired') || s.includes('accepted') || s.includes('approved'))
-        return 'bg-purple-50 text-purple-700 border-purple-200/60';
+        return 'bg-ds-status-accent-bg text-ds-status-accent-fg border-ds-status-accent-border';
     if (s.includes('rejected') || s.includes('disqualified') || s.includes('declined'))
-        return 'bg-red-50 text-red-700 border-red-200/60';
+        return 'bg-ds-status-danger-bg text-ds-status-danger-fg border-ds-status-danger-border';
     if (s.includes('offer') || s.includes('background'))
-        return 'bg-indigo-50 text-indigo-700 border-indigo-200/60';
+        return 'bg-ds-status-info-bg text-ds-status-info-fg border-ds-status-info-border';
     if (s.includes('contacted') || s.includes('attempted') || s.includes('review'))
-        return 'bg-slate-100 text-slate-600 border-slate-200/60';
+        return 'bg-ds-status-neutral-bg text-ds-status-neutral-fg border-ds-status-neutral-border';
     if (s.includes('new') || s.includes('lead'))
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200/60';
-    return 'bg-slate-50 text-slate-600 border-slate-200/60';
+        return 'bg-ds-status-success-bg text-ds-status-success-fg border-ds-status-success-border';
+    return 'bg-ds-status-neutral-bg text-ds-status-neutral-fg border-ds-status-neutral-border';
 };
 
 // ── Call outcome pill ──
 const getOutcomePillStyle = (outcome) => {
     const o = (outcome || '').toLowerCase();
     if (o.includes('connected') || o.includes('spoke') || o.includes('interested'))
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200/60';
+        return 'bg-ds-status-success-bg text-ds-status-success-fg border-ds-status-success-border';
     if (o.includes('callback'))
-        return 'bg-blue-50 text-blue-700 border-blue-200/60';
+        return 'bg-ds-status-info-bg text-ds-status-info-fg border-ds-status-info-border';
     if (o.includes('voicemail'))
-        return 'bg-amber-50 text-amber-700 border-amber-200/60';
+        return 'bg-ds-status-warning-bg text-ds-status-warning-fg border-ds-status-warning-border';
     if (o.includes('no answer'))
-        return 'bg-red-50 text-red-700 border-red-200/60';
+        return 'bg-ds-status-danger-bg text-ds-status-danger-fg border-ds-status-danger-border';
     if (o.includes('not interested'))
-        return 'bg-slate-100 text-slate-500 border-slate-200/60';
-    return 'bg-slate-50 text-slate-500 border-slate-100';
+        return 'bg-ds-status-neutral-bg text-ds-status-neutral-fg border-ds-status-neutral-border';
+    return 'bg-ds-status-neutral-bg text-ds-status-neutral-fg border-ds-status-neutral-border';
 };
+
+const getCandidateName = (item) => item.fullName
+    ? toTitleCase(item.fullName)
+    : toTitleCase(`${item.firstName || 'Unknown'} ${item.lastName || 'Driver'}`.trim());
 
 // ── Format Firestore timestamp to MM/DD/YYYY ──
 const formatAddedDate = (item) => {
@@ -128,7 +132,13 @@ export const CompanyCandidatesListPage = ({ scope }) => {
     // Reset selection on data changes
     useEffect(() => {
         setSelectedRowIds([]);
-    }, [scope, dashboard.currentPage, dashboard.searchQuery]);
+    }, [
+        scope,
+        dashboard.currentPage,
+        dashboard.searchQuery,
+        dashboard.pipelineSegment,
+        dashboard.filters,
+    ]);
 
     // Sorted data
     const sortedData = useMemo(() => {
@@ -180,11 +190,20 @@ export const CompanyCandidatesListPage = ({ scope }) => {
     };
 
     const toggleSelectAllPage = () => {
-        if (selectedRowIds.length === sortedData.length) {
-            setSelectedRowIds([]);
-        } else {
-            setSelectedRowIds(sortedData.map(d => d.id));
-        }
+        const pageIds = sortedData.map((item) => item.id);
+        setSelectedRowIds((current) => {
+            const selected = new Set(current);
+            const allVisibleSelected = pageIds.length > 0
+                && pageIds.every((id) => selected.has(id));
+
+            if (allVisibleSelected) {
+                pageIds.forEach((id) => selected.delete(id));
+            } else {
+                pageIds.forEach((id) => selected.add(id));
+            }
+
+            return [...selected];
+        });
     };
 
     // ── Modals ──
@@ -221,11 +240,10 @@ export const CompanyCandidatesListPage = ({ scope }) => {
     const pipelineTabs =
         scope === 'applications' ? APPLICATION_PIPELINE_TABS : LEAD_PIPELINE_TABS;
 
-    const getRowClassName = (item) => {
+    const getRowTone = (item) => {
         const level = staleContactMeta(item);
-        if (!level) return '';
-        if (level === 'severe') return 'border-l-4 border-red-500 bg-red-50/60';
-        return 'border-l-4 border-amber-400 bg-amber-50/60';
+        if (!level) return 'neutral';
+        return level === 'severe' ? 'danger' : 'warning';
     };
 
     // ── Column Config ──
@@ -235,21 +253,22 @@ export const CompanyCandidatesListPage = ({ scope }) => {
             {
                 key: 'identity',
                 header: 'Driver / Contact',
+                rowHeader: true,
+                width: 'xl',
+                priority: 'primary',
                 render: (item) => {
-                    const name = item.fullName
-                        ? toTitleCase(item.fullName)
-                        : toTitleCase(`${item.firstName || 'Unknown'} ${item.lastName || 'Driver'}`.trim());
+                    const name = getCandidateName(item);
                     const stale = staleContactMeta(item);
 
                     return (
-                        <div className="min-w-[200px]">
+                        <div>
                             <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-sm font-semibold text-slate-900">{name}</p>
                                 {stale && (
                                     <span
-                                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${stale === 'severe'
-                                            ? 'bg-red-100 text-red-800 border-red-200'
-                                            : 'bg-amber-100 text-amber-900 border-amber-200'
+                                        className={`text-ds-xs font-bold uppercase px-2 py-0.5 rounded-full border ${stale === 'severe'
+                                            ? 'bg-ds-status-danger-bg text-ds-status-danger-fg border-ds-status-danger-border'
+                                            : 'bg-ds-status-warning-bg text-ds-status-warning-fg border-ds-status-warning-border'
                                             }`}
                                     >
                                         Stale CA1
@@ -258,17 +277,18 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                             </div>
                             <div className="mt-1">
                                 <button
+                                    type="button"
                                     onClick={(e) => handlePhoneClick(e, item)}
-                                    className="text-xs rounded px-2 py-0.5 inline-flex items-center gap-1 transition-colors border text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700"
+                                    aria-label={`Call ${name} at ${formatPhoneNumber(getFieldValue(item.phone))}`}
+                                    className="min-h-8 text-ds-xs rounded-ds-sm px-2 inline-flex items-center gap-1 transition-colors border text-ds-content-secondary border-ds-border-subtle hover:bg-ds-surface-subtle hover:text-ds-content focus-visible:outline-none focus-visible:shadow-ds-focus"
                                 >
-                                    <Phone size={11} />
+                                    <Phone size={12} aria-hidden="true" />
                                     {formatPhoneNumber(getFieldValue(item.phone))}
                                 </button>
                             </div>
                         </div>
                     );
                 },
-                stopPropagation: false,
             },
         ];
 
@@ -276,13 +296,14 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         cols.push({
             key: 'status',
             header: 'Status',
-            headerClassName: 'text-center',
-            cellClassName: 'text-center',
+            align: 'center',
+            width: 'sm',
+            priority: 'primary',
             render: (item) => {
                 // C3 (WCAG 1.4.1): icon shape + text, so status is never colour-only.
                 const StatusIcon = getStatusIcon(item.status || 'New');
                 return (
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusPillStyle(item.status)}`}>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-ds-xs font-semibold border ${getStatusPillStyle(item.status)}`}>
                         <StatusIcon size={12} aria-hidden="true" />
                         {item.status || 'New'}
                     </span>
@@ -295,6 +316,8 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         cols.push({
             key: 'qualifications',
             header: 'Position / Type',
+            width: 'lg',
+            priority: 'secondary',
             render: (item) => {
                 const position = item.positionApplyingTo || 'Driver';
                 const types = Array.isArray(item.driverType) && item.driverType.length > 0
@@ -302,24 +325,24 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                     : (typeof item.driverType === 'string' && item.driverType ? item.driverType : 'Unspecified');
 
                 return (
-                    <div className="min-w-[140px]">
+                    <div>
                         <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                            <Briefcase size={12} className="text-slate-400" />
+                            <Briefcase size={12} className="text-ds-content-muted" aria-hidden="true" />
                             {position}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
                             {(item.experience || item['experience-years']) && (
-                                <span className="text-[10px] text-slate-500 font-medium bg-slate-50 px-1.5 py-0.5 rounded">
+                                <span className="text-ds-xs text-ds-content-secondary font-medium bg-ds-surface-subtle px-1.5 py-0.5 rounded-ds-sm">
                                     {item.experience || item['experience-years']} Exp
                                 </span>
                             )}
                             {item.state && (
-                                <span className="flex items-center gap-0.5 text-[10px] text-slate-500 font-medium bg-slate-50 px-1.5 py-0.5 rounded">
-                                    <MapPin size={9} className="text-slate-400" /> {item.state}
+                                <span className="flex items-center gap-0.5 text-ds-xs text-ds-content-secondary font-medium bg-ds-surface-subtle px-1.5 py-0.5 rounded-ds-sm">
+                                    <MapPin size={12} className="text-ds-content-muted" aria-hidden="true" /> {item.state}
                                 </span>
                             )}
                         </div>
-                        <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate max-w-[150px]" title={types}>
+                        <p className="text-ds-xs text-ds-content-muted font-medium mt-0.5 truncate" title={types}>
                             {types}
                         </p>
                     </div>
@@ -332,45 +355,52 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         cols.push({
             key: 'addedDate',
             header: (
-                <span className="inline-flex items-center gap-1.5">
-                    <Calendar size={11} className="text-slate-400" />
+                <span className="inline-flex items-center justify-center gap-1">
+                    <Calendar size={12} className="text-ds-content-muted" aria-hidden="true" />
                     Added Date
-                    <span className="inline-flex flex-col gap-0 ml-0.5" onClick={e => e.stopPropagation()}>
+                    <span className="inline-flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
                         {/* Up arrow = Earliest first (asc) */}
                         <button
+                            type="button"
                             onClick={() => handleDateSort('asc')}
                             title="Earliest first"
-                            className={`leading-none transition-colors ${isDateSorted && sortConfig.direction === 'asc'
-                                ? 'text-blue-600'
-                                : 'text-slate-300 hover:text-slate-500'
+                            aria-label="Sort by earliest added date"
+                            aria-pressed={isDateSorted && sortConfig.direction === 'asc'}
+                            className={`h-6 w-6 inline-flex items-center justify-center rounded-ds-sm leading-none transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${isDateSorted && sortConfig.direction === 'asc'
+                                ? 'text-ds-action-primary'
+                                : 'text-ds-content-muted hover:bg-ds-surface hover:text-ds-content'
                                 }`}
                         >
-                            <ArrowUp size={10} strokeWidth={2.5} />
+                            <ArrowUp size={13} strokeWidth={2.5} aria-hidden="true" />
                         </button>
                         {/* Down arrow = Latest first (desc) */}
                         <button
+                            type="button"
                             onClick={() => handleDateSort('desc')}
                             title="Latest first"
-                            className={`leading-none transition-colors ${isDateSorted && sortConfig.direction === 'desc'
-                                ? 'text-blue-600'
-                                : 'text-slate-300 hover:text-slate-500'
+                            aria-label="Sort by latest added date"
+                            aria-pressed={isDateSorted && sortConfig.direction === 'desc'}
+                            className={`h-6 w-6 inline-flex items-center justify-center rounded-ds-sm leading-none transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${isDateSorted && sortConfig.direction === 'desc'
+                                ? 'text-ds-action-primary'
+                                : 'text-ds-content-muted hover:bg-ds-surface hover:text-ds-content'
                                 }`}
                         >
-                            <ArrowDown size={10} strokeWidth={2.5} />
+                            <ArrowDown size={13} strokeWidth={2.5} aria-hidden="true" />
                         </button>
                     </span>
                 </span>
             ),
-            headerClassName: 'text-center',
-            cellClassName: 'text-center',
+            align: 'center',
+            width: 'md',
+            priority: 'secondary',
             render: (item) => {
                 const dateStr = formatAddedDate(item);
                 if (!dateStr) {
-                    return <span className="text-[10px] text-slate-300 italic">—</span>;
+                    return <span className="text-ds-xs text-ds-content-muted italic">—</span>;
                 }
                 return (
-                    <span className="inline-flex items-center gap-1 text-xs text-slate-600 font-medium">
-                        <Calendar size={11} className="text-slate-400" />
+                    <span className="inline-flex items-center gap-1 text-ds-xs text-ds-content-secondary font-medium">
+                        <Calendar size={12} className="text-ds-content-muted" aria-hidden="true" />
                         {dateStr}
                     </span>
                 );
@@ -381,14 +411,15 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         cols.push({
             key: 'lastCall',
             header: 'Last Call',
-            headerClassName: 'text-center',
-            cellClassName: 'text-center',
+            align: 'center',
+            width: 'xs',
+            priority: 'tertiary',
             render: (item) => {
                 if (!item.lastCallOutcome) {
-                    return <span className="text-[10px] text-slate-300 italic">—</span>;
+                    return <span className="text-ds-xs text-ds-content-muted italic">—</span>;
                 }
                 return (
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getOutcomePillStyle(item.lastCallOutcome)}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-ds-xs font-semibold border ${getOutcomePillStyle(item.lastCallOutcome)}`}>
                         {item.lastCallOutcome}
                     </span>
                 );
@@ -399,20 +430,22 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         cols.push({
             key: 'assignee',
             header: 'Recruiter',
+            width: 'md',
+            priority: 'secondary',
             render: (item) => {
                 if (item.assignedToName) {
                     return (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-slate-50 px-2 py-1 rounded-full border border-slate-200">
-                            <div className="w-4 h-4 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-[8px] font-bold">
+                        <span className="inline-flex items-center gap-1.5 text-ds-xs font-medium text-ds-content bg-ds-surface-subtle px-2 py-1 rounded-full border border-ds-border-subtle">
+                            <span className="w-5 h-5 bg-ds-status-accent-bg text-ds-status-accent-fg rounded-full flex items-center justify-center text-ds-xs font-bold" aria-hidden="true">
                                 {item.assignedToName.charAt(0)}
-                            </div>
+                            </span>
                             {item.assignedToName}
                         </span>
                     );
                 }
                 return (
-                    <span className="text-xs text-slate-400 italic flex items-center gap-1">
-                        <User size={12} /> Unassigned
+                    <span className="text-ds-xs text-ds-content-muted italic flex items-center gap-1">
+                        <User size={12} aria-hidden="true" /> Unassigned
                     </span>
                 );
             },
@@ -422,35 +455,42 @@ export const CompanyCandidatesListPage = ({ scope }) => {
         cols.push({
             key: 'actions',
             header: '',
-            headerClassName: 'w-[80px]',
-            cellClassName: 'w-[80px]',
+            headerLabel: 'Actions',
+            align: 'center',
+            width: 'actions',
+            priority: 'actions',
             stopPropagation: true,
-            render: (item) => (
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <button
-                        onClick={(e) => handlePhoneClick(e, item)}
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                        title="Call Driver"
-                    >
-                        <Phone size={15} />
-                    </button>
-                </div>
-            ),
+            render: (item) => {
+                const name = getCandidateName(item);
+                return (
+                    <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity duration-200">
+                        <button
+                            type="button"
+                            onClick={(e) => handlePhoneClick(e, item)}
+                            aria-label={`Call ${name}`}
+                            className="h-9 w-9 inline-flex items-center justify-center text-ds-content-muted hover:text-ds-status-success-fg hover:bg-ds-status-success-bg rounded-ds-md transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus"
+                            title="Call Driver"
+                        >
+                            <Phone size={16} aria-hidden="true" />
+                        </button>
+                    </div>
+                );
+            },
         });
 
-        return cols;
+        return defineTableColumns(cols);
     }, [scope, sortConfig]);
 
     return (
         <div className="h-full flex flex-col bg-gray-50">
             {/* Page Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+            <div className="bg-ds-surface border-b border-ds-border-subtle px-ds-4 sm:px-ds-6 py-ds-4 shrink-0">
                 <h1 className="text-xl font-bold text-gray-900">{getPageTitle()}</h1>
                 <p className="text-sm text-gray-500">Manage and track your driver pipeline.</p>
             </div>
 
             {/* List Content */}
-            <div className="flex-1 overflow-hidden p-6 flex flex-col gap-0">
+            <div className="flex-1 overflow-hidden p-3 sm:p-6 flex flex-col gap-0">
                 {/* Toolbar — search, filters, timer, assign */}
                 <div className="bg-white rounded-t-xl border border-b-0 border-gray-200">
                     <DashboardToolbar
@@ -505,37 +545,37 @@ export const CompanyCandidatesListPage = ({ scope }) => {
                     )}
                 </div>
 
-                {(dashboard.error || dashboard.statsFetchError || dashboard.listCountError) && (
-                    <div
-                        className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2"
-                        role="alert"
-                    >
-                        <span>
-                            {dashboard.error || dashboard.statsFetchError || dashboard.listCountError}
-                        </span>
-                        <button
-                            type="button"
-                            className="font-semibold text-amber-950 underline shrink-0"
-                            onClick={() => dashboard.refreshData()}
-                        >
-                            Retry
-                        </button>
-                    </div>
-                )}
-
-                {/* Modern Table */}
+                {/* Candidate-list DataTable pilot */}
                 <div className="flex-1 overflow-hidden">
-                    <ModernDriverTable
+                    <DataTable
+                        ariaLabel={`${getPageTitle()} table`}
                         data={sortedData}
                         columns={columns}
-                        getRowClassName={getRowClassName}
-                        onRowClick={setSelectedApp}
+                        getRowTone={getRowTone}
+                        getRowLabel={(item) => `Open driver dossier for ${getCandidateName(item)}`}
+                        onRowActivate={setSelectedApp}
                         isLoading={dashboard.loading}
-                        emptyMessage="No records found."
-                        showCheckboxes={canAssign}
-                        selectedIds={selectedRowIds}
-                        onToggleSelect={(id) => toggleRowSelection(id)}
-                        onToggleSelectAll={toggleSelectAllPage}
+                        loadingLabel={`Loading ${getPageTitle().toLowerCase()}`}
+                        empty={{
+                            title: 'No records found.',
+                            description: 'Try adjusting your search or filters.',
+                        }}
+                        error={(dashboard.error || dashboard.statsFetchError || dashboard.listCountError)
+                            ? {
+                                message: dashboard.error || dashboard.statsFetchError || dashboard.listCountError,
+                                onRetry: dashboard.refreshData,
+                            }
+                            : undefined}
+                        selection={canAssign ? {
+                            selectedIds: selectedRowIds,
+                            onToggleRow: toggleRowSelection,
+                            onToggleAll: toggleSelectAllPage,
+                            selectAllLabel: 'Select all candidates on this page',
+                            getRowLabel: (item) => `Select ${getCandidateName(item)}`,
+                        } : undefined}
+                        density="comfortable"
+                        minWidth="wide"
+                        mobilePresentation="scroll"
                         pagination={{
                             currentPage: dashboard.currentPage,
                             totalPages: dashboard.totalPages,

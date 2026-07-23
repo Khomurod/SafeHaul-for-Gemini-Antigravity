@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
-import { LogOut, ArrowLeftRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LogOut, ArrowLeftRight, Menu } from 'lucide-react';
+import { IconButton } from '@/design-system/components';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { getPortalUser } from '@features/auth';
 
@@ -14,9 +14,12 @@ const getUserRoleLabel = (claims, companyId) => {
     return 'Team Member';
 };
 
-export const CompanyTopbar = () => {
+export const CompanyTopbar = ({
+    isNavigationOpen,
+    onOpenNavigation,
+    navigationTriggerRef,
+}) => {
     const { currentUser, handleLogout, currentCompanyProfile, currentUserClaims, returnToCompanyChooser } = useData();
-    const navigate = useNavigate();
     const companyId = currentCompanyProfile?.id;
 
     const [displayName, setDisplayName] = useState(currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User');
@@ -53,57 +56,71 @@ export const CompanyTopbar = () => {
     const initials = displayName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || 'U';
 
     return (
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-40 shadow-sm">
+        <header className="h-16 bg-ds-surface border-b border-ds-border-subtle flex items-center justify-between gap-2 px-3 sm:px-6 shadow-ds-xs">
             {/* Left: Company Name */}
-            <div className="flex items-center gap-4">
-                <h1 className="text-lg font-semibold text-gray-900">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                <IconButton
+                    ref={navigationTriggerRef}
+                    label="Open navigation"
+                    variant="ghost"
+                    className="md:hidden"
+                    onClick={onOpenNavigation}
+                    aria-controls="workspace-navigation"
+                    aria-expanded={isNavigationOpen}
+                    aria-haspopup="dialog"
+                >
+                    <Menu size={20} aria-hidden="true" />
+                </IconButton>
+                <p className="text-ds-heading-md font-semibold text-ds-content truncate">
                     {currentCompanyProfile?.companyName || currentCompanyProfile?.name || 'Dashboard'}
-                </h1>
+                </p>
             </div>
 
             {/* Right: Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 {/* Notifications */}
                 <NotificationDropdown companyId={companyId} />
 
-                <div className="h-8 w-px bg-gray-200 mx-1"></div>
+                <div className="h-8 w-px bg-ds-border-subtle mx-1 hidden sm:block" aria-hidden="true" />
 
                 {/* User Info */}
-                <div className="flex items-center gap-3">
+                <div className="items-center gap-3 hidden md:flex">
                     <div className="flex flex-col items-end hidden md:flex">
-                        <span className="text-sm font-semibold text-gray-900">
+                        <span className="text-ds-body font-semibold text-ds-content">
                             {displayName}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-ds-xs text-ds-content-muted">
                             {roleLabel}
                         </span>
                     </div>
 
                     {/* Avatar */}
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white shadow-sm">
+                    <div className="w-9 h-9 rounded-full bg-ds-action-primary flex items-center justify-center text-ds-body font-bold text-ds-content-inverse shadow-ds-xs" aria-hidden="true">
                         {initials}
                     </div>
                 </div>
 
-                <div className="h-8 w-px bg-gray-200 mx-1"></div>
+                <div className="h-8 w-px bg-ds-border-subtle mx-1 hidden md:block" aria-hidden="true" />
 
                 {/* Switch Company Button */}
-                <button
+                <IconButton
+                    label="Switch company"
+                    variant="ghost"
                     onClick={returnToCompanyChooser}
-                    className="flex items-center gap-2 px-3 py-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="Switch Company"
                 >
-                    <ArrowLeftRight size={18} />
-                </button>
+                    <ArrowLeftRight size={18} aria-hidden="true" />
+                </IconButton>
 
                 {/* Logout Button */}
-                <button
+                <IconButton
+                    label="Log out"
+                    variant="ghost"
                     onClick={onLogout}
-                    className="flex items-center gap-2 px-3 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     title="Logout"
                 >
-                    <LogOut size={18} />
-                </button>
+                    <LogOut size={18} aria-hidden="true" />
+                </IconButton>
             </div>
         </header>
     );

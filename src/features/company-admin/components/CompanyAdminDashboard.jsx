@@ -4,7 +4,15 @@ import { useData } from '@/context/DataContext';
 import { auth } from '@lib/firebase';
 import { getPortalUser } from '@features/auth';
 import { useToast } from '@shared/components/feedback/ToastProvider';
-import { StatCard, useCompanyDashboard } from '@features/companies';
+import { Button, Card, MetricCard } from '@/design-system/components';
+import {
+    PageContainer,
+    PageHeader,
+    ResponsiveGrid,
+    Section,
+    Stack,
+} from '@/design-system/layouts';
+import { useCompanyDashboard } from '@features/companies';
 
 import { CompanyBulkUpload } from './CompanyBulkUpload';
 import { InlineLeaderboard } from './InlineLeaderboard';
@@ -67,76 +75,73 @@ export function CompanyAdminDashboard() {
     };
 
     return (
-        <div id="company-admin-container" className="h-full bg-gray-50 flex flex-col font-sans overflow-y-auto">
+        <div id="company-admin-container" className="min-h-full bg-ds-canvas">
+            <PageContainer>
+                <Stack gap="lg">
+                    <PageHeader
+                        title={`Welcome back, ${userName}`}
+                        description={`Here's what's happening at ${companyName} today.`}
+                    />
 
-            {/* Main Content */}
-            <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 sm:p-6 lg:p-8">
-
-                {/* Welcome Section */}
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-gray-900">Welcome back, {userName}</h1>
-                    <p className="text-gray-500 mt-1">Here's what's happening at {companyName} today.</p>
-                </div>
-
-                {/* KPI Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <Section aria-label="Company activity summary">
                     {dashboard.statsFetchError && (
-                        <div className="md:col-span-2 lg:col-span-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2" role="status">
+                        <Card
+                            padding="sm"
+                            className="mb-4 flex flex-wrap items-center justify-between gap-2 border-ds-status-warning-border bg-ds-status-warning-bg text-ds-status-warning-fg"
+                            role="status"
+                        >
                             <span>Some dashboard numbers could not load: {dashboard.statsFetchError}</span>
-                            <button
-                                type="button"
-                                className="font-semibold text-amber-950 underline"
+                            <Button
+                                variant="secondary"
+                                size="sm"
                                 onClick={() => dashboard.refreshData()}
                             >
                                 Retry
-                            </button>
-                        </div>
+                            </Button>
+                        </Card>
                     )}
-                    <StatCard
-                        id="stat-card-applications"
-                        title="Applications"
-                        value={dashboard.counts?.applications || 0}
-                        icon={<FileText size={20} />}
-                        colorClass="ring-blue-500 bg-blue-500"
-                        onClick={() => navigate('/company/drivers/applications')}
-                        active={false}
-                    />
+                        <ResponsiveGrid minItemWidth="210px">
+                            <MetricCard
+                                id="stat-card-applications"
+                                label="Applications"
+                                value={dashboard.counts?.applications || 0}
+                                icon={<FileText size={20} />}
+                                tone="info"
+                                onActivate={() => navigate('/company/drivers/applications')}
+                            />
 
-                    <StatCard
-                        id="stat-card-company_leads"
-                        title="Company Leads"
-                        value={dashboard.counts?.companyLeads || 0}
-                        icon={<Briefcase size={20} />}
-                        colorClass="ring-orange-500 bg-orange-500"
-                        onClick={() => navigate('/company/drivers/leads/company')}
-                        active={false}
-                    />
-                    <StatCard
-                        id="stat-card-my_leads"
-                        title="My Leads"
-                        value={dashboard.counts?.myLeads || 0}
-                        icon={<User size={20} />}
-                        colorClass="ring-green-500 bg-green-500"
-                        onClick={() => navigate('/company/drivers/leads/my')}
-                        active={false}
-                    />
-                    {/* P4 FIX: 4th StatCard to fill the 4-column grid */}
-                    <StatCard
-                        id="stat-card-hired"
-                        title="Hired"
-                        value={dashboard.counts?.hired || 0}
-                        icon={<CheckCircle size={20} />}
-                        colorClass="ring-emerald-500 bg-emerald-500"
-                        onClick={() => navigate('/company/drivers/applications')}
-                        active={false}
-                    />
-                </div>
+                            <MetricCard
+                                id="stat-card-company_leads"
+                                label="Company Leads"
+                                value={dashboard.counts?.companyLeads || 0}
+                                icon={<Briefcase size={20} />}
+                                tone="warning"
+                                onActivate={() => navigate('/company/drivers/leads/company')}
+                            />
+                            <MetricCard
+                                id="stat-card-my_leads"
+                                label="My Leads"
+                                value={dashboard.counts?.myLeads || 0}
+                                icon={<User size={20} />}
+                                tone="accent"
+                                onActivate={() => navigate('/company/drivers/leads/my')}
+                            />
+                            <MetricCard
+                                id="stat-card-hired"
+                                label="Hired"
+                                value={dashboard.counts?.hired || 0}
+                                icon={<CheckCircle size={20} />}
+                                tone="success"
+                                onActivate={() => navigate('/company/drivers/applications')}
+                            />
+                        </ResponsiveGrid>
+                    </Section>
 
-                {/* Leaderboard */}
-                <div className="grid grid-cols-1 gap-6">
-                    <InlineLeaderboard companyId={companyId} />
-                </div>
-            </div>
+                    <Section aria-label="Team performance">
+                        <InlineLeaderboard companyId={companyId} />
+                    </Section>
+                </Stack>
+            </PageContainer>
 
             {/* Modals and Overlays */}
             {isUploadModalOpen && isCompanyAdmin && (

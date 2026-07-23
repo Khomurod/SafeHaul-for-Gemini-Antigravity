@@ -109,6 +109,9 @@ export function CallOutcomeModalUI({
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[70] backdrop-blur-sm"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Log call result"
     >
       <div
         className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 overflow-hidden max-h-[90vh] flex flex-col"
@@ -119,6 +122,8 @@ export function CallOutcomeModalUI({
             <Phone size={20} /> Log Call Result
           </h3>
           <button
+            type="button"
+            aria-label="Close call result"
             onClick={onClose}
             className="p-1 hover:bg-white/20 rounded-full"
           >

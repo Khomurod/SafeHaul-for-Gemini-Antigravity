@@ -30,3 +30,36 @@ This repo is wired to three complementary assistants plus native tooling. Use ea
 
 Guidance: use codebase-memory to understand *where and why*, Serena to act on *exact symbols*, native tools to read and verify. Query both codebase-memory and Serena for the same thing only when a second independent check is genuinely worth it. Keep durable project memory in one system, not duplicated across tools.
 <!-- /tool-responsibilities -->
+
+<!-- safehaul-design-system -->
+## SafeHaul UI and design-system work
+
+Before any UI, UX, styling, responsive, accessibility, or visual-component
+change:
+
+1. Read `docs/SAFEHAUL_DESIGN_SYSTEM_ROADMAP.md`.
+2. Read `docs/SAFEHAUL_UI_DESIGN_STANDARD.md` when that file exists.
+3. Read `src/design-system/README.md` and the relevant component/pattern docs.
+
+The central design system owns reusable visual appearance and interaction.
+Feature folders own feature content, available actions, domain vocabulary, and
+domain-to-visual mapping. Hooks and services own data, state, integrations, and
+business logic. Keep feature screens in their features.
+
+Reuse approved design-system components and semantic `--ds-*` tokens. Do not
+create a local button, modal, form control, table, status treatment, arbitrary
+color, unsupported font size, or competing visual primitive unless the
+roadmap records the missing capability and the code documents the temporary
+exception. Do not add 9px or 10px body text.
+
+When completing or changing migration work, update the roadmap immediately.
+Never mark an item complete without recorded implementation, behavior-preserving
+tests, applicable desktop/mobile visual review, accessibility/keyboard review,
+documentation, and final diff inspection. State honestly when a check could not
+run and leave the item open or blocked.
+
+UI standardization must not change Firebase rules, database structures,
+backend behavior, integrations, permissions, routes, feature flags, or
+business workflows unless the task separately justifies and approves that
+change.
+<!-- /safehaul-design-system -->

@@ -1,5 +1,5 @@
 @import url('https://rsms.me/inter/inter.css');
-@import './shared/styles/designTokens.css';
+@import './design-system/index.css';
 
 @tailwind base;
 @tailwind components;

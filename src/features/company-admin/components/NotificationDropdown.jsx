@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, X, Check, Clock, User, Briefcase, FileText } from 'lucide-react';
+import { Bell, Check, Clock, User, Briefcase, FileText } from 'lucide-react';
+import { Badge, Button, IconButton } from '@/design-system/components';
 import { useCompanyNotifications } from '../hooks/useCompanyNotifications';
 
 // Icon mapping for notification types
@@ -51,40 +52,43 @@ export function NotificationDropdown({ companyId }) {
     return (
         <div className="relative" ref={dropdownRef}>
             {/* Bell Button */}
-            <button
+            <IconButton
+                label="Notifications"
+                variant="ghost"
                 onClick={() => setIsOpen(!isOpen)}
-                className={`p-2 rounded-lg transition-colors relative ${isOpen
-                    ? 'text-blue-600 bg-blue-50'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                className={`relative ${isOpen ? 'text-ds-status-info-fg bg-ds-status-info-bg' : ''}`}
+                aria-expanded={isOpen}
+                aria-haspopup="true"
             >
-                <Bell size={20} />
+                <Bell size={20} aria-hidden="true" />
                 {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white shadow">
+                    <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-ds-action-danger text-ds-content-inverse text-ds-xs font-bold rounded-full flex items-center justify-center border-2 border-ds-surface shadow-ds-xs">
                         {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                 )}
-            </button>
+            </IconButton>
 
             {/* Dropdown Panel */}
             {isOpen && (
-                <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-1.5rem))] bg-ds-surface rounded-ds-lg shadow-ds-lg border border-ds-border-subtle z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                     {/* Header */}
                     <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                         <div className="flex items-center gap-2">
                             <h3 className="font-bold text-gray-900">Notifications</h3>
                             {unreadCount > 0 && (
-                                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
+                                <Badge tone="info">
                                     {unreadCount} new
-                                </span>
+                                </Badge>
                             )}
                         </div>
                         {unreadCount > 0 && (
-                            <button
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={markAllAsRead}
-                                className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
                             >
-                                <Check size={12} /> Mark all read
-                            </button>
+                                <Check size={12} aria-hidden="true" /> Mark all read
+                            </Button>
                         )}
                     </div>
 
@@ -121,8 +125,8 @@ export function NotificationDropdown({ companyId }) {
                                             <p className="text-xs text-gray-500 mt-0.5 truncate">
                                                 {notif.message}
                                             </p>
-                                            <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                                                <Clock size={10} />
+                                            <p className="text-ds-xs text-ds-content-muted mt-1 flex items-center gap-1">
+                                                <Clock size={12} aria-hidden="true" />
                                                 {timeAgo(notif.createdAt)}
                                             </p>
                                         </div>

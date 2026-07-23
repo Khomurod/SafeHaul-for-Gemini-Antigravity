@@ -81,6 +81,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                     {canAssign && selectedCount > 0 && (
                         <div className="animate-in fade-in slide-in-from-left-2 pl-4 border-l border-gray-200">
                             <button
+                                type="button"
                                 onClick={onAssignLeads}
                                 className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
                             >
@@ -94,6 +95,7 @@ export const DashboardToolbar = memo(function DashboardToolbar({
                     {showMyAssignmentsToggle && (
                         <button
                             type="button"
+                            aria-label={myAssignmentsLabel}
                             onClick={() => onToggleMyAssignments?.(!myAssignmentsOnly)}
                             className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${myAssignmentsOnly
                                 ? 'bg-blue-600 border-blue-600 text-white'
@@ -120,6 +122,8 @@ export const DashboardToolbar = memo(function DashboardToolbar({
 
                     {/* Filter Toggle Button */}
                     <button
+                        type="button"
+                        aria-label="Filters"
                         onClick={() => setShowFilters(!showFilters)}
                         className={`p-2 rounded-lg border transition-all flex items-center gap-2 text-sm font-medium ${showFilters || hasActiveFilters
                             ? 'bg-blue-50 border-blue-200 text-blue-700'
