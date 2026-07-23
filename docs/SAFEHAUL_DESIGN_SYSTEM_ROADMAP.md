@@ -1270,7 +1270,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Team & Users | 3 inputs, 1 role select, local buttons | Direct Firestore user/team reads and writes; Manage Team dialog | Permissions, required fields, role changes, duplicate/error states | High / Very high | Audited; not migrated | Role gates, add/manage flows, validation, dialog, desktop/mobile |
 | Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings forms remain locally styled | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
 | Email Settings | Approved `FormSection`, `FormField`, `Input`, `Textarea`, `Button`, `Badge`, `Card`, and `FieldMessage` replace the local status banner, SMTP fields, test/save buttons, and setup-guide chrome (provider instructions stay feature-owned) | `getEmailSettingsMeta`/`testEmailConnection`/`saveEmailSettings` callables, sanitized metadata load, and password-isolation rules remain feature-owned and unchanged | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Compatibility slice completed 2026-07-23 | 24 focused render + 12 existing logic tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, secret-payload contract, label association, guide disclosure, axe, overflow passed |
-| SMS / number assignment | 2 selects in assignment rows/default line, raw table, verify/save/diagnostic controls | `useLineAssignments` owns Firestore/callable behavior and legacy token compatibility | Table/control alignment, redacted line tokens, verification states, accessible select labels | High / Very high | Audited; not migrated | Existing 15-case suite, save/backfill/verify, DataTable, keyboard/mobile |
+| SMS / number assignment | Default-line select + editable recruiter matrix (`<select>` per row), verify buttons, diagnostic modal, save; renders alongside the shared secret-entry `LineManager` (out of scope) | `useLineAssignments` owns the `sms_provider` listener, roster join, one-time token backfill, `verifyLineConnection`, and token-based `saveSmsLineAssignments`; correctness depends on server-side token→phone resolution | Editable matrix (not a display table), DLP token redaction, markup-coupled 15-case safety suite, color-only status, 9/10 px status text, secret-entry entanglement | High / Very high | Deep-audited 2026-07-23; **not migrated (NO-GO)** — blocked on the editable-matrix responsive/interaction owner decision and unproven DataTable-for-form-controls fit | Owner decision on editable-matrix strategy; then per-row select labels, token-redaction save contract, verify/backfill/diagnostic callables, status text+tone, DataTable-with-controls parity, keyboard/mobile |
 | Automated SMS | Approved `FormSection`, `FormField`, `Textarea`, `Button`, and `FieldMessage` replace the local heading/labels/textareas/save styling for three SMS-template textareas (`templateContactAttempt1/2/3`) and one save action | Three SMS-template textareas and one save action backed by a single Firestore document `companies/{companyId}/settings/automated_sms`; read/write remain feature-owned and unchanged | Template preservation, loading/error state, textarea description/limits | Medium / High | Compatibility slice completed 2026-07-23 | 12 focused contract tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, label association, loading announce, save states, axe, overflow passed |
 | Integrations | Connection cards and buttons, including disabled states | Firebase callable/SDK connection workflows and feature availability | External SDK state, disabled explanation, destructive/reconnect behavior | Medium / Very high | Audited; not migrated | Integration mocks/contracts, permissions, loading/error, mobile |
 | Billing | Approved `FormSection`, `FieldDisplay`, `Badge`, and `FieldMessage` replace the local heading/card/plan/support styling | Plan value display only; `planType` read from the loaded profile, unchanged | Empty/long plan content and support messaging | Low / Low | Compatibility slice completed 2026-07-23 | 7 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, labelled plan/badge status, support copy, axe, overflow passed |
@@ -1779,6 +1779,63 @@ Apply checks proportionally, but never claim an unrun check:
   entered any artifact.
 - Commit/PR: checkpoint `9c05f9e`.
 
+### Company Settings SMS / number-assignment deep-audit log (NO-GO)
+
+- Date: 2026-07-23.
+- Checkpoint boundary: verified before this audit — the four prior slice commits
+  (`00fd311`, `171eecc`, `9c05f9e`, `d9839b1`) are a clean linear chain on
+  `00fd366`, working tree clean, no tracked artifacts, `git diff --check` clean,
+  and a repository secret scan of source/tests/docs found only the artificial
+  `NOT_A_REAL_PASSWORD_test_value` and env placeholders. The four commits remain
+  on local `main`, unpushed.
+- Scope audited: `SmsSettingsTab` (composes the shared secret-entry `LineManager`
+  plus `NumberAssignmentManager`), `useLineAssignments`, `NumberAssignmentManager`,
+  `number-assignment/DefaultLineSection`, `number-assignment/AssignmentTable`,
+  `number-assignment/AssignmentRow`, `SMSDiagnosticModal`, `utils/linePhone`, and
+  the existing tests.
+- Baseline: the existing suite passed unchanged — `NumberAssignmentManager.test.jsx`
+  15 cases (A–O) + `SmsSettingsTab.test.jsx` 3 cases = 18 tests. No source was
+  modified during the audit.
+- Frozen Firestore contract (must be preserved by any future migration):
+  live `onSnapshot(doc(db,'companies',{companyId},'integrations','sms_provider'))`;
+  fields `isActive`, `inventory[]` ({ phoneNumber, lineId|id, label, usageType,
+  hasDedicatedCredentials }), `assignments{uid→phone}`, `assignmentLineTokens{uid→token}`,
+  `defaultPhoneNumber`, `defaultLineToken`, `config.defaultPhoneNumber`; roster from
+  `memberships` where `companyId ==` then `users` by `documentId() in` batches of 30;
+  and a second resolve pass for assignment-owner uids missing from the roster.
+- Frozen callable contracts: `saveSmsLineAssignments({ companyId, assignmentTokens,
+  [defaultToken] })` (empty `assignmentTokens` and no `defaultToken` = the one-time
+  non-destructive token backfill); `verifyLineConnection({ companyId, phoneNumber })`
+  → `{ identity, timestamp }`; diagnostic-modal `verifySmsConfig({ companyId })` →
+  `{ message }` and `sendTestSMS({ companyId, testPhoneNumber, fromNumber|null })`.
+  Save sends stable line **tokens**, never raw phone values.
+- Frozen sensitive-value/redaction contract: `<select>` option VALUES are stable
+  line tokens (lineId), never phone numbers, so selection survives browser/DLP
+  layers that strip phone-like text; `MISSING_TOKEN='__missing__'` surfaces a
+  configured-but-unsynced line; phone display is label-first; the save path maps
+  tokens→phones server-side. No provider token/JWT/secret is handled by
+  `NumberAssignmentManager` (that lives in the out-of-scope `LineManager` and is
+  encrypted server-side, never echoed). Any tests must use artificial numbers
+  such as `+15550000001` (the existing suite already does).
+- Go/no-go: NO-GO for a single bounded migration now. Conditions largely met
+  (callables/Firestore mockable, no backend/rule change, permissions/`isActive`
+  gate preservable), but blocked by: (1) an **open owner decision** on the
+  responsive/interaction strategy for an *editable* matrix — the approved
+  DataTable is proven only for display tables, and §7 leaves per-table strategy
+  undecided with "no safe universal conversion"; (2) unproven DataTable fit for
+  per-row form controls + `MISSING_TOKEN` resilience options + verify actions
+  (would need heavy feature-owned custom cells, minimal schema reuse);
+  (3) a safety-critical, markup-coupled 15-case suite encoding SMS-sending
+  correctness (E.164 normalization, token-vs-raw-phone under redaction, legacy
+  `lnN` migration, roster-missing resolution, one-time backfill) that a
+  presentation change would force rewriting; and (4) entanglement with the
+  out-of-scope shared secret-entry `LineManager`. Per policy, no partial table
+  conversion was forced. Known non-migration UI/a11y debt recorded for the future
+  slice: unlabelled per-row and default-line selects, `text-[9px]`/`text-[10px]`
+  status text, and color-only status dots.
+- Outcome: marked audited-but-not-migrated; no source changed; this is a
+  documentation-only checkpoint.
+
 ---
 
 ## 7. Decisions and blockers
@@ -1796,6 +1853,13 @@ Apply checks proportionally, but never claim an unrun check:
   2026-07-23: retain the dense native table and use labeled horizontal overflow
   at narrow widths so no field or action disappears. Other tables still require
   individual decisions.
+- `[!]` Decide the responsive/interaction strategy for *editable* matrices
+  (per-row form controls), starting with the SMS number-assignment recruiter
+  matrix. The approved DataTable is proven only for display tables; converting an
+  editable matrix (per-row `<select>`, `MISSING_TOKEN` resilience options, verify
+  actions, status) to a scroll table or stacked cards needs an owner decision and
+  a proof of behavior parity before migration. This blocked the SMS
+  number-assignment slice on 2026-07-23 (deep-audit log in section 6).
 
 These decisions do not block compatibility-first migrations that preserve the
 current identity and record evidence. They do block declaring the affected
@@ -1806,36 +1870,39 @@ related CI enforcement permanently blocking.
 
 ## 8. Safest next phase
 
-The Company Settings Email Settings compatibility slice completed on 2026-07-23.
-All remaining Settings/Profile slices are materially higher-risk than the four
-completed compatibility slices, so the next step is a dedicated audit rather than
-an immediate migration. The recommended next candidate is the Company Settings
-SMS / number-assignment presentation, because its data and callable behavior are
-already isolated in the `useLineAssignments` hook and it can reuse the approved
-DataTable plus form controls — but it must be independently audited first
-(assignment table, per-row selects, default-line control, verify/save/diagnostic
-actions, and redacted line tokens) before any migration decision.
+The Company Settings SMS / number-assignment workflow was deep-audited on
+2026-07-23 and returned **NO-GO** (deep-audit log in section 6): it is an
+editable matrix, not a display table, and is blocked on the new `[!]`
+editable-matrix responsive/interaction owner decision, an unproven
+DataTable-for-form-controls fit, a safety-critical markup-coupled 15-case suite,
+and entanglement with the out-of-scope secret-entry `LineManager`. No partial
+table conversion was forced; its contracts are frozen in section 6 for a future
+slice once the owner decision lands.
 
-Sequence:
+The recommended next bounded slice is the **Company Settings Login/Auth screen**
+(`/login`) or, if the owner prefers to stay in the Settings/Profile phase, the
+**Company Profile branding-upload** section. The Login screen is the genuinely
+lowest-risk remaining roadmap slice (Medium/Medium in section 5.1): local
+inputs/buttons/card with no secrets, no destructive actions, and no editable
+table, so it extends the proven `FormField`/`Input`/`Button`/`Card` presentation
+directly. Branding upload is the lowest-risk *in-phase* option (High/High) but
+carries a file-upload and keyboard-accessible-avatar concern that needs its own
+audit first.
 
-1. audit and freeze the exact `useLineAssignments` read/write and callable
-   behavior, the assignment-table shape, the per-row and default-line controls,
-   the verification/diagnostic states, and any redacted line tokens before
-   changing presentation;
-2. decide, from that audit, whether the whole table migrates safely in one
-   bounded slice using the approved DataTable and form controls, or whether it
-   must be split or deferred;
-3. migrate only the SMS number-assignment presentation, preserving the tab
-   identifier, hook behavior, callable contracts, permissions, routes, and data;
-4. add focused load, assignment-change, save/backfill/verify, and control-label
-   coverage plus DataTable alignment, axe, and responsive coverage;
+Sequence (whichever slice the owner selects):
+
+1. audit and freeze the exact data/callable/upload behavior, validation, and
+   messages before changing presentation;
+2. confirm the go/no-go conditions (mockable contracts, testable behavior, no
+   backend change, preservable permissions) are met;
+3. migrate only that bounded area to approved primitives, preserving all
+   behavior;
+4. add focused behavior + accessibility coverage plus axe and responsive checks;
 5. verify at 1440×900, 1024×768, and 412×915 before marking the slice complete.
 
-Do not start SMS number-assignment (or any remaining slice) in the same
-unreviewed diff as another. Company Profile branding upload/application
-questions, Team & Users, Integrations, and `/company/profile` account security
-each remain independent higher-risk items with their own audits and
-behavior-preservation evidence. If the number-assignment audit reveals a blocker
-(for example table responsive behavior needing an owner decision, or a callable
-that cannot be mocked), mark it audited-but-not-migrated with the exact blocker
-and choose the next-lowest-risk audited slice.
+Do not start any remaining slice in the same unreviewed diff as another. SMS
+number-assignment, Company Profile branding upload/application questions, Team &
+Users, Integrations, and `/company/profile` account security each remain
+independent items with their own audits and behavior-preservation evidence. The
+SMS number-assignment slice stays blocked until the editable-matrix strategy is
+owner-approved.
