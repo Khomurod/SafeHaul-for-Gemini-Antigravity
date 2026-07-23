@@ -1,26 +1,95 @@
-import React from 'react';
+import React, { useId } from 'react';
+import { FieldMessage } from '@/design-system/components';
 
-/** Radio button helper — extracted verbatim from VerificationPortal.jsx. */
-export const RadioGroup = ({ name, value, onChange, options, error: fieldError }) => (
-    <div>
-        <div className="flex flex-wrap gap-4 mt-1">
-            {options.map(opt => (
-                <label key={opt.value} className="flex items-center gap-2 cursor-pointer group">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all
-                        ${value === opt.value ? 'border-blue-600 bg-blue-600' : 'border-gray-300 group-hover:border-gray-400'}`}>
-                        {value === opt.value && <div className="w-2 h-2 rounded-full bg-white" />}
-                    </div>
-                    <input type="radio" name={name} className="sr-only"
-                           checked={value === opt.value}
-                           onChange={() => onChange(opt.value)} />
-                    <span className={`text-sm font-medium ${value === opt.value ? 'text-blue-900' : 'text-gray-700'}`}>
-                        {opt.label}
-                    </span>
-                </label>
-            ))}
-        </div>
-        {fieldError && <p className="text-red-500 text-xs mt-1 font-medium">{fieldError}</p>}
-    </div>
-);
+/**
+ * Feature-local accessible radio group for the verification portal.
+ *
+ * Behavior is unchanged from the original: native `<input type="radio">`
+ * controls grouped by `name` (so arrow keys move within the group), exact
+ * `options[].value` selection via `onChange(value)`, and the same visual dot.
+ * This is NOT a design-system primitive — the design-system Radio/Checkbox is a
+ * separate, not-yet-started roadmap item; the verification feature owns this
+ * control until that lands.
+ *
+ * Accessibility added on top of the original: a `<fieldset>`/`<legend>` group
+ * label, a visible keyboard focus ring (`focus-within`), an associated
+ * description and error (`aria-describedby`), and `aria-required`.
+ */
+export const RadioGroup = ({
+    name,
+    legend,
+    description,
+    required = false,
+    value,
+    onChange,
+    options,
+    error: fieldError,
+}) => {
+    const rawId = useId().replace(/:/g, '');
+    const descriptionId = description ? `${name}-${rawId}-description` : undefined;
+    const errorId = fieldError ? `${name}-${rawId}-error` : undefined;
+    const describedBy = [descriptionId, errorId].filter(Boolean).join(' ') || undefined;
+
+    return (
+        <fieldset className="m-0 min-w-0 border-0 p-0">
+            {legend && (
+                <legend className="mb-1 p-0 text-ds-sm font-semibold text-ds-content">
+                    {legend}
+                    {required && (
+                        <>
+                            <span className="text-ds-status-danger-fg" aria-hidden="true"> *</span>
+                            <span className="ds-visually-hidden"> required</span>
+                        </>
+                    )}
+                </legend>
+            )}
+            {description && (
+                <p id={descriptionId} className="mb-2 text-ds-xs text-ds-content-muted">
+                    {description}
+                </p>
+            )}
+            <div className="mt-1 flex flex-wrap gap-ds-4">
+                {options.map((opt) => (
+                    <label
+                        key={String(opt.value)}
+                        className="group inline-flex cursor-pointer items-center gap-ds-2 rounded-ds-md px-1 py-0.5 focus-within:shadow-ds-focus"
+                    >
+                        <span
+                            aria-hidden="true"
+                            className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${
+                                value === opt.value
+                                    ? 'border-ds-action-primary bg-ds-action-primary'
+                                    : 'border-ds-border group-hover:border-ds-content-muted'
+                            }`}
+                        >
+                            {value === opt.value && <span className="h-2 w-2 rounded-full bg-ds-content-inverse" />}
+                        </span>
+                        <input
+                            type="radio"
+                            name={name}
+                            className="sr-only"
+                            checked={value === opt.value}
+                            onChange={() => onChange(opt.value)}
+                            aria-describedby={describedBy}
+                            aria-required={required || undefined}
+                        />
+                        <span
+                            className={`text-ds-sm font-medium ${
+                                value === opt.value ? 'text-ds-content' : 'text-ds-content-secondary'
+                            }`}
+                        >
+                            {opt.label}
+                        </span>
+                    </label>
+                ))}
+            </div>
+            {fieldError && (
+                <FieldMessage id={errorId} tone="error" className="mt-1">
+                    {fieldError}
+                </FieldMessage>
+            )}
+        </fieldset>
+    );
+};
 
 export default RadioGroup;
