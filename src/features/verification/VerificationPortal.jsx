@@ -13,9 +13,10 @@
  *  - components/sections/*.jsx            — the four response form sections
  *  - @shared/components/signature/SignaturePad — shared draw-to-sign canvas
  */
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Loader2, AlertTriangle, ShieldCheck, Send } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Send } from 'lucide-react';
+import { Button } from '@/design-system/components';
 import { useVerificationPortal } from './hooks/useVerificationPortal';
 import {
     LoadingScreen,
@@ -50,6 +51,19 @@ export function VerificationPortal() {
         handleSubmit,
     } = useVerificationPortal(token);
 
+    // Move focus to the error summary on a fresh validation failure (the hook
+    // also scrolls to top). Only fires on the 0 -> >0 transition so fixing a
+    // field does not steal focus.
+    const errorSummaryRef = useRef(null);
+    const previousErrorCount = useRef(0);
+    const errorCount = Object.keys(formErrors).length;
+    useEffect(() => {
+        if (errorCount > 0 && previousErrorCount.current === 0) {
+            errorSummaryRef.current?.focus();
+        }
+        previousErrorCount.current = errorCount;
+    }, [errorCount]);
+
     if (loading) return <LoadingScreen />;
     if (error) return <ErrorScreen error={error} />;
     if (expired) return <ExpiredScreen />;
@@ -60,24 +74,29 @@ export function VerificationPortal() {
     // RENDER: Main Form
     // ============================================================
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-slate-900 text-white py-6 px-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                    <ShieldCheck className="w-6 h-6 text-blue-400" />
+        <div className="min-h-screen bg-ds-canvas">
+            {/* Header (branded compliance banner) */}
+            <header className="bg-slate-900 px-4 py-6 text-center text-white">
+                <div className="mb-1 flex items-center justify-center gap-2">
+                    <ShieldCheck className="h-6 w-6 text-blue-400" aria-hidden="true" />
                     <h1 className="text-xl font-bold">Previous Employment Verification</h1>
                 </div>
-                <p className="text-blue-300 text-sm">FMCSA 49 CFR Part 391.23 Compliance</p>
-            </div>
+                <p className="text-sm text-blue-300">FMCSA 49 CFR Part 391.23 Compliance</p>
+            </header>
 
-            {/* Form errors banner */}
-            {Object.keys(formErrors).length > 0 && (
-                <div className="max-w-3xl mx-auto mt-4 px-4">
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-                        <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                        <div>
-                            <p className="text-red-800 font-bold text-sm">Please fix the following errors:</p>
-                            <ul className="text-red-700 text-xs mt-1 list-disc list-inside">
+            {/* Form errors summary */}
+            {errorCount > 0 && (
+                <div className="mx-auto mt-4 max-w-3xl px-4">
+                    <div
+                        ref={errorSummaryRef}
+                        tabIndex={-1}
+                        role="alert"
+                        className="flex items-start gap-3 rounded-ds-lg border border-ds-status-danger-border bg-ds-status-danger-bg p-ds-4 focus-visible:outline-none focus-visible:shadow-ds-focus"
+                    >
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-ds-status-danger-fg" aria-hidden="true" />
+                        <div className="min-w-0">
+                            <p className="text-ds-sm font-bold text-ds-status-danger-fg">Please fix the following errors:</p>
+                            <ul className="mt-1 list-inside list-disc text-ds-xs text-ds-status-danger-fg">
                                 {Object.entries(formErrors).map(([key, msg]) => (
                                     <li key={key}>{key.replace(/([A-Z])/g, ' $1').trim()}: {msg}</li>
                                 ))}
@@ -87,12 +106,12 @@ export function VerificationPortal() {
                 </div>
             )}
 
-            <div className="max-w-3xl mx-auto py-6 px-4">
-                {/* Info Banner */}
-                <ApplicantDetailsCard verificationData={verificationData} />
+            <div className="mx-auto max-w-3xl px-4 py-6">
+                <div className="mb-ds-6">
+                    <ApplicantDetailsCard verificationData={verificationData} />
+                </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-
+                <form onSubmit={handleSubmit} className="space-y-ds-6">
                     {/* Section 1: Employment Confirmation */}
                     <EmploymentSection formData={formData} formErrors={formErrors} updateField={updateField} />
 
@@ -113,31 +132,24 @@ export function VerificationPortal() {
                     />
 
                     {/* Submit Button */}
-                    <button
-                        type="submit"
-                        disabled={submitting}
-                        className="w-full py-4 bg-slate-900 text-white font-bold text-lg rounded-xl hover:bg-slate-800 transition-all shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
+                    <Button type="submit" variant="primary" size="lg" fullWidth loading={submitting}>
                         {submitting ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                Submitting...
-                            </>
+                            'Submitting...'
                         ) : (
                             <>
-                                <Send className="w-5 h-5" />
+                                <Send className="h-5 w-5" aria-hidden="true" />
                                 Submit Verification Response
                             </>
                         )}
-                    </button>
+                    </Button>
                 </form>
 
                 {/* Footer */}
-                <div className="text-center py-6">
-                    <p className="text-xs text-gray-400">
+                <div className="py-6 text-center">
+                    <p className="text-ds-xs text-ds-content-muted">
                         This request was generated by <strong>SafeHaul Compliance Services</strong>
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="mt-1 text-ds-xs text-ds-content-muted">
                         Secure verification ID: {token}
                     </p>
                 </div>
