@@ -68,6 +68,10 @@ verified.
   Input, Textarea, Button, Badge, Card, and FieldMessage while the SMTP fields,
   callable contracts, password rules, provider setup guide, test/save workflows,
   status mapping, and messages remain feature-owned.
+- The Login screen consumes FormField, Input, Button, IconButton, and Card, and
+  migrates its password-reset overlay to the shared accessible Modal, while
+  authentication, redirects, password visibility, and the reset workflow remain
+  feature-owned.
 
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
