@@ -121,7 +121,7 @@ test.describe('Company Settings Personal Profile compatibility slice', () => {
     await openPersonalProfile(page);
 
     const { violations } = await new AxeBuilder({ page })
-      .include('main main')
+      .include('#company-settings-content')
       .analyze();
     const severe = violations
       .filter((violation) => ['serious', 'critical'].includes(violation.impact))

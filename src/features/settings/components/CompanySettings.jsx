@@ -15,19 +15,7 @@ import { EmailSettingsTab } from './EmailSettingsTab';
 import { PersonalProfileTab } from './PersonalProfileTab';
 import { IntegrationsTab } from './IntegrationsTab';
 import { ManageTeamModal } from '@shared/components/modals';
-
-const SidebarItem = ({ id, label, icon: Icon, activeTab, onClick }) => (
-    <button
-        onClick={() => onClick(id)}
-        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 text-left ${activeTab === id
-            ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-    >
-        <Icon size={18} className={activeTab === id ? "text-blue-600" : "text-gray-400"} />
-        {label}
-    </button>
-);
+import { Button, SectionNavigation } from '@/design-system/components';
 
 const SectionHeader = ({ title, subtitle }) => (
     <div className="border-b border-gray-200 pb-4 mb-6">
@@ -45,6 +33,42 @@ export function CompanySettings() {
 
     const isCompanyAdmin = currentUserClaims?.roles?.[currentCompanyProfile?.id] === 'company_admin'
         || currentUserClaims?.roles?.globalRole === 'super_admin';
+    const navigationGroups = [
+        {
+            id: 'organization',
+            label: 'Organization',
+            items: [
+                { id: 'company', label: 'Company Profile', icon: Building },
+                { id: 'team', label: 'Team & Users', icon: Users },
+            ],
+        },
+        {
+            id: 'communication',
+            label: 'Communication',
+            items: [
+                { id: 'email', label: 'Email Settings', icon: Mail },
+                { id: 'sms', label: 'SMS Settings', icon: MessageSquare },
+                { id: 'automated_sms', label: 'Automated SMS', icon: Send },
+            ],
+        },
+        ...(currentCompanyProfile?.features?.callTracking !== false
+            ? [{
+                id: 'revenue',
+                label: 'Revenue & Reach',
+                items: [
+                    { id: 'integrations', label: 'Integrations', icon: Blocks },
+                ],
+            }]
+            : []),
+        {
+            id: 'account',
+            label: 'Account Control',
+            items: [
+                { id: 'billing', label: 'Billing & Plan', icon: CreditCard },
+                { id: 'personal', label: 'Security Profile', icon: User },
+            ],
+        },
+    ];
 
     // Redirect non-admins back to dashboard
     if (!isCompanyAdmin && currentCompanyProfile) {
@@ -118,47 +142,46 @@ export function CompanySettings() {
     if (!currentCompanyProfile) return null;
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <div className="h-16 bg-white border-b border-gray-200 mb-8 flex items-center px-8 sticky top-0 z-10">
-                <button onClick={() => navigate('/company/dashboard')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors font-medium">
-                    <ArrowLeft size={20} /> Back to Dashboard
-                </button>
+        <div
+            className="min-h-screen min-w-0 bg-ds-canvas text-ds-content"
+            data-testid="company-settings-shell"
+        >
+            <div className="min-h-16 bg-ds-surface border-b border-ds-border-subtle mb-ds-8 flex items-center px-ds-4 sm:px-ds-6 lg:px-ds-8 sticky top-0 z-10">
+                <Button
+                    variant="ghost"
+                    justify="start"
+                    onClick={() => navigate('/company/dashboard')}
+                >
+                    <ArrowLeft size={20} aria-hidden="true" />
+                    Back to Dashboard
+                </Button>
             </div>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-                <div className="flex flex-col md:flex-row gap-8">
-
-                    <aside className="w-full md:w-64 flex-shrink-0">
-                        <div className="sticky top-24 space-y-1 bg-white/50 backdrop-blur-md rounded-2xl p-2 border border-slate-200/60 shadow-sm">
-                            <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2">Organization</h3>
-                            <SidebarItem id="company" label="Company Profile" icon={Building} activeTab={activeTab} onClick={setActiveTab} />
-                            <SidebarItem id="team" label="Team & Users" icon={Users} activeTab={activeTab} onClick={setActiveTab} />
-
-                            <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Communication</h3>
-                            <SidebarItem id="email" label="Email Settings" icon={Mail} activeTab={activeTab} onClick={setActiveTab} />
-                            <SidebarItem id="sms" label="SMS Settings" icon={MessageSquare} activeTab={activeTab} onClick={setActiveTab} />
-                            <SidebarItem id="automated_sms" label="Automated SMS" icon={Send} activeTab={activeTab} onClick={setActiveTab} />
-
-                            {currentCompanyProfile?.features?.callTracking !== false && (
-                                <>
-                                    <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Revenue & Reach</h3>
-                                    <SidebarItem id="integrations" label="Integrations" icon={Blocks} activeTab={activeTab} onClick={setActiveTab} />
-                                </>
-                            )}
-
-                            <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6 mb-3">Account Control</h3>
-                            <SidebarItem id="billing" label="Billing & Plan" icon={CreditCard} activeTab={activeTab} onClick={setActiveTab} />
-                            <SidebarItem id="personal" label="Security Profile" icon={User} activeTab={activeTab} onClick={setActiveTab} />
-                        </div>
+            <div className="max-w-7xl mx-auto px-ds-4 sm:px-ds-6 lg:px-ds-8 pb-20">
+                <div className="flex min-w-0 flex-col xl:flex-row gap-ds-8">
+                    <aside className="w-full min-w-0 xl:w-64 flex-shrink-0">
+                        <SectionNavigation
+                            label="Company settings sections"
+                            groups={navigationGroups}
+                            currentId={activeTab}
+                            onSelect={setActiveTab}
+                            controlsId="company-settings-content"
+                            mobileLayout="grid"
+                            className="xl:sticky xl:top-24"
+                        />
                     </aside>
 
-                    <main className="flex-1 min-w-0 min-h-[600px] relative">
+                    <section
+                        id="company-settings-content"
+                        className="flex-1 min-w-0 min-h-[600px] relative"
+                        aria-label="Company settings content"
+                    >
                         {successMsg && (
                             <div className="fixed bottom-8 right-8 bg-green-600 text-white px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
                                 <CheckCircle size={20} /> {successMsg}
                             </div>
                         )}
                         {renderContent()}
-                    </main>
+                    </section>
                 </div>
             </div>
 

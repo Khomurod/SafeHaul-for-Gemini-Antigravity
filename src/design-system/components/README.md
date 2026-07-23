@@ -18,6 +18,12 @@ Textarea, Select, and FormSection foundation. Existing shared form components
 remain compatibility adapters for callback and file behavior; Checkbox, Radio,
 Switch, and file-input contracts remain open.
 
+`section-navigation/` contains the grouped, current-item-aware navigation
+contract for feature-owned settings and sub-section shells. It centralizes
+navigation semantics, focus behavior, responsive presentation, and interaction
+states while leaving routes, permissions, labels, and available items to the
+feature.
+
 The remaining migration candidates include those form controls and Dialog.
 Existing `src/shared/components` implementations remain compatibility sources
 until each consumer is migrated.

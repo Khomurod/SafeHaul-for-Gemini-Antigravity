@@ -55,6 +55,9 @@ verified.
 - The Company Settings Personal Profile compatibility slice consumes the
   native-event form foundation, Card, Button, PageHeader, and Stack while its
   Firestore and clipboard behavior remains feature-owned.
+- The Company Settings shell consumes SectionNavigation while the settings
+  feature retains tab state, labels, feature flags, permissions, and rendered
+  content.
 
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and

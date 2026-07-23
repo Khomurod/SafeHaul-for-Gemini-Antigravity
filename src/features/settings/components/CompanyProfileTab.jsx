@@ -109,9 +109,9 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
                 )}
             </div>
 
-            <div className="flex border-b border-gray-200 overflow-x-auto no-scrollbar">
+            <div className="grid grid-cols-1 sm:flex border-b border-gray-200">
                 {tabs.map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`min-h-11 px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-left sm:whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                         <tab.icon size={16} /> {tab.label}
                     </button>
                 ))}
