@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { saveCompanySettings } from '@features/companies';
 import { uploadCompanyLogo } from '@lib/firebase';
-import { Save, Loader2, Edit2, Info, ListChecks } from 'lucide-react';
+import { Save, Edit2, Info, ListChecks } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
 import { useData } from '@/context/DataContext';
+import { Button } from '@/design-system/components';
 import { CompanyInfoSection, QuestionsTabContent } from './profile';
 
 export function CompanyProfileTab({ currentCompanyProfile }) {
@@ -15,6 +16,8 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
     const [loading, setLoading] = useState(false);
     const [logoUploading, setLogoUploading] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
+    const editButtonRef = useRef(null);
+    const wasEditingRef = useRef(false);
 
     const isCompanyAdmin = currentUserClaims?.roles?.[currentCompanyProfile.id] === 'company_admin'
         || currentUserClaims?.roles?.globalRole === 'super_admin';
@@ -37,6 +40,13 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
             });
         }
     }, [currentCompanyProfile]);
+
+    useEffect(() => {
+        if (wasEditingRef.current && !isEditing) {
+            editButtonRef.current?.focus();
+        }
+        wasEditingRef.current = isEditing;
+    }, [isEditing]);
 
     const handleSaveCompany = async () => {
         setLoading(true);
@@ -95,16 +105,34 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
                     <p className="text-sm text-gray-500 mt-1">Manage your public presence and application settings.</p>
                 </div>
                 {isCompanyAdmin && !isEditing && (
-                    <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 flex items-center gap-2 shadow-sm transition-all">
-                        <Edit2 size={16} /> Edit Profile
-                    </button>
+                    <Button
+                        variant="secondary"
+                        size="lg"
+                        ref={editButtonRef}
+                        onClick={() => setIsEditing(true)}
+                    >
+                        <Edit2 size={16} aria-hidden="true" />
+                        Edit Profile
+                    </Button>
                 )}
                 {isEditing && (
-                    <div className="flex gap-2">
-                        <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">Cancel</button>
-                        <button onClick={handleSaveCompany} disabled={loading} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex items-center gap-2 disabled:opacity-50">
-                            {loading ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Save Changes
-                        </button>
+                    <div className="flex flex-wrap gap-ds-2">
+                        <Button
+                            variant="ghost"
+                            size="lg"
+                            onClick={() => setIsEditing(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="lg"
+                            loading={loading}
+                            onClick={handleSaveCompany}
+                        >
+                            {!loading && <Save size={16} aria-hidden="true" />}
+                            Save Changes
+                        </Button>
                     </div>
                 )}
             </div>

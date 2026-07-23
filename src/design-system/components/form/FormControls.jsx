@@ -56,6 +56,32 @@ export function FieldMessage({
   );
 }
 
+export function FieldDisplay({
+  label,
+  children,
+  emphasis = 'normal',
+  className = '',
+  ...props
+}) {
+  if (typeof label !== 'string' || label.trim() === '') {
+    throw new TypeError('FieldDisplay requires a non-empty label.');
+  }
+  if (!['normal', 'strong'].includes(emphasis)) {
+    throw new TypeError(`Unsupported FieldDisplay emphasis: ${emphasis}`);
+  }
+
+  return (
+    <div
+      {...props}
+      className={`ds-field-display ${className}`.trim()}
+      data-emphasis={emphasis}
+    >
+      <span className="ds-field-display__label">{label}</span>
+      <p className="ds-field-display__value">{children}</p>
+    </div>
+  );
+}
+
 export function FormField({
   id,
   label,

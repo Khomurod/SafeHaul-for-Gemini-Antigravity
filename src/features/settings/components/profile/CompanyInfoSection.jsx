@@ -1,17 +1,64 @@
 import React from 'react';
-import { Phone, MapPin, Hash } from 'lucide-react';
+import {
+    Card,
+    FieldDisplay,
+    FormField,
+    FormSection,
+    Input,
+} from '@/design-system/components';
 import { BrandingSection } from './BrandingSection';
+
+function ProfileField({
+    field,
+    id,
+    label,
+    value,
+    fallback,
+    isEditing,
+    onFieldChange,
+    type = 'text',
+    maxLength,
+    emphasis = 'normal',
+}) {
+    if (!isEditing) {
+        return (
+            <FieldDisplay label={label} emphasis={emphasis}>
+                {value || fallback}
+            </FieldDisplay>
+        );
+    }
+
+    return (
+        <FormField id={id} label={label}>
+            <Input
+                type={type}
+                name={field}
+                value={value || ''}
+                maxLength={maxLength}
+                autoFocus={field === 'companyName'}
+                onChange={(event) => onFieldChange(field, event.target.value)}
+            />
+        </FormField>
+    );
+}
 
 export function CompanyInfoSection({
     compData,
     isEditing,
     logoUploading,
     onLogoUpload,
-    onFieldChange
+    onFieldChange,
 }) {
     return (
-        <div className="space-y-6 animate-in slide-in-from-bottom-2">
-            <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col md:flex-row gap-8 shadow-sm">
+        <div
+            className="space-y-ds-6 animate-in slide-in-from-bottom-2"
+            data-testid="company-information"
+        >
+            <Card
+                padding="lg"
+                className="flex min-w-0 flex-col gap-ds-8 md:flex-row"
+                aria-label="Company identity"
+            >
                 <BrandingSection
                     companyLogoUrl={compData.companyLogoUrl}
                     isEditing={isEditing}
@@ -19,72 +66,51 @@ export function CompanyInfoSection({
                     onLogoUpload={onLogoUpload}
                 />
 
-                <div className="flex-1 space-y-4 w-full">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name</label>
-                        {isEditing ? (
-                            <input 
-                                type="text" 
-                                value={compData.companyName || ''} 
-                                onChange={(e) => onFieldChange('companyName', e.target.value)} 
-                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-900" 
-                            />
-                        ) : (
-                            <p className="text-xl font-bold text-gray-900">{compData.companyName || 'Not Set'}</p>
-                        )}
-                    </div>
+                <div className="grid w-full min-w-0 flex-1 gap-ds-5">
+                    <ProfileField
+                        field="companyName"
+                        id="company-profile-company-name"
+                        label="Company Name"
+                        value={compData.companyName}
+                        fallback="Not Set"
+                        isEditing={isEditing}
+                        onFieldChange={onFieldChange}
+                        emphasis="strong"
+                    />
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">MC Number</label>
-                            {isEditing ? (
-                                <div className="relative">
-                                    <Hash size={14} className="absolute left-3 top-3 text-gray-400" />
-                                    <input 
-                                        type="text" 
-                                        value={compData.mcNumber || ''} 
-                                        onChange={(e) => onFieldChange('mcNumber', e.target.value)} 
-                                        className="w-full pl-9 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                                    />
-                                </div>
-                            ) : (
-                                <p className="text-sm font-medium text-gray-800 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                                    {compData.mcNumber || 'N/A'}
-                                </p>
-                            )}
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">DOT Number</label>
-                            {isEditing ? (
-                                <div className="relative">
-                                    <Hash size={14} className="absolute left-3 top-3 text-gray-400" />
-                                    <input 
-                                        type="text" 
-                                        value={compData.dotNumber || ''} 
-                                        onChange={(e) => onFieldChange('dotNumber', e.target.value)} 
-                                        className="w-full pl-9 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                                    />
-                                </div>
-                            ) : (
-                                <p className="text-sm font-medium text-gray-800 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                                    {compData.dotNumber || 'N/A'}
-                                </p>
-                            )}
-                        </div>
+                    <div className="grid min-w-0 grid-cols-1 gap-ds-4 sm:grid-cols-2">
+                        <ProfileField
+                            field="mcNumber"
+                            id="company-profile-mc-number"
+                            label="MC Number"
+                            value={compData.mcNumber}
+                            fallback="N/A"
+                            isEditing={isEditing}
+                            onFieldChange={onFieldChange}
+                        />
+                        <ProfileField
+                            field="dotNumber"
+                            id="company-profile-dot-number"
+                            label="DOT Number"
+                            value={compData.dotNumber}
+                            fallback="N/A"
+                            isEditing={isEditing}
+                            onFieldChange={onFieldChange}
+                        />
                     </div>
                 </div>
-            </div>
+            </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ContactInfoCard 
-                    compData={compData} 
-                    isEditing={isEditing} 
-                    onFieldChange={onFieldChange} 
+            <div className="grid min-w-0 grid-cols-1 gap-ds-6 lg:grid-cols-2">
+                <ContactInfoCard
+                    compData={compData}
+                    isEditing={isEditing}
+                    onFieldChange={onFieldChange}
                 />
-                <AddressCard 
-                    compData={compData} 
-                    isEditing={isEditing} 
-                    onFieldChange={onFieldChange} 
+                <AddressCard
+                    compData={compData}
+                    isEditing={isEditing}
+                    onFieldChange={onFieldChange}
                 />
             </div>
         </div>
@@ -93,105 +119,72 @@ export function CompanyInfoSection({
 
 function ContactInfoCard({ compData, isEditing, onFieldChange }) {
     return (
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-2 mb-4 flex items-center gap-2">
-                <Phone size={18} className="text-blue-600" /> Contact Info
-            </h3>
-            <div className="space-y-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
-                    {isEditing ? (
-                        <input 
-                            type="text" 
-                            value={compData.phone || ''} 
-                            onChange={(e) => onFieldChange('phone', e.target.value)} 
-                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                        />
-                    ) : (
-                        <p className="text-sm font-medium text-gray-800">{compData.phone || 'N/A'}</p>
-                    )}
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-                    {isEditing ? (
-                        <input 
-                            type="email" 
-                            value={compData.email || ''} 
-                            onChange={(e) => onFieldChange('email', e.target.value)} 
-                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                        />
-                    ) : (
-                        <p className="text-sm font-medium text-gray-800">{compData.email || 'N/A'}</p>
-                    )}
-                </div>
-            </div>
-        </div>
+        <FormSection title="Contact Info">
+            <ProfileField
+                field="phone"
+                id="company-profile-phone"
+                label="Phone"
+                value={compData.phone}
+                fallback="N/A"
+                isEditing={isEditing}
+                onFieldChange={onFieldChange}
+            />
+            <ProfileField
+                field="email"
+                id="company-profile-email"
+                label="Email"
+                value={compData.email}
+                fallback="N/A"
+                isEditing={isEditing}
+                onFieldChange={onFieldChange}
+                type="email"
+            />
+        </FormSection>
     );
 }
 
 function AddressCard({ compData, isEditing, onFieldChange }) {
     return (
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-2 mb-4 flex items-center gap-2">
-                <MapPin size={18} className="text-blue-600" /> HQ Address
-            </h3>
-            <div className="space-y-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Street</label>
-                    {isEditing ? (
-                        <input 
-                            type="text" 
-                            value={compData.street || ''} 
-                            onChange={(e) => onFieldChange('street', e.target.value)} 
-                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                        />
-                    ) : (
-                        <p className="text-sm font-medium text-gray-800">{compData.street || 'N/A'}</p>
-                    )}
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">City</label>
-                        {isEditing ? (
-                            <input 
-                                type="text" 
-                                value={compData.city || ''} 
-                                onChange={(e) => onFieldChange('city', e.target.value)} 
-                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                            />
-                        ) : (
-                            <p className="text-sm font-medium text-gray-800">{compData.city || 'N/A'}</p>
-                        )}
-                    </div>
-                    <div className="col-span-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">State</label>
-                        {isEditing ? (
-                            <input 
-                                type="text" 
-                                value={compData.state || ''} 
-                                onChange={(e) => onFieldChange('state', e.target.value)} 
-                                maxLength={2}
-                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                            />
-                        ) : (
-                            <p className="text-sm font-medium text-gray-800">{compData.state || 'XX'}</p>
-                        )}
-                    </div>
-                    <div className="col-span-1">
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Zip</label>
-                        {isEditing ? (
-                            <input 
-                                type="text" 
-                                value={compData.zip || ''} 
-                                onChange={(e) => onFieldChange('zip', e.target.value)} 
-                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                            />
-                        ) : (
-                            <p className="text-sm font-medium text-gray-800">{compData.zip || '00000'}</p>
-                        )}
-                    </div>
-                </div>
+        <FormSection title="HQ Address">
+            <ProfileField
+                field="street"
+                id="company-profile-street"
+                label="Street"
+                value={compData.street}
+                fallback="N/A"
+                isEditing={isEditing}
+                onFieldChange={onFieldChange}
+            />
+            <div className="grid min-w-0 grid-cols-1 gap-ds-4 sm:grid-cols-3">
+                <ProfileField
+                    field="city"
+                    id="company-profile-city"
+                    label="City"
+                    value={compData.city}
+                    fallback="N/A"
+                    isEditing={isEditing}
+                    onFieldChange={onFieldChange}
+                />
+                <ProfileField
+                    field="state"
+                    id="company-profile-state"
+                    label="State"
+                    value={compData.state}
+                    fallback="XX"
+                    isEditing={isEditing}
+                    onFieldChange={onFieldChange}
+                    maxLength={2}
+                />
+                <ProfileField
+                    field="zip"
+                    id="company-profile-zip"
+                    label="Zip"
+                    value={compData.zip}
+                    fallback="00000"
+                    isEditing={isEditing}
+                    onFieldChange={onFieldChange}
+                />
             </div>
-        </div>
+        </FormSection>
     );
 }

@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  FieldDisplay,
   FormField,
   FormSection,
   Input,
@@ -78,6 +79,18 @@ describe('form controls', () => {
 
     expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Existing notes');
     expect(screen.getByRole('combobox', { name: 'Role' })).toHaveValue('member');
+  });
+
+  it('presents read-only values without adding form controls to keyboard order', () => {
+    render(
+      <FieldDisplay label="Company name" emphasis="strong">
+        A very long logistics company name that must wrap safely
+      </FieldDisplay>,
+    );
+
+    expect(screen.getByText('Company name')).toBeInTheDocument();
+    expect(screen.getByText(/A very long logistics/)).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
   it('renders a labelled form section without structural accessibility violations', async () => {

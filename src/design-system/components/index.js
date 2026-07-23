@@ -3,6 +3,7 @@ export { Button, IconButton } from './button';
 export { Card, MetricCard } from './card';
 export { SectionNavigation } from './section-navigation';
 export {
+  FieldDisplay,
   FieldMessage,
   FormField,
   FormSection,

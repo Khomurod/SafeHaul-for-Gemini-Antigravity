@@ -114,6 +114,36 @@ select.ds-form-control {
   color: var(--ds-color-status-success-fg);
 }
 
+.ds-field-display {
+  display: grid;
+  min-width: 0;
+  gap: var(--ds-space-1);
+}
+
+.ds-field-display__label {
+  color: var(--ds-color-content-muted);
+  font-size: var(--ds-font-size-sm);
+  font-weight: var(--ds-font-weight-semibold);
+  line-height: var(--ds-line-height-body);
+  overflow-wrap: anywhere;
+}
+
+.ds-field-display__value {
+  min-width: 0;
+  margin: 0;
+  color: var(--ds-color-content);
+  font-size: var(--ds-font-size-body);
+  font-weight: var(--ds-font-weight-medium);
+  line-height: var(--ds-line-height-body);
+  overflow-wrap: anywhere;
+}
+
+.ds-field-display[data-emphasis='strong'] .ds-field-display__value {
+  font-size: var(--ds-font-size-heading-lg);
+  font-weight: var(--ds-font-weight-bold);
+  line-height: var(--ds-line-height-tight);
+}
+
 .ds-form-section {
   display: grid;
   gap: var(--ds-space-6);

@@ -1,4 +1,5 @@
 export {
+  FieldDisplay,
   FieldMessage,
   FormField,
   FormSection,

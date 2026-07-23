@@ -6,6 +6,8 @@ business rules, fetch data, or save anything.
 
 - `FormField` associates one control with its label, helper text, required
   state, and error.
+- `FieldDisplay` presents labelled read-only information without adding a form
+  control to keyboard order.
 - `Label` and `FieldMessage` are available for uncommon compositions.
 - `Input`, `Textarea`, and `Select` share height, typography, focus, invalid,
   disabled, and read-only presentation.
