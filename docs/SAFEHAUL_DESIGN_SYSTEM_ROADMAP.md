@@ -514,10 +514,11 @@ The reverse directions are prohibited.
     disabled/read-only states, focus, autofill, validation timing, touch size,
     stories, unit/axe tests, and mobile keyboard behavior pass.
   - Progress: the native-event `FormField`, `Label`, `FieldMessage`, `Input`,
-    `Textarea`, `Select`, and `FormSection` contract is implemented and proven
-    by the Company Settings Personal Profile compatibility slice. Checkbox,
-    Radio, Switch, file input, autofill policy, component-catalog examples, and
-    durable visual baselines remain open, so the family is not complete.
+    `Textarea`, `Select`, `FieldDisplay`, and `FormSection` contract is
+    implemented and proven by the Company Settings Personal Profile and
+    Company Profile information compatibility slices. Checkbox, Radio, Switch,
+    file input, autofill policy, component-catalog examples, and durable visual
+    baselines remain open, so the family is not complete.
   - [x] Establish the native-event form foundation required by the first
     compatibility slice.
     - Completed: 2026-07-23.
@@ -525,9 +526,10 @@ The reverse directions are prohibited.
       `src/design-system/components/index.js`,
       `src/design-system/components/README.md`,
       `src/design-system/README.md`.
-    - Verification: 4 form primitive tests passed, including native events,
+    - Verification: 5 form primitive tests passed, including native events,
       label/description/error/required relationships, disabled/read-only
-      behavior, Select/Textarea parity, FormSection semantics, and axe.
+      behavior, Select/Textarea parity, labelled read-only display,
+      FormSection semantics, and axe.
     - Visual/mobile/a11y: 44 px controls, semantic token styling, focus ring,
       invalid/read-only/disabled states, wrapping, and mobile single-column
       layout were reviewed through the first consumer at 1440×900, 1024×768,
@@ -915,8 +917,45 @@ The reverse directions are prohibited.
       switching are unchanged. No routes, data loading, uploads, saves,
       permissions, Firebase code, backend code, rules, or data formats changed.
     - Commit/PR: checkpoint `334b5c6`.
-  - Notes: Company Profile, Team & Users, Email, SMS/number assignment,
-    Automated SMS, Integrations, Billing, question configuration, and
+  - [x] Migrate Company Profile information as a bounded form compatibility
+    slice.
+    - Complete when: all nine existing values load and remain editable; the
+      exact nested save payload, cancel behavior, permission gate, and
+      success/error behavior are preserved; labels, keyboard order, focus,
+      control sizing, desktop/mobile layout, overflow, axe, and final diff are
+      verified without changing branding upload or application questions.
+    - Completed: 2026-07-23.
+    - Files: `src/design-system/components/form/**`,
+      `src/design-system/components/index.js`,
+      `src/features/settings/components/CompanyProfileTab.jsx`,
+      `src/features/settings/components/CompanyProfileTab.test.jsx`,
+      `src/features/settings/components/profile/CompanyInfoSection.jsx`,
+      `e2e/company-settings-company-info.spec.cjs`, this roadmap.
+    - Verification: 3 focused files / 17 tests passed; design-system gate
+      passed with 11 files / 47 tests; full frontend gate passed with 85 files /
+      544 tests and the existing 2 files / 48 emulator-dependent rules tests
+      skipped; frontend lint passed with 0 errors and 169 existing warnings;
+      typecheck, production build, and `git diff --check` passed. Combined
+      settings Chromium/Mobile Chrome regression passed 15 checks with 9
+      intentional viewport-specific skips; the Company information spec
+      contributed 5 passes and 3 skips.
+    - Visual/mobile/a11y: manually reviewed display and edit states at
+      1440×900, 1024×768, and 412×915. All nine labels align with 44 px
+      controls, the address becomes one column on mobile, long values wrap,
+      actions remain at least 44 px, focus is visible and returns to Edit
+      Profile after cancel/save, and document/content/nested horizontal
+      overflow is absent. Unit axe reported no violations; scoped real-browser
+      axe reported no serious or critical violations.
+    - Notes: added the business-neutral `FieldDisplay` primitive and reused
+      `Card`, `FormSection`, `FormField`, `Input`, and `Button`. Existing field
+      keys, local state, defaults, admin edit gate, `saveCompanySettings`
+      target, nested contact/address/legal/application payload, cancel
+      behavior, and success/error messages are unchanged. Branding upload and
+      application questions remain untouched. No backend, Firebase rules,
+      storage, database, permissions, route, or data-format change was made.
+    - Commit/PR: checkpoint `a0cefc3`.
+  - Notes: Company Profile branding/questions, Team & Users, Email,
+    SMS/number assignment, Automated SMS, Integrations, Billing, and
     `/company/profile` remain separate slices and must not be migrated together.
 
 - [ ] Campaigns.
@@ -1045,7 +1084,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Screen / slice | Current controls and presentation | Data / behavior coupling | Main risks | Priority / risk | Status | Verification needed |
 |---|---|---|---|---|---|---|
 | Company Settings shell | Approved `SectionNavigation`, semantic shell tokens, feature-owned grouped item definitions, existing local success toast and billing card | Admin role redirect, feature-flag visibility, tab state, Manage Team dialog remain feature-owned | Live success announcement remains for a later feedback slice | High / Medium | Shell/navigation compatibility slice completed 2026-07-23 | 9 focused unit tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, keyboard/focus/current state, admin redirect, feature flag, axe, overflow passed |
-| Company Profile — info | 9 text inputs and 9 visual labels in `CompanyInfoSection`; local edit/save controls | `saveCompanySettings`, nested contact/address/legal/application payload | Label associations, edit/read-only distinction, payload parity, long company/address values | High / High | Audited; not migrated | Load/edit/cancel/save, payload shape, validation, desktop/mobile |
+| Company Profile — info | Approved `FormField`, `Input`, `FieldDisplay`, `FormSection`, `Card`, and `Button` replace local information-field/card/action styling | `saveCompanySettings`, nested contact/address/legal/application payload remain feature-owned and unchanged | Branding upload and application questions remain separate higher-risk slices | High / High | Compatibility slice completed 2026-07-23 | 17 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, payload parity, keyboard/focus, labels, axe, overflow passed |
 | Company Profile — branding | File input and logo preview in `BrandingSection` | `uploadCompanyLogo`, upload progress/error, saved logo URL | File naming, keyboard upload, preview/alt text, file/type/size behavior | High / High | Audited; not migrated | Exact upload contract, progress/error, keyboard/mobile, preview |
 | Company Profile — questions | Text/select/textarea previews, 4 native checkboxes, button-based required/hidden switches, question editors | Application configuration and custom-question state passed through Company Profile save | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Audited; not migrated | All question tests, keyboard toggles, validation, save payload, mobile |
 | Team & Users | 3 inputs, 1 role select, local buttons | Direct Firestore user/team reads and writes; Manage Team dialog | Permissions, required fields, role changes, duplicate/error states | High / Very high | Audited; not migrated | Role gates, add/manage flows, validation, dialog, desktop/mobile |
@@ -1305,6 +1344,57 @@ Apply checks proportionally, but never claim an unrun check:
   was included.
 - Commit/PR: checkpoint `334b5c6`.
 
+### Company Profile information compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: the Company Settings shell/navigation implementation was
+  committed as `334b5c6` and its roadmap evidence as `d4e308b` before this
+  slice began.
+- Selected slice: only the nine Company information values and the shared
+  edit/cancel/save presentation were migrated. Branding upload and application
+  questions were excluded and remain unchanged.
+- Component contract: added business-neutral `FieldDisplay` for labelled
+  read-only values and reused `Card`, `FormSection`, `FormField`, `Input`, and
+  `Button`. The design system contains no Company, Firebase, permission, save,
+  validation, or upload behavior.
+- Focused tests: 3 files passed, 17 tests passed, including the exact save
+  payload, all nine field keys/values, cancel behavior, error behavior,
+  company-admin permission, native label relationships, focus return, and axe.
+- Design-system tests: 11 files passed, 47 tests passed.
+- Full frontend gate: 85 files passed, 2 files skipped; 544 tests passed and 48
+  emulator-dependent rules tests skipped by their existing environment guard.
+- Frontend lint: passed with 0 errors and 169 existing warnings. No warning was
+  added by this slice.
+- Typecheck: passed (`tsc -p jsconfig.json --noEmit`).
+- Production build: passed; Vite transformed 2,637 modules. Existing stale
+  Browserslist-data and chunk-size warnings remain.
+- Chromium and Mobile Chrome regression: the combined Company information,
+  settings navigation, and Personal Profile run passed 15 checks with 9
+  intentional viewport-specific skips; the Company information spec
+  contributed 5 passes and 3 skips.
+- Behavior: existing data initialization, field names, state updates, admin
+  edit permission, `saveCompanySettings(companyId, payload)`, nested
+  contact/address/legal/application values, custom questions, logo URL, cancel
+  behavior, and success/error messages are unchanged. Save payload parity is
+  asserted directly.
+- Desktop/laptop/mobile: manual rendered review passed at 1440×900, 1024×768,
+  and 412×915 in display and edit states. Labels align, controls and actions
+  are at least 44 px, long content wraps, address fields collapse to one mobile
+  column, and no document, content, or nested horizontal overflow remains.
+- Accessibility: Company Name receives visible focus on edit; native Tab order
+  reaches all fields and actions; focus returns to Edit Profile after cancel or
+  successful save. Unit axe reported no violations; scoped Chromium/Mobile
+  Chrome axe reported no serious or critical violations.
+- Visual regression: no durable screenshot baseline was claimed because the
+  catalog/baseline ownership decision remains open; manual rendered review and
+  deterministic Chromium/Mobile Chrome geometry assertions were completed.
+- Backend/Firebase rules tests: not applicable; no backend, rules, database,
+  storage, callable, integration, or Firebase contract changed.
+- Diff review: `git diff --check` passed; generated `dist/`,
+  `playwright-report/`, `test-results/`, and `firestore-debug.log` artifacts
+  were removed; no unrelated source or backend file was included.
+- Commit/PR: checkpoint `a0cefc3`.
+
 ---
 
 ## 7. Decisions and blockers
@@ -1332,24 +1422,25 @@ related CI enforcement permanently blocking.
 
 ## 8. Safest next phase
 
-The Company Settings shell/navigation compatibility slice completed on
-2026-07-23. The safest next bounded slice is Company Profile information,
-excluding branding upload and application-form questions.
+The Company Profile information compatibility slice completed on 2026-07-23.
+The safest next bounded slice is the Company Settings Billing informational
+card. It has no write, upload, integration, permission, or Firebase behavior
+and can prove reusable read-only page-section treatment without coupling a
+higher-risk workflow.
 
 Sequence:
 
-1. audit and freeze the exact Company information load, edit, cancel, and save
-   payload contract before changing presentation;
-2. migrate only `CompanyInfoSection` labels, inputs, read-only presentation,
-   validation messages, and edit/save/cancel controls to approved form, card,
-   button, and layout primitives;
-3. preserve `saveCompanySettings`, nested contact/address/legal/application
-   payloads, existing field names, default values, and success/error behavior;
-4. add focused payload-parity, edit/cancel, label/error, keyboard, axe, and
-   responsive coverage;
+1. audit and freeze the exact plan-value and fallback rendering before changing
+   presentation;
+2. migrate only the Billing informational card, heading, plan display, and
+   support message to approved card, typography, and layout treatment;
+3. preserve the existing tab identifier, plan source/value, settings shell,
+   permissions, routes, and all data behavior;
+4. add focused plan-variant, empty/long content, semantics, axe, and responsive
+   coverage;
 5. verify at 1440×900, 1024×768, and 412×915 before marking the slice complete.
 
-Do not combine Company Profile branding upload, application questions, team
-roles, email secrets, phone assignment, integrations, or `/company/profile`
-account security with this slice. Those remain independent high-risk items
-with their own behavior-preservation evidence.
+Do not combine Billing with Company Profile branding upload/application
+questions, team roles, email secrets, phone assignment, automated SMS,
+integrations, or `/company/profile` account security. Those remain independent
+higher-risk items with their own behavior-preservation evidence.
