@@ -1182,7 +1182,25 @@ The reverse directions are prohibited.
       Detailed evidence is in the completion log.
     - Notes: the reset modal was migrated to the shared accessible Modal;
       sandbox and remaining edge screens stay open.
-  - Remaining: sandbox application/transfer-success and the verification and
+  - [x] Migrate the Sandbox Transfer Success status screen
+    (`/sandbox/transfer-success`) to approved Card/Button/Badge and layout
+    primitives.
+    - Complete when: the `companyName || companyId || 'the selected company'`
+      fallback, the `New Application` status wording, and the Super Admin (`/super-admin`)
+      and Home (`/`) navigations are preserved while presentation adopts
+      Card/Badge/Button/Stack/Inline with a single `<h1>`/`<main>`.
+    - Completed: 2026-07-23.
+    - Files: `src/features/sandbox/SandboxTransferSuccess.jsx`,
+      `src/features/sandbox/SandboxTransferSuccess.test.jsx`,
+      `e2e/sandbox-transfer-success.spec.cjs`, this roadmap.
+    - Verification: 9 focused tests, the route-manifest and design-system gates,
+      full frontend suite, coverage, lint, typecheck, production build,
+      `git diff --check`, Chromium and Mobile Chrome E2E, unit and scoped
+      real-browser axe, and rendered review at 1440×900, 1024×768, and 412×915.
+      Detailed evidence is in the completion log.
+    - Notes: route paths, navigation, status wording, and the state fallback are
+      unchanged; the route-manifest entry was untouched.
+  - Remaining: the sandbox application screen and the verification and
     change-review token screens are still unmigrated.
 
 ### Phase 14 — cleanup and durable documentation
@@ -1229,7 +1247,7 @@ Status `Not started` means audited but not migrated.
 | Verification portal `/verify/:token` | feature-local cards/radios/status screens | Card, Field/Radio, Button, PageState | Medium | High | Forms, cards, feedback | Not started | Token states, submit, errors, keyboard/mobile |
 | Change review `/review-change/:token` | local form/card/actions with direct data logic | Card, Field, Button, PageState | Medium | High | Forms, cards, feedback | Not started | Approve/reject/error/expired states, keyboard/mobile |
 | Sandbox application | production-like application plus test controls | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | Not started | E2E fixtures, no production leakage, mobile |
-| Sandbox transfer success | `SandboxTransferSuccess` local status screen | PageState, Card, Button | Low | Low | Feedback, controls | Not started | Redirect/action and desktop/mobile visual |
+| Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Driver dossier modal | feature-local shell/tabs/application/documents | Dialog family, Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | Not started | Focus, tabs, edits/uploads/actions, large content, mobile |
 | PEV/VOE workflows | local modals/tabs/forms/previews | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | Not started | Lookup/request/save/send/preview/audit, keyboard/mobile |
 
@@ -2071,6 +2089,82 @@ Apply checks proportionally, but never claim an unrun check:
   account-security screen — each a separate audited slice. A design-system
   file-input primitive would retire this slice's feature-level exception.
 
+### Sandbox Transfer Success status-screen completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: `origin/main` at `9d836b4` (the merged branding-upload
+  PR #79) with a clean working tree before this slice began. Work was done on
+  the designated `claude/safehaul-design-system-g1vr3a` branch, restarted from
+  `origin/main`.
+- Audit findings: `SandboxTransferSuccess.jsx` is a small public status screen
+  on the public route `/sandbox/transfer-success` (`sandboxTransferSuccess` in
+  `PUBLIC_FEATURE_ROUTE_MANIFEST`). It reads `useLocation().state` and derives
+  `companyName = state?.companyName || state?.companyId || 'the selected company'`,
+  shows an `<h1>` "Transfer complete", a sentence ending in the `New Application`
+  status, and two actions — "Super Admin" → `navigate('/super-admin')` and
+  "Home" → `navigate('/')`. The pre-migration markup used raw slate/green
+  utilities, a monospace status pill, and two text-link `<button>`s below any
+  reasonable touch-target size.
+- Go/no-go decision: **GO**. Pure presentation with no data, callables,
+  permissions, or backend; the fallback chain, status wording, and both
+  navigations are trivially preservable and testable.
+- Presentation changes (only `SandboxTransferSuccess.jsx`): the outer surface is
+  a `Card as="main"` (single `<main>` landmark; public routes add no wrapping
+  landmark) with a `Stack`/`Inline` layout; the icon is the same `Building2`
+  presented in a success-tinted token badge (`bg-ds-status-success-bg` /
+  `text-ds-status-success-fg`, aria-hidden); the status is now a neutral `Badge`
+  (same "New Application" words); the two actions are approved `Button`s
+  (primary "Super Admin", secondary "Home") at the standard control height; all
+  colour/spacing/type use `--ds-*` tokens. The `<h1>` "Transfer complete" and
+  the sentence copy are unchanged.
+- Behavior preserved: the exact `companyName || companyId || 'the selected
+  company'` fallback, the `New Application` status wording, both `navigate`
+  destinations, the route path, and the screen copy. The route-manifest entry
+  and `featureRegistry` named export were not touched.
+- Components reused: `Card`, `Button`, `Badge`, `Stack`, `Inline` — no new or
+  Sandbox-specific design-system component was added, and no business logic
+  entered the design system. No documented exception was required.
+- Focused tests: 1 new file, 9 tests passed — company name from state, company
+  id fallback, final fallback text, `New Application` status, Super Admin
+  navigation, Home navigation, a single level-1 heading, both actions as
+  keyboard-operable typed buttons with focusability, and unit axe. The
+  route-manifest contract tests (3) and design-system gates pass unchanged.
+- Full frontend gate: 92 files passed, 2 skipped; **630 tests passed** and 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate `vitest run --coverage` passed at 27.8% statements / 25.81% branches /
+  26.49% functions / 28.47% lines — no threshold regressed.
+- Lint (0 errors, 168 pre-existing warnings), typecheck, production build, and
+  `git diff --check` passed with only the pre-existing stale-Browserslist and
+  chunk-size build warnings.
+- Chromium and Mobile Chrome regression: the new
+  `e2e/sandbox-transfer-success.spec.cjs` passed 7 checks with 3 intentional
+  viewport-specific skips across both projects (heading/status/actions,
+  keyboard-operable actions with visible focus, desktop/tablet and mobile
+  overflow, and scoped axe).
+- Server hygiene: the browser checks ran against the live `vite dev` server on
+  port 5000 in E2E test mode serving the current working tree; the pre-installed
+  system Chromium was used via `PW_CHROMIUM_EXECUTABLE`. No unknown process was
+  terminated.
+- Accessibility: exactly one `<h1>`; success is conveyed by the "Transfer
+  complete" heading text (not colour alone); the company name uses
+  `break-words`; both actions are real keyboard-operable buttons with a visible
+  focus ring at the standard control height; reading order is main → icon
+  (hidden) → heading → status sentence → actions; all text is ≥12 px. Unit axe
+  reported no violations; scoped Chromium/Mobile Chrome axe reported no serious
+  or critical violations.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed a centered card, the tokenized success icon badge, the neutral
+  status badge inline in the wrapped sentence, side-by-side actions, and no
+  document or horizontal overflow.
+- Backend tests: not applicable; no data, route, permission, or backend behavior
+  changed.
+- Diff review: only `SandboxTransferSuccess.jsx` (feature) plus its test and
+  `e2e/sandbox-transfer-success.spec.cjs` and this roadmap changed; no generated
+  artifact, credential, or production URL entered any artifact (tests use
+  `Acme Freight` / `cmp-12345`).
+- Remaining edge screens: the sandbox application screen and the verification /
+  change-review token result cards are still unmigrated.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2130,12 +2224,18 @@ semantics, required/hidden exclusivity, DOT protections, destructive actions),
 **Team & Users**, **Integrations**, and the separate **`/company/profile`
 account-security** screen — each needing its own audit.
 
-The recommended next bounded slice is one of the lowest-risk remaining screens
-overall: the small public status screens — **Sandbox transfer success**
-(Low/Low: PageState, Card, Button) and the **verification** / **change-review**
-token result cards (Medium/High: Card, Field/Radio, Button, PageState) — each of
-which extends the proven `Card`/`Button`/form presentation without secrets,
-destructive actions, or editable tables. Within Settings/Profile, **Team &
+The **Sandbox Transfer Success** status screen (`/sandbox/transfer-success`) was
+migrated and verified on 2026-07-23 (completion log in section 6): it now
+consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single
+`<h1>`/`<main>`, preserving the company-name fallback chain, the `New
+Application` status wording, and both navigations.
+
+The recommended next bounded slice is one of the remaining low-risk screens: the
+**verification** (`/verify/:token`) / **change-review** (`/review-change/:token`)
+token result cards (Medium/High: Card, Field/Radio, Button, PageState) — token
+state, submit, and error screens that extend the proven `Card`/`Button`/form
+presentation without editable tables. The **sandbox application** screen remains
+tied to the public-application migration. Within Settings/Profile, **Team &
 Users** is the next lowest-risk in-phase option; Company Profile application
 questions remains higher risk (switch semantics + destructive actions) and needs
 its own audit. The Phase 3 link-style Button variant (Login text-link and
