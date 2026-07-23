@@ -954,8 +954,48 @@ The reverse directions are prohibited.
       application questions remain untouched. No backend, Firebase rules,
       storage, database, permissions, route, or data-format change was made.
     - Commit/PR: checkpoint `a0cefc3`.
+  - [x] Migrate the Company Settings Billing informational card.
+    - Complete when: the plan calculation, plan names, and support message are
+      preserved exactly; heading, labelled plan value, plan-status treatment,
+      and guidance move to approved card/typography/layout treatment; plan
+      variants, missing-plan fallback, semantics, axe, and desktop/tablet/mobile
+      layout are verified without adding upgrade/cancel/external actions or any
+      Firebase behavior.
+    - Completed: 2026-07-23.
+    - Files: `src/features/settings/components/BillingTab.jsx`,
+      `src/features/settings/components/BillingTab.test.jsx`,
+      `src/features/settings/components/CompanySettings.jsx`,
+      `e2e/company-settings-billing.spec.cjs`, this roadmap.
+    - Verification: 7 focused BillingTab tests passed; the CompanySettings
+      shell test (5) and design-system gate (11 files / 47 tests) still pass;
+      full frontend gate passed with 85 files / 550 tests plus the existing 2
+      files / 48 emulator-dependent rules tests skipped by their environment
+      guard (the pre-existing `playwrightConfig` resource-contention flake timed
+      out under load and then passed 4/4 in isolation); frontend lint passed
+      with 0 errors on the changed files; typecheck, production build, and
+      `git diff --check` passed. Combined Billing Chromium/Mobile Chrome
+      regression passed 5 checks with 3 intentional viewport-specific skips.
+    - Visual/mobile/a11y: manually reviewed at 1440×900, 1024×768, and 412×915.
+      The heading is a 16 px `<h2>`, the plan label is 13 px, the plan badge and
+      support message are 12 px, and no 9/10 px text was introduced. The plan is
+      a labelled `FieldDisplay` whose value is a tone-carrying `Badge`
+      (success for Pro, neutral for Free) so status is not communicated by
+      color alone. No document, content, or nested horizontal overflow exists at
+      any reviewed width. Unit axe reported no violations; scoped Chromium/Mobile
+      Chrome axe reported no serious or critical violations.
+    - Notes: the informational card added no interactive controls — the existing
+      copy still directs users to contact support and there is no upgrade,
+      cancel, or external billing action. The plan mapping
+      (`planType === 'paid' ? 'Pro Plan' : 'Free Plan'`) and support copy are
+      unchanged and remain feature-owned; the design system stays business
+      neutral. The billing card was extracted into a feature-owned `BillingTab`
+      to match the sibling tabs and enable focused tests; the previously inline
+      local `SectionHeader` (used only by billing) was removed. No backend,
+      Firebase rules, storage, database, permissions, route, or data-format
+      change was made.
+    - Commit/PR: checkpoint `a98954d`.
   - Notes: Company Profile branding/questions, Team & Users, Email,
-    SMS/number assignment, Automated SMS, Integrations, Billing, and
+    SMS/number assignment, Automated SMS, Integrations, and
     `/company/profile` remain separate slices and must not be migrated together.
 
 - [ ] Campaigns.
@@ -1093,7 +1133,7 @@ own rows. Data and workflow ownership stays in the feature.
 | SMS / number assignment | 2 selects in assignment rows/default line, raw table, verify/save/diagnostic controls | `useLineAssignments` owns Firestore/callable behavior and legacy token compatibility | Table/control alignment, redacted line tokens, verification states, accessible select labels | High / Very high | Audited; not migrated | Existing 15-case suite, save/backfill/verify, DataTable, keyboard/mobile |
 | Automated SMS | 1 textarea and save button | Direct Firestore load/save of message template | Template preservation, loading/error state, textarea description/limits | Medium / High | Audited; not migrated | Exact text round-trip, save/error, keyboard/mobile |
 | Integrations | Connection cards and buttons, including disabled states | Firebase callable/SDK connection workflows and feature availability | External SDK state, disabled explanation, destructive/reconnect behavior | Medium / Very high | Audited; not migrated | Integration mocks/contracts, permissions, loading/error, mobile |
-| Billing | Informational card only | Plan value display | Empty/long plan content and support messaging | Low / Low | Audited; not migrated | Plan variants, mobile/heading review |
+| Billing | Approved `FormSection`, `FieldDisplay`, `Badge`, and `FieldMessage` replace the local heading/card/plan/support styling | Plan value display only; `planType` read from the loaded profile, unchanged | Empty/long plan content and support messaging | Low / Low | Compatibility slice completed 2026-07-23 | 7 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, labelled plan/badge status, support copy, axe, overflow passed |
 | `/company/profile` account profile/security | 8 inputs, 8 labels, avatar file input, 6 buttons, password/email forms | Firebase Auth profile/email/password, reauthentication, Storage upload, Firestore user writes/query | Keyboard-inaccessible avatar surface, nested click targets, validation/error association, security/autofill, upload and reauth regressions | High / Very high | Audited; defer until form/upload/dialog foundations are proven | Auth/storage mocks, validation branches, save/email/password/upload workflows, keyboard/autofill, desktop/mobile |
 
 ---
@@ -1395,6 +1435,66 @@ Apply checks proportionally, but never claim an unrun check:
   were removed; no unrelated source or backend file was included.
 - Commit/PR: checkpoint `a0cefc3`.
 
+### Company Settings Billing informational-card compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: the Company Profile information slice was committed as
+  `a0cefc3` and its roadmap evidence as `2a06fa3` before this slice began.
+- Audit: the Billing tab was informational only. It displayed a section
+  heading, subtitle, a decorative credit-card glyph, the derived plan name
+  (`planType === 'paid' ? 'Pro Plan' : 'Free Plan'`), and static
+  contact-support guidance. It had no upgrade, cancel, or external billing
+  action, no billing-specific permission or feature flag, no direct Firebase or
+  callable read (it read the already-loaded `currentCompanyProfile.planType`),
+  and no separate loading, empty, or error state.
+- Selected slice: only the Billing informational card was migrated. The plan
+  calculation, plan names, and support copy were frozen before presentation
+  changed.
+- Component contract: reused the business-neutral `FormSection`, `FieldDisplay`,
+  `Badge`, and `FieldMessage`. No new design-system component was added. The
+  card was extracted into a feature-owned `BillingTab`, matching the sibling
+  tabs and enabling focused tests; the previously inline `SectionHeader`
+  (used only by billing) was removed. The design system gained no Company,
+  Firebase, plan, permission, or billing knowledge.
+- Focused tests: 1 file passed, 7 tests passed, covering the paid Pro plan, a
+  non-paid free plan, a missing `planType` fallback, a null profile, the
+  labelled plan value, the preserved support message, and axe.
+- Shell/design-system regression: the CompanySettings shell test (5) and the
+  design-system gate (11 files / 47 tests) still pass unchanged.
+- Full frontend gate: 85 files passed, 2 files skipped; 550 tests passed and 48
+  emulator-dependent rules tests skipped by their environment guard. The
+  pre-existing `playwrightConfig` resource-contention flake timed out once under
+  parallel load and then passed 4/4 in isolation; no assertion in it changed.
+- Frontend lint: passed with 0 errors on the changed files. Typecheck,
+  production build, and `git diff --check` passed. The build emitted only the
+  existing stale-Browserslist and chunk-size warnings.
+- Chromium and Mobile Chrome regression: the Billing spec passed 5 checks with 3
+  intentional viewport-specific skips.
+- Behavior: the plan mapping, plan names, informational-only nature, contact
+  support copy, tab identifier, settings shell, admin gate, routes, and all data
+  behavior are unchanged. No new interactive control, validation, or business
+  rule was introduced.
+- Accessibility: the section is a labelled landmark with an `<h2>` heading; the
+  plan value is a labelled `FieldDisplay` whose value is a tone-carrying `Badge`
+  (success for Pro, neutral for Free), so plan status is communicated by text
+  and tone rather than color alone. The heading is 16 px, the label 13 px, and
+  the badge and support message 12 px, so no 9/10 px text was introduced. Unit
+  axe reported no violations; scoped Chromium/Mobile Chrome axe reported no
+  serious or critical violations.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed the labelled plan, subtitle, and guidance render, the card stays
+  within the viewport, and no document, content, or nested horizontal overflow
+  exists at any width.
+- Visual regression: no durable screenshot baseline was claimed because the
+  catalog/baseline ownership decision remains open; manual rendered review and
+  deterministic Chromium/Mobile Chrome geometry assertions were completed.
+- Backend/Firebase rules tests: not applicable; no backend, rules, database,
+  storage, callable, integration, or Firebase contract changed.
+- Diff review: `git diff --check` passed; generated `dist/` and `test-results/`
+  artifacts remain gitignored and were not staged; no unrelated source or
+  backend file was included.
+- Commit/PR: checkpoint `a98954d`.
+
 ---
 
 ## 7. Decisions and blockers
@@ -1422,25 +1522,26 @@ related CI enforcement permanently blocking.
 
 ## 8. Safest next phase
 
-The Company Profile information compatibility slice completed on 2026-07-23.
-The safest next bounded slice is the Company Settings Billing informational
-card. It has no write, upload, integration, permission, or Firebase behavior
-and can prove reusable read-only page-section treatment without coupling a
-higher-risk workflow.
+The Company Settings Billing informational-card compatibility slice completed on
+2026-07-23. The safest next bounded slice is the Company Settings Automated SMS
+tab. It is a single textarea plus a save button backed by a direct Firestore
+load/save of one message template, so it is the lowest-coupling remaining
+settings slice and can prove the form-field-plus-save presentation while the
+message round-trip stays feature-owned.
 
 Sequence:
 
-1. audit and freeze the exact plan-value and fallback rendering before changing
-   presentation;
-2. migrate only the Billing informational card, heading, plan display, and
-   support message to approved card, typography, and layout treatment;
-3. preserve the existing tab identifier, plan source/value, settings shell,
-   permissions, routes, and all data behavior;
-4. add focused plan-variant, empty/long content, semantics, axe, and responsive
-   coverage;
+1. audit and freeze the exact template load, save payload, loading state, and
+   error handling before changing presentation;
+2. migrate only the Automated SMS textarea, its label/description, and the save
+   action to `FormField`, `Textarea`, `FormSection`, and `Button`;
+3. preserve the existing tab identifier, Firestore read/write, template value,
+   settings shell, permissions, routes, and all data behavior;
+4. add focused round-trip, loading, save-success, and error coverage plus axe
+   and responsive coverage;
 5. verify at 1440×900, 1024×768, and 412×915 before marking the slice complete.
 
-Do not combine Billing with Company Profile branding upload/application
-questions, team roles, email secrets, phone assignment, automated SMS,
-integrations, or `/company/profile` account security. Those remain independent
-higher-risk items with their own behavior-preservation evidence.
+Do not combine Automated SMS with Company Profile branding upload/application
+questions, team roles, email secrets, phone assignment, integrations, or
+`/company/profile` account security. Those remain independent higher-risk items
+with their own behavior-preservation evidence.
