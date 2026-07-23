@@ -1053,7 +1053,88 @@ The reverse directions are prohibited.
       this visual slice. No backend, Firebase rules, storage, database,
       permissions, route, or data-format change was made.
     - Commit/PR: checkpoint `00fd311`.
-  - Notes: Company Profile branding/questions, Team & Users, Email,
+  - [x] Migrate the Company Settings Email Settings form.
+    - Complete when: the three callable contracts and every secret-handling rule
+      are frozen and preserved exactly; the status banner, SMTP fields, password
+      field, distinct Test/Save actions, signature, and setup-guide disclosure
+      move to approved primitives with associated labels, a connected password
+      helper, announced states, and status/alert semantics; metadata load, secret
+      isolation, existing-password behavior, first-time requirement, test-vs-save
+      payloads, all messages, and desktop/tablet/mobile layout are verified with
+      no backend or Cloud Function change.
+    - Completed: 2026-07-23.
+    - Files: `src/features/settings/components/EmailSettingsTab.jsx`,
+      `src/features/settings/components/EmailSettingsTab.test.jsx`,
+      `e2e/company-settings-email.spec.cjs`, this roadmap.
+    - Secret-handling contract preserved (frozen before migration): the saved
+      SMTP password is never loaded into state (`emailSettings` has no
+      `smtpPass`); `smtpPassInput` starts empty and is never hydrated;
+      `getEmailSettingsMeta` returns only sanitized fields plus a `hasPassword`
+      flag; an empty password field never overwrites the stored secret; the
+      manual-save payload includes `smtpPass` only when the user types a new
+      value; the password is required for first-time setup and optional once
+      saved; Test Connection requires a freshly entered plaintext password; and
+      the saved-password placeholder/helpers never imply the secret can be
+      retrieved. No real secret appears in code, tests, or evidence — tests use
+      the obviously-artificial value `NOT_A_REAL_PASSWORD_test_value`.
+    - Callable contracts preserved: `getEmailSettingsMeta({ companyId })` →
+      `{ smtpHost, smtpPort, smtpUser, signature, isVerified, hasPassword }`
+      (never `smtpPass`); `testEmailConnection({ smtpHost, smtpPort, smtpUser,
+      smtpPass })`; on test success an auto-save via `saveEmailSettings({
+      companyId, smtpHost, smtpPort, smtpUser, smtpPass, signature })`; and the
+      manual `saveEmailSettings` payload `{ companyId, smtpHost, smtpPort,
+      smtpUser, signature }` plus `smtpPass` only when newly entered. Test and
+      Save remain separate actions. Verified-state invalidation on host/port/
+      user/password edits (and not on signature edits), the port `parseInt`
+      conversion, the graceful metadata-load failure (`console.warn`, no toast),
+      and the missing-`companyId` early return (settings load ends, form renders)
+      are unchanged. Load/test/save success and error messages are unchanged.
+    - Verification: 24 focused EmailSettingsTab render tests passed (metadata
+      load incl. exact callable + `{ companyId }` request, sanitized hydration,
+      empty password input, hasPassword true/false, load failure, missing
+      company id; manual save incl. host/username/first-time-password gating,
+      existing-password save without `smtpPass`, rotation save with `smtpPass`,
+      exact payload, success/error, aria-busy disabled state; test connection
+      incl. disabled-until-password, exact test payload, success auto-save
+      payload with the new password, failure response, thrown exception,
+      auto-save failure, verified + saved-password indicator updates;
+      presentation incl. distinct action names, guide disclosure + safe external
+      links, password-helper association, axe). The 12 existing email logic
+      tests, the CompanySettings shell test (5), and the design-system gate
+      (11 files / 47 tests) still pass. Full frontend gate passed with 88 files /
+      587 tests and the existing 2 files / 48 emulator-dependent rules tests
+      skipped by their environment guard; coverage gate completed; frontend lint
+      passed with 0 errors on the changed files; typecheck, production build, and
+      `git diff --check` passed. Chromium and Mobile Chrome Playwright passed 7
+      checks with 3 intentional viewport-specific skips, including loaded-form
+      axe on both projects and an accessible-loading-status assertion.
+    - Visual/mobile/a11y: reviewed the loaded form at 1440×900, 1024×768, and
+      412×915. Five labelled controls are 44 px tall; the tab heading is 20 px,
+      section headings 16 px, labels/banner 13 px, and help/badge text 12 px, so
+      no 9/10 px text was introduced. Every SMTP field has an associated label,
+      the password helper is connected via `aria-describedby`, Test and Save have
+      distinct accessible names with `aria-busy` progress, the connection status
+      and test result use Badge tone plus text (not color alone) with
+      `role="status"`/`role="alert"`, the setup-guide toggle exposes
+      `aria-expanded`/`aria-controls`, external guide links keep
+      `rel="noopener noreferrer"`, keyboard order runs host → port → user →
+      password, and no document, content, or nested horizontal overflow exists.
+      Unit axe reported no violations; scoped Chromium/Mobile Chrome axe reported
+      no serious or critical violations.
+    - Notes: the three handlers (`loadSettings`, `handleTestConnection`,
+      `handleSaveEmailSettings`) are byte-for-byte unchanged; only presentation
+      changed (the `disabled` conditions moved `testing`/`loading` into the
+      Button `loading` prop, which is behavior-equivalent). Provider SMTP
+      instructions remain feature-owned; the design system gained no SMTP,
+      email-provider, secret, Firebase, or Company knowledge. Minor presentation
+      changes: the Test button adopts the approved secondary variant (was
+      purple) and both action buttons keep a stable label with a spinner instead
+      of swapping to "Testing Connection…" micro-copy. The literal `**E-Docs**`/
+      `**PEV**` banner text was preserved as-is (a pre-existing content quirk not
+      corrected here). No backend, Cloud Function, Firebase rules, storage,
+      database, permissions, route, or data-format change was made.
+    - Commit/PR: checkpoint `9c05f9e`.
+  - Notes: Company Profile branding/questions, Team & Users,
     SMS/number assignment, Integrations, and `/company/profile` remain separate
     slices and must not be migrated together.
 
@@ -1188,7 +1269,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Company Profile — questions | Text/select/textarea previews, 4 native checkboxes, button-based required/hidden switches, question editors | Application configuration and custom-question state passed through Company Profile save | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Audited; not migrated | All question tests, keyboard toggles, validation, save payload, mobile |
 | Team & Users | 3 inputs, 1 role select, local buttons | Direct Firestore user/team reads and writes; Manage Team dialog | Permissions, required fields, role changes, duplicate/error states | High / Very high | Audited; not migrated | Role gates, add/manage flows, validation, dialog, desktop/mobile |
 | Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings forms remain locally styled | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
-| Email Settings | 4 inputs, 1 textarea, local test/save buttons | Firestore settings plus callable test/save behavior and retained secret handling | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Audited; not migrated | Existing email tests/contracts, secret preservation, validation, errors, mobile |
+| Email Settings | Approved `FormSection`, `FormField`, `Input`, `Textarea`, `Button`, `Badge`, `Card`, and `FieldMessage` replace the local status banner, SMTP fields, test/save buttons, and setup-guide chrome (provider instructions stay feature-owned) | `getEmailSettingsMeta`/`testEmailConnection`/`saveEmailSettings` callables, sanitized metadata load, and password-isolation rules remain feature-owned and unchanged | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Compatibility slice completed 2026-07-23 | 24 focused render + 12 existing logic tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, secret-payload contract, label association, guide disclosure, axe, overflow passed |
 | SMS / number assignment | 2 selects in assignment rows/default line, raw table, verify/save/diagnostic controls | `useLineAssignments` owns Firestore/callable behavior and legacy token compatibility | Table/control alignment, redacted line tokens, verification states, accessible select labels | High / Very high | Audited; not migrated | Existing 15-case suite, save/backfill/verify, DataTable, keyboard/mobile |
 | Automated SMS | Approved `FormSection`, `FormField`, `Textarea`, `Button`, and `FieldMessage` replace the local heading/labels/textareas/save styling for three SMS-template textareas (`templateContactAttempt1/2/3`) and one save action | Three SMS-template textareas and one save action backed by a single Firestore document `companies/{companyId}/settings/automated_sms`; read/write remain feature-owned and unchanged | Template preservation, loading/error state, textarea description/limits | Medium / High | Compatibility slice completed 2026-07-23 | 12 focused contract tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, label association, loading announce, save states, axe, overflow passed |
 | Integrations | Connection cards and buttons, including disabled states | Firebase callable/SDK connection workflows and feature availability | External SDK state, disabled explanation, destructive/reconnect behavior | Medium / Very high | Audited; not migrated | Integration mocks/contracts, permissions, loading/error, mobile |
@@ -1627,6 +1708,77 @@ Apply checks proportionally, but never claim an unrun check:
   unrelated source or backend file was included.
 - Commit/PR: checkpoint `00fd311`.
 
+### Company Settings Email Settings compatibility-slice completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: the Automated SMS slice (`00fd311` feat, `171eecc` docs)
+  was verified — both commits are linear descendants of `00fd366`, the working
+  tree is clean, `git diff --check` is clean, and the Firestore contract matches
+  the report — before this slice began. `origin/main` still ends at `00fd366`;
+  the Automated SMS commits remain on local `main`, fast-forwardable, unpushed.
+- Audit / frozen contract: the tab was audited in full — loading state, connection
+  status banner, SMTP host/port/user/password, Test Connection, test-result
+  display, signature textarea, and the expandable Gmail/Outlook/SendGrid guide.
+  All three callables, the secret-isolation rules, validation, port conversion,
+  verified-state invalidation, messages, and the graceful load-failure and
+  missing-`companyId` behaviors were frozen before presentation changed.
+- Go/no-go decision: the slice was judged safe to migrate whole because every
+  callable is mockable, secret handling is verifiable, existing-password behavior
+  is assertable, Test and Save are independently testable, and no backend or
+  Cloud Function change is required. The three handlers were preserved
+  byte-for-byte; only presentation changed.
+- Component contract: reused `FormSection`, `FormField`, `Input`, `Textarea`,
+  `Button`, `Badge`, `Card`, and `FieldMessage`. No new design-system component
+  was added; no SMTP, email-provider, secret, Firebase, or Company knowledge
+  entered the design system. Provider setup instructions remain feature-owned.
+- Secret safety: no real secret exists anywhere in the change; the tests use the
+  obviously-artificial `NOT_A_REAL_PASSWORD_test_value`. The component contains
+  no hardcoded credential, the password input binds only to the always-empty
+  `smtpPassInput`, and the saved password is never rendered or logged.
+- Focused tests: 1 file passed, 24 tests passed (7 metadata-load, 8 manual-save,
+  6 test-connection, 3 presentation/a11y — plus axe). The 12 existing email
+  logic tests still pass.
+- Shell/design-system regression: the CompanySettings shell test (5) and the
+  design-system gate (11 files / 47 tests) still pass unchanged.
+- Full frontend gate: 88 files passed, 2 files skipped; 587 tests passed and 48
+  emulator-dependent rules tests skipped by their environment guard. No flake
+  this run.
+- Coverage gate: `vitest run --coverage` completed (27.26% statements, 25.42%
+  branches, 26.13% functions, 27.89% lines); no threshold regressed.
+- Frontend lint: passed with 0 errors on the changed files. Typecheck,
+  production build, and `git diff --check` passed. The build emitted only the
+  existing stale-Browserslist and chunk-size warnings.
+- Chromium and Mobile Chrome regression: the Email spec passed 7 checks with 3
+  intentional viewport-specific skips, including loaded-form axe on both projects
+  and an accessible-loading-status assertion. Unlike the Firestore-gated
+  Automated SMS tab, the metadata callable rejects quickly offline, so the form
+  renders without a long wait.
+- Server hygiene: the browser/Playwright checks ran against the live `vite dev`
+  server on port 5000 (PID 9708), confirmed to be a dev server (not `vite
+  preview`) in E2E test mode serving the current working tree — the `getEmailSettingsMeta`
+  callable was invoked and the migrated form rendered. No unknown process was
+  terminated.
+- Accessibility: every SMTP field has an associated label; the password helper is
+  connected via `aria-describedby`; Test and Save have distinct accessible names
+  with `aria-busy`; the status banner and test result use Badge tone plus text
+  (not color alone) with `role="status"`/`role="alert"`; the setup-guide toggle
+  exposes `aria-expanded`/`aria-controls`; external links keep
+  `rel="noopener noreferrer"`; keyboard order runs host → port → user → password;
+  and all rendered text is ≥12 px. Unit axe reported no violations; scoped
+  Chromium/Mobile Chrome axe reported no serious or critical violations.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed five labelled 44 px controls, distinct 44 px action buttons, a
+  single-column mobile layout, wrapping, and no document, content, or nested
+  horizontal overflow.
+- Backend/Cloud Function tests: not applicable; no callable implementation,
+  rules, data shape, or backend behavior changed. The callable request/response
+  contracts are asserted in the focused render tests via mocks.
+- Diff review: `git diff --check` passed; generated `dist/`, `coverage/`,
+  `test-results/`, and `playwright-report/` artifacts were removed and remain
+  gitignored; no unrelated source or backend file was included; no secret value
+  entered any artifact.
+- Commit/PR: checkpoint `9c05f9e`.
+
 ---
 
 ## 7. Decisions and blockers
@@ -1654,29 +1806,36 @@ related CI enforcement permanently blocking.
 
 ## 8. Safest next phase
 
-The Company Settings Automated SMS compatibility slice completed on 2026-07-23.
-The safest next bounded slice is the Company Settings Email Settings tab. It is a
-small fixed set of inputs plus a textarea with distinct test and save actions,
-so — with its secret handling frozen first — it is the most bounded remaining
-settings form and can extend the proven `FormField`/`Input`/`Textarea`/`Button`
-presentation while its callable test/save behavior stays feature-owned.
+The Company Settings Email Settings compatibility slice completed on 2026-07-23.
+All remaining Settings/Profile slices are materially higher-risk than the four
+completed compatibility slices, so the next step is a dedicated audit rather than
+an immediate migration. The recommended next candidate is the Company Settings
+SMS / number-assignment presentation, because its data and callable behavior are
+already isolated in the `useLineAssignments` hook and it can reuse the approved
+DataTable plus form controls — but it must be independently audited first
+(assignment table, per-row selects, default-line control, verify/save/diagnostic
+actions, and redacted line tokens) before any migration decision.
 
 Sequence:
 
-1. audit and freeze the exact settings read, the test-versus-save callable
-   contracts, secret/redaction handling, and required-field validation before
+1. audit and freeze the exact `useLineAssignments` read/write and callable
+   behavior, the assignment-table shape, the per-row and default-line controls,
+   the verification/diagnostic states, and any redacted line tokens before
    changing presentation;
-2. migrate only the Email Settings inputs, textarea, and the distinct test/save
-   actions to `FormField`, `Input`, `Textarea`, `FormSection`, and `Button`;
-3. preserve the existing tab identifier, Firestore/callable behavior, secret
-   handling, settings shell, permissions, routes, and all data behavior;
-4. add focused load, secret-preservation, validation, test-versus-save,
-   success, and error coverage plus axe and responsive coverage;
+2. decide, from that audit, whether the whole table migrates safely in one
+   bounded slice using the approved DataTable and form controls, or whether it
+   must be split or deferred;
+3. migrate only the SMS number-assignment presentation, preserving the tab
+   identifier, hook behavior, callable contracts, permissions, routes, and data;
+4. add focused load, assignment-change, save/backfill/verify, and control-label
+   coverage plus DataTable alignment, axe, and responsive coverage;
 5. verify at 1440×900, 1024×768, and 412×915 before marking the slice complete.
 
-Do not combine Email Settings with Company Profile branding upload/application
-questions, team roles, phone assignment, automated SMS, integrations, or
-`/company/profile` account security. Those remain independent items with their
-own behavior-preservation evidence. If Email Settings' secret handling proves
-too high-risk to migrate without a separate approved contract review, prefer the
-lower-risk SMS number-assignment table or defer to an explicitly approved order.
+Do not start SMS number-assignment (or any remaining slice) in the same
+unreviewed diff as another. Company Profile branding upload/application
+questions, Team & Users, Integrations, and `/company/profile` account security
+each remain independent higher-risk items with their own audits and
+behavior-preservation evidence. If the number-assignment audit reveals a blocker
+(for example table responsive behavior needing an owner decision, or a callable
+that cannot be mocked), mark it audited-but-not-migrated with the exact blocker
+and choose the next-lowest-risk audited slice.
