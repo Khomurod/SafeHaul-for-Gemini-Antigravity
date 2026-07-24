@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { Settings } from 'lucide-react';
+import { Card, FieldMessage } from '@/design-system/components';
+import { ToggleSwitch } from './ToggleSwitch';
 
 export const STANDARD_FIELDS = [
     { id: 'ssn', label: 'Social Security Number', defaultReq: true },
@@ -14,13 +16,15 @@ export const STANDARD_FIELDS = [
 
 export function StandardQuestionsConfig({ config, onChange }) {
     const safeConfig = config || {};
+    const rawId = useId().replace(/:/g, '');
+    const titleId = `standard-questions-title-${rawId}`;
 
     const toggleField = (fieldId, type) => {
         // type: 'required' | 'hidden'
 
-        const currentSetting = safeConfig[fieldId] || { 
-            required: STANDARD_FIELDS.find(f => f.id === fieldId)?.defaultReq || false, 
-            hidden: false 
+        const currentSetting = safeConfig[fieldId] || {
+            required: STANDARD_FIELDS.find(f => f.id === fieldId)?.defaultReq || false,
+            hidden: false
         };
 
         let newSetting = { ...currentSetting };
@@ -42,65 +46,61 @@ export function StandardQuestionsConfig({ config, onChange }) {
     };
 
     return (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-8">
-            <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                <Settings size={18} className="text-gray-500" />
-                <h3 className="font-bold text-gray-800">Standard DOT Questions Configuration</h3>
+        <Card padding="none" className="mb-8 overflow-hidden" aria-labelledby={titleId}>
+            <div className="flex items-center gap-ds-2 border-b border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+                <Settings size={18} className="text-ds-content-muted" aria-hidden="true" />
+                <h4 id={titleId} className="text-ds-body font-bold text-ds-content">
+                    Standard DOT Questions Configuration
+                </h4>
             </div>
 
-            <div className="p-0">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-white text-gray-500 font-bold border-b border-gray-100">
-                        <tr>
-                            <th className="p-4">Field Name</th>
-                            <th className="p-4 text-center w-32">Required</th>
-                            <th className="p-4 text-center w-32">Hidden</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {STANDARD_FIELDS.map(field => {
-                            const setting = safeConfig[field.id] || { required: field.defaultReq, hidden: false };
-
-                            return (
-                                <tr key={field.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="p-4 font-medium text-gray-700">{field.label}</td>
-
-                                    {/* Required Toggle */}
-                                    <td className="p-4 text-center">
-                                        <button 
-                                            onClick={() => toggleField(field.id, 'required')}
-                                            className={`w-10 h-6 rounded-full relative transition-colors ${
-                                                setting.required ? 'bg-green-500' : 'bg-gray-200'
-                                            }`}
-                                        >
-                                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
-                                                setting.required ? 'translate-x-4' : 'translate-x-0'
-                                            }`}></div>
-                                        </button>
-                                    </td>
-
-                                    {/* Hidden Toggle */}
-                                    <td className="p-4 text-center">
-                                        <button 
-                                            onClick={() => toggleField(field.id, 'hidden')}
-                                            className={`w-10 h-6 rounded-full relative transition-colors ${
-                                                setting.hidden ? 'bg-red-500' : 'bg-gray-200'
-                                            }`}
-                                        >
-                                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
-                                                setting.hidden ? 'translate-x-4' : 'translate-x-0'
-                                            }`}></div>
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+            {/* Column headers (desktop); mobile rows carry inline captions instead. */}
+            <div className="hidden items-center gap-ds-4 border-b border-ds-border-subtle px-ds-4 py-ds-2 text-ds-xs font-bold uppercase text-ds-content-muted sm:flex">
+                <span className="flex-1">Field Name</span>
+                <span className="w-11 text-center">Required</span>
+                <span className="w-11 text-center">Hidden</span>
             </div>
-            <div className="p-4 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
-                <p><strong>Note:</strong> Hiding DOT required fields (like SSN or Employment History) may make your application non-compliant.</p>
+
+            <ul className="divide-y divide-ds-border-subtle">
+                {STANDARD_FIELDS.map(field => {
+                    const setting = safeConfig[field.id] || { required: field.defaultReq, hidden: false };
+
+                    return (
+                        <li
+                            key={field.id}
+                            className="flex flex-col gap-ds-3 px-ds-4 py-ds-3 sm:flex-row sm:items-center sm:gap-ds-4"
+                        >
+                            <span className="min-w-0 flex-1 font-medium text-ds-content">{field.label}</span>
+                            <div className="flex items-center gap-ds-4 sm:gap-ds-4">
+                                <span className="flex items-center gap-ds-2">
+                                    <span className="text-ds-xs font-medium text-ds-content-muted sm:hidden">Required</span>
+                                    <ToggleSwitch
+                                        checked={Boolean(setting.required)}
+                                        tone="success"
+                                        label={`Require ${field.label}`}
+                                        onChange={() => toggleField(field.id, 'required')}
+                                    />
+                                </span>
+                                <span className="flex items-center gap-ds-2">
+                                    <span className="text-ds-xs font-medium text-ds-content-muted sm:hidden">Hidden</span>
+                                    <ToggleSwitch
+                                        checked={Boolean(setting.hidden)}
+                                        tone="danger"
+                                        label={`Hide ${field.label}`}
+                                        onChange={() => toggleField(field.id, 'hidden')}
+                                    />
+                                </span>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+
+            <div className="border-t border-ds-border-subtle p-ds-4">
+                <FieldMessage tone="help">
+                    <strong>Note:</strong> Hiding DOT required fields (like SSN or Employment History) may make your application non-compliant.
+                </FieldMessage>
             </div>
-        </div>
+        </Card>
     );
 }

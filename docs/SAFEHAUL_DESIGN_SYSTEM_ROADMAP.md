@@ -1175,11 +1175,64 @@ The reverse directions are prohibited.
       data-format change was made.
     - Commit/PR: feature + docs commits on
       `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
-  - Notes: Company Profile branding/questions, Team & Users,
-    SMS/number assignment, and Integrations remain separate slices and must not
-    be migrated together. `/company/profile` account security is now migrated
-    (GO); the remaining in-phase profile risk is Company Profile — application
-    questions.
+  - [x] Migrate the Company Profile Application Form Questions interface.
+    - Complete when: standard-field required/hidden exclusivity, all standard
+      ids/labels/defaults, the exact `applicationConfig`/`customQuestions` save
+      payload, custom-question UUID creation and `INITIAL_QUESTION_STATE`
+      defaults, all question types, option add/remove/edit, type-change option
+      initialization, preview/edit mode, ordering (mouse drag + a new
+      keyboard method with the same array format), DOT deletion protection and
+      the exact alert, and the inverse compliance-field mappings are preserved;
+      every editor field has an associated label; standard toggles have unique
+      accessible names with programmatic (non-color) state; desktop/tablet/mobile
+      layout, overflow, axe, and final diff are verified without any backend,
+      rules, or public-application-schema change.
+    - Completed: 2026-07-24.
+    - Files: `src/features/settings/components/questions/StandardQuestionsConfig.jsx`,
+      `src/features/settings/components/questions/CustomQuestionsBuilder.jsx`,
+      `src/features/settings/components/questions/QuestionEditor.jsx`,
+      `src/features/settings/components/questions/ToggleSwitch.jsx`,
+      `src/features/settings/components/profile/OperationalSettingsSection.jsx`,
+      plus co-located tests and `e2e/company-settings-questions.spec.cjs`,
+      this roadmap.
+    - Verification: 5 focused files / 47 tests passed (4 new question files / 35
+      tests + the unchanged CompanyProfileTab 12); full frontend coverage gate
+      passed with 102 files / 766 tests and the existing 2 files / 48
+      emulator-dependent rules tests skipped; public-application regression
+      (`Step3_License`, `PublicApplyHandler`) passed; frontend lint 0 errors
+      (163 existing warnings); typecheck, production build, and
+      `git diff --check` passed. `company-settings-questions.spec.cjs` passed 9
+      Chromium/Mobile Chrome checks with 3 intentional viewport-specific skips.
+      Backend/callable/rules checks are not applicable — no Cloud Function,
+      callable, or rule changed (`functions/node_modules` absent, so backend
+      lint/`publicProfileDto` Jest were not run — recorded honestly; the
+      frontend-side public consumers are covered).
+    - Visual/mobile/a11y: reviewed at 1440×900, 1024×768, and 412×915 (standard
+      config + a custom question with the options editor). No document-level
+      horizontal overflow; standard rows stack with inline Required/Hidden
+      captions on mobile; toggles are ARIA switches with `aria-checked`; reorder
+      and delete are named IconButtons; every editor field is labelled. Unit axe
+      clean; scoped real-browser axe found no serious or critical violations.
+    - Notes: the `applicationConfig` `{[fieldId]:{required,hidden}}` shape, the
+      `customQuestions` item fields (`id/key/type/label/options/required/
+      dotRequired/helpText/min/max`), the `crypto.randomUUID()` id creation, the
+      exact DOT-delete `alert()` text, and the inverse Lock/Protect mappings are
+      unchanged; only presentation and accessibility changed. A keyboard
+      move-up/down reorder was added alongside the preserved native drag; both
+      mutate the same array order, so the saved format is identical. Because the
+      design system still has no approved Switch/Checkbox primitive, the
+      accessible `ToggleSwitch` and the native compliance checkboxes are
+      documented feature-level compositions (see the Radio/checkbox item).
+      Pre-existing latent behavior left unchanged and noted: the public
+      `publicProfileDto` allowlist strips `addressHistory`/`employmentHistory`/
+      `referralSource`/`mvrConsent` config so those toggles do not currently take
+      effect publicly — a separate backend concern, not this UI slice.
+    - Commit/PR: feature + docs commits on
+      `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
+  - Notes: Company Profile branding, Team & Users, and the account-security and
+    application-questions screens are migrated (GO). SMS/number assignment and
+    Integrations remain separate NO-GO slices and must not be migrated together
+    with anything else.
 
 - [ ] Campaigns.
   - Complete when: campaign cards/editor/results/report dialogs migrate without
@@ -1302,7 +1355,7 @@ Status `Not started` means audited but not migrated.
 | Buttons | Button/IconButton primitives adopted by the Company shell; legacy raw buttons remain elsewhere | Button + IconButton | Critical | Medium | Tokens | In progress — primitive and Company consumer verified; catalog/ratchet remain | Variants/states, names, focus, touch, remaining consumers, approved visual baselines |
 | Inputs | Shared InputField plus 155 raw inputs | Field/Input and compatibility adapter | Critical | High | Tokens, controls | Not started | Existing callbacks/files/errors/autofill/mobile keyboard |
 | Select/textarea | 60 selects, 23 textareas, local styling | Select/Textarea under Field | High | Medium | Forms | Not started | Labels/errors/disabled/long content/mobile |
-| Radio/checkbox | Shared/local radio and icon-based selection | Native-first Radio/Checkbox groups | High | High | Forms, table | Not started | Keyboard model, group naming, indeterminate selection |
+| Radio/checkbox | Shared/local radio and icon-based selection | Native-first Radio/Checkbox groups | High | High | Forms, table | Not started (DS primitive) — the application-questions slice uses a documented feature-level accessible `ToggleSwitch` (ARIA switch) and native compliance checkboxes as an interim until this primitive exists | Keyboard model, group naming, indeterminate selection |
 | Cards | Card/MetricCard primitives adopted by Company dashboard; compatibility StatCard retained | Card/Section/Metric | High | Low | Tokens, layouts | In progress — Company dashboard verified; catalog and remaining consumers open | Spacing/elevation/heading/actions/mobile/approved visual baselines |
 | Dialogs | Accessible shared Modal plus local overlays | Dialog/AlertDialog family | Critical | High | Controls, layouts | Not started | Focus/inert/scroll/Escape/return/naming/mobile |
 | Status badges | Generic Badge adopted by Company leaderboard; StatusBadge/statusStyles/local maps remain | Generic Badge/StatusIndicator + feature adapters | High | Medium | Tokens | In progress — generic Badge verified; StatusIndicator and remaining adapters open | Vocabulary, contrast, icons, non-color communication |
@@ -1347,7 +1400,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Company Settings shell | Approved `SectionNavigation`, semantic shell tokens, feature-owned grouped item definitions, existing local success toast and billing card | Admin role redirect, feature-flag visibility, tab state, Manage Team dialog remain feature-owned | Live success announcement remains for a later feedback slice | High / Medium | Shell/navigation compatibility slice completed 2026-07-23 | 9 focused unit tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, keyboard/focus/current state, admin redirect, feature flag, axe, overflow passed |
 | Company Profile — info | Approved `FormField`, `Input`, `FieldDisplay`, `FormSection`, `Card`, and `Button` replace local information-field/card/action styling | `saveCompanySettings`, nested contact/address/legal/application payload remain feature-owned and unchanged | Branding upload and application questions remain separate higher-risk slices | High / High | Compatibility slice completed 2026-07-23 | 17 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, payload parity, keyboard/focus, labels, axe, overflow passed |
 | Company Profile — branding | Approved `Button` + `FieldMessage` and a labelled, keyboard-triggered file input replace the local `<label>`-wrapped hidden input and raw preview in `BrandingSection`; preview/fallback tokenized | `uploadCompanyLogo` Storage path `company_assets/{companyId}/logo.{ext}` and the `companies/{companyId}.companyLogoUrl` Firestore field via `saveCompanySettings` remain feature-owned and unchanged | Keyboard trigger, no nesting, alt text, uploading announcement, focus return, no client size/type validation (preserved) | High / High | Compatibility slice completed 2026-07-23 | 18 focused tests (9 UI/a11y, 5 upload integration, 4 Storage contract), full suite, coverage, Chromium/Mobile Chrome, 1440/1024/412 px, exact Storage/Firestore contracts, keyboard/focus, axe, overflow passed |
-| Company Profile — questions | Text/select/textarea previews, 4 native checkboxes, button-based required/hidden switches, question editors | Application configuration and custom-question state passed through Company Profile save | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Audited; not migrated | All question tests, keyboard toggles, validation, save payload, mobile |
+| Company Profile — questions | Standard config uses accessible `ToggleSwitch` (ARIA switch) rows in a `Card` with unique "Require X"/"Hide X" names; custom builder/editor use `Card`/`FormField`/`Input`/`Select`/`Button`/`IconButton`/`Badge` with labelled fields, named delete/option-remove/reorder controls, and a keyboard move-up/down alongside preserved native drag | `applicationConfig` `{required,hidden}` shape, `customQuestions` item fields, `crypto.randomUUID()`, DOT-delete `alert()`, inverse Lock/Protect mappings, and the `saveCompanySettings` pass-through remain feature-owned and unchanged | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Migrated (GO) 2026-07-24 | 47 focused tests (standard defaults/exclusivity/payload, every custom type, UUID/defaults, label/help/options edit, type-change option init, add/remove, preview/edit, reorder, DOT delete + exact alert, compliance mappings), full suite/coverage, public-app regression, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow, git diff --check passed |
 | Team & Users | Add New User form now uses `FormSection`/`FormField`/`Input`/`Select`/`Button`; `ManageTeamModal` moved to the shared accessible `Modal` with `Card`/`Button`/`IconButton` and labelled goal inputs; `CompanySettings` permission gate and backend `hrAdmin.js` unchanged | `createPortalUser`/`deletePortalUser` callables, membership `onSnapshot` subscription, user/goal Firestore reads, `setDoc` goal-write, tracking-link construction, and clipboard/toast remain feature-owned and unchanged | Native-required create-user validation, password never logged/stored (`autocomplete=new-password`), admin gate, live subscription cleanup, goal `value||default` compatibility, fire-and-forget clipboard, destructive delete | High / Very high | Compatibility slice completed 2026-07-23 (both surfaces) | 25 focused tests (9 Add-User, 16 Manage-Team) + shell suite, full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, exact create/delete/goal/link contracts, permission gate, dialog name/close/Escape/backdrop/focus-restore, axe, overflow passed |
 | Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings forms remain locally styled | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
 | Email Settings | Approved `FormSection`, `FormField`, `Input`, `Textarea`, `Button`, `Badge`, `Card`, and `FieldMessage` replace the local status banner, SMTP fields, test/save buttons, and setup-guide chrome (provider instructions stay feature-owned) | `getEmailSettingsMeta`/`testEmailConnection`/`saveEmailSettings` callables, sanitized metadata load, and password-isolation rules remain feature-owned and unchanged | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Compatibility slice completed 2026-07-23 | 24 focused render + 12 existing logic tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, secret-payload contract, label association, guide disclosure, axe, overflow passed |
@@ -2762,6 +2815,70 @@ Apply checks proportionally, but never claim an unrun check:
 - Commit/PR: feature commit + docs commit on
   `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
 
+### Company Profile application-questions completion log (GO)
+
+- Date: 2026-07-24.
+- Starting baseline: `main` at `e470318` (Merge PR #85 — account profile/security).
+- Scope: the Company Profile → "Application Form Questions" tab only
+  (`StandardQuestionsConfig`, `CustomQuestionsBuilder`, `QuestionEditor`,
+  `OperationalSettingsSection`). No other feature touched.
+- Go/no-go decision: **GO.** The migration is presentation/accessibility only
+  and preserves the saved data shape exactly, so it needs no backend, rules, or
+  public-application-schema change. Consumer audit confirmed the frozen shape:
+  `applicationConfig` `{[fieldId]:{required,hidden}}` (read by 5 driver-app steps
+  and `buildApplicationDoc`, gated by the `publicProfileDto` allowlist) and
+  `customQuestions` items (`id/key/type/label/options/required/dotRequired/
+  helpText/min/max`, consumed by the Stepper merge, `DynamicQuestionsStep`, and
+  the PDF generator via `customAnswers`).
+- Reordering: **partial-to-full GO.** Native mouse drag is preserved verbatim; a
+  keyboard-accessible move-up/down was added. Both mutate the same array-order
+  format `onChange` already emits, so the saved `customQuestions` order format is
+  provably unchanged (locked by tests). No NO-GO was required.
+- Preserved contracts: standard required/hidden exclusivity and the exact
+  `{required,hidden}` payload; all standard ids/labels/defaults; custom-question
+  `crypto.randomUUID()` creation and `INITIAL_QUESTION_STATE` defaults; every
+  question type; option add/remove/edit and the `Option N` naming;
+  `hasOptions`-driven `['Option 1']` initialization on type change; preview/edit
+  mode; DOT-required deletion protection with the exact alert text; the inverse
+  `canCompanyHide`/`canCompanyModify` checkbox mappings; and the
+  `applicationConfig`/`customQuestions` pass-through via `saveCompanySettings`.
+- Accessibility: standard toggles are ARIA switches with unique "Require X"/
+  "Hide X" names and `aria-checked` (state not by color alone); every editor
+  field has an associated label; delete, option-remove, and reorder are named
+  IconButtons; the preview mock inputs are `aria-hidden`. No approved DS
+  Switch/Checkbox primitive exists, so the `ToggleSwitch` and native compliance
+  checkboxes are documented feature-level compositions (Radio/checkbox item).
+- Focused tests: 5 files / 47 tests (4 new question files / 35 + the unchanged
+  CompanyProfileTab 12).
+- Full frontend coverage gate: 102 files / 766 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  31.39% statements / 28.63% branches / 30.65% functions / 32.2% lines.
+- Public-application regression: `Step3_License` and `PublicApplyHandler` tests
+  passed (they exercise `applicationConfig` gating and profile projection).
+- Frontend lint: 0 errors (163 pre-existing warnings); typecheck, production
+  build, and `git diff --check` passed.
+- Playwright (`company-settings-questions.spec.cjs`), Chromium + Mobile Chrome:
+  9 passed, 3 intentional viewport-specific skips.
+- Accessibility checks: unit `vitest-axe` clean; scoped real-browser axe found no
+  serious or critical violations (one real contrast finding was fixed by moving
+  the compliance note off the subtle background onto the card surface).
+- Visual review at 1440×900, 1024×768, and 412×915 (standard config + a custom
+  question with the options editor): no document-level horizontal overflow;
+  standard rows stack with inline Required/Hidden captions on mobile.
+- Backend/callable/rules checks: not applicable and not run — no Cloud Function,
+  callable, or rule changed; `functions/node_modules` is not installed here, so
+  the `publicProfileDto` Jest guard and backend lint were not run (recorded
+  honestly). The frontend-side public consumers are covered by the regression
+  above.
+- Pre-existing latent behavior left unchanged (documented, not fixed here): the
+  `publicProfileDto` allowlist strips `addressHistory`/`employmentHistory`/
+  `referralSource`/`mvrConsent` config, so those standard toggles do not
+  currently take effect in the public application (`mvrConsent` is unused). This
+  is a separate backend/allowlist concern; the data-shape-preserving UI does not
+  introduce or change it.
+- Commit/PR: feature commit + docs commit on
+  `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2835,11 +2952,20 @@ and `Stack`, its avatar upload moved to the keyboard-accessible
 was added, while every Auth reauthentication/email/password contract, the exact
 `avatars/{uid}/{file.name}` Storage sequence, the username query with its
 permission-denied skip, and all Firestore writes and toast messages are
-preserved. The remaining Settings/Profile in-phase item is **Company Profile —
-application questions** (High/Very high: switch semantics, required/hidden
-exclusivity, DOT protections, destructive actions); **Team & Users** and
-**Integrations** are otherwise resolved (Team & Users migrated; Integrations
-NO-GO).
+preserved.
+
+The **Company Profile — Application Form Questions** interface was migrated and
+verified on 2026-07-24 (GO; completion log in section 6): the standard-field
+required/hidden toggles became accessible ARIA switches with unique names, and
+the custom-question builder/editor adopted `Card`/`FormField`/`Input`/`Select`/
+`Button`/`IconButton`/`Badge` with labelled fields, named destructive/reorder
+controls, and a keyboard move-up/down alongside the preserved native drag —
+while the `applicationConfig`/`customQuestions` data shape, `crypto.randomUUID()`
+creation, DOT deletion protection and its exact alert, and the inverse
+compliance mappings are unchanged. With this, every in-phase **Company Settings /
+Profile** item is resolved: Company info, branding, Team & Users, Billing,
+Automated SMS, Email Settings, account security, and application questions are
+migrated (GO); **SMS number assignment** and **Integrations** remain NO-GO.
 
 The **Sandbox Transfer Success** status screen (`/sandbox/transfer-success`) was
 migrated and verified on 2026-07-23 (completion log in section 6): it now
@@ -2885,11 +3011,14 @@ the fix belongs to a separate, security-reviewed integration-correctness project
 All contracts (SDK load, login/scopes, Graph first-page selection, callable,
 token safety, connected-state limitation) are frozen in section 6.
 
-The **`/company/profile` account-security** screen was migrated and verified on
-2026-07-24 (GO; completion log in section 6). The recommended next bounded slice
-is now the higher-risk **Company Profile — application
-questions** (switch semantics, required/hidden exclusivity, DOT protections,
-destructive actions). The **sandbox application** screen remains tied to the
+The **`/company/profile` account-security** screen and the **Company Profile —
+application questions** interface were both migrated and verified on 2026-07-24
+(GO; completion logs in section 6), which resolves every in-phase Company
+Settings / Profile item. The recommended next bounded slice is therefore a fresh
+feature area — the **Campaigns** screens (`CompanyCampaignsPage`,
+`CampaignsDashboard`, cards/results/report modal) or the **E-Docs**
+document/envelope workflows — each to be audited and scoped on its own before any
+presentation change. The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
 (the branding-upload exception), and a design-system Radio/Checkbox or
