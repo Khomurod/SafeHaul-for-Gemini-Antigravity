@@ -189,6 +189,13 @@ export function SendTemplateModal({
                                                 </Label>
                                             )}
                                             {group.useDateTriplet ? (
+                                                /* Documented temporary exception: DateTripletField is a shared
+                                                   compatibility component still on legacy local selects and raw
+                                                   gray/blue palette classes. It is explicitly out of this slice's
+                                                   scope (its date parsing/clamping is used by several features), so
+                                                   its props are passed through untouched and its migration is
+                                                   tracked as an open gap in the roadmap. Templates without a
+                                                   useDateTriplet group are unaffected. */
                                                 <DateTripletField
                                                     label=""
                                                     idPrefix={groupId}
@@ -287,20 +294,21 @@ export function SendTemplateModal({
                             <p className="py-ds-6 text-center text-ds-xs italic text-ds-content-muted">No leads found.</p>
                         ) : (
                             filteredDrivers.slice(0, 20).map(d => (
-                                <button
+                                <Button
                                     key={d.id}
-                                    type="button"
+                                    variant="ghost"
+                                    fullWidth
+                                    justify="start"
                                     onClick={() => handleQuickSelect(d)}
-                                    className="group flex w-full items-center gap-ds-3 rounded-ds-md p-ds-2 text-left transition-colors hover:bg-ds-surface focus-visible:outline-none focus-visible:shadow-ds-focus"
                                 >
                                     <span aria-hidden="true" className="rounded-ds-md border border-ds-border-subtle bg-ds-surface p-1.5 text-ds-content-secondary">
                                         <User size={14} />
                                     </span>
-                                    <span className="min-w-0 flex-1">
+                                    <span className="min-w-0 flex-1 text-left">
                                         <span className="block truncate text-ds-xs font-bold text-ds-content">{d.firstName} {d.lastName}</span>
-                                        <span className="block truncate text-ds-xs text-ds-content-secondary">{d.email || 'No email'} | {d.phone || d.phoneNumber || 'No phone'}</span>
+                                        <span className="block truncate text-ds-xs font-normal text-ds-content-secondary">{d.email || 'No email'} | {d.phone || d.phoneNumber || 'No phone'}</span>
                                     </span>
-                                </button>
+                                </Button>
                             ))
                         )}
                     </div>
