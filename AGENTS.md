@@ -62,4 +62,41 @@ UI standardization must not change Firebase rules, database structures,
 backend behavior, integrations, permissions, routes, feature flags, or
 business workflows unless the task separately justifies and approves that
 change.
+
+## Local test-runner process safety
+
+These rules exist because each of the failures below actually happened and cost
+real time. None were code defects; all were tooling mistakes.
+
+1. **Run only one Playwright suite at a time.** The Playwright config serves the
+   app on port 5000 with `reuseExistingServer`, so a second concurrent run
+   attaches to the first run's dev server instead of starting its own. When the
+   first run finishes it tears that server down underneath the second, which
+   then reports a cascade of failures that are not real. Let a suite finish
+   before starting another, and check the port is free first
+   (`curl -s -o /dev/null -w "%{http_code}" http://localhost:5000`).
+
+2. **Never use broad process-killing patterns.** `pkill -f vite` matches the
+   invoking shell's own command line — because that command line contains the
+   string `vite` — and kills the shell running it. It can also match unrelated
+   processes. Instead capture the dev server's PID or process-group ID when
+   starting it and terminate that exact process, or use a narrow pattern such as
+   `pkill -f 'node.*vite'`. Prefer the captured PID.
+
+3. **Long suites need a persistent process, redirected logs, and the real exit
+   status.** A suite that may exceed the foreground tool limit must be started as
+   a background/persistent process with its output redirected to a log file, its
+   PID retained, and its actual exit status collected. A tool timeout or an
+   externally delivered `SIGTERM` (exit `143`) is *not* a test failure — never
+   report it as one without inspecting the underlying process result and log.
+
+4. **Do not fabricate commits to work around a failing PR API.** When GitHub PR
+   creation repeatedly returns a server error (`POST /pulls` → 500), first verify
+   no pull request already exists for that head — a 500 can still have created
+   the resource. Then open it with `gh` or the GitHub web interface. Do not
+   create empty or otherwise meaningless commits merely to change the branch SHA;
+   that pollutes history and does not reliably fix anything.
+
+Also avoid editing files that are in the module graph while a Playwright suite is
+running: the dev server hot-reloads and the in-flight tests can fail spuriously.
 <!-- /safehaul-design-system -->
