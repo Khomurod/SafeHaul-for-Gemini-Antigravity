@@ -1467,8 +1467,54 @@ The reverse directions are prohibited.
       or backend/rules change.
     - Commit/PR: feature + docs commits on
       `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
-  - Remaining Campaigns work: `CampaignEditor` remains a separate slice with its
-    own audit.
+  - [x] Migrate the `CampaignEditor` shell (wizard chrome only).
+    - Complete when: the shell adopts `Input`/`Button`/`FormField` + layout
+      tokens; section navigation is keyboard-accessible with programmatic
+      selected (`aria-current="step"`) and completed states; the Campaign Name is
+      labelled; the save status and Suspense fallback are announced; the editor is
+      responsive with no document overflow; and every listener/autosave/merge/
+      guard/child-prop contract is preserved without touching `AudienceBuilder`,
+      `ContentComposer`, `LaunchPad`, backend, or rules.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/CampaignEditor.jsx`,
+      `src/features/campaigns/CampaignEditor.test.jsx`,
+      `e2e/campaign-editor.spec.cjs`, this roadmap.
+    - Verification: 12 focused tests passed (exact draft-doc listener + unsubscribe
+      on unmount; no-subscribe on missing IDs; deep filter merge preserving
+      in-memory `rawData`; no autosave on mount; the 2-second debounce with
+      `rawData` stripped from the save payload; section navigation, `aria-current`,
+      and audience/content completion rules; the exact `AudienceBuilder`/
+      `ContentComposer`/`LaunchPad` props incl. `onLaunchSuccess === onClose`;
+      the E2E-mock path skipping the listener; labelled name, announced save
+      status, Exit; the Suspense fallback; axe). Full frontend suite 104 files /
+      851 tests (2 files / 48 emulator rules tests skipped); frontend lint 0
+      errors; typecheck, production build, and `git diff --check` passed.
+      `campaign-editor.spec.cjs` passed 9 Chromium/Mobile Chrome checks with 1
+      viewport-specific skip; all other campaign specs stay green.
+    - Visual/mobile/a11y: reviewed at 1440×900 and 412×915 (tablet overflow in
+      E2E). Desktop keeps the left sidebar; mobile stacks the shell (Exit,
+      labelled name, section nav, save status) above the content with no document
+      overflow. The nav is a labelled `<nav>` of buttons with `aria-current` and
+      sr-only completed/incomplete text; the save status and Suspense fallback are
+      `role="status"`/live regions. Unit axe clean; shell-scoped real-browser axe
+      found no serious/critical violations.
+    - Notes: shell/chrome only. Preserved verbatim: props (`companyId`,
+      `campaignId`, `onClose`); the `audience`/`content`/`launch` `SECTIONS`;
+      the initial `campaignData`; the E2E-mock behavior; the `onSnapshot`
+      `campaign_drafts/{campaignId}` listener + unsub; the deep filter merge and
+      in-memory `rawData` preservation; the `isDirty` + `isInitializedRef`
+      init guards; the exact 2-second autosave debounce; the `rawData` strip
+      before `saveDraft`; `isSectionComplete`; all lazy child props;
+      `onLaunchSuccess={onClose}`; and the Saving/Auto-Saved status (the
+      `useCampaignDraft` hook returns `isSaving: false`, so it reads "Auto-Saved").
+      `AudienceBuilder`, `ContentComposer`, and `LaunchPad` were intentionally
+      not touched.
+    - Commit/PR: feature + docs commits on
+      `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
+  - Remaining Campaigns work: the three lazy editor modules — `AudienceBuilder`,
+    `ContentComposer`, and `LaunchPad` — remain legacy and each need their own
+    audited slice. Campaigns is **not** complete until they meet the migration
+    standard.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1563,7 +1609,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CampaignCard`, the `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, and the `CampaignDetails` detail view migrated to approved layout/components; only `CampaignEditor` remains local | Presentation-only; the dashboard keeps the paywall, both listeners (`campaign_drafts`, `bulk_sessions`) + cleanup, stats math, exact new-draft write, `cancelBulkSession`, confirmations, delete logic, tab values, and wiring unchanged; `CampaignDetails` keeps `effectiveCompanyId`, tenant/company guards, and the exact pause/resume/cancel/retry callable payloads | Status presentation, action-visibility rules, exact callables, progress/recipient counts, menu/open behavior | Medium | High | In progress — `CampaignCard`, dashboard shell, results table, report modal, and `CampaignDetails` completed 2026-07-24; `CampaignEditor` remains | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
+| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, and the `CampaignEditor` shell migrated to approved layout/components; the three lazy editor modules (`AudienceBuilder`, `ContentComposer`, `LaunchPad`) remain local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, and editor shell completed 2026-07-24; the three lazy editor modules remain | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3291,11 +3337,21 @@ audience/sent/failed calculations, the failure reason, the `CampaignResultsTable
 props, all four action-visibility rules, and the exact `pauseBulkSession`/
 `resumeBulkSession`/`cancelBulkSession`/`retryFailedAttempts` payloads,
 confirmations, toasts, loading flags, and `onClose` paths are unchanged
-(`CampaignEditor` and all backend/rules untouched). With this, the only remaining
-Campaigns piece is **`CampaignEditor`**; the recommended next bounded slice is
-therefore `CampaignEditor` or the **E-Docs** document/envelope workflows — each
-audited and scoped on its own before any presentation change.
-The **sandbox application** screen remains tied to the The **sandbox application** screen remains tied to the
+(`CampaignEditor` and all backend/rules untouched). The **`CampaignEditor` shell**
+(wizard chrome only) was then migrated and verified on 2026-07-24 (GO; completion
+log in the Phase 13 Campaigns item): the shell now uses `Input`/`Button`/
+`FormField` + layout tokens with a keyboard-accessible section nav
+(`aria-current="step"` + sr-only completed state), a labelled Campaign Name, and
+announced save/Suspense regions — while the draft `onSnapshot` listener + unsub,
+the deep filter merge with in-memory `rawData` preservation, the `isDirty`/init
+guards, the exact 2-second autosave debounce, the `rawData` strip before
+`saveDraft`, `isSectionComplete`, all lazy child props, and `onLaunchSuccess=
+{onClose}` are unchanged. Campaigns is **not** complete: the three lazy editor
+modules (`AudienceBuilder`, `ContentComposer`, `LaunchPad`) remain legacy, so the
+recommended next bounded slices are those modules (each on its own) or the
+**E-Docs** document/envelope workflows — each audited and scoped before any
+presentation change.
+The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
 (the branding-upload exception), and a design-system Radio/Checkbox or
