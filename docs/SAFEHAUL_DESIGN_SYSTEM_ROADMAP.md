@@ -1562,9 +1562,71 @@ The reverse directions are prohibited.
       limit, validation, or sending rule changed.
     - Commit/PR: feature + docs commits on
       `claude/safehaul-design-system-g1vr3a`; PR into `main`.
-  - Remaining Campaigns work: two lazy editor modules — `AudienceBuilder` and
-    `LaunchPad` — remain legacy and each need their own audited slice. Campaigns
-    is **not** complete until they meet the migration standard.
+  - [x] Migrate the audience builder (`AudienceBuilder`) — the editor's Audience
+    section (source tabs, CRM filters, list import, recipient preview header).
+    - Complete when: the builder consumes approved primitives (`Card`,
+      `FormField`, `Select`, `Input`, `Button`); both tab groups are accessible
+      and expose selected state; every filter and the file/sheet inputs are
+      labelled; status stays a multi-select with a non-colour-only selected
+      state; the count loading is announced and exclusion counts are readable;
+      the upload surface uses one accessible file-input trigger with no nested
+      interactive controls; the virtual list stays functional, internally
+      scrollable and mobile-reachable; unsupported 10 px text is removed; and no
+      targeting, counting, import parsing, exclusion rule, or saved filter shape
+      changes.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/AudienceBuilder.jsx`,
+      `src/features/campaigns/components/AudienceBuilder.test.jsx`,
+      `e2e/campaign-audience-builder.spec.cjs`, this roadmap.
+    - Verification: 22 focused tests passed (initial defaults + upload-tab
+      restoration from `filters.leadType`; campaign-scope exclusion reset; upload
+      fingerprint reset vs. preserved skips; CRM↔upload transitions with
+      `rawData` added and stripped; the exact source/owner/exclusion option
+      values; CRM `off` vs upload `7` defaults; labelled filter updates; status
+      multi-select with `aria-pressed`; manual exclusions and
+      `finalCount = matchCount − manualExcluded`; the exact file `accept` list +
+      `handleFileChange`; sheet URL/import wiring and the processing state; the
+      frozen `VirtualLeadList` props in both modes; announced count; arrow-key
+      tab operation; axe in both modes). Full frontend suite 105 files / 887
+      tests passed (2 files / 48 emulator rules tests skipped); migrated file
+      coverage 93% lines / 84% branches; lint 0 errors; typecheck, production
+      build, and `git diff --check` passed. `campaign-audience-builder.spec.cjs`
+      passed 11 Chromium/Mobile Chrome checks (3 viewport-specific skips) and the
+      29-check campaign regression sweep stayed green.
+    - Visual/mobile/a11y: no document-level horizontal overflow at 1440/1024/412
+      (measured in-browser). Source and import tabs are WAI-ARIA tablists with
+      roving `tabindex`, Arrow/Home/End activation, `aria-selected`, and a visible
+      focus ring; filters use `FormField` label association; status pills are
+      `aria-pressed` buttons with a check icon so selection is never colour-only;
+      a `role="status"` region announces the recipient count and its loading
+      state; the exclusion chips were lightened to readable tones; the former
+      10 px hint text now uses the supported `--ds-*` xs size via `FieldMessage`.
+      Heading order was corrected (the upload panel's `h4` became `h3`) after
+      axe flagged it. Real-browser axe scoped to the builder found no
+      serious/critical violations.
+    - Notes: presentation only — props (`companyId`, `filters`, `onChange`,
+      `campaignScopeKey`); the initial tab selection and filter defaults; the
+      `useCompanyTeam`/`useCampaignTargeting`/`useBulkImport` calls; the upload
+      fingerprint helper; the campaign-scope and fingerprint exclusion resets;
+      the CRM/upload effects and `rawData` handling; `onChange(localFilters,
+      matchCount)` parent sync; manual exclusion toggling; `finalCount`; all
+      filter and option values; the file `accept` list; the sheet URL/import
+      behavior; every `VirtualLeadList` prop; and the exact
+      `onChange(localFilters, finalCount)` Confirm Audience call are unchanged.
+      **Documented temporary exception:** the recipient-preview panel keeps its
+      dark surface (literal slate colours, not `--ds-*`) because the unmigrated
+      `VirtualLeadList` — explicitly out of scope for this slice — renders its own
+      hard-coded dark list chrome; the dark treatment is removed when that list is
+      migrated. `VirtualLeadList` also still carries its own legacy 10 px status
+      pills and a low-contrast "Scanning Database..." label (axe: `color-contrast`
+      4.23:1), so the builder's scoped axe scan excludes it. Both are tracked as
+      the `VirtualLeadList` slice below.
+    - Commit/PR: feature + docs commits on
+      `claude/safehaul-design-system-g1vr3a`; PR into `main`.
+  - Remaining Campaigns work: the `LaunchPad` editor module and the
+    `VirtualLeadList` recipient preview (its dark chrome, 10 px status pills, and
+    low-contrast loading label) remain legacy and each need their own audited
+    slice. Campaigns is **not** complete until they meet the migration standard.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1659,7 +1721,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, the `CampaignEditor` shell, and the `ContentComposer` migrated to approved layout/components; the two remaining lazy editor modules (`AudienceBuilder`, `LaunchPad`) remain local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread, method/subject/variable-insertion (caret/selection/spaces/rAF/fallback), char count, and `DeviceMockup` preview | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, editor shell, and content composer completed 2026-07-24; `AudienceBuilder` + `LaunchPad` remain | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe (no serious/critical or contrast), overflow, git diff --check passed |
+| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, the `CampaignEditor` shell, the `ContentComposer`, and the `AudienceBuilder` migrated to approved layout/components; `LaunchPad` and the `VirtualLeadList` preview remain local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread, variable insertion, char count, and `DeviceMockup` preview; `AudienceBuilder` keeps the targeting/import hooks, upload fingerprint + scope exclusion resets, `rawData` handling, `onChange` sync, `finalCount`, filter/option values, and every `VirtualLeadList` prop | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, editor shell, content composer, and audience builder completed 2026-07-24; `LaunchPad` + `VirtualLeadList` remain | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3409,10 +3471,27 @@ with surrounding spaces, the subject-vs-message targeting, the
 `requestAnimationFrame` focus/caret restore, the append fallback, the
 placeholders, the character count, and the `DeviceMockup` `type`/preview content
 are unchanged (`DeviceMockup` not redesigned; no message limit, validation, or
-sending rule changed). Campaigns is **not** complete: two lazy editor modules
-(`AudienceBuilder`, `LaunchPad`) remain legacy, so the recommended next bounded
-slices are those modules (each on its own) or the **E-Docs** document/envelope
-workflows — each audited and scoped before any presentation change.
+sending rule changed). The **audience builder** (`AudienceBuilder`) was then
+migrated and verified on 2026-07-24 (GO; completion log in the Phase 13 Campaigns
+item): the editor's Audience section now uses `Card`/`FormField`/`Select`/
+`Input`/`Button` with accessible source and import tablists (roving tabindex,
+`aria-selected`, keyboard activation), labelled filters and file/sheet inputs,
+`aria-pressed` status pills carrying a check icon so selection is never
+colour-only, an announced recipient count, readable exclusion chips, and a single
+labelled file-input trigger with no nested interactive controls — while the
+targeting/import hooks, the upload fingerprint and campaign-scope exclusion
+resets, the CRM/upload `rawData` handling, `onChange(localFilters, matchCount)`
+parent sync, manual exclusion toggling, `finalCount`, every filter/option value
+(including the CRM `off` vs upload `7` exclusion defaults), the file `accept`
+list, the sheet import behavior, every `VirtualLeadList` prop, and the exact
+`onChange(localFilters, finalCount)` Confirm Audience call are unchanged. Its
+recipient-preview panel keeps a dark surface as a documented temporary exception,
+because the unmigrated `VirtualLeadList` renders its own hard-coded dark chrome.
+Campaigns is **not** complete: the `LaunchPad` module and the `VirtualLeadList`
+preview (dark chrome, 10 px status pills, low-contrast loading label) remain
+legacy, so the recommended next bounded slices are those (each on its own) or the
+**E-Docs** document/envelope workflows — each audited and scoped before any
+presentation change.
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive

@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import { useCampaignTargeting } from '../hooks/useCampaignTargeting';
 import { useCompanyTeam } from '@/shared/hooks/useCompanyTeam';
 import { useData } from '@/context/DataContext';
 import { APPLICATION_STATUSES, LAST_CALL_RESULTS } from '../constants/campaignConstants';
-import { Filter, Users, RefreshCw, CheckCircle2, UploadCloud, FileSpreadsheet } from 'lucide-react';
+import { Filter, Users, RefreshCw, CheckCircle2, UploadCloud, FileSpreadsheet, Check } from 'lucide-react';
 import { useBulkImport } from '@/shared/hooks/useBulkImport';
 import VirtualLeadList from './VirtualLeadList';
+import { Button, Card, FormField, Input, Select } from '@/design-system/components';
 
 const getUploadFingerprint = (rows) => {
     if (!Array.isArray(rows) || rows.length === 0) return 'empty';
@@ -17,6 +18,47 @@ const getUploadFingerprint = (rows) => {
     ].join('|')).join('||');
     return `${rows.length}:${sample}`;
 };
+
+// Feature-owned tab models. The design system has no tab primitive yet, so the
+// audience builder renders accessible WAI-ARIA tablists here. The values are the
+// frozen state contract ('crm' | 'upload' for the source, and the saved
+// `_importTab` filter key); labels/icons are presentation only.
+const SOURCE_TABS = [
+    { value: 'crm', label: 'CRM Filters', icon: null },
+    { value: 'upload', label: 'Upload List', icon: FileSpreadsheet },
+];
+
+const IMPORT_TABS = [
+    { value: 'file', label: 'File Upload (CSV/XLSX)' },
+    { value: 'sheet', label: 'Google Sheets' },
+];
+
+// Shared option list for both the CRM and upload "exclude previously messaged"
+// selects. Values are the frozen filter contract; only the defaults differ.
+const EXCLUDE_RECENT_OPTIONS = [
+    { value: 'off', label: 'No Exclusion' },
+    { value: '7', label: 'Last 7 Days' },
+    { value: '30', label: 'Last 30 Days' },
+    { value: 'forever', label: 'All Time (Never Re-send)' },
+];
+
+/**
+ * Moves focus (and selection) across a roving-tabindex tablist. Presentation
+ * only — the selected values themselves are unchanged.
+ */
+function moveTabFocus(event, tabs, index, container, idPrefix, onSelect) {
+    let nextIndex = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = tabs.length - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    onSelect(nextTab.value);
+    container.current?.querySelector(`#${idPrefix}-${nextTab.value}`)?.focus();
+}
 
 export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey = 'default' }) {
     const { currentUser } = useData();
@@ -48,6 +90,14 @@ export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey
     } = useBulkImport();
     const lastUploadFingerprintRef = useRef('empty');
     const lastCampaignScopeRef = useRef(campaignScopeKey);
+
+    const sourceTablistRef = useRef(null);
+    const importTablistRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const rawId = useId().replace(/:/g, '');
+    const statusLabelId = `audience-status-label-${rawId}`;
+    const fileInputId = `audience-file-input-${rawId}`;
+    const fileHelpId = `audience-file-help-${rawId}`;
 
     useEffect(() => {
         if (lastCampaignScopeRef.current === campaignScopeKey) return;
@@ -109,84 +159,133 @@ export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey
     // Ensure final count doesn't go below zero
     const finalCount = Math.max(0, displayCount - manualExcludedCount);
 
+    const activeImportTab = localFilters._importTab === 'sheet' ? 'sheet' : 'file';
+
+    const excludeRecentField = (defaultValue) => (
+        <FormField
+            label="Exclude Previously Messaged"
+            description="Skip numbers that already received a message."
+        >
+            <Select
+                value={localFilters.excludeRecentDays || defaultValue}
+                onChange={(e) => handleFilterChange('excludeRecentDays', e.target.value)}
+            >
+                {EXCLUDE_RECENT_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+            </Select>
+        </FormField>
+    );
+
     return (
-        <div className="max-w-6xl mx-auto">
+        <div className="mx-auto max-w-6xl">
             {/* Header */}
-            <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="mb-ds-8 flex flex-col gap-ds-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-900 mb-2">Target Audience</h2>
-                    <p className="text-slate-500">Define criteria or upload a custom list.</p>
+                    <h2 className="mb-ds-2 text-ds-heading-lg font-bold text-ds-content">Target Audience</h2>
+                    <p className="text-ds-body text-ds-content-secondary">Define criteria or upload a custom list.</p>
                 </div>
-                <div className="flex bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
-                    <button
-                        onClick={() => setActiveTab('crm')}
-                        className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'crm' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        CRM Filters
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('upload')}
-                        className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'upload' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        <FileSpreadsheet size={16} /> Upload List
-                    </button>
+                <div
+                    ref={sourceTablistRef}
+                    role="tablist"
+                    aria-label="Audience source"
+                    className="inline-flex flex-wrap gap-ds-1 self-start rounded-ds-lg border border-ds-border-subtle bg-ds-surface p-ds-1"
+                >
+                    {SOURCE_TABS.map((tab, index) => {
+                        const selected = activeTab === tab.value;
+                        const Icon = tab.icon;
+                        return (
+                            <button
+                                key={tab.value}
+                                type="button"
+                                role="tab"
+                                id={`audience-source-tab-${tab.value}`}
+                                aria-selected={selected}
+                                aria-controls="audience-source-panel"
+                                tabIndex={selected ? 0 : -1}
+                                onClick={() => setActiveTab(tab.value)}
+                                onKeyDown={(event) => moveTabFocus(
+                                    event, SOURCE_TABS, index, sourceTablistRef, 'audience-source-tab', setActiveTab,
+                                )}
+                                className={`flex items-center gap-ds-2 rounded-ds-md px-ds-4 py-ds-2 text-ds-sm font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                    selected
+                                        ? 'bg-ds-action-primary text-ds-content-inverse shadow-ds-sm'
+                                        : 'text-ds-content-muted hover:bg-ds-surface-subtle hover:text-ds-content'
+                                }`}
+                            >
+                                {Icon && <Icon size={16} aria-hidden="true" />}
+                                <span>{tab.label}</span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 gap-ds-8 lg:grid-cols-12">
 
                 {/* LEFT COLUMN: FILTERS */}
-                <div className="lg:col-span-4 space-y-6">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-full">
+                <div className="lg:col-span-4">
+                    <Card
+                        id="audience-source-panel"
+                        role="tabpanel"
+                        aria-labelledby={`audience-source-tab-${activeTab}`}
+                        className="h-full"
+                    >
                         {activeTab === 'crm' ? (
                             <>
-                                <h3 className="flex items-center gap-2 font-bold text-slate-900 mb-6 pb-4 border-b border-slate-100">
-                                    <Filter size={18} className="text-blue-600" /> Filter Criteria
+                                <h3 className="mb-ds-6 flex items-center gap-ds-2 border-b border-ds-border-subtle pb-ds-4 font-bold text-ds-content">
+                                    <Filter size={18} className="text-ds-action-primary" aria-hidden="true" /> Filter Criteria
                                 </h3>
-                                <div className="space-y-6">
+                                <div className="flex flex-col gap-ds-6">
                                     {/* Source */}
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Source</label>
-                                        <select
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    <FormField label="Source">
+                                        <Select
                                             value={localFilters.leadType || 'applications'}
                                             onChange={(e) => handleFilterChange('leadType', e.target.value)}
                                         >
                                             <option value="applications">Applicants</option>
                                             <option value="leads">My Leads</option>
-                                        </select>
-                                    </div>
+                                        </Select>
+                                    </FormField>
 
                                     {/* Recruiter */}
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Owner</label>
-                                        <select
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    <FormField label="Owner">
+                                        <Select
                                             value={localFilters.recruiterId || 'all'}
                                             onChange={(e) => handleFilterChange('recruiterId', e.target.value)}
                                         >
                                             <option value="all">All Team Members</option>
                                             <option value="my_leads">Current User Only</option>
                                             {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                        </select>
-                                    </div>
+                                        </Select>
+                                    </FormField>
 
                                     {/* Status Pills */}
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Status</label>
-                                        <div className="flex flex-wrap gap-2">
+                                    <div role="group" aria-labelledby={statusLabelId}>
+                                        <span id={statusLabelId} className="mb-ds-2 block text-ds-xs font-bold uppercase text-ds-content-secondary">
+                                            Status
+                                        </span>
+                                        <div className="flex flex-wrap gap-ds-2">
                                             {APPLICATION_STATUSES.map((status) => {
                                                 const isActive = localFilters.status?.includes(status.id);
                                                 return (
                                                     <button
                                                         key={status.id}
+                                                        type="button"
+                                                        aria-pressed={isActive}
                                                         onClick={() => {
                                                             const current = localFilters.status || [];
                                                             const newVal = isActive ? current.filter(s => s !== status.id) : [...current, status.id];
                                                             handleFilterChange('status', newVal);
                                                         }}
-                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${isActive ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                                                        className={`flex items-center gap-ds-1 rounded-ds-md border px-ds-3 py-ds-1 text-ds-xs font-bold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                                            isActive
+                                                                ? 'border-ds-action-primary bg-ds-action-primary text-ds-content-inverse shadow-ds-xs'
+                                                                : 'border-ds-border bg-ds-surface text-ds-content-secondary hover:border-ds-border hover:bg-ds-surface-subtle'
+                                                        }`}
                                                     >
+                                                        {/* Icon + pressed state so selection is never colour-only. */}
+                                                        {isActive && <Check size={12} aria-hidden="true" />}
                                                         {status.label}
                                                     </button>
                                                 );
@@ -195,147 +294,173 @@ export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey
                                     </div>
 
                                     {/* Exclude Previously Messaged */}
-                                    <div className="pt-4 border-t border-slate-100">
-                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Exclude Previously Messaged</label>
-                                        <select
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                            value={localFilters.excludeRecentDays || 'off'}
-                                            onChange={(e) => handleFilterChange('excludeRecentDays', e.target.value)}
-                                        >
-                                            <option value="off">No Exclusion</option>
-                                            <option value="7">Last 7 Days</option>
-                                            <option value="30">Last 30 Days</option>
-                                            <option value="forever">All Time (Never Re-send)</option>
-                                        </select>
-                                        <p className="text-[10px] text-slate-400 mt-1">Skip numbers that already received a message.</p>
+                                    <div className="border-t border-ds-border-subtle pt-ds-4">
+                                        {excludeRecentField('off')}
                                     </div>
 
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Limit Volume</label>
-                                        <input
+                                    <FormField label="Limit Volume" description="Leave empty to message all matches.">
+                                        <Input
                                             type="number"
                                             placeholder="No Limit"
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                                             value={localFilters.campaignLimit || ''}
                                             onChange={(e) => handleFilterChange('campaignLimit', e.target.value)}
                                         />
-                                        <p className="text-[10px] text-slate-400 mt-1">Leave empty to message all matches.</p>
-                                    </div>
+                                    </FormField>
                                 </div>
                             </>
                         ) : (
                             /* UPLOAD MODE UI (Simplified for brevity, logic maintained) */
-                            <div className="text-center py-8">
-                                <div className="max-w-md mx-auto">
-                                    <div className="flex gap-2 justify-center mb-6">
-                                        <button
-                                            onClick={() => setLocalFilters(p => ({ ...p, _importTab: 'file' }))}
-                                            className={`px-4 py-2 rounded-lg text-sm font-bold ${(!localFilters._importTab || localFilters._importTab === 'file') ? 'bg-blue-50 text-blue-700' : 'text-slate-500'}`}
-                                        >
-                                            File Upload (CSV/XLSX)
-                                        </button>
-                                        <button
-                                            onClick={() => setLocalFilters(p => ({ ...p, _importTab: 'sheet' }))}
-                                            className={`px-4 py-2 rounded-lg text-sm font-bold ${localFilters._importTab === 'sheet' ? 'bg-green-50 text-green-700' : 'text-slate-500'}`}
-                                        >
-                                            Google Sheets
-                                        </button>
-                                    </div>
+                            <div className="flex flex-col gap-ds-6">
+                                <div
+                                    ref={importTablistRef}
+                                    role="tablist"
+                                    aria-label="Import method"
+                                    className="flex flex-wrap justify-center gap-ds-2"
+                                >
+                                    {IMPORT_TABS.map((tab, index) => {
+                                        const selected = activeImportTab === tab.value;
+                                        return (
+                                            <button
+                                                key={tab.value}
+                                                type="button"
+                                                role="tab"
+                                                id={`audience-import-tab-${tab.value}`}
+                                                aria-selected={selected}
+                                                aria-controls="audience-import-panel"
+                                                tabIndex={selected ? 0 : -1}
+                                                onClick={() => setLocalFilters(p => ({ ...p, _importTab: tab.value }))}
+                                                onKeyDown={(event) => moveTabFocus(
+                                                    event, IMPORT_TABS, index, importTablistRef, 'audience-import-tab',
+                                                    (value) => setLocalFilters(p => ({ ...p, _importTab: value })),
+                                                )}
+                                                className={`rounded-ds-md px-ds-4 py-ds-2 text-ds-sm font-bold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                                    selected
+                                                        ? 'bg-ds-status-info-bg text-ds-status-info-fg'
+                                                        : 'text-ds-content-muted hover:bg-ds-surface-subtle hover:text-ds-content'
+                                                }`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
 
-                                    {(!localFilters._importTab || localFilters._importTab === 'file') ? (
-                                        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 hover:bg-slate-50 transition-colors relative">
-                                            <UploadCloud className="mx-auto text-blue-300 mb-4" size={48} />
-                                            <h3 className="font-bold text-slate-900 mb-1">Click to Upload</h3>
-                                            <p className="text-xs text-slate-400 mb-4">Support: .csv, .xlsx, .xls</p>
+                                <div
+                                    id="audience-import-panel"
+                                    role="tabpanel"
+                                    aria-labelledby={`audience-import-tab-${activeImportTab}`}
+                                >
+                                    {activeImportTab === 'file' ? (
+                                        <div className="flex flex-col items-center gap-ds-3 rounded-ds-lg border-2 border-dashed border-ds-border p-ds-6 text-center">
+                                            <UploadCloud className="text-ds-action-primary" size={40} aria-hidden="true" />
+                                            <h3 className="font-bold text-ds-content">Upload a recipient list</h3>
+                                            {/* The design system has no approved file-input primitive yet, so this
+                                                is a documented feature-level composition: a single visually hidden
+                                                but labelled native input triggered by the approved Button — no
+                                                nested interactive controls, and the accept list is unchanged. */}
                                             <input
+                                                ref={fileInputRef}
+                                                id={fileInputId}
                                                 type="file"
                                                 onChange={handleFileChange}
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                className="ds-visually-hidden"
+                                                tabIndex={-1}
+                                                aria-label="Upload recipient list file"
+                                                aria-describedby={fileHelpId}
                                                 accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
                                             />
+                                            <Button
+                                                variant="secondary"
+                                                aria-describedby={fileHelpId}
+                                                onClick={() => fileInputRef.current?.click()}
+                                            >
+                                                Choose file
+                                            </Button>
+                                            <p id={fileHelpId} className="text-ds-xs text-ds-content-secondary">
+                                                Support: .csv, .xlsx, .xls
+                                            </p>
                                         </div>
                                     ) : (
-                                        <div className="border border-slate-200 rounded-2xl p-8">
-                                            <FileSpreadsheet className="mx-auto text-green-500 mb-4" size={48} />
-                                            <h3 className="font-bold text-slate-900 mb-4">Paste Sheet URL</h3>
-                                            <div className="flex gap-2">
-                                                <input
+                                        <div className="flex flex-col gap-ds-3 rounded-ds-lg border border-ds-border-subtle p-ds-6">
+                                            <FileSpreadsheet className="mx-auto text-ds-status-success-fg" size={40} aria-hidden="true" />
+                                            <h3 className="text-center font-bold text-ds-content">Paste Sheet URL</h3>
+                                            <FormField
+                                                label="Google Sheet URL"
+                                                description='Make sure the sheet is accessible to "Anyone with the link" or public.'
+                                            >
+                                                <Input
                                                     type="text"
                                                     placeholder="https://docs.google.com/spreadsheets/d/..."
-                                                    className="flex-1 p-2 border border-slate-200 rounded-lg text-sm"
                                                     value={sheetUrl}
                                                     onChange={(e) => setSheetUrl(e.target.value)}
                                                 />
-                                                <button
-                                                    onClick={handleSheetImport}
-                                                    disabled={processingSheet}
-                                                    className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm disabled:opacity-50"
-                                                >
-                                                    {processingSheet ? 'Loading...' : 'Import'}
-                                                </button>
-                                            </div>
-                                            <p className="text-[10px] text-slate-400 mt-2 text-left">
-                                                Make sure the sheet is accessible to "Anyone with the link" or public.
-                                            </p>
+                                            </FormField>
+                                            <Button
+                                                variant="primary"
+                                                onClick={handleSheetImport}
+                                                loading={processingSheet}
+                                            >
+                                                {processingSheet ? 'Loading...' : 'Import'}
+                                            </Button>
                                         </div>
                                     )}
+                                </div>
 
-                                    {/* Exclude Previously Messaged for Uploads */}
-                                    <div className="pt-4 mt-4 border-t border-slate-100">
-                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Exclude Previously Messaged</label>
-                                        <select
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                            value={localFilters.excludeRecentDays || '7'}
-                                            onChange={(e) => handleFilterChange('excludeRecentDays', e.target.value)}
-                                        >
-                                            <option value="off">No Exclusion</option>
-                                            <option value="7">Last 7 Days</option>
-                                            <option value="30">Last 30 Days</option>
-                                            <option value="forever">All Time (Never Re-send)</option>
-                                        </select>
-                                        <p className="text-[10px] text-slate-400 mt-1">Skip numbers that already received a message.</p>
-                                    </div>
+                                {/* Exclude Previously Messaged for Uploads */}
+                                <div className="border-t border-ds-border-subtle pt-ds-4">
+                                    {excludeRecentField('7')}
                                 </div>
                             </div>
 
                         )}
-                    </div>
+                    </Card>
                 </div>
 
                 {/* RIGHT COLUMN: PREVIEW */}
                 <div className="lg:col-span-8">
-                    <div className="bg-slate-900 text-white p-1 rounded-2xl shadow-xl border border-slate-800 overflow-hidden flex flex-col h-[650px]">
+                    {/* Temporary exception: this preview surface stays dark because the
+                        unmigrated `VirtualLeadList` (out of scope for this slice) renders
+                        its own hard-coded dark list chrome. The dark treatment is removed
+                        when that list is migrated — tracked in the roadmap. */}
+                    <div className="flex h-[650px] flex-col overflow-hidden rounded-ds-xl border border-slate-800 bg-slate-900 p-1 text-white shadow-ds-lg">
                         {/* Preview Header */}
-                        <div className="p-6 bg-slate-900 border-b border-slate-800 z-10">
-                            <div className="flex justify-between items-end">
-                                <div>
-                                    <div className="text-sm font-bold text-blue-400 mb-1 tracking-wide uppercase">
+                        <div className="z-10 border-b border-slate-800 bg-slate-900 p-ds-6">
+                            <div className="flex items-end justify-between gap-ds-4">
+                                <div className="min-w-0">
+                                    <div className="mb-ds-1 text-ds-sm font-bold uppercase tracking-wide text-blue-300">
                                         {isUploadMode ? 'Import Manifest' : 'Live Database Query'}
                                     </div>
-                                    <div className="text-4xl font-black tracking-tight text-white flex items-baseline gap-2">
-                                        {finalCount}
-                                        <span className="text-lg font-medium text-slate-500">recipients</span>
-                                    </div>
+                                    <p className="flex items-baseline gap-ds-2">
+                                        <span className="text-ds-heading-xl font-bold tracking-tight text-white">{finalCount}</span>
+                                        <span className="text-ds-body font-medium text-slate-300">recipients</span>
+                                    </p>
                                 </div>
-                                {isCountLoading && <RefreshCw className="animate-spin text-blue-500" />}
+                                {isCountLoading && <RefreshCw className="animate-spin text-blue-300" aria-hidden="true" />}
                             </div>
 
-                            <div className="mt-2 flex flex-wrap gap-2">
+                            {/* Announce the recipient count and its loading state. */}
+                            <p role="status" className="ds-visually-hidden">
+                                {isCountLoading
+                                    ? 'Updating recipient count…'
+                                    : `${finalCount} recipients selected.`}
+                            </p>
+
+                            <div className="mt-ds-2 flex flex-wrap gap-ds-2">
                                 {manualExcludedCount > 0 && (
-                                    <div className="text-xs font-medium text-red-400 bg-red-500/10 inline-block px-2 py-1 rounded">
+                                    <span className="inline-block rounded-ds-sm bg-red-500/20 px-ds-2 py-ds-1 text-ds-xs font-medium text-red-200">
                                         {manualExcludedCount} manually excluded
-                                    </div>
+                                    </span>
                                 )}
                                 {phoneExcludedCount > 0 && (
-                                    <div className="text-xs font-medium text-amber-400 bg-amber-500/10 inline-block px-2 py-1 rounded">
+                                    <span className="inline-block rounded-ds-sm bg-amber-500/20 px-ds-2 py-ds-1 text-ds-xs font-medium text-amber-100">
                                         {phoneExcludedCount} already messaged
-                                    </div>
+                                    </span>
                                 )}
                             </div>
                         </div>
 
                         {/* VIRTUAL LIST AREA */}
-                        <div className="flex-1 bg-black/20 min-h-0 relative">
+                        <div className="relative min-h-0 flex-1 bg-black/20" data-testid="audience-preview-list">
                             {/* Smart Infinite List (Handles both CRM and Import) */}
                             <VirtualLeadList
                                 companyId={companyId}
@@ -348,14 +473,16 @@ export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey
                         </div>
 
                         {/* Footer Action */}
-                        <div className="p-4 bg-slate-900 border-t border-slate-800">
-                            <button
-                                className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-3"
+                        <div className="border-t border-slate-800 bg-slate-900 p-ds-4">
+                            <Button
+                                variant="primary"
+                                size="lg"
+                                fullWidth
                                 onClick={() => onChange(localFilters, finalCount)}
                             >
-                                <CheckCircle2 size={20} />
+                                <CheckCircle2 size={20} aria-hidden="true" />
                                 Confirm Audience ({finalCount})
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </div>
