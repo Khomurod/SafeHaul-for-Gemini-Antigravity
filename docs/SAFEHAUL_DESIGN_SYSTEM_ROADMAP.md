@@ -1274,9 +1274,54 @@ The reverse directions are prohibited.
       findings are tracked for a later dashboard slice.
     - Commit/PR: feature + docs commits on
       `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
-  - Remaining Campaigns work: the dashboard shell/stats/tabs, `CampaignEditor`,
-    `CampaignDetails`, `CampaignResultsTable`, and `DetailedReportModal` each
-    remain separate slices with their own audits.
+  - [x] Migrate the campaigns dashboard shell (`CampaignsDashboard`) — header,
+    Create action, stat cards, tabs, loading/empty states, card grid.
+    - Complete when: the shell consumes approved layout/components
+      (`PageContainer`/`PageHeader`/`Section`/`ResponsiveGrid`, `Button`,
+      `MetricCard`); the former 10 px stat labels and their contrast are fixed;
+      the Drafts/Past Sequences tabs are an accessible tablist (programmatic
+      selection + keyboard); loading is announced; empty states carry a clear
+      heading and action; and no listeners, callables, calculations, tab values,
+      `CampaignCard` props, or report-modal behavior change.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/CampaignsDashboard.jsx`,
+      `src/features/campaigns/CampaignsDashboard.test.jsx`,
+      `e2e/campaigns-dashboard.spec.cjs`, `e2e/campaign-card.spec.cjs`
+      (tab selector updated to `role="tab"`), this roadmap.
+    - Verification: 16 focused dashboard tests passed (paywall + no-listeners,
+      exact drafts/sessions listeners + unmount cleanup, live/outreach stats,
+      accessible header/tablist/action, tab switch + arrow-key navigation, exact
+      new-draft write + editor open, announced loading, per-tab empty states,
+      frozen `CampaignCard` props, container axe). Full frontend suite 102 files
+      / 790 tests passed (2 files / 48 emulator rules tests skipped); migrated
+      file coverage 80% lines / 80% branches (uncovered lines are the frozen
+      cancel/delete error branches and e2e-seed paths); frontend lint 0 errors;
+      typecheck, production build, and `git diff --check` passed. Playwright
+      passed 20 Chromium/Mobile Chrome checks across
+      `campaigns-dashboard`/`campaign-card`/`campaign-launch-and-control` (6
+      intentional viewport-specific skips).
+    - Visual/mobile/a11y: reviewed at 1440×900, 1024×900, and 412×915 for both
+      Drafts and Past Sequences tabs. No document-level horizontal overflow; the
+      header stacks and the primary action goes full-width on mobile; stat cards
+      collapse to one column. Stat labels now use the supported `--ds-*` xs size
+      with `content-secondary` color (10 px + low-contrast defect fixed). The
+      tablist exposes `role="tab"`/`aria-selected`, roving `tabindex`, and
+      Arrow/Home/End activation with a visible focus ring; loading is a
+      `role="status"` region. Shell-scoped real-browser axe found no serious or
+      critical and no color-contrast violations.
+    - Notes: presentation only — the paywall (`campaignsEnabled !== false`), both
+      Firestore listeners (`campaign_drafts`, `bulk_sessions`) and their unsubs,
+      the E2E mock seeds, session→card mapping, live/outreach calculations, the
+      exact new-draft `setDoc` payload/path, `cancelBulkSession`, the
+      `window.confirm` messages, delete logic, the `'drafts'`/`'history'` tab
+      values, `CampaignCard` props, and `DetailedReportModal` wiring are all
+      unchanged. No approved DS tab primitive exists yet, so the tablist is a
+      documented feature-level composition following the WAI-ARIA tabs pattern.
+    - Commit/PR: feature + docs commits on
+      `claude/safehaul-design-system-g1vr3a`; PR into `main`.
+  - Remaining Campaigns work: `CampaignEditor`, `CampaignDetails`,
+    `CampaignResultsTable`, and `DetailedReportModal` each remain separate slices
+    with their own audits.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1371,7 +1416,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CampaignCard` migrated to `Card`/`Badge`/`IconButton` with a feature-mapped status tone/label, an accessible options popover, and a keyboard-openable Details control; `CompanyCampaignsPage`/`CampaignsDashboard` shell, editor, details, results table, and report modal remain local | Card is presentation-only; `CampaignsDashboard` keeps both listeners (`campaign_drafts`, `bulk_sessions`), `cancelBulkSession`, confirmations, and delete logic unchanged | Status presentation, Cancel-vs-Delete conditions, progress/recipient counts, menu/open behavior | Medium | High | In progress — `CampaignCard` completed 2026-07-24; shell/editor/details/tables remain | 22 card unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, card-scoped axe, overflow, git diff --check passed |
+| Campaigns | `CampaignCard` and the `CampaignsDashboard` shell (header, Create action, `MetricCard` stats, accessible Drafts/Past Sequences tablist, loading/empty states, card grid) migrated to approved layout/components; editor, details, results table, and report modal remain local | Presentation-only; `CampaignsDashboard` keeps the paywall, both listeners (`campaign_drafts`, `bulk_sessions`) + cleanup, stats math, exact new-draft write, `cancelBulkSession`, confirmations, delete logic, `'drafts'`/`'history'` values, and `CampaignCard`/report-modal wiring unchanged | Status presentation, Cancel-vs-Delete conditions, stats, tab selection/keyboard, progress/recipient counts, menu/open behavior | Medium | High | In progress — `CampaignCard` + dashboard shell completed 2026-07-24; editor/details/tables remain | 22 card + 16 dashboard unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe (no serious/critical or contrast), overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3060,8 +3105,16 @@ verified on 2026-07-24 (GO; completion log in the Phase 13 Campaigns item): the
 card now uses `Card`/`Badge`/`IconButton` with a feature-mapped status tone/label
 and an accessible options popover, while `CampaignsDashboard` keeps both Firestore
 listeners, the `cancelBulkSession` callable, confirmations, and delete logic
-unchanged. The recommended next bounded slices are the remaining Campaigns pieces
-(the dashboard shell/stats/tabs, `CampaignEditor`, `CampaignDetails`,
+unchanged. The **campaigns dashboard shell** was then migrated and verified on
+2026-07-24 (GO; completion log in the Phase 13 Campaigns item): the header, Create
+action, stat cards, Drafts/Past Sequences tabs, loading/empty states, and card
+grid now use `PageContainer`/`PageHeader`/`Section`/`ResponsiveGrid`, `Button`,
+and `MetricCard`; the former 10 px low-contrast stat labels are fixed and the tabs
+are an accessible WAI-ARIA tablist (programmatic selection + keyboard), all while
+the paywall, both listeners + cleanup, stats math, the exact new-draft write,
+`cancelBulkSession`, confirmations, delete logic, tab values, and
+`CampaignCard`/report-modal wiring stay unchanged. The recommended next bounded
+slices are the remaining Campaigns pieces (`CampaignEditor`, `CampaignDetails`,
 `CampaignResultsTable`, `DetailedReportModal`) or the **E-Docs** document/envelope
 workflows — each audited and scoped on its own before any presentation change.
 The **sandbox application** screen remains tied to the The **sandbox application** screen remains tied to the
