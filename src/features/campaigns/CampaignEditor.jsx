@@ -146,8 +146,8 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
                                         'flex w-full items-center justify-between rounded-ds-lg p-ds-3 transition-all',
                                         'focus-visible:outline-none focus-visible:shadow-ds-focus',
                                         isActive
-                                            ? 'bg-ds-surface-selected text-ds-content-link shadow-ds-xs'
-                                            : 'text-ds-content-secondary hover:bg-ds-surface-hover',
+                                            ? 'bg-ds-status-info-bg text-ds-status-info-fg shadow-ds-xs'
+                                            : 'text-ds-content-secondary hover:bg-ds-surface-subtle',
                                     ].join(' ')}
                                 >
                                     <span className="flex items-center gap-ds-3">
