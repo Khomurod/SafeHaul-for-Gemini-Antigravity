@@ -1305,7 +1305,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Company Profile — info | Approved `FormField`, `Input`, `FieldDisplay`, `FormSection`, `Card`, and `Button` replace local information-field/card/action styling | `saveCompanySettings`, nested contact/address/legal/application payload remain feature-owned and unchanged | Branding upload and application questions remain separate higher-risk slices | High / High | Compatibility slice completed 2026-07-23 | 17 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, payload parity, keyboard/focus, labels, axe, overflow passed |
 | Company Profile — branding | Approved `Button` + `FieldMessage` and a labelled, keyboard-triggered file input replace the local `<label>`-wrapped hidden input and raw preview in `BrandingSection`; preview/fallback tokenized | `uploadCompanyLogo` Storage path `company_assets/{companyId}/logo.{ext}` and the `companies/{companyId}.companyLogoUrl` Firestore field via `saveCompanySettings` remain feature-owned and unchanged | Keyboard trigger, no nesting, alt text, uploading announcement, focus return, no client size/type validation (preserved) | High / High | Compatibility slice completed 2026-07-23 | 18 focused tests (9 UI/a11y, 5 upload integration, 4 Storage contract), full suite, coverage, Chromium/Mobile Chrome, 1440/1024/412 px, exact Storage/Firestore contracts, keyboard/focus, axe, overflow passed |
 | Company Profile — questions | Text/select/textarea previews, 4 native checkboxes, button-based required/hidden switches, question editors | Application configuration and custom-question state passed through Company Profile save | Switch semantics, required/hidden exclusivity, DOT-required protections, destructive actions | High / Very high | Audited; not migrated | All question tests, keyboard toggles, validation, save payload, mobile |
-| Team & Users | 3 inputs, 1 role select, local buttons | Direct Firestore user/team reads and writes; Manage Team dialog | Permissions, required fields, role changes, duplicate/error states | High / Very high | Audited; not migrated | Role gates, add/manage flows, validation, dialog, desktop/mobile |
+| Team & Users | Add New User form now uses `FormSection`/`FormField`/`Input`/`Select`/`Button`; `ManageTeamModal` moved to the shared accessible `Modal` with `Card`/`Button`/`IconButton` and labelled goal inputs; `CompanySettings` permission gate and backend `hrAdmin.js` unchanged | `createPortalUser`/`deletePortalUser` callables, membership `onSnapshot` subscription, user/goal Firestore reads, `setDoc` goal-write, tracking-link construction, and clipboard/toast remain feature-owned and unchanged | Native-required create-user validation, password never logged/stored (`autocomplete=new-password`), admin gate, live subscription cleanup, goal `value||default` compatibility, fire-and-forget clipboard, destructive delete | High / Very high | Compatibility slice completed 2026-07-23 (both surfaces) | 25 focused tests (9 Add-User, 16 Manage-Team) + shell suite, full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, exact create/delete/goal/link contracts, permission gate, dialog name/close/Escape/backdrop/focus-restore, axe, overflow passed |
 | Personal Profile in Company Settings | `FormField`, `Input`, `FormSection`, `Card`, and `Button` now replace local form/card/button styling | Direct user/recruiter-link Firestore reads/writes and clipboard copy remain feature-owned and unchanged | Broader settings forms remain locally styled | High / Low | First compatibility slice completed 2026-07-23 | 4 feature tests, 4 primitive tests, full suite, Chromium/Mobile Chrome, keyboard/focus, 1440/1024/412 px, axe passed |
 | Email Settings | Approved `FormSection`, `FormField`, `Input`, `Textarea`, `Button`, `Badge`, `Card`, and `FieldMessage` replace the local status banner, SMTP fields, test/save buttons, and setup-guide chrome (provider instructions stay feature-owned) | `getEmailSettingsMeta`/`testEmailConnection`/`saveEmailSettings` callables, sanitized metadata load, and password-isolation rules remain feature-owned and unchanged | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Compatibility slice completed 2026-07-23 | 24 focused render + 12 existing logic tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, secret-payload contract, label association, guide disclosure, axe, overflow passed |
 | SMS / number assignment | Default-line select + editable recruiter matrix (`<select>` per row), verify buttons, diagnostic modal, save; renders alongside the shared secret-entry `LineManager` (out of scope) | `useLineAssignments` owns the `sms_provider` listener, roster join, one-time token backfill, `verifyLineConnection`, and token-based `saveSmsLineAssignments`; correctness depends on server-side token→phone resolution | Editable matrix (not a display table), DLP token redaction, markup-coupled 15-case safety suite, color-only status, 9/10 px status text, secret-entry entanglement | High / Very high | Deep-audited 2026-07-23; **not migrated (NO-GO)** — blocked on the editable-matrix responsive/interaction owner decision and unproven DataTable-for-form-controls fit | Owner decision on editable-matrix strategy; then per-row select labels, token-redaction save contract, verify/backfill/diagnostic callables, status text+tone, DataTable-with-controls parity, keyboard/mobile |
@@ -2405,6 +2405,144 @@ Apply checks proportionally, but never claim an unrun check:
   primitive would let the verification RadioGroup and this decision control move
   out of feature ownership.
 
+### Company Settings Team & Users completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: `origin/main` at `c79a172` (the merged Change Review PR
+  #82) with a clean working tree before this slice began; the Change Review
+  backend was confirmed unchanged. Work was done on the designated
+  `claude/safehaul-design-system-g1vr3a` branch, restarted from `origin/main`.
+- Scope: one audited workflow with two presentation surfaces — the Add New User
+  form (`TeamManagementTab.jsx`) and the Manage Team & Links modal
+  (`ManageTeamModal.jsx`). Both migrated together (full GO). `CompanySettings.jsx`
+  (permission gate + modal wiring) and `functions/hrAdmin.js` were not changed.
+- Permission contract (frozen, unchanged): `CompanySettings` gates the route on
+  `currentUserClaims?.roles?.[currentCompanyProfile?.id] === 'company_admin' ||
+  currentUserClaims?.roles?.globalRole === 'super_admin'`, redirecting non-admins
+  to `/company/dashboard`; `TeamManagementTab` keeps its own "Access Denied. Only
+  Admins can manage the team." fallback. Neither was weakened or broadened.
+- Exact create-user contract (frozen): `httpsCallable(functions,
+  'createPortalUser')({ fullName, email, password, companyId:
+  currentCompanyProfile.id, role })`. Role options unchanged (`hr_user` →
+  "Recruiter (Standard)", `company_admin` → "Company Admin (Full Access)"); the
+  backend-recognized `recruiter` is still not exposed. Success toast `User
+  {fullName} created successfully!` + reset to `{ fullName:'', email:'',
+  password:'', role:'hr_user' }`; failure `Failed to create user:
+  {error.message}`. **Native `required`** is the form's validation (unlike the
+  verification form) and was preserved via `FormField required`.
+- Password-security contract (frozen + hardened): the password lives only in
+  controlled component state for the callable; it is never logged (the catch
+  logs the error object, not the password — asserted by test), never written to
+  Firestore by the frontend, never in local/session storage or analytics, and is
+  cleared on reset. Added `autocomplete="new-password"` on the password field and
+  `autocomplete="off"` on name/email so the admin's own credentials are not
+  autofilled into a create-other-user form. Tests use
+  `NOT_A_REAL_PASSWORD_test_123`.
+- Exact team-loading contract (frozen): reads `companies/{companyId}` →
+  `companySlug = appSlug || companyId` (load failure warns, keeps fallback);
+  `onSnapshot(query(collection(db,'memberships'), where('companyId','==',
+  companyId)))` with unsubscribe on unmount; per membership reads
+  `users/{userId}` (fallback `{ name:'Unknown', email:'No Email' }`) and
+  `companies/{companyId}/team/{userId}` (defaults `callGoal:150`,
+  `contactGoal:50` via `value || default`, so a stored zero still falls back —
+  preserved).
+- Exact goal-write contract (frozen): save-on-blur
+  `setDoc(doc(db,'companies',companyId,'team',userId), { [field]: Number(value),
+  updatedAt: new Date() }, { merge: true })`; failure → `alert('Error saving
+  goal')`. No debounce/autosave introduced.
+- Exact tracking-link contract (frozen): base `import.meta.env.VITE_DRIVER_APP_URL
+  || window.location.origin`, trailing slash trimmed; link
+  `{base}/apply/{companySlug}?recruiter={userId}`;
+  `navigator.clipboard.writeText(link)` (fire-and-forget, not awaited) with
+  `showSuccess('Custom recruiter link copied!')` always shown — the current
+  clipboard-failure behavior (toast regardless) is preserved and locked by a
+  rejection test.
+- Exact delete-user contract (frozen): `window.confirm('Are you sure you want to
+  remove {name || 'this user'} from the team?')`; `httpsCallable(functions,
+  'deletePortalUser')({ userId, companyId })`; success `{name || 'User'} has been
+  removed from the team.`; failure `Failed to remove user: {message}`;
+  row-specific `deleteLoading`. Backend membership/claims/SMS-assignment/orphan
+  cleanup is unchanged (callable not replaced with client-side deletion).
+- Go/no-go decision: **GO for both surfaces**. Both callables and all Firestore
+  reads/writes/subscription are mockable; password handling stays safe; the admin
+  gate is untouched; goal-save, clipboard, and destructive delete are testable;
+  the shared accessible `Modal` preserves title/description/close/Escape/backdrop/
+  focus-trap/focus-restore; no backend or Firebase-rules change is required.
+- Presentation changes: **Add New User** → `FormSection` + `FormField` +
+  `Input`/`Select` + `Button`, associating labels/errors and keeping native
+  required + the two role options; the denied state is tokenized. **Manage Team**
+  → the local `fixed inset-0` overlay replaced by the shared `Modal` (named/
+  described by its header, `IconButton` close, Escape + backdrop dismissal, focus
+  trap, and focus restoration to "View All Team Members & Goals"); member rows are
+  tokenized `Card`-like list items with truncating name/email, compact goal
+  inputs now carrying member-specific `aria-label`s ("Daily dial/contact goal for
+  {name}") and a visible focus ring, a `Button` copy control named "Copy tracking
+  link for {name}", and a danger `IconButton` named "Remove {name} from the team"
+  with row-specific loading. The former **8 px** "Dials"/"Contacts" labels are now
+  a supported 12 px token.
+- Behavior preserved: every callable/Firestore/subscription/clipboard/confirm
+  operation, field names, payloads, defaults, messages, and the permission gate
+  are identical; `CompanySettings.jsx` and `hrAdmin.js` were not modified.
+- Components reused: `FormSection`, `FormField`, `Input`, `Select`, `Button`,
+  `IconButton`, and the shared accessible `Modal`. No business concept
+  (recruiter, membership, company role, Firebase) entered the design system, and
+  no competing modal or form primitive was created.
+- Focused tests: 25 new — `TeamManagementTab.test.jsx` (9: non-admin denial,
+  initial values + exact two role options + default role, required/typed inputs +
+  autocomplete, exact `createPortalUser` request, success toast + full reset with
+  password cleared, disabled-while-creating, failure message + password absent
+  from console/storage, Manage-Team open, axe) and `ManageTeamModal.test.jsx`
+  (16: loading + memberships query + list, user/goal fallbacks, stored goals with
+  unique labels, empty state, snapshot unsubscribe on unmount, goal save-on-blur
+  exact path/`Number`/`updatedAt`/merge, goal-save alert, exact tracking link with
+  env base + trailing-slash trim + origin/slug fallback, clipboard-rejection
+  still-toasts, delete confirm/cancel/exact request/failure/row-loading/other-rows-
+  operable, dialog name+description+close+Escape+backdrop, axe). The existing
+  `CompanySettings.test.jsx` shell suite (which mocks the tab/modal) still passes.
+- Full frontend gate: 96 files passed, 2 skipped; **692 tests passed** and 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate `vitest run --coverage` passed at 29.4% statements / 27% branches / 28.34%
+  functions / 30.1% lines — no threshold regressed. The callable-contract check
+  passed (`OK | mapped 101 | raw 101`).
+- Backend tests: the `functions/test/unit/createPortalUser.test.js` jest suite
+  could **not run** in this environment (jest is not installed under `functions/`);
+  recorded honestly. No backend code was changed, so `hrAdmin.js` behavior is
+  unchanged and the callable-contract check covers the export mapping.
+- Lint (0 errors, 168 pre-existing warnings), typecheck, production build, and
+  `git diff --check` passed with only the pre-existing build warnings.
+- Chromium and Mobile Chrome regression: the new
+  `e2e/company-settings-team.spec.cjs` passed 9 checks with 3 intentional
+  viewport-specific skips across both projects — labelled/required form with safe
+  autocomplete, desktop keyboard order + visible focus, the Manage Team dialog
+  opening with an accessible name/description and restoring focus to the trigger
+  on Escape, desktop/tablet and mobile overflow, and scoped axe on both projects.
+- Server hygiene: port 5000 was confirmed free before use; the browser checks ran
+  against a fresh `vite dev` server in E2E test mode serving the current working
+  tree via the pre-installed system Chromium (`PW_CHROMIUM_EXECUTABLE`). No
+  unknown process was terminated.
+- Accessibility: each surface has a clear heading; all create-user inputs are
+  labelled with programmatic required state and correct autocomplete; the password
+  is never surfaced in helper text; goal inputs carry unique member+type labels
+  and stay keyboard editable with visible focus; copy/delete controls have
+  member-specific accessible names; status/actions use icon + text, not colour
+  alone; the modal is a named/described focus-trapped dialog; touch targets meet
+  the control minimum; the 8 px goal labels are now ≥12 px. Unit axe reported no
+  violations; scoped Chromium/Mobile Chrome axe reported no serious or critical
+  violations.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed the tokenized Add New User form (labelled 2×2 grid, required markers,
+  primary action), the shared-Modal Manage Team dialog (named header, close,
+  scrollable body, empty state), a single-column mobile layout, and no document or
+  horizontal overflow.
+- Diff review: only `TeamManagementTab.jsx`, `ManageTeamModal.jsx`, their two new
+  tests, and `e2e/company-settings-team.spec.cjs` changed; `CompanySettings.jsx`
+  and `functions/hrAdmin.js` were untouched; no generated artifact, real password
+  (only the artificial `NOT_A_REAL_PASSWORD_test_123`), email, token, or personal
+  data entered any artifact.
+- Remaining Team & Users work: none for these two surfaces — the area is complete.
+  Broader Settings/Profile work (Integrations, Company Profile application
+  questions, `/company/profile` account security) remains separate.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2488,17 +2626,28 @@ group (`aria-pressed` preserved), while the `getChangeReview`/
 `previewValue`, token handling, and the non-display of `applicantName` are
 unchanged; `functions/applicationChanges.js` was not touched.
 
-The recommended next bounded slice is one of the remaining low-risk options:
-within Settings/Profile, **Team & Users** is the lowest-risk in-phase item; the
-**sandbox application** screen remains tied to the public-application migration;
-and Company Profile application questions remains higher risk (switch semantics +
-destructive actions). The Phase 3 link-style Button variant (Login text-link and
-reveal-adornment exceptions), a design-system file-input primitive (the
-branding-upload exception), and a design-system Radio/Checkbox primitive (which
-would retire the verification RadioGroup and inform any future shared
-decision-control primitive) stay independently tracked. All public token
-screens (`/verify/:token`, `/review-change/:token`, `/sandbox/transfer-success`)
-are now migrated. The SMS number-assignment NO-GO is unchanged.
+The **Company Settings Team & Users** area was migrated and verified on
+2026-07-23 (completion log in section 6): both surfaces landed together — the Add
+New User form now uses `FormSection`/`FormField`/`Input`/`Select`/`Button`, and
+`ManageTeamModal` moved to the shared accessible `Modal` with `Card`/`Button`/
+`IconButton` and labelled goal inputs — while the `createPortalUser`/
+`deletePortalUser` callables, the membership `onSnapshot` subscription, the goal
+`setDoc` write, the tracking-link construction, the admin permission gate, and
+`functions/hrAdmin.js` are all unchanged.
+
+The recommended next bounded slice is one of the remaining Settings/Profile
+in-phase items: **Integrations** (audit first), or the higher-risk **Company
+Profile — application questions** (switch semantics, required/hidden exclusivity,
+DOT protections, destructive actions) and the **`/company/profile`
+account-security** screen — each needing its own audit. The **sandbox
+application** screen remains tied to the public-application migration. The Phase 3
+link-style Button variant (Login text-link and reveal-adornment exceptions), a
+design-system file-input primitive (the branding-upload exception), and a
+design-system Radio/Checkbox or segmented-control primitive (which would retire
+the verification RadioGroup and the change-review decision control) stay
+independently tracked. All public token screens (`/verify/:token`,
+`/review-change/:token`, `/sandbox/transfer-success`) are migrated. The SMS
+number-assignment NO-GO is unchanged.
 
 Sequence (whichever slice the owner selects):
 
