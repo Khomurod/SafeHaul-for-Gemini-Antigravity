@@ -1688,9 +1688,78 @@ The reverse directions are prohibited.
       in a real browser.
     - Commit/PR: feature + docs commits on
       `claude/safehaul-design-system-g1vr3a`; PR into `main`.
-  - Remaining Campaigns work: the `LaunchPad` editor module remains legacy and
-    needs its own audited slice. Campaigns is **not** complete until it meets the
-    migration standard.
+  - [x] Migrate the launch pad (`LaunchPad`) — the editor's Launch section:
+    pre-flight checks, estimate, launch action and confirmation dialog.
+    - Complete when: the pad consumes approved primitives (`Card`, `Button`,
+      `Badge`, the shared `Modal`, status tokens); validation and success states
+      are non-colour-only; the launching state is announced; the confirmation
+      dialog has Escape dismissal, focus trap and focus restoration with
+      mobile-safe actions; and no launch payload, validation message, toast,
+      guard, estimate or preview behavior changes.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/LaunchPad.jsx`,
+      `src/features/campaigns/components/LaunchPad.test.jsx`,
+      `e2e/campaign-launchpad.spec.cjs`, this roadmap.
+    - Verification: 33 focused tests passed (both validation messages and the
+      combined case; the disabled launch action; the "Company ID missing" guard
+      with no backend call; the estimate and its rounding; the accessible dialog
+      name/description; Escape and Cancel without launching plus focus
+      restoration; the 280-character preview truncation with and without the
+      ellipsis; the exact `initBulkSession` payload with `rawData` stripped from
+      `filters`, `null` rawData, and absent filters; every result branch
+      (success, success with `filteredCount`, `success: false` with and without a
+      message) and every error mapping (`bulk-actions-queue`,
+      `PROCESS_BULK_BATCH_URL`, passthrough, empty); the duplicate-launch guard;
+      the announced launching state; the finally-state resets and lock release;
+      E2E mock short-circuit and the non-mock path; axe in the ready, blocked and
+      dialog-open states). The real launch callable is never invoked — every test
+      drives a stub — and all fixtures are artificial. Full frontend suite 106
+      files / 938 tests passed (2 files / 48 emulator rules tests skipped);
+      migrated file coverage 100% lines / 93.5% branches; lint 0 errors;
+      typecheck, production build, and `git diff --check` passed.
+      `campaign-launchpad.spec.cjs` passed 10 Chromium/Mobile Chrome checks.
+    - Visual/mobile/a11y: the pre-flight result is an icon + heading text
+      (`role="alert"` for failures, `role="status"` for the all-clear with a
+      `Badge` carrying the estimate), so state is never colour-only; a
+      visually hidden `role="status"` announces "Launching campaign…" while the
+      request is in flight; the confirmation dialog is now the shared accessible
+      `Modal` (adds Escape, focus trap and focus restoration, keeping backdrop
+      dismissal) and its actions stack on narrow viewports; the launch action is
+      an approved `Button` whose `disabled`/`loading` composition reproduces the
+      previous `!isValid || isLaunching` rule exactly. No document-level
+      horizontal overflow at 1440/1024/412; real-browser axe found no
+      serious/critical and no color-contrast violations.
+    - Notes: presentation only — props (`companyId`, `campaign`,
+      `onLaunchSuccess`), the company-id validation, the `launchLockRef` +
+      `isLaunching` duplicate-launch protection, the E2E mock behavior, the
+      `initBulkSession` callable, the `rawData` extraction from filters, the exact
+      payload (`companyId`, `sessionName`, `filters`, `rawData || null`, `config`,
+      `scheduledFor: null`), every success/error toast and friendly error
+      mapping, `onLaunchSuccess`, all finally-state resets, the validation
+      messages, the estimated-duration calculation, the confirmation
+      recipient/method/message preview with its 280-character truncation and
+      ellipsis, and the button disabled/loading behavior are unchanged.
+      `FieldMessage` was considered but not used: this screen has no form fields,
+      and its error-tone variant renders its own `role="alert"`, which would have
+      nested duplicate alerts inside the pre-flight summary.
+    - Commit/PR: feature + docs commits on
+      `claude/safehaul-design-system-g1vr3a`; PR into `main`.
+  - [!] Campaigns is **not** marked complete. Every interactive Campaigns
+    component is migrated, but two files remain and neither has an explicitly
+    approved exception yet — they need an owner decision (accept as documented
+    exceptions, or schedule a small closing slice):
+    - `components/DeviceMockup.jsx` — a purely decorative phone-frame
+      illustration used by the content preview. It still contains
+      `text-[10px]` for the simulated "9:41" device status bar. This is
+      illustration chrome rather than app body text, so it is a plausible
+      documented exception, but the 10 px rule is otherwise absolute in this
+      repo, so it is recorded here rather than self-approved. It was explicitly
+      out of scope for the ContentComposer slice ("do not redesign
+      `DeviceMockup`") and for this one.
+    - `pages/CompanyCampaignsPage.jsx` — a thin route wrapper whose only visual
+      output is the "Please select a company." fallback, still using legacy
+      `text-gray-700` instead of a `--ds-*` token. A one-line token swap, out of
+      scope for this slice ("migrate only `LaunchPad.jsx`").
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1785,7 +1854,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, the `CampaignEditor` shell, the `ContentComposer`, the `AudienceBuilder`, and the `VirtualLeadList` preview migrated to approved layout/components; only `LaunchPad` remains local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread, variable insertion, char count, and `DeviceMockup` preview; `AudienceBuilder` keeps the targeting/import hooks, fingerprint + scope exclusion resets, `rawData` handling, `onChange` sync, `finalCount`, and filter/option values; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, filter mapping, `pageSize: 50`, pagination/reset/`hasMore`, fallbacks, exclusion rules, and the Virtuoso wiring | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, editor shell, content composer, audience builder, and lead preview completed 2026-07-24; `LaunchPad` remains | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe (incl. the populated dark preview), overflow, git diff --check passed |
+| Campaigns | All interactive components migrated — `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, `CampaignEditor` shell, `ContentComposer`, `AudienceBuilder`, `VirtualLeadList`, and `LaunchPad`; only the decorative `DeviceMockup` illustration and the `CompanyCampaignsPage` fallback string remain unmigrated | Presentation-only throughout; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread and variable insertion; `AudienceBuilder` keeps the targeting/import hooks, exclusion resets and `finalCount`; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, mapping, pagination and exclusion rules; `LaunchPad` keeps the `initBulkSession` payload, launch guards, toasts, error mapping, estimate and preview truncation | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, launch payload and guards | Medium | High | In progress — all ten interactive components completed 2026-07-24; **not marked complete**: `DeviceMockup` (decorative 10 px status-bar text) and the `CompanyCampaignsPage` fallback token need an owner decision | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview + 33 launch unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3563,10 +3632,26 @@ guard, fallback ids, name/contact fallbacks, every exclusion rule and callback
 value, the `Virtuoso` wiring, and all existing copy are unchanged. Its dark
 surface is retained as the smallest documented feature-level exception (the design
 system has no approved dark-surface tokens), with every piece of text on it
-contrast-verified in a real browser against a populated list. Campaigns is **not**
-complete: the `LaunchPad` module remains legacy, so the recommended next bounded
-slices are that module or the **E-Docs** document/envelope workflows — each
-audited and scoped before any presentation change.
+contrast-verified in a real browser against a populated list. The **launch pad**
+(`LaunchPad`) was then migrated and verified on 2026-07-24 (GO; completion log in
+the Phase 13 Campaigns item): the pre-flight result is now icon + text
+(`role="alert"` for failures, `role="status"` for the all-clear with a `Badge`
+estimate), a visually hidden `role="status"` announces "Launching campaign…", and
+the confirmation moved to the shared accessible `Modal` (Escape, focus trap and
+focus restoration, mobile-safe stacked actions) — while the `initBulkSession`
+payload, the `rawData` extraction, the duplicate-launch lock, every toast and
+friendly error mapping, `onLaunchSuccess`, the finally-state resets, the
+validation messages, the estimate, and the 280-character preview truncation are
+unchanged (the real launch callable is never invoked in tests). **Campaigns is
+still not marked complete:** every interactive component is migrated, but two
+files await an owner decision — the decorative `DeviceMockup` illustration (its
+simulated "9:41" status bar is still `text-[10px]`) and the
+`CompanyCampaignsPage` "Please select a company." fallback (legacy
+`text-gray-700`). Both were out of scope for their surrounding slices and neither
+has an explicitly approved exception, so they are recorded rather than
+self-approved. The recommended next steps are that small closing decision or the
+**E-Docs** document/envelope workflows — each audited and scoped before any
+presentation change.
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
