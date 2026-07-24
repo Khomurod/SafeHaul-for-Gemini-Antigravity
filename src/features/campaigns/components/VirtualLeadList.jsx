@@ -3,6 +3,18 @@ import { Virtuoso } from 'react-virtuoso';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase/config';
 import { Loader2, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { Badge, Button } from '@/design-system/components';
+
+/**
+ * Feature-owned domain → visual mapping for a recipient's lifecycle status.
+ * The design system only knows generic Badge tones; the campaigns feature owns
+ * which status maps to which tone. Tones preserve the previous appearance:
+ * new=info (blue), hired=success (emerald), everything else neutral (slate).
+ */
+const STATUS_TONE = {
+    new: 'info',
+    hired: 'success',
+};
 
 export default function VirtualLeadList({ companyId, filters, excludedIds = [], onToggleExclusion, localData = null, excludedPhones = null }) {
     const [leads, setLeads] = useState([]);
@@ -52,6 +64,7 @@ export default function VirtualLeadList({ companyId, filters, excludedIds = [], 
             setHasMore(Boolean(newLastId) && newLeads.length > 0);
 
         } catch (err) {
+            // Never log recipient rows or contact details — only the failure reason.
             console.error("Failed to load leads:", err);
             setError(err.message);
         } finally {
@@ -88,93 +101,117 @@ export default function VirtualLeadList({ companyId, filters, excludedIds = [], 
         const name = user.firstName ? `${user.firstName} ${user.lastName || ''}` : (user.name || 'Unknown');
         const contact = user.phone || user.normalizedPhone || user.email || 'No Contact Info';
 
+        // State is conveyed by an icon plus text (never colour alone).
+        const StateIcon = isPhoneExcluded || isExcluded ? XCircle : CheckCircle2;
+        const stateText = isPhoneExcluded
+            ? 'Already messaged — cannot be selected'
+            : isExcluded
+                ? 'Excluded from this campaign'
+                : 'Included in this campaign';
+
+        const rowBody = (
+            <>
+                {/* Selection Indicator */}
+                <span
+                    aria-hidden="true"
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all ${isPhoneExcluded
+                        ? 'border-amber-400 bg-transparent text-amber-300'
+                        : isExcluded
+                            ? 'border-slate-400 bg-transparent text-slate-300'
+                            : 'border-blue-400 bg-blue-500 text-white'}`}
+                >
+                    <StateIcon size={14} />
+                </span>
+
+                {/* Avatar */}
+                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-700 text-ds-sm font-bold text-slate-200">
+                    {name[0] || '?'}
+                </span>
+
+                {/* Info */}
+                <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-ds-sm font-semibold ${isPhoneExcluded || isExcluded ? 'text-slate-400 line-through' : 'text-white'}`}>
+                        {name}
+                    </span>
+                    <span className="block truncate text-ds-xs text-slate-300">{contact}</span>
+                </span>
+
+                {/* Status Badge */}
+                {isPhoneExcluded ? (
+                    <Badge tone="warning">Already Messaged</Badge>
+                ) : (
+                    <Badge tone={STATUS_TONE[user.status] || 'neutral'}>{user.status || 'Lead'}</Badge>
+                )}
+
+                <span className="ds-visually-hidden">{stateText}</span>
+            </>
+        );
+
+        const rowClass = 'flex w-full items-center gap-ds-4 rounded-ds-lg border p-ds-3 text-left transition-all';
+
+        // Already-messaged rows stay non-toggleable, so they are not exposed as a
+        // control at all — only the toggleable rows become buttons.
+        if (isPhoneExcluded) {
+            return (
+                <div className="pb-2 pr-2">
+                    <div className={`${rowClass} border-amber-700/50 bg-amber-900/20`}>
+                        {rowBody}
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="pb-2 pr-2">
-                <div
-                    onClick={() => !isPhoneExcluded && onToggleExclusion && onToggleExclusion(safeId)}
-                    className={`
-                        p-3 rounded-xl flex items-center gap-4 border transition-all
-                        ${isPhoneExcluded
-                            ? 'bg-amber-900/10 border-amber-800/30 opacity-50 cursor-not-allowed'
-                            : isExcluded
-                                ? 'bg-slate-900/50 border-slate-800 opacity-60 cursor-pointer'
-                                : 'bg-slate-800 border-transparent hover:border-slate-700 cursor-pointer group'}
-                    `}
+                <button
+                    type="button"
+                    aria-pressed={!isExcluded}
+                    onClick={() => onToggleExclusion && onToggleExclusion(safeId)}
+                    className={`${rowClass} focus-visible:outline-none focus-visible:shadow-ds-focus ${isExcluded
+                        ? 'border-slate-700 bg-slate-900/50'
+                        : 'group border-transparent bg-slate-800 hover:border-slate-600'}`}
                 >
-                    {/* Selection Indicator */}
-                    <div className={`
-                        w-5 h-5 rounded-full flex items-center justify-center border transition-all
-                        ${isPhoneExcluded
-                            ? 'border-amber-600 bg-transparent text-amber-600'
-                            : isExcluded
-                                ? 'border-slate-600 bg-transparent text-slate-600'
-                                : 'border-blue-500 bg-blue-500 text-white'}
-                    `}>
-                        {isPhoneExcluded ? <XCircle size={14} /> : isExcluded ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
-                    </div>
-
-                    {/* Avatar */}
-                    <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm text-slate-300 shrink-0">
-                        {name[0] || '?'}
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                        <div className={`text-sm font-semibold truncate ${isPhoneExcluded || isExcluded ? 'text-slate-500 line-through' : 'text-white'}`}>
-                            {name}
-                        </div>
-                        <div className="text-xs text-slate-400 truncate">{contact}</div>
-                    </div>
-
-                    {/* Status Badge */}
-                    {isPhoneExcluded ? (
-                        <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500">
-                            Already Messaged
-                        </span>
-                    ) : (
-                        <span className={`
-                            px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider
-                            ${user.status === 'new' ? 'bg-blue-500/10 text-blue-400' :
-                                user.status === 'hired' ? 'bg-emerald-500/10 text-emerald-400' :
-                                    'bg-slate-700/50 text-slate-500'}
-                        `}>
-                            {user.status || 'Lead'}
-                        </span>
-                    )}
-                </div>
+                    {rowBody}
+                </button>
             </div>
         );
     };
 
     if (error) {
         return (
-            <div className="h-[400px] flex flex-col items-center justify-center text-red-400 p-4 text-center bg-slate-900/50 rounded-xl border border-red-500/10">
-                <AlertCircle className="mb-2" />
-                <p className="text-sm">Failed to load preview</p>
-                <button
-                    onClick={() => loadMore(true)}
-                    className="mt-4 px-4 py-2 bg-white/5 rounded-lg hover:bg-white/10 text-white text-xs font-bold transition-colors"
-                >
+            <div
+                role="alert"
+                className="flex h-[400px] flex-col items-center justify-center gap-ds-2 rounded-ds-lg border border-red-500/40 bg-slate-900/50 p-ds-4 text-center text-red-200"
+            >
+                <AlertCircle aria-hidden="true" />
+                <p className="text-ds-sm">Failed to load preview</p>
+                <Button variant="secondary" size="sm" onClick={() => loadMore(true)}>
                     Retry Connection
-                </button>
+                </Button>
             </div>
         );
     }
 
     return (
-        <div className="h-[500px] w-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner">
+        // Documented feature-level exception: this preview keeps a dark surface
+        // (literal slate colours rather than `--ds-*`) because the campaign editor
+        // renders it as an inverted "device/console" panel. The design system has
+        // no approved dark-surface tokens yet; rather than expand the token set
+        // for one surface, the exception is scoped to this container and the
+        // contrast of every piece of text on it is verified.
+        <div className="h-[500px] w-full overflow-hidden rounded-ds-xl border border-slate-800 bg-slate-950 shadow-inner">
             {leads.length === 0 && loading ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-3">
-                    <Loader2 className="animate-spin text-blue-600" size={24} />
-                    <span className="text-xs font-medium uppercase tracking-widest">Scanning Database...</span>
+                <div role="status" className="flex h-full flex-col items-center justify-center gap-ds-3 text-slate-300">
+                    <Loader2 className="animate-spin text-blue-400" size={24} aria-hidden="true" />
+                    <span className="text-ds-xs font-medium uppercase tracking-widest">Scanning Database...</span>
                 </div>
             ) : leads.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-2">
-                    <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center text-slate-700 mb-2">
+                <div role="status" className="flex h-full flex-col items-center justify-center gap-ds-2 text-slate-300">
+                    <span aria-hidden="true" className="mb-ds-2 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-slate-400">
                         <AlertCircle size={24} />
-                    </div>
+                    </span>
                     <p className="font-medium">No leads match these filters.</p>
-                    <p className="text-xs text-slate-600">Try adjusting your criteria.</p>
+                    <p className="text-ds-xs text-slate-400">Try adjusting your criteria.</p>
                 </div>
             ) : (
                 <Virtuoso
@@ -186,8 +223,8 @@ export default function VirtualLeadList({ companyId, filters, excludedIds = [], 
                     components={{
                         Footer: () => (
                             loading ? (
-                                <div className="p-4 flex justify-center text-slate-500 text-xs gap-2 items-center">
-                                    <Loader2 className="w-3 h-3 animate-spin" /> Fetching more...
+                                <div role="status" className="flex items-center justify-center gap-ds-2 p-ds-4 text-ds-xs text-slate-300">
+                                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> Fetching more...
                                 </div>
                             ) : <div className="h-4" />
                         )

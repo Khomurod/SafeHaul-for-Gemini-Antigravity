@@ -105,13 +105,11 @@ test.describe('Campaign audience builder slice', () => {
   test('has no serious/critical violations in the audience builder', async ({ page }) => {
     await openAudience(page);
     // Scope to the migrated audience surface (its max-w-6xl wrapper). The preview
-    // list itself (VirtualLeadList) is excluded: it is explicitly out of scope for
-    // this slice and still carries its own legacy dark chrome (e.g. a low-contrast
-    // "Scanning Database..." label and 10px status pills), tracked in the roadmap
-    // for the VirtualLeadList slice.
+    // list is now included too: VirtualLeadList was migrated in its own slice, so
+    // its former low-contrast "Scanning Database..." label and 10px status pills
+    // are gone. Populated-row coverage lives in campaign-lead-preview.spec.cjs.
     const { violations } = await new AxeBuilder({ page })
       .include('.max-w-6xl')
-      .exclude('[data-testid="audience-preview-list"]')
       .analyze();
     const serious = violations
       .filter((v) => v.impact === 'serious' || v.impact === 'critical')
