@@ -23,6 +23,8 @@ import { TemplatesPanel } from '../components/documents/TemplatesPanel';
 
 import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+import { Button } from '@/design-system/components';
+import { Inline, PageContainer, PageHeader, Stack } from '@/design-system/layouts';
 
 export default function DocumentsManager() {
     const { currentCompanyProfile, loading } = useData();
@@ -420,58 +422,74 @@ export default function DocumentsManager() {
     );
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6 sm:p-8">
-            <div className="max-w-6xl mx-auto space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <button onClick={() => navigate('/company/dashboard')} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm font-medium mb-2 transition-colors">
-                            <ArrowLeft size={16} /> Back to Dashboard
-                        </button>
-                        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                            <FileSignature className="text-blue-600" /> Documents Center
-                        </h1>
-                    </div>
-                    <div className="flex gap-3">
-                        <button onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('template'); setViewMode('create'); }} className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 font-bold rounded-xl shadow-sm hover:bg-gray-50 transition-all">
-                            <FileText size={18} className="text-purple-600" /> Create Template
-                        </button>
-                        <button onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('request'); setViewMode('create'); }} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:shadow-blue-200 transition-all transform hover:-translate-y-0.5">
-                            <Plus size={20} /> Send One-off
-                        </button>
-                    </div>
-                </div>
-
-                <div className="flex border-b border-gray-200 bg-white px-4 rounded-t-xl">
-                    <button onClick={() => setActiveTab('list')} className={`px-6 py-4 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${activeTab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-                        <History size={16} /> History
-                    </button>
-                    <button onClick={() => setActiveTab('templates')} className={`px-6 py-4 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${activeTab === 'templates' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-                        <FileText size={16} /> Templates
-                    </button>
-                </div>
-
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    {activeTab === 'list' ? (
-                        <EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />
-                    ) : (
-                        <TemplatesPanel
-                            templates={templates}
-                            templatesLoading={templatesLoading}
-                            postSubmitTemplateIds={postSubmitTemplateIds}
-                            postSubmitRequiredById={postSubmitRequiredById}
-                            togglePostSubmitRequired={togglePostSubmitRequired}
-                            savingPostSubmitTemplates={savingPostSubmitTemplates}
-                            handleSavePostSubmitTemplates={handleSavePostSubmitTemplates}
-                            movePostSubmitTemplate={movePostSubmitTemplate}
-                            isTemplateEnabledPostSubmit={isTemplateEnabledPostSubmit}
-                            togglePostSubmitTemplate={togglePostSubmitTemplate}
-                            handleUseTemplate={handleUseTemplate}
-                            handleEditTemplate={handleEditTemplate}
-                            handleDeleteTemplate={handleDeleteTemplate}
+        <div className="min-h-screen bg-ds-canvas">
+            <PageContainer width="standard">
+                <Stack gap="lg">
+                    <Stack gap="sm">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="self-start"
+                            onClick={() => navigate('/company/dashboard')}
+                        >
+                            <ArrowLeft size={16} aria-hidden="true" /> Back to Dashboard
+                        </Button>
+                        {/* The header is allowed to wrap so the two actions drop onto
+                            their own line rather than overflowing at narrow widths;
+                            below the design system's mobile breakpoint it already
+                            stacks the actions under the title. */}
+                        <PageHeader
+                            className="flex-wrap"
+                            title={
+                                <span className="flex items-center gap-ds-2">
+                                    <FileSignature className="text-ds-action-primary" aria-hidden="true" /> Documents Center
+                                </span>
+                            }
+                            actions={
+                                <Inline gap="sm">
+                                    <Button onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('template'); setViewMode('create'); }}>
+                                        <FileText size={18} aria-hidden="true" /> Create Template
+                                    </Button>
+                                    <Button variant="primary" onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('request'); setViewMode('create'); }}>
+                                        <Plus size={20} aria-hidden="true" /> Send One-off
+                                    </Button>
+                                </Inline>
+                            }
                         />
-                    )}
-                </div>
-            </div>
+                    </Stack>
+
+                    <div className="flex border-b border-gray-200 bg-white px-4 rounded-t-xl">
+                        <button onClick={() => setActiveTab('list')} className={`px-6 py-4 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${activeTab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+                            <History size={16} /> History
+                        </button>
+                        <button onClick={() => setActiveTab('templates')} className={`px-6 py-4 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${activeTab === 'templates' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+                            <FileText size={16} /> Templates
+                        </button>
+                    </div>
+
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        {activeTab === 'list' ? (
+                            <EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />
+                        ) : (
+                            <TemplatesPanel
+                                templates={templates}
+                                templatesLoading={templatesLoading}
+                                postSubmitTemplateIds={postSubmitTemplateIds}
+                                postSubmitRequiredById={postSubmitRequiredById}
+                                togglePostSubmitRequired={togglePostSubmitRequired}
+                                savingPostSubmitTemplates={savingPostSubmitTemplates}
+                                handleSavePostSubmitTemplates={handleSavePostSubmitTemplates}
+                                movePostSubmitTemplate={movePostSubmitTemplate}
+                                isTemplateEnabledPostSubmit={isTemplateEnabledPostSubmit}
+                                togglePostSubmitTemplate={togglePostSubmitTemplate}
+                                handleUseTemplate={handleUseTemplate}
+                                handleEditTemplate={handleEditTemplate}
+                                handleDeleteTemplate={handleDeleteTemplate}
+                            />
+                        )}
+                    </div>
+                </Stack>
+            </PageContainer>
 
             {/* FEAT-2/3/4: REDESIGNED DRIVER PICKER MODAL */}
             {showDriverPicker && (
