@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
-import { UserPlus, Loader2, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
+import { Button, FormField, FormSection, Input, Select } from '@/design-system/components';
 
 export function TeamManagementTab({ currentCompanyProfile, isCompanyAdmin, onShowManageTeam }) {
     const { showSuccess, showError } = useToast();
@@ -21,7 +22,7 @@ export function TeamManagementTab({ currentCompanyProfile, isCompanyAdmin, onSho
                 companyId: currentCompanyProfile.id,
                 role: newUser.role
             });
-            
+
             showSuccess(`User ${newUser.fullName} created successfully!`);
             setNewUser({ fullName: '', email: '', password: '', role: 'hr_user' });
         } catch (error) {
@@ -33,83 +34,76 @@ export function TeamManagementTab({ currentCompanyProfile, isCompanyAdmin, onSho
     };
 
     if (!isCompanyAdmin) {
-        return <div className="p-10 text-center text-gray-500">Access Denied. Only Admins can manage the team.</div>;
+        return (
+            <p className="p-10 text-center text-ds-content-muted" data-testid="team-access-denied">
+                Access Denied. Only Admins can manage the team.
+            </p>
+        );
     }
 
     return (
-        <div className="space-y-8 max-w-3xl animate-in fade-in">
-            <div className="border-b border-gray-200 pb-4 mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Team Management</h2>
-                <p className="text-sm text-gray-500 mt-1">Add new recruiters or admins to your company dashboard.</p>
-            </div>
+        <div className="max-w-3xl animate-in fade-in space-y-ds-8" data-testid="team-management">
+            <header className="border-b border-ds-border-subtle pb-ds-4">
+                <h2 className="text-ds-heading-lg font-bold text-ds-content">Team Management</h2>
+                <p className="mt-ds-1 text-ds-sm text-ds-content-muted">
+                    Add new recruiters or admins to your company dashboard.
+                </p>
+            </header>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <UserPlus size={20} /> Add New User
-                </h3>
-                <form onSubmit={handleCreateUser} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label>
-                            <input
-                                required
-                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            <FormSection title="Add New User">
+                <form onSubmit={handleCreateUser} className="space-y-ds-4">
+                    <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
+                        <FormField id="team-new-user-name" label="Full Name" required>
+                            <Input
+                                autoComplete="off"
                                 value={newUser.fullName}
                                 onChange={e => setNewUser({ ...newUser, fullName: e.target.value })}
                             />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-                            <input
-                                required
+                        </FormField>
+                        <FormField id="team-new-user-email" label="Email" required>
+                            <Input
                                 type="email"
-                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                autoComplete="off"
                                 value={newUser.email}
                                 onChange={e => setNewUser({ ...newUser, email: e.target.value })}
                             />
-                        </div>
+                        </FormField>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
-                            <input
-                                required
+                    <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
+                        <FormField id="team-new-user-password" label="Password" required>
+                            <Input
                                 type="password"
-                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                autoComplete="new-password"
                                 value={newUser.password}
                                 onChange={e => setNewUser({ ...newUser, password: e.target.value })}
                             />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Role</label>
-                            <select
-                                className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        </FormField>
+                        <FormField id="team-new-user-role" label="Role" required>
+                            <Select
                                 value={newUser.role}
                                 onChange={e => setNewUser({ ...newUser, role: e.target.value })}
                             >
                                 <option value="hr_user">Recruiter (Standard)</option>
                                 <option value="company_admin">Company Admin (Full Access)</option>
-                            </select>
-                        </div>
+                            </Select>
+                        </FormField>
                     </div>
-                    <div className="pt-2 flex justify-end">
-                        <button
-                            type="submit"
-                            disabled={addUserLoading}
-                            className="px-6 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
-                        >
-                            {addUserLoading ? <Loader2 className="animate-spin" /> : <Plus size={18} />} Create User
-                        </button>
+                    <div className="flex justify-end pt-ds-2">
+                        <Button type="submit" variant="primary" size="lg" loading={addUserLoading}>
+                            {!addUserLoading && <Plus size={18} aria-hidden="true" />}
+                            Create User
+                        </Button>
                     </div>
                 </form>
-            </div>
+            </FormSection>
 
-            <div className="text-center pt-4">
+            <div className="text-center">
                 <button
+                    type="button"
                     onClick={onShowManageTeam}
-                    className="text-blue-600 hover:underline text-sm font-semibold"
+                    className="rounded-ds-sm text-ds-sm font-semibold text-ds-content-link hover:underline focus-visible:outline-none focus-visible:shadow-ds-focus"
                 >
-                    View All Team Members & Goals
+                    View All Team Members &amp; Goals
                 </button>
             </div>
         </div>

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, Loader2, Link as LinkIcon, Phone, Trash2 } from 'lucide-react';
+import { Users, Link as LinkIcon, Phone, Trash2, X } from 'lucide-react';
 import { db, functions } from '@lib/firebase';
 import { collection, query, where, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@shared/components/feedback';
+import { Button, IconButton } from '@/design-system/components';
+import { Modal } from './Modal';
 
 export function ManageTeamModal({ companyId, onClose }) {
     const [team, setTeam] = useState([]);
@@ -111,92 +113,104 @@ export function ManageTeamModal({ companyId, onClose }) {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl border border-gray-200 flex flex-col max-h-[90vh]">
-
-                <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                            <Users className="text-blue-600" /> Manage Team & Links
-                        </h2>
-                        <p className="text-sm text-gray-500">Set goals and get tracking links for your recruiters.</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full"><X size={20} /></button>
+        <Modal
+            onClose={onClose}
+            labelledBy="manage-team-title"
+            describedBy="manage-team-desc"
+            className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-ds-xl border border-ds-border bg-ds-surface shadow-ds-lg"
+        >
+            <header className="flex items-center justify-between gap-ds-4 border-b border-ds-border-subtle bg-ds-surface-subtle p-ds-6">
+                <div className="min-w-0">
+                    <h2 id="manage-team-title" className="flex items-center gap-2 text-ds-heading-md font-bold text-ds-content">
+                        <Users className="text-ds-content-link" aria-hidden="true" /> Manage Team &amp; Links
+                    </h2>
+                    <p id="manage-team-desc" className="text-ds-sm text-ds-content-muted">
+                        Set goals and get tracking links for your recruiters.
+                    </p>
                 </div>
+                <IconButton label="Close" variant="ghost" onClick={onClose}>
+                    <X size={20} aria-hidden="true" />
+                </IconButton>
+            </header>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-8">
-
-                    <div>
-                        {loading ? (
-                            <div className="text-center py-8 text-gray-500"><Loader2 className="animate-spin mx-auto mb-2" /> Loading team...</div>
-                        ) : team.length === 0 ? (
-                            <p className="text-center text-gray-400 italic py-4">No members found.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {team.map(member => (
-                                    <div key={member.id} className="flex flex-col lg:flex-row items-center justify-between p-4 bg-white border border-gray-200 rounded-lg shadow-sm gap-4 hover:border-blue-300 transition-colors">
-                                        <div className="flex items-center gap-3 w-full lg:w-1/3">
-                                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 font-bold shrink-0">
-                                                {member.name ? member.name.charAt(0).toUpperCase() : '?'}
-                                            </div>
-                                            <div className="overflow-hidden">
-                                                <p className="font-bold text-gray-900 truncate">{member.name || 'Unknown'}</p>
-                                                <p className="text-xs text-gray-500 truncate">{member.email}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex gap-4 items-center w-full lg:w-auto">
-                                            <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
-                                                <Phone size={14} className="text-blue-500" />
-                                                <div className="flex flex-col">
-                                                    <span className="text-[8px] font-bold text-gray-400 uppercase">Dials</span>
-                                                    <input
-                                                        type="number"
-                                                        className="w-12 p-0 text-sm bg-transparent border-none text-center font-bold focus:ring-0 outline-none"
-                                                        defaultValue={member.callGoal}
-                                                        onBlur={(e) => handleSaveGoal(member.id, 'callGoal', e.target.value)}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
-                                                <Users size={14} className="text-green-600" />
-                                                <div className="flex flex-col">
-                                                    <span className="text-[8px] font-bold text-gray-400 uppercase">Contacts</span>
-                                                    <input
-                                                        type="number"
-                                                        className="w-12 p-0 text-sm bg-transparent border-none text-center font-bold focus:ring-0 outline-none"
-                                                        defaultValue={member.contactGoal}
-                                                        onBlur={(e) => handleSaveGoal(member.id, 'contactGoal', e.target.value)}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <button
-                                                onClick={() => handleCopyLink(member.id)}
-                                                className="flex items-center gap-2 px-3 py-2 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors text-sm font-semibold ml-2"
-                                                title="Copy Custom Tracking Link"
-                                            >
-                                                <LinkIcon size={14} /> Link
-                                            </button>
-
-                                            <button
-                                                onClick={() => handleDeleteUser(member.id, member.name)}
-                                                disabled={deleteLoading === member.id}
-                                                className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg border border-red-200 transition-colors text-sm font-semibold disabled:opacity-50"
-                                                title="Remove from Team"
-                                            >
-                                                {deleteLoading === member.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                                            </button>
+            <div className="flex-1 overflow-y-auto p-ds-6">
+                {loading ? (
+                    <p role="status" className="py-8 text-center text-ds-content-muted">Loading team…</p>
+                ) : team.length === 0 ? (
+                    <p className="py-4 text-center italic text-ds-content-muted">No members found.</p>
+                ) : (
+                    <ul className="space-y-3">
+                        {team.map(member => {
+                            const memberName = member.name || 'Unknown';
+                            return (
+                                <li
+                                    key={member.id}
+                                    className="flex flex-col items-center justify-between gap-ds-4 rounded-ds-lg border border-ds-border bg-ds-surface p-ds-4 shadow-ds-xs lg:flex-row"
+                                >
+                                    <div className="flex w-full min-w-0 items-center gap-ds-3 lg:w-1/3">
+                                        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ds-surface-subtle font-bold text-ds-content-secondary">
+                                            {member.name ? member.name.charAt(0).toUpperCase() : '?'}
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="truncate font-bold text-ds-content">{memberName}</p>
+                                            <p className="truncate text-ds-xs text-ds-content-muted">{member.email}</p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
 
-                </div>
+                                    <div className="flex w-full flex-wrap items-center gap-ds-4 lg:w-auto">
+                                        <div className="flex items-center gap-ds-2 rounded-ds-md border border-ds-border-subtle bg-ds-surface-subtle p-ds-2">
+                                            <Phone size={14} className="text-ds-content-link" aria-hidden="true" />
+                                            <div className="flex flex-col">
+                                                <span className="text-ds-xs font-bold uppercase text-ds-content-muted">Dials</span>
+                                                <input
+                                                    type="number"
+                                                    aria-label={`Daily dial goal for ${memberName}`}
+                                                    className="w-14 rounded-ds-sm bg-transparent text-center text-ds-sm font-bold text-ds-content outline-none focus-visible:shadow-ds-focus"
+                                                    defaultValue={member.callGoal}
+                                                    onBlur={(e) => handleSaveGoal(member.id, 'callGoal', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-ds-2 rounded-ds-md border border-ds-border-subtle bg-ds-surface-subtle p-ds-2">
+                                            <Users size={14} className="text-ds-status-success-fg" aria-hidden="true" />
+                                            <div className="flex flex-col">
+                                                <span className="text-ds-xs font-bold uppercase text-ds-content-muted">Contacts</span>
+                                                <input
+                                                    type="number"
+                                                    aria-label={`Daily contact goal for ${memberName}`}
+                                                    className="w-14 rounded-ds-sm bg-transparent text-center text-ds-sm font-bold text-ds-content outline-none focus-visible:shadow-ds-focus"
+                                                    defaultValue={member.contactGoal}
+                                                    onBlur={(e) => handleSaveGoal(member.id, 'contactGoal', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            aria-label={`Copy tracking link for ${memberName}`}
+                                            onClick={() => handleCopyLink(member.id)}
+                                        >
+                                            <LinkIcon size={14} aria-hidden="true" /> Link
+                                        </Button>
+
+                                        <IconButton
+                                            label={`Remove ${memberName} from the team`}
+                                            variant="danger"
+                                            size="sm"
+                                            loading={deleteLoading === member.id}
+                                            onClick={() => handleDeleteUser(member.id, member.name)}
+                                        >
+                                            <Trash2 size={14} aria-hidden="true" />
+                                        </IconButton>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
             </div>
-        </div>
+        </Modal>
     );
 }
