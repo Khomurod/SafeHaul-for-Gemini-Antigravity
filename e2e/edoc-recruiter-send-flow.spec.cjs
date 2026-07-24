@@ -7,10 +7,13 @@ test.describe('E-Doc recruiter send flow', () => {
     await page.goto('/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock');
 
     await expect(page.getByText(/Documents Center/i)).toBeVisible({ timeout: 20_000 });
-    await page.getByRole('button', { name: /Templates/i }).click();
+    // The Documents Center views are an ARIA tab interface, and each template's
+    // actions carry the template title so they are uniquely addressable. The
+    // send flow itself is unchanged — only these selectors moved.
+    await page.getByRole('tab', { name: /^Templates/ }).click();
 
     await expect(page.getByText('E2E Test Document')).toBeVisible();
-    await page.getByRole('button', { name: /^Use$/i }).click();
+    await page.getByRole('button', { name: 'Use E2E Test Document' }).click();
 
     await expect(page.getByRole('heading', { name: /Send Document/i })).toBeVisible();
     await page.getByPlaceholder('Recipient name *').fill('Taylor Recruiter');
