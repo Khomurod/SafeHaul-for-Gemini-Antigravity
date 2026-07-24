@@ -1245,7 +1245,7 @@ Status `Not started` means audited but not migrated.
 | Public application `/apply/:slug` | `PublicApplyHandler`, shared feature-coupled `Stepper`, step forms | Feature-owned wizard using Progress, Field, Button, Card, PageState | Critical | Very high | Forms, feedback, layout, compatibility plan | Not started | Draft/offline/upload/validation/submission/consent, full mobile E2E |
 | Signing room `/sign/...` | specialized PDF/document-first workflow | Approved controls/states around feature-owned document canvas | Medium | Very high | Controls, dialog, feedback; signing QA | Not started | Existing signing unit/E2E, coordinates, zoom/touch/signature, mobile |
 | Verification portal `/verify/:token` | `VerificationPortal` + status screens + 4 sections now consume `Card`, `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `FieldDisplay`, `FieldMessage`, `Badge`, `Button`, `Stack`; feature-local `RadioGroup` accessibility-hardened; `SignaturePad`/hook untouched | Card, form primitives, Badge, Button, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 24 focused tests (hook token-load/submit contract + portal integration + status screens), full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, single h1 per state, radio grouping + keyboard, associated labels, validation focus, axe, overflow |
-| Change review `/review-change/:token` | local form/card/actions with direct data logic | Card, Field, Button, PageState | Medium | High | Forms, cards, feedback | Not started | Approve/reject/error/expired states, keyboard/mobile |
+| Change review `/review-change/:token` | `ReviewChangePortal` now consumes `Card`, `Button`, `Input`, and `Stack`/tokens with one `<h1>`, `role="status"`/`role="alert"` states, and a tokenized feature-owned approve/reject/edit toggle group; load/validation/payload/callables unchanged | Card, Button, Input, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 16 focused tests (token load/cancellation/errors, scalar/array/object/empty previews, no-pending/completed, action default/reject/edit/exclusivity/edit-hidden-for-nonscalar, exact approve/reject/edit payloads + order, submitting/disabled, success/error fallbacks, single h1, applicant-name non-disclosure, axe) + existing 3, full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Sandbox application | production-like application plus test controls | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | Not started | E2E fixtures, no production leakage, mobile |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Driver dossier modal | feature-local shell/tabs/application/documents | Dialog family, Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | Not started | Focus, tabs, edits/uploads/actions, large content, mobile |
@@ -2278,6 +2278,133 @@ Apply checks proportionally, but never claim an unrun check:
   would retire the feature-local RadioGroup; the Change Review Portal
   (`/review-change/:token`) remains a separate, not-yet-migrated slice.
 
+### Public Change Review Portal completion log
+
+- Date: 2026-07-23.
+- Checkpoint boundary: `origin/main` at `8a7fb70` (the merged Public Verification
+  Portal PR #81) with a clean working tree before this slice began. Work was
+  done on the designated `claude/safehaul-design-system-g1vr3a` branch, restarted
+  from `origin/main`; the verification hook and shared `SignaturePad` were
+  confirmed unchanged.
+- Audit findings: `/review-change/:token` (public, token-based, no login) lets a
+  driver approve/reject/edit recruiter-proposed changes. `ReviewChangePortal.jsx`
+  reads the token from `useParams()`, supports `?e2eReview=mock`, loads via
+  `getChangeReview({ token })`, initializes each pending change to `approve`, and
+  submits via `submitChangeResolution({ token, resolutions })`. Render states:
+  loading, load error, loaded review, no-pending, submitting, submission error,
+  success. A backend `status: 'completed'` review surfaces as the no-pending
+  state (the frontend derives no-work from `pending.length === 0`), which the
+  migration preserves. There is no retry or expired-specific screen, and the
+  frontend adds no missing-token guard (a missing token flows to the backend
+  "Missing token." error) — both preserved. The persistent header `<h1>` is
+  shown in every state. `applicantName` is returned by the callable but is **not
+  rendered** by the UI; the migration preserves this non-disclosure on the public
+  link.
+- Exact load contract (frozen, unchanged): `httpsCallable(functions,
+  'getChangeReview')({ token })` → `r.data` = `{ applicantName, status,
+  changes[] }`; each change is `{ fieldKey, fieldLabel, originalValue,
+  proposedValue, status, resolvedValue }`. The cancellation guard
+  (`let cancelled = false; … if (cancelled) return; … return () => { cancelled =
+  true; }`), the `String(proposedValue ?? '')` scalar init, the `isScalar`
+  (null/undefined/non-object) and `previewValue` (`—` / `{n} item(s)` /
+  `(updated)` / `String`) rules, and the `'This review link is invalid or has
+  expired.'` frontend fallback are all unchanged. Backend-mapped messages
+  ("Missing token.", "Too many requests. Please wait a moment.", "This review
+  link is invalid.", "This review link has expired.") are surfaced verbatim and
+  were not altered.
+- Exact resolution/submission contract (frozen, unchanged): one resolution per
+  pending change, in pending order — approve `{ fieldKey, action: 'approve' }`,
+  reject `{ fieldKey, action: 'reject' }`, edit `{ fieldKey, action: 'edit',
+  value }` (scalar → edited local value; non-scalar → proposedValue, which the UI
+  prevents). `submitChangeResolution({ token, resolutions })`; success →
+  `Thank you!` / `Your responses have been recorded.`; failure fallback →
+  `Could not submit your review. Please try again.`. Duplicate submission is
+  resisted by the existing `submitting` flag disabling the button.
+- Go/no-go decision: **GO**. Load/submit contracts understood and mockable;
+  scalar/non-scalar, all action values/payloads, and every status state are
+  testable; validation and payload construction are preserved; no backend or
+  Firebase-rules change is required; token privacy is intact.
+- Presentation changes (only `ReviewChangePortal.jsx`): the page is a
+  `Card as="main"` with a branded dark header (`<h1>`); loading is a
+  `role="status"` region, load/submit errors a `role="alert"` box, and success /
+  no-pending are `role="status"` regions; before/after now show visible
+  `Current:`/`Proposed:` labels (understandable without relying only on
+  strikethrough + arrow); the approve/reject/edit control stays a **feature-owned
+  segmented toggle group** with `aria-pressed`, per-field `role="group"`
+  labelling, icon + text (not colour alone), semantic status-token active tones,
+  a `focus-visible` ring, and a ≥40 px touch target; the corrected-value control
+  is the design-system `Input` (label association preserved via `aria-label`);
+  the submit is a design-system `Button`; and the footer note moved from a raw
+  `text-[11px]` to a supported ≥12 px token.
+- Behavior preserved: all load/cancellation/init/`setAction`/`setValue`/`pending`
+  filtering/`handleSubmit` logic, every action value, the exact payload shape and
+  order, the callables, the token handling, the render-state precedence
+  (loading → error → done → no-pending → form), and every user-visible message
+  are identical. `functions/applicationChanges.js` was not modified.
+- Decision-control decision: no approved design-system segmented/toggle-group
+  primitive exists, and an approve/reject/edit control is domain-specific, so it
+  remains feature-owned per the slice brief (no business-specific design-system
+  component was created). A future design-system Radio/Checkbox or generic
+  segmented-control primitive could inform a later refactor.
+- Privacy/security: the route token is not logged, stored in local/session
+  storage, or sent to analytics; no hidden backend fields were added; object- and
+  array-valued changes are shown only as `(updated)` / `{n} item(s)` (contents
+  never revealed); `applicantName` is not rendered; the route stays
+  unauthenticated and token validation/expiration/rate-limiting are unchanged.
+  All tests use artificial data (`tok-1`, "John Doe" asserted **not** rendered,
+  `555…` mock numbers, `Jonathan`/`Sparks`).
+- Focused tests: 16 (up from 3) — token-from-route + exact `getChangeReview`
+  request + loading, single `<h1>`, applicant-name non-disclosure, pending-only
+  display, empty/array/object previews without exposing contents + edit hidden
+  for non-scalar, completed→no-pending state, approve-default + mutual exclusion,
+  labelled corrected-value input, exact approve-default and edit/reject payloads
+  in order, submitting-disabled + announcement, backend error message, generic
+  load-error fallback, generic submission-error fallback, cancellation guard, and
+  loaded-form axe. The existing PEV/route-manifest/design-system gates pass
+  unchanged.
+- Full frontend gate: 94 files passed, 2 skipped; **667 tests passed** and 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate `vitest run --coverage` passed at 28.71% statements / 26.72% branches /
+  27.62% functions / 29.35% lines — no threshold regressed. The
+  callable-contract check passed (`OK | mapped 101 | raw 101`); no backend
+  changed, so backend unit tests were not required.
+- Lint (0 errors, 168 pre-existing warnings), typecheck, production build, and
+  `git diff --check` passed with only the pre-existing build warnings.
+- Chromium and Mobile Chrome regression: the new
+  `e2e/change-review-portal.spec.cjs` passed 7 checks with 3 intentional
+  viewport-specific skips across both projects — the default-approve complete
+  flow, a grouped keyboard-focusable decision control with visible focus,
+  desktop/tablet and mobile overflow, and scoped axe on both projects.
+- Server hygiene: port 5000 was confirmed free before use; the browser checks
+  ran against a fresh `vite dev` server in E2E test mode serving the current
+  working tree via the pre-installed system Chromium (`PW_CHROMIUM_EXECUTABLE`).
+  No unknown process was terminated.
+- Accessibility: one persistent `<h1>` across states; loading/success/no-pending
+  use `role="status"`, errors use `role="alert"`; each change has a `role="group"`
+  label; decision buttons expose `aria-pressed`, are keyboard operable with a
+  visible focus ring and a ≥40 px target, and convey state by icon + text, not
+  colour alone; before/after read via `Current:`/`Proposed:` labels; the
+  corrected-value input is labelled; submit is disabled + announced while
+  processing; long labels/values wrap; all interface text is ≥12 px. Unit axe
+  reported no violations; scoped Chromium/Mobile Chrome axe reported no serious or
+  critical violations.
+- Visual/mobile review: rendered review at 1440×900, 1024×768, and 412×915
+  confirmed the branded header, the token-styled change cards with visible
+  before/after labels and tinted active decisions, the corrected-value input, and
+  a single-column mobile layout with no document or horizontal overflow.
+- Backend tests: not applicable; no callable implementation, Firestore/Storage
+  rule, data shape, route, or token behavior changed. The callable request/
+  response contracts are asserted in the focused tests via mocks.
+- Diff review: only `ReviewChangePortal.jsx` (feature), its test, and
+  `e2e/change-review-portal.spec.cjs` changed; the backend
+  `functions/applicationChanges.js` was untouched; no generated artifact, real
+  token, or personal data entered any artifact.
+- Remaining token/public-screen work: all three public token screens
+  (`/verify/:token`, `/review-change/:token`, `/sandbox/transfer-success`) are
+  now migrated. A design-system Radio/Checkbox or generic segmented-control
+  primitive would let the verification RadioGroup and this decision control move
+  out of feature ownership.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2352,18 +2479,26 @@ in place (fieldset/legend, visible focus, error/description association) and the
 `useVerificationPortal` hook and shared `SignaturePad` were left untouched, so
 the token-load/validate/submit contracts are unchanged.
 
-The recommended next bounded slice is the **Change Review Portal**
-(`/review-change/:token`) — the sibling token result screen (Card, Field/Radio,
-Button, PageState) explicitly deferred from this diff; it should get its own
-audit and behavior freeze. Other low-risk options: within Settings/Profile,
-**Team & Users** is the next lowest-risk in-phase item; the **sandbox
-application** screen remains tied to the public-application migration; and
-Company Profile application questions remains higher risk (switch semantics +
+The **public Change Review Portal** (`/review-change/:token`) was migrated and
+verified on 2026-07-23 (completion log in section 6): `ReviewChangePortal` now
+consumes `Card`, `Button`, and `Input` with one `<h1>`, `role="status"`/
+`role="alert"` states, and a tokenized feature-owned approve/reject/edit toggle
+group (`aria-pressed` preserved), while the `getChangeReview`/
+`submitChangeResolution` callables, the resolution payload, `isScalar`/
+`previewValue`, token handling, and the non-display of `applicantName` are
+unchanged; `functions/applicationChanges.js` was not touched.
+
+The recommended next bounded slice is one of the remaining low-risk options:
+within Settings/Profile, **Team & Users** is the lowest-risk in-phase item; the
+**sandbox application** screen remains tied to the public-application migration;
+and Company Profile application questions remains higher risk (switch semantics +
 destructive actions). The Phase 3 link-style Button variant (Login text-link and
 reveal-adornment exceptions), a design-system file-input primitive (the
 branding-upload exception), and a design-system Radio/Checkbox primitive (which
-would retire the verification RadioGroup's feature-local status) stay
-independently tracked. The SMS number-assignment NO-GO is unchanged.
+would retire the verification RadioGroup and inform any future shared
+decision-control primitive) stay independently tracked. All public token
+screens (`/verify/:token`, `/review-change/:token`, `/sandbox/transfer-success`)
+are now migrated. The SMS number-assignment NO-GO is unchanged.
 
 Sequence (whichever slice the owner selects):
 
