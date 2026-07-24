@@ -6,6 +6,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@lib/firebase';
 import { useCampaignDraft } from './hooks/useCampaignDraft';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+import { Button, FormField, Input } from '@/design-system/components';
 
 // Lazy load sub-components
 const AudienceBuilder = React.lazy(() => import('./components/AudienceBuilder').then(m => ({ default: m.AudienceBuilder })));
@@ -109,29 +110,27 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
     };
 
     return (
-        <div className="flex h-screen bg-slate-50 overflow-hidden">
+        <div className="flex h-screen flex-col overflow-hidden bg-ds-surface-subtle md:flex-row">
 
             {/* Sidebar Navigation */}
-            <aside className="w-64 bg-white border-r border-slate-200 flex flex-col z-20">
-                <div className="h-16 flex items-center px-6 border-b border-slate-100">
-                    <button onClick={onClose} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold text-sm transition-colors">
-                        <ArrowLeft size={16} /> Exit
-                    </button>
+            <aside className="flex shrink-0 flex-col border-b border-ds-border bg-ds-surface md:w-64 md:border-b-0 md:border-r">
+                <div className="flex h-16 shrink-0 items-center border-b border-ds-border-subtle px-ds-4">
+                    <Button variant="ghost" size="sm" onClick={onClose}>
+                        <ArrowLeft size={16} aria-hidden="true" /> Exit
+                    </Button>
                 </div>
 
-                <div className="p-6">
-                    <div className="mb-8">
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Campaign Name</label>
-                        <input
+                <div className="flex flex-col gap-ds-6 p-ds-4 md:p-ds-6">
+                    <FormField id="campaign-editor-name" label="Campaign Name">
+                        <Input
                             type="text"
                             value={campaignData.name}
                             onChange={(e) => { setIsDirty(true); setCampaignData(prev => ({ ...prev, name: e.target.value })); }}
-                            className="w-full text-lg font-black text-slate-900 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none transition-all pb-1 truncate placeholder-slate-300"
                             placeholder="Enter campaign name..."
                         />
-                    </div>
+                    </FormField>
 
-                    <nav className="space-y-2">
+                    <nav aria-label="Campaign sections" className="flex flex-col gap-ds-2">
                         {SECTIONS.map(section => {
                             const isActive = activeSection === section.id;
                             const isDone = isSectionComplete(section.id);
@@ -140,31 +139,49 @@ export function CampaignEditor({ companyId, campaignId, onClose }) {
                             return (
                                 <button
                                     key={section.id}
+                                    type="button"
                                     onClick={() => setActiveSection(section.id)}
-                                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${isActive ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                                    aria-current={isActive ? 'step' : undefined}
+                                    className={[
+                                        'flex w-full items-center justify-between rounded-ds-lg p-ds-3 transition-all',
+                                        'focus-visible:outline-none focus-visible:shadow-ds-focus',
+                                        isActive
+                                            ? 'bg-ds-surface-selected text-ds-content-link shadow-ds-xs'
+                                            : 'text-ds-content-secondary hover:bg-ds-surface-hover',
+                                    ].join(' ')}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <Icon size={18} className={isActive ? 'text-blue-600' : 'text-slate-400'} />
-                                        <span className="text-sm font-bold">{section.label}</span>
-                                    </div>
-                                    {isDone ? <CheckCircle2 size={16} className="text-emerald-500" /> : <Circle size={16} className="text-slate-200" />}
+                                    <span className="flex items-center gap-ds-3">
+                                        <Icon size={18} className={isActive ? 'text-ds-action-primary' : 'text-ds-content-muted'} aria-hidden="true" />
+                                        <span className="text-ds-sm font-bold">{section.label}</span>
+                                    </span>
+                                    {isDone ? (
+                                        <>
+                                            <CheckCircle2 size={16} className="text-ds-status-success-fg" aria-hidden="true" />
+                                            <span className="sr-only"> (completed)</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Circle size={16} className="text-ds-border" aria-hidden="true" />
+                                            <span className="sr-only"> (incomplete)</span>
+                                        </>
+                                    )}
                                 </button>
                             );
                         })}
                     </nav>
                 </div>
 
-                <div className="mt-auto p-6 border-t border-slate-100">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-400">
-                        <span>{isSaving ? 'Saving...' : 'Auto-Saved'}</span>
-                        <Save size={14} className={isSaving ? 'animate-pulse text-blue-500' : ''} />
+                <div className="mt-auto border-t border-ds-border-subtle p-ds-4">
+                    <div className="flex items-center justify-between text-ds-xs font-bold text-ds-content-muted">
+                        <span role="status" aria-live="polite">{isSaving ? 'Saving...' : 'Auto-Saved'}</span>
+                        <Save size={14} className={isSaving ? 'animate-pulse text-ds-action-primary' : ''} aria-hidden="true" />
                     </div>
                 </div>
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto bg-slate-50 p-8 relative">
-                <React.Suspense fallback={<div className="p-10 text-center text-slate-400">Loading Module...</div>}>
+            <main className="relative min-w-0 flex-1 overflow-y-auto bg-ds-surface-subtle p-ds-6">
+                <React.Suspense fallback={<div role="status" className="p-ds-10 text-center text-ds-content-muted">Loading Module...</div>}>
                     {activeSection === 'audience' && (
                         <AudienceBuilder
                             companyId={companyId}
