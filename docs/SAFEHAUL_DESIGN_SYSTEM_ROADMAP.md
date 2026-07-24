@@ -1616,17 +1616,81 @@ The reverse directions are prohibited.
       **Documented temporary exception:** the recipient-preview panel keeps its
       dark surface (literal slate colours, not `--ds-*`) because the unmigrated
       `VirtualLeadList` — explicitly out of scope for this slice — renders its own
-      hard-coded dark list chrome; the dark treatment is removed when that list is
-      migrated. `VirtualLeadList` also still carries its own legacy 10 px status
-      pills and a low-contrast "Scanning Database..." label (axe: `color-contrast`
-      4.23:1), so the builder's scoped axe scan excludes it. Both are tracked as
-      the `VirtualLeadList` slice below.
+      hard-coded dark list chrome. (Resolved by the `VirtualLeadList` slice below:
+      that list's 10 px status pills and low-contrast "Scanning Database..." label
+      are now fixed and the builder's scoped axe scan no longer excludes it. The
+      dark surface itself remains a deliberate, documented product treatment — see
+      the dark-surface note in that slice.)
     - Commit/PR: feature + docs commits on
       `claude/safehaul-design-system-g1vr3a`; PR into `main`.
-  - Remaining Campaigns work: the `LaunchPad` editor module and the
-    `VirtualLeadList` recipient preview (its dark chrome, 10 px status pills, and
-    low-contrast loading label) remain legacy and each need their own audited
-    slice. Campaigns is **not** complete until they meet the migration standard.
+  - [x] Migrate the recipient preview list (`VirtualLeadList`) — virtualized lead
+    rows, selection, pagination, and load states.
+    - Complete when: the inaccessible clickable row containers become
+      keyboard-operable selection controls that keep whole-row usability;
+      selected / manually excluded / already-messaged states are text and icon
+      based rather than colour-only; already-messaged rows stay non-toggleable;
+      loading and pagination are announced; retry is an approved `Button`; error
+      and empty states are accessible; the 10 px status pills are gone;
+      "Scanning Database…" meets contrast; contact data is never logged or
+      snapshotted; virtualization and internal scrolling stay intact; and no
+      targeting, pagination, recipient data or exclusion behavior changes.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/VirtualLeadList.jsx`,
+      `src/features/campaigns/components/VirtualLeadList.test.jsx`,
+      `e2e/campaign-lead-preview.spec.cjs`,
+      `e2e/campaign-audience-builder.spec.cjs` (its axe scan no longer excludes
+      the preview), this roadmap.
+    - Verification: 20 focused tests passed (exact `getFilteredLeadsPage` payload
+      with `pageSize: 50`, the `excludeRecentDays` `off`→`null` and
+      `campaignLimit` `parseInt` mapping, and `lastDocId`; append-with-cursor
+      pagination and the `hasMore` rule including the empty-page case; reset on
+      filter change; the in-flight fetch guard; local-data mode with no backend
+      call; `import_<index>` fallback ids; name/contact fallbacks; toggle rows
+      with `aria-pressed` and exact `onToggleExclusion(safeId)` values;
+      non-toggleable already-messaged rows; phone-exclusion only when a Set is
+      supplied; Badge status tones and no 10 px text; announced loading, empty and
+      pagination states; alert + retry; the frozen Virtuoso props; axe with mixed
+      row states). Full frontend suite 106 files / 907 tests passed (2 files / 48
+      emulator rules tests skipped); migrated file coverage 100% lines / 93%
+      branches; lint 0 errors; typecheck, production build, and
+      `git diff --check` passed. `campaign-lead-preview.spec.cjs` passed 11
+      Chromium/Mobile Chrome checks (3 viewport-specific skips) and the 35-check
+      campaign regression sweep stayed green.
+    - Visual/mobile/a11y: rows are now native `<button aria-pressed>` controls, so
+      Enter/Space work from the platform and the whole row stays clickable; an
+      `ds-visually-hidden` state sentence ("Included in this campaign" /
+      "Excluded from this campaign" / "Already messaged — cannot be selected")
+      pairs with the check/cross icon so state is never colour-only;
+      already-messaged rows are not exposed as controls at all. Status pills are
+      approved `Badge`s (12 px, replacing the 10 px spans); "Scanning Database…"
+      moved to `slate-300` (≈9.5:1 on the panel, up from 4.23:1); loading, empty
+      and pagination regions are `role="status"`; the failure state is a
+      `role="alert"` with an approved `Button` retry. `Virtuoso` still owns the
+      internal scrolling, and there is no document-level overflow at
+      1440/1024/412. Real-browser axe over the **populated** preview (rows
+      injected by intercepting the callable) found no serious/critical and no
+      color-contrast violations.
+    - Notes: presentation only — all props and defaults, local-vs-remote
+      behavior, the StrictMode double-fetch guard, the `getFilteredLeadsPage`
+      callable, the backend filter mapping, `pageSize: 50`, pagination/reset/
+      append/`lastDocId`, the `hasMore` calculation, error handling and retry,
+      imported-row fallback ids, name/contact fallbacks, the manual and
+      phone-based exclusion rules, every exclusion callback value, the `Virtuoso`
+      `data`/`endReached`/`itemContent`/Footer wiring, and all existing status and
+      empty/loading/error copy are unchanged. Recipient contact data is never
+      logged (only the failure reason is) and never snapshotted; all fixtures use
+      artificial names and fictional 555-01xx numbers. **Documented feature-level
+      exception (smallest scope):** the panel keeps its dark surface using literal
+      slate colours instead of `--ds-*`, because the editor presents it as an
+      inverted "console" panel and the design system has no approved dark-surface
+      tokens; rather than expand the token set for one surface, the exception is
+      confined to this container and every piece of text on it is contrast-checked
+      in a real browser.
+    - Commit/PR: feature + docs commits on
+      `claude/safehaul-design-system-g1vr3a`; PR into `main`.
+  - Remaining Campaigns work: the `LaunchPad` editor module remains legacy and
+    needs its own audited slice. Campaigns is **not** complete until it meets the
+    migration standard.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1721,7 +1785,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, the `CampaignEditor` shell, the `ContentComposer`, and the `AudienceBuilder` migrated to approved layout/components; `LaunchPad` and the `VirtualLeadList` preview remain local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread, variable insertion, char count, and `DeviceMockup` preview; `AudienceBuilder` keeps the targeting/import hooks, upload fingerprint + scope exclusion resets, `rawData` handling, `onChange` sync, `finalCount`, filter/option values, and every `VirtualLeadList` prop | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, editor shell, content composer, and audience builder completed 2026-07-24; `LaunchPad` + `VirtualLeadList` remain | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
+| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, the `CampaignEditor` shell, the `ContentComposer`, the `AudienceBuilder`, and the `VirtualLeadList` preview migrated to approved layout/components; only `LaunchPad` remains local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread, variable insertion, char count, and `DeviceMockup` preview; `AudienceBuilder` keeps the targeting/import hooks, fingerprint + scope exclusion resets, `rawData` handling, `onChange` sync, `finalCount`, and filter/option values; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, filter mapping, `pageSize: 50`, pagination/reset/`hasMore`, fallbacks, exclusion rules, and the Virtuoso wiring | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, editor shell, content composer, audience builder, and lead preview completed 2026-07-24; `LaunchPad` remains | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe (incl. the populated dark preview), overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3484,14 +3548,25 @@ resets, the CRM/upload `rawData` handling, `onChange(localFilters, matchCount)`
 parent sync, manual exclusion toggling, `finalCount`, every filter/option value
 (including the CRM `off` vs upload `7` exclusion defaults), the file `accept`
 list, the sheet import behavior, every `VirtualLeadList` prop, and the exact
-`onChange(localFilters, finalCount)` Confirm Audience call are unchanged. Its
-recipient-preview panel keeps a dark surface as a documented temporary exception,
-because the unmigrated `VirtualLeadList` renders its own hard-coded dark chrome.
-Campaigns is **not** complete: the `LaunchPad` module and the `VirtualLeadList`
-preview (dark chrome, 10 px status pills, low-contrast loading label) remain
-legacy, so the recommended next bounded slices are those (each on its own) or the
-**E-Docs** document/envelope workflows — each audited and scoped before any
-presentation change.
+`onChange(localFilters, finalCount)` Confirm Audience call are unchanged. The
+**recipient preview list** (`VirtualLeadList`) was then migrated and verified on
+2026-07-24 (GO; completion log in the Phase 13 Campaigns item): its inaccessible
+clickable row containers became native `aria-pressed` toggle buttons that keep
+whole-row usability and pair a check/cross icon with a visually hidden state
+sentence, so selection is never colour-only; already-messaged rows are no longer
+exposed as controls at all; status pills became approved 12 px `Badge`s (the
+10 px spans are gone); "Scanning Database…" was lifted from 4.23:1 to ≈9.5:1;
+loading, empty and pagination regions are `role="status"`, and the failure state
+is a `role="alert"` with an approved `Button` retry — while the callable, backend
+filter mapping, `pageSize: 50`, pagination/reset/`hasMore`, the StrictMode fetch
+guard, fallback ids, name/contact fallbacks, every exclusion rule and callback
+value, the `Virtuoso` wiring, and all existing copy are unchanged. Its dark
+surface is retained as the smallest documented feature-level exception (the design
+system has no approved dark-surface tokens), with every piece of text on it
+contrast-verified in a real browser against a populated list. Campaigns is **not**
+complete: the `LaunchPad` module remains legacy, so the recommended next bounded
+slices are that module or the **E-Docs** document/envelope workflows — each
+audited and scoped before any presentation change.
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
