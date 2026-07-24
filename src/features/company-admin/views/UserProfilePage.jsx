@@ -1,17 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { auth, storage, db } from '@lib/firebase';
 import { updateProfile, updatePassword, updateEmail, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { doc, updateDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { User, Mail, Lock, Save, Camera, Upload, AlertCircle } from 'lucide-react';
+import { User, Mail, Lock, Save } from 'lucide-react';
 import { getPortalUser } from '@features/auth/services/userService';
+import {
+    Button,
+    FieldDisplay,
+    FormField,
+    FormSection,
+    Input,
+} from '@/design-system/components';
+import { PageHeader, Stack } from '@/design-system/layouts';
+import { ProfileAvatarField } from '@features/company-admin/components/profile/ProfileAvatarField';
 
 export const UserProfilePage = () => {
     const { currentUser, currentCompanyProfile } = useData();
     const { showSuccess, showError } = useToast();
-    const fileInputRef = useRef(null);
 
     const [profileData, setProfileData] = useState({
         displayName: '',
@@ -77,10 +85,6 @@ export const UserProfilePage = () => {
     };
 
     // --- Avatar Handling ---
-    const handleAvatarClick = () => {
-        fileInputRef.current?.click();
-    };
-
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -214,6 +218,12 @@ export const UserProfilePage = () => {
         }
     };
 
+    const handleCancelEmailEdit = () => {
+        setIsEditingEmail(false);
+        setEmailPassword('');
+        setNewEmail(currentUser.email);
+    };
+
     // --- Password Change ---
     const handleChangePassword = async () => {
         if (!passwordData.currentPassword || !passwordData.newPassword) {
@@ -252,213 +262,207 @@ export const UserProfilePage = () => {
     };
 
     const getInitials = (name) => {
-        if (!name) return 'U';
-        const parts = name.split(' ');
+        // Trim-safe: the initials prop is evaluated eagerly regardless of whether
+        // a photo exists, so a whitespace-only name must not throw (it would crash
+        // the page even for photo-backed accounts).
+        const trimmed = (name || '').trim();
+        if (!trimmed) return 'U';
+        const parts = trimmed.split(/\s+/).filter(Boolean);
         if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-        return name.substring(0, 2).toUpperCase();
+        return trimmed.substring(0, 2).toUpperCase();
     };
 
     return (
-        <div className="h-full flex flex-col bg-gray-50">
+        <div className="flex h-full flex-col bg-ds-surface-subtle">
             {/* Page Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0">
-                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    <User size={24} className="text-indigo-600" />
-                    My Profile
-                </h1>
-                <p className="text-sm text-gray-500">Manage your account settings and preferences.</p>
+            <div className="shrink-0 border-b border-ds-border bg-ds-surface px-6 py-4">
+                <PageHeader
+                    title={(
+                        <span className="inline-flex items-center gap-ds-2">
+                            <User size={24} className="text-ds-action-primary" aria-hidden="true" />
+                            My Profile
+                        </span>
+                    )}
+                    description="Manage your account settings and preferences."
+                />
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-6">
-                <div className="max-w-2xl mx-auto space-y-6">
+            <div className="min-w-0 flex-1 overflow-auto p-6">
+                <div className="mx-auto w-full max-w-2xl">
+                    <Stack gap="lg">
 
-                    {/* Profile Card */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                            <User size={18} /> Profile Information
-                        </h2>
+                        {/* Profile Section */}
+                        <FormSection
+                            title="Profile Information"
+                            description="Your name, photo, username, and sign-in email."
+                        >
+                            {/* Avatar */}
+                            <ProfileAvatarField
+                                photoURL={profileData.photoURL}
+                                initials={getInitials(profileData.displayName)}
+                                uploading={isUploadingAvatar}
+                                onFileSelect={handleFileChange}
+                            />
 
-                        {/* Avatar Section */}
-                        <div className="flex items-center gap-6 mb-8">
-                            <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    className="hidden"
-                                    accept="image/*"
-                                    onChange={handleFileChange}
-                                />
-                                {profileData.photoURL ? (
-                                    <img src={profileData.photoURL} alt="Avatar" loading="lazy" className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 group-hover:opacity-75 transition" />
-                                ) : (
-                                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold group-hover:opacity-75 transition">
-                                        {getInitials(profileData.displayName)}
-                                    </div>
-                                )}
-                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Camera size={24} className="text-white drop-shadow-md" />
-                                </div>
-                                <button className="absolute bottom-0 right-0 p-1.5 bg-white border border-gray-300 rounded-full shadow hover:bg-gray-50 transition z-10">
-                                    {isUploadingAvatar ? <div className="animate-spin h-3.5 w-3.5 border-2 border-blue-600 rounded-full border-t-transparent"></div> : <Upload size={14} className="text-gray-600" />}
-                                </button>
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-lg font-medium text-gray-900">{profileData.displayName || 'No Name Set'}</h3>
-                                <p className="text-sm text-gray-500">{currentCompanyProfile?.companyName || 'No Company'}</p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                    {isUploadingAvatar ? 'Uploading image...' : 'Click avatar to upload new image'}
-                                </p>
-                            </div>
-                        </div>
+                            <FieldDisplay label="Company">
+                                {currentCompanyProfile?.companyName || 'No Company'}
+                            </FieldDisplay>
 
-                        {/* Edit Fields */}
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
-                                    <input
+                            {/* Name & Username */}
+                            <div className="grid grid-cols-1 gap-ds-5 md:grid-cols-2">
+                                <FormField id="profile-display-name" label="Display Name">
+                                    <Input
                                         type="text"
                                         name="displayName"
                                         value={profileData.displayName}
                                         onChange={handleProfileChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                                        autoComplete="name"
                                     />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                                    <input
+                                </FormField>
+                                <FormField id="profile-username" label="Username">
+                                    <Input
                                         type="text"
                                         name="username"
                                         value={profileData.username}
                                         onChange={handleProfileChange}
                                         placeholder="@username"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                                        autoComplete="username"
                                     />
+                                </FormField>
+                            </div>
+
+                            {/* Email */}
+                            {!isEditingEmail ? (
+                                <div className="flex flex-wrap items-end justify-between gap-ds-3">
+                                    <FieldDisplay label="Email Address" className="min-w-0 flex-1">
+                                        {profileData.email}
+                                    </FieldDisplay>
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => setIsEditingEmail(true)}
+                                    >
+                                        <Mail size={16} aria-hidden="true" />
+                                        Change Email
+                                    </Button>
                                 </div>
-                            </div>
-
-                            {/* Email Section */}
-                            <div className="pt-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    <Mail size={14} className="inline mr-1" /> Email Address
-                                </label>
-                                {!isEditingEmail ? (
-                                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                        <span className="text-gray-700">{profileData.email}</span>
-                                        <button
-                                            onClick={() => setIsEditingEmail(true)}
-                                            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                            ) : (
+                                <div
+                                    role="group"
+                                    aria-label="Change email address"
+                                    className="flex flex-col gap-ds-4 rounded-ds-md border border-ds-status-info-border bg-ds-status-info-bg p-ds-4"
+                                >
+                                    <FormField id="profile-new-email" label="New Email">
+                                        <Input
+                                            type="email"
+                                            value={newEmail}
+                                            onChange={(e) => setNewEmail(e.target.value)}
+                                            autoComplete="email"
+                                        />
+                                    </FormField>
+                                    <FormField
+                                        id="profile-email-current-password"
+                                        label="Current Password"
+                                        description="Required to change your email."
+                                    >
+                                        <Input
+                                            type="password"
+                                            value={emailPassword}
+                                            onChange={(e) => setEmailPassword(e.target.value)}
+                                            autoComplete="current-password"
+                                        />
+                                    </FormField>
+                                    <div className="flex flex-wrap justify-end gap-ds-2">
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleCancelEmailEdit}
                                         >
-                                            Change Email
-                                        </button>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="primary"
+                                            size="sm"
+                                            onClick={handleUpdateEmail}
+                                            loading={isSavingProfile}
+                                        >
+                                            Update Email
+                                        </Button>
                                     </div>
-                                ) : (
-                                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 space-y-3 animate-in fade-in slide-in-from-top-2">
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Email</label>
-                                            <input
-                                                type="email"
-                                                value={newEmail}
-                                                onChange={(e) => setNewEmail(e.target.value)}
-                                                className="w-full px-3 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm Password</label>
-                                            <input
-                                                type="password"
-                                                value={emailPassword}
-                                                onChange={(e) => setEmailPassword(e.target.value)}
-                                                placeholder="Required to change email"
-                                                className="w-full px-3 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                        </div>
-                                        <div className="flex justify-end gap-2 pt-1">
-                                            <button
-                                                onClick={() => { setIsEditingEmail(false); setEmailPassword(''); setNewEmail(currentUser.email); }}
-                                                className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 rounded-md transition"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleUpdateEmail}
-                                                className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition"
-                                            >
-                                                Update Email
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end">
+                                <Button
+                                    type="button"
+                                    variant="primary"
+                                    size="lg"
+                                    onClick={handleSaveProfile}
+                                    loading={isSavingProfile}
+                                >
+                                    {!isSavingProfile && <Save size={18} aria-hidden="true" />}
+                                    {isSavingProfile ? 'Saving...' : 'Save Changes'}
+                                </Button>
                             </div>
-                        </div>
+                        </FormSection>
 
-                        <div className="mt-6 flex justify-end">
-                            <button
-                                onClick={handleSaveProfile}
-                                disabled={isSavingProfile}
-                                className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium flex items-center gap-2 disabled:opacity-50 shadow-sm"
-                            >
-                                <Save size={16} /> {isSavingProfile ? 'Saving...' : 'Save Changes'}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Password Card */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                            <Lock size={18} /> Change Password
-                        </h2>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                                <input
+                        {/* Password Section */}
+                        <FormSection
+                            title="Change Password"
+                            description="Update the password you use to sign in."
+                        >
+                            <FormField id="profile-current-password" label="Current Password">
+                                <Input
                                     type="password"
                                     name="currentPassword"
                                     value={passwordData.currentPassword}
                                     onChange={handlePasswordChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                    autoComplete="current-password"
                                     placeholder="••••••••"
                                 />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                                    <input
+                            </FormField>
+                            <div className="grid grid-cols-1 gap-ds-5 md:grid-cols-2">
+                                <FormField id="profile-new-password" label="New Password">
+                                    <Input
                                         type="password"
                                         name="newPassword"
                                         value={passwordData.newPassword}
                                         onChange={handlePasswordChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        autoComplete="new-password"
                                         placeholder="••••••••"
                                     />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-                                    <input
+                                </FormField>
+                                <FormField id="profile-confirm-password" label="Confirm New Password">
+                                    <Input
                                         type="password"
                                         name="confirmPassword"
                                         value={passwordData.confirmPassword}
                                         onChange={handlePasswordChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        autoComplete="new-password"
                                         placeholder="••••••••"
                                     />
-                                </div>
+                                </FormField>
                             </div>
-                        </div>
 
-                        <div className="mt-6 flex justify-end">
-                            <button
-                                onClick={handleChangePassword}
-                                disabled={isSavingPassword}
-                                className="px-5 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium flex items-center gap-2 disabled:opacity-50 shadow-sm"
-                            >
-                                <Lock size={16} /> {isSavingPassword ? 'Changing...' : 'Change Password'}
-                            </button>
-                        </div>
-                    </div>
+                            <div className="flex justify-end">
+                                <Button
+                                    type="button"
+                                    variant="primary"
+                                    size="lg"
+                                    onClick={handleChangePassword}
+                                    loading={isSavingPassword}
+                                >
+                                    {!isSavingPassword && <Lock size={18} aria-hidden="true" />}
+                                    {isSavingPassword ? 'Changing...' : 'Change Password'}
+                                </Button>
+                            </div>
+                        </FormSection>
 
+                    </Stack>
                 </div>
             </div>
         </div>
