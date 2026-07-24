@@ -1511,10 +1511,60 @@ The reverse directions are prohibited.
       not touched.
     - Commit/PR: feature + docs commits on
       `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
-  - Remaining Campaigns work: the three lazy editor modules — `AudienceBuilder`,
-    `ContentComposer`, and `LaunchPad` — remain legacy and each need their own
-    audited slice. Campaigns is **not** complete until they meet the migration
-    standard.
+  - [x] Migrate the content composer (`ContentComposer`) — the editor's message
+    Content section (channel toggle, subject/message fields, variable insertion,
+    device preview, tips).
+    - Complete when: the composer consumes approved primitives (`Card`,
+      `FormField`, `Input`, `Textarea`, `Button`); the SMS/Email choice is a
+      keyboard-accessible toggle exposing selected state; Subject/Message have
+      associated labels; variable buttons identify what they insert; focus
+      returns to the edited field; the character count is accessible; the toolbar
+      is in normal flow (no overlapping absolute bar) and reachable on mobile;
+      there is no document overflow at 1440/1024/412; and no message limit,
+      validation, sending rule, or preserved behavior changes.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/ContentComposer.jsx`,
+      `src/features/campaigns/components/ContentComposer.test.jsx`,
+      `e2e/campaign-content-composer.spec.cjs`, this roadmap.
+    - Verification: 18 focused tests passed (exact `{ ...messageConfig, [key]: value }`
+      method updates; conditional Subject; message/subject merge updates;
+      active-field tracking; every variable value with surrounding spaces; caret
+      insertion; selection replacement; subject-vs-message targeting; append
+      fallback when the selection API is unavailable; `requestAnimationFrame`
+      focus + caret restoration; accessible character count; exact `DeviceMockup`
+      `type`/preview content; placeholders; Pro Tips copy; axe). Full frontend
+      suite 105 files / 869 tests passed (2 files / 48 emulator rules tests
+      skipped); migrated file coverage 100% lines / 96.7% branches; lint 0 errors;
+      typecheck, production build, and `git diff --check` passed.
+      `campaign-content-composer.spec.cjs` passed 8 Chromium/Mobile Chrome checks
+      (2 viewport-specific skips); the editor/card/dashboard/results/launch specs
+      stay green.
+    - Visual/mobile/a11y: no document-level horizontal overflow at 1440/1024/412
+      (measured in-browser). The channel toggle is a labelled `role="group"` of
+      `aria-pressed` buttons (keyboard-operable, selected state exposed); Subject
+      and Message use `FormField` label association; variable buttons carry
+      `Insert <name> placeholder` labels with a "inserts at your cursor in the
+      active field" hint; the character count is an `aria-live="polite"` region
+      with an sr-only "Message length:" prefix; the variable toolbar sits in
+      normal flow below the field (the former absolute overlapping bar is gone).
+      The intro subtitle was moved from `content-muted` to `content-secondary`
+      because the editor's `#f1f5f9` content background dropped muted text to
+      4.34:1; real-browser axe scoped to the composer then found no
+      serious/critical and no color-contrast violations.
+    - Notes: presentation only — props (`messageConfig`, `onChange`); the
+      `handleChange` spread; the exact `sms`/`email` methods; email-only Subject;
+      the `activeField` default (`message`) + focus tracking; the variable labels
+      and values; caret/selection insertion with surrounding spaces;
+      subject-only-when-email-and-active vs message targeting; the
+      `requestAnimationFrame` focus/caret restore; the append fallback; the
+      placeholders; the character count; and the `DeviceMockup` `type` + preview
+      content are all unchanged. `DeviceMockup` was not redesigned. No message
+      limit, validation, or sending rule changed.
+    - Commit/PR: feature + docs commits on
+      `claude/safehaul-design-system-g1vr3a`; PR into `main`.
+  - Remaining Campaigns work: two lazy editor modules — `AudienceBuilder` and
+    `LaunchPad` — remain legacy and each need their own audited slice. Campaigns
+    is **not** complete until they meet the migration standard.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1609,7 +1659,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, and the `CampaignEditor` shell migrated to approved layout/components; the three lazy editor modules (`AudienceBuilder`, `ContentComposer`, `LaunchPad`) remain local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, and editor shell completed 2026-07-24; the three lazy editor modules remain | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
+| Campaigns | `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, the `CampaignEditor` shell, and the `ContentComposer` migrated to approved layout/components; the two remaining lazy editor modules (`AudienceBuilder`, `LaunchPad`) remain local | Presentation-only; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce + `rawData` strip, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread, method/subject/variable-insertion (caret/selection/spaces/rAF/fallback), char count, and `DeviceMockup` preview | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, progress/recipient counts | Medium | High | In progress — card, dashboard shell, results table, report modal, details, editor shell, and content composer completed 2026-07-24; `AudienceBuilder` + `LaunchPad` remain | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe (no serious/critical or contrast), overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3346,11 +3396,23 @@ announced save/Suspense regions — while the draft `onSnapshot` listener + unsu
 the deep filter merge with in-memory `rawData` preservation, the `isDirty`/init
 guards, the exact 2-second autosave debounce, the `rawData` strip before
 `saveDraft`, `isSectionComplete`, all lazy child props, and `onLaunchSuccess=
-{onClose}` are unchanged. Campaigns is **not** complete: the three lazy editor
-modules (`AudienceBuilder`, `ContentComposer`, `LaunchPad`) remain legacy, so the
-recommended next bounded slices are those modules (each on its own) or the
-**E-Docs** document/envelope workflows — each audited and scoped before any
-presentation change.
+{onClose}` are unchanged. The **content composer** (`ContentComposer`) was then
+migrated and verified on 2026-07-24 (GO; completion log in the Phase 13 Campaigns
+item): the editor's Content section now uses `Card`/`FormField`/`Input`/
+`Textarea`/`Button` with a keyboard-accessible SMS/Email toggle (labelled group of
+`aria-pressed` buttons), associated Subject/Message labels, clearly-labelled
+variable buttons, an `aria-live` character count, and the variable toolbar in
+normal flow (the former absolute overlapping bar removed) — while the
+`messageConfig` spread, the `sms`/`email` methods, email-only Subject, the
+`activeField` tracking, the variable labels/values, the caret/selection insertion
+with surrounding spaces, the subject-vs-message targeting, the
+`requestAnimationFrame` focus/caret restore, the append fallback, the
+placeholders, the character count, and the `DeviceMockup` `type`/preview content
+are unchanged (`DeviceMockup` not redesigned; no message limit, validation, or
+sending rule changed). Campaigns is **not** complete: two lazy editor modules
+(`AudienceBuilder`, `LaunchPad`) remain legacy, so the recommended next bounded
+slices are those modules (each on its own) or the **E-Docs** document/envelope
+workflows — each audited and scoped before any presentation change.
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive

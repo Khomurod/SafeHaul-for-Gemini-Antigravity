@@ -1,10 +1,13 @@
-import React, { useRef } from 'react';
-import { MessageSquare, Mail, Zap, Info } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { MessageSquare, Mail, Zap, Info, Plus } from 'lucide-react';
 import { DeviceMockup } from './DeviceMockup';
+import { Card, FormField, Input, Textarea, Button } from '@/design-system/components';
 
 export function ContentComposer({ messageConfig, onChange }) {
     const messageRef = useRef(null);
     const subjectRef = useRef(null);
+    // Track which field is active for variable insertion.
+    const [activeField, setActiveField] = useState('message');
 
     const handleChange = (key, value) => {
         onChange({ ...messageConfig, [key]: value });
@@ -32,94 +35,106 @@ export function ContentComposer({ messageConfig, onChange }) {
         handleChange(field, current + ` ${variable} `);
     };
 
-    // Track which field is active for variable insertion
-    const [activeField, setActiveField] = React.useState('message');
-
     const VARIABLES = [
         { label: 'Driver Name', value: '[Driver Name]' },
         { label: 'My Company', value: '[Company Name]' },
         { label: 'Recruiter Name', value: '[Recruiter Name]' },
     ];
 
+    const isEmail = messageConfig.method === 'email';
+
     return (
-        <div className="max-w-4xl mx-auto">
-            <div className="mb-8">
-                <h2 className="text-2xl font-black text-slate-900 mb-2">Content Strategy</h2>
-                <p className="text-slate-500">Craft a compelling message. Personalize it with variables.</p>
+        <div className="mx-auto max-w-4xl">
+            <div className="mb-ds-8">
+                <h2 className="mb-ds-2 text-ds-heading-lg font-bold text-ds-content">Content Strategy</h2>
+                <p className="text-ds-body text-ds-content-secondary">Craft a compelling message. Personalize it with variables.</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 gap-ds-8 lg:grid-cols-3">
                 {/* Left: Composer */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="flex flex-col gap-ds-6 lg:col-span-2">
 
-                    {/* Channel Selector */}
-                    <div className="bg-white p-1 rounded-xl border border-slate-200 inline-flex">
-                        <button
+                    {/* Channel selector */}
+                    <div
+                        role="group"
+                        aria-label="Message channel"
+                        className="inline-flex gap-ds-1 self-start rounded-ds-lg border border-ds-border-subtle bg-ds-surface p-ds-1"
+                    >
+                        <Button
+                            variant={messageConfig.method === 'sms' ? 'primary' : 'ghost'}
+                            size="sm"
+                            aria-pressed={messageConfig.method === 'sms'}
                             onClick={() => handleChange('method', 'sms')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${messageConfig.method === 'sms' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                         >
-                            <MessageSquare size={16} /> SMS
-                        </button>
-                        <button
+                            <MessageSquare size={16} aria-hidden="true" /> SMS
+                        </Button>
+                        <Button
+                            variant={isEmail ? 'primary' : 'ghost'}
+                            size="sm"
+                            aria-pressed={isEmail}
                             onClick={() => handleChange('method', 'email')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${messageConfig.method === 'email' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                         >
-                            <Mail size={16} /> Email
-                        </button>
+                            <Mail size={16} aria-hidden="true" /> Email
+                        </Button>
                     </div>
 
                     {/* Editor */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative">
-
-                        {messageConfig.method === 'email' && (
-                            <div className="mb-4">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Subject Line</label>
-                                <input
+                    <Card className="flex flex-col gap-ds-4">
+                        {isEmail && (
+                            <FormField label="Subject Line">
+                                <Input
                                     ref={subjectRef}
                                     type="text"
                                     value={messageConfig.subject || ''}
                                     onChange={(e) => handleChange('subject', e.target.value)}
                                     onFocus={() => setActiveField('subject')}
                                     placeholder="e.g. Unique Opportunity for [Driver Name]"
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-100"
                                 />
-                            </div>
+                            </FormField>
                         )}
 
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Message Body</label>
-                        <textarea
-                            ref={messageRef}
-                            value={messageConfig.message || ''}
-                            onChange={(e) => handleChange('message', e.target.value)}
-                            onFocus={() => setActiveField('message')}
-                            placeholder={messageConfig.method === 'sms' ? "Hey [Driver Name], we have a new lane open..." : "Dear [Driver Name]..."}
-                            className="w-full h-64 p-4 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-100 resize-none text-base leading-relaxed"
-                        />
+                        <FormField label="Message Body">
+                            <Textarea
+                                ref={messageRef}
+                                value={messageConfig.message || ''}
+                                onChange={(e) => handleChange('message', e.target.value)}
+                                onFocus={() => setActiveField('message')}
+                                placeholder={messageConfig.method === 'sms' ? "Hey [Driver Name], we have a new lane open..." : "Dear [Driver Name]..."}
+                                className="h-64 resize-none leading-relaxed"
+                            />
+                        </FormField>
 
-                        {/* Formatting Toolbar */}
-                        <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-                            <div className="flex gap-2">
-                                {VARIABLES.map(v => (
-                                    <button
-                                        key={v.value}
-                                        onClick={() => insertVariable(v.value)}
-                                        className="px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-xs font-bold text-slate-600 transition-colors"
-                                    >
-                                        + {v.label}
-                                    </button>
-                                ))}
+                        {/* Variable toolbar — normal flow, wraps, never overlaps the field */}
+                        <div className="flex flex-col gap-ds-2">
+                            <div className="flex flex-wrap items-center justify-between gap-ds-3">
+                                <div className="flex flex-wrap items-center gap-ds-2">
+                                    {VARIABLES.map(v => (
+                                        <Button
+                                            key={v.value}
+                                            variant="secondary"
+                                            size="sm"
+                                            aria-label={`Insert ${v.label} placeholder`}
+                                            onClick={() => insertVariable(v.value)}
+                                        >
+                                            <Plus size={14} aria-hidden="true" /> {v.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                                <p aria-live="polite" className="text-ds-xs font-bold text-ds-content-muted">
+                                    <span className="sr-only">Message length: </span>{messageConfig.message?.length || 0} chars
+                                </p>
                             </div>
-                            <div className="text-xs font-bold text-slate-400">
-                                {messageConfig.message?.length || 0} chars
-                            </div>
+                            <p className="text-ds-xs text-ds-content-muted">
+                                Variables insert at your cursor in the active field.
+                            </p>
                         </div>
-                    </div>
+                    </Card>
                 </div>
 
                 {/* Right: Preview & Tips */}
-                <div className="lg:col-span-1 space-y-8">
+                <div className="flex flex-col gap-ds-8 lg:col-span-1">
                     {/* Device Preview */}
-                    <div className="bg-slate-100 p-8 rounded-[3rem] border border-slate-200 shadow-inner">
+                    <div className="rounded-ds-xl border border-ds-border-subtle bg-ds-surface-subtle p-ds-6">
                         <DeviceMockup type={messageConfig.method}>
                             <div className="p-6">
                                 <div className="flex items-center gap-3 mb-6">
@@ -136,21 +151,21 @@ export function ContentComposer({ messageConfig, onChange }) {
                         </DeviceMockup>
                     </div>
 
-                    <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
-                        <h3 className="flex items-center gap-2 font-bold text-blue-900 mb-4">
-                            <Zap size={18} className="text-blue-500" /> Pro Tips
+                    <div className="rounded-ds-xl border border-ds-status-info-border bg-ds-status-info-bg p-ds-6">
+                        <h3 className="mb-ds-4 flex items-center gap-ds-2 font-bold text-ds-status-info-fg">
+                            <Zap size={18} aria-hidden="true" /> Pro Tips
                         </h3>
-                        <ul className="space-y-3">
-                            <li className="flex gap-3 text-sm text-blue-800">
-                                <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                        <ul className="flex flex-col gap-ds-3">
+                            <li className="flex gap-ds-3 text-ds-sm text-ds-status-info-fg">
+                                <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
                                 <span>Keep SMS under 160 characters to avoid splitting.</span>
                             </li>
-                            <li className="flex gap-3 text-sm text-blue-800">
-                                <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                            <li className="flex gap-ds-3 text-ds-sm text-ds-status-info-fg">
+                                <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
                                 <span>Use <strong>[Driver Name]</strong> to increase engagement by 35%.</span>
                             </li>
-                            <li className="flex gap-3 text-sm text-blue-800">
-                                <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                            <li className="flex gap-ds-3 text-ds-sm text-ds-status-info-fg">
+                                <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
                                 <span>End with a clear question to prompt a reply.</span>
                             </li>
                         </ul>
