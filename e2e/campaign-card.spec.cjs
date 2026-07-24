@@ -54,7 +54,7 @@ test.describe('CampaignCard compatibility slice', () => {
 
   test('shows View Report on a completed session in Past Sequences', async ({ page }) => {
     await openCampaigns(page);
-    await page.getByRole('button', { name: /Past Sequences/i }).click();
+    await page.getByRole('tab', { name: /Past Sequences/i }).click();
     await expect(page.getByText('E2E Completed Session')).toBeVisible();
     await expect(page.getByText('Completed', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'View Report' })).toBeVisible();

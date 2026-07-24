@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Plus, Rocket, History, LayoutGrid,
     Users, Zap, Loader2
@@ -15,6 +15,16 @@ import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+import { Button, MetricCard } from '@/design-system/components';
+import { PageContainer, PageHeader, ResponsiveGrid, Section, Stack } from '@/design-system/layouts';
+
+// Feature-owned tab model. The design system has no tab primitive yet, so the
+// dashboard renders an accessible WAI-ARIA tablist here. Values are the frozen
+// activeTab contract ('drafts' | 'history'); labels/icons are presentation only.
+const CAMPAIGN_TABS = [
+    { value: 'drafts', label: 'Drafts', icon: LayoutGrid },
+    { value: 'history', label: 'Past Sequences', icon: History },
+];
 
 export function CampaignsDashboard({ companyId }) {
     const { currentCompanyProfile } = useData();
@@ -26,6 +36,7 @@ export function CampaignsDashboard({ companyId }) {
     const [selectedCampaignId, setSelectedCampaignId] = useState(null);
     const [viewingSession, setViewingSession] = useState(null);
     const [selectedReportSessionId, setSelectedReportSessionId] = useState(null);
+    const tablistRef = useRef(null);
     const { showSuccess, showError } = useToast();
     const isE2ECampaignMock = isE2ETestMode && getE2EQueryParam('e2eCampaign', '') === 'mock';
     const e2eNow = {
@@ -117,6 +128,25 @@ export function CampaignsDashboard({ companyId }) {
     const liveCount = sessions.filter(s => ['active', 'queued', 'scheduled'].includes(s.status)).length;
     const totalOutreach = sessions.reduce((acc, s) => acc + (s.progress?.processedCount || 0), 0);
 
+    // The active tab decides which frozen list feeds the card grid.
+    const visibleCampaigns = activeTab === 'drafts' ? campaigns : sessions;
+
+    // Roving-tabindex keyboard support for the accessible tablist. Arrow/Home/End
+    // move focus and activate; presentation only, no change to activeTab values.
+    const handleTabKeyDown = (event, index) => {
+        let nextIndex = null;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % CAMPAIGN_TABS.length;
+        else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + CAMPAIGN_TABS.length) % CAMPAIGN_TABS.length;
+        else if (event.key === 'Home') nextIndex = 0;
+        else if (event.key === 'End') nextIndex = CAMPAIGN_TABS.length - 1;
+        if (nextIndex === null) return;
+
+        event.preventDefault();
+        const nextTab = CAMPAIGN_TABS[nextIndex];
+        setActiveTab(nextTab.value);
+        tablistRef.current?.querySelector(`#campaigns-tab-${nextTab.value}`)?.focus();
+    };
+
     // 2. Create New Campaign Draft
     const handleNewCampaign = async () => {
         if (!companyId) return;
@@ -204,104 +234,124 @@ export function CampaignsDashboard({ companyId }) {
     }
 
     return (
-        <div className="p-8 max-w-[1600px] mx-auto min-h-screen bg-slate-50/50">
-            {/* Header Section */}
-            <div className="flex flex-col md:flex-row items-start md:items-end justify-between mb-12 gap-6">
-                <div>
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="h-10 w-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20 rotate-[-10deg]">
-                            <Rocket size={24} />
+        <div className="min-h-full bg-ds-canvas">
+            <PageContainer>
+                <Stack gap="lg">
+                    <PageHeader
+                        title="Campaigns"
+                        description="Design and deploy bulk engagement sequences to reactivate your driver database."
+                        actions={
+                            <Button variant="primary" onClick={handleNewCampaign}>
+                                <Plus size={18} aria-hidden="true" />
+                                Create Campaign
+                            </Button>
+                        }
+                    />
+
+                    <Section aria-label="Campaign performance summary">
+                        <ResponsiveGrid minItemWidth="240px">
+                            <MetricCard
+                                id="campaigns-stat-live"
+                                label="Live Campaigns"
+                                value={liveCount}
+                                icon={<Zap size={20} />}
+                                tone="info"
+                            />
+                            <MetricCard
+                                id="campaigns-stat-outreach"
+                                label="Total Outreach"
+                                value={totalOutreach}
+                                icon={<Users size={20} />}
+                                tone="success"
+                            />
+                        </ResponsiveGrid>
+                    </Section>
+
+                    <Section aria-label="Campaign list">
+                        <div
+                            ref={tablistRef}
+                            role="tablist"
+                            aria-label="Campaign views"
+                            className="inline-flex gap-ds-1 rounded-ds-lg border border-ds-border-subtle bg-ds-surface p-ds-1"
+                        >
+                            {CAMPAIGN_TABS.map((tab, index) => {
+                                const selected = activeTab === tab.value;
+                                const Icon = tab.icon;
+                                return (
+                                    <button
+                                        key={tab.value}
+                                        type="button"
+                                        role="tab"
+                                        id={`campaigns-tab-${tab.value}`}
+                                        aria-selected={selected}
+                                        aria-controls="campaigns-tabpanel"
+                                        tabIndex={selected ? 0 : -1}
+                                        onClick={() => setActiveTab(tab.value)}
+                                        onKeyDown={(event) => handleTabKeyDown(event, index)}
+                                        className={`flex items-center gap-ds-2 rounded-ds-md px-ds-4 py-ds-2 text-ds-sm font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                            selected
+                                                ? 'bg-ds-action-primary text-ds-content-inverse shadow-ds-sm'
+                                                : 'text-ds-content-muted hover:bg-ds-surface-subtle hover:text-ds-content'
+                                        }`}
+                                    >
+                                        <Icon size={16} aria-hidden="true" />
+                                        <span>{tab.label}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
-                        <h1 className="text-4xl font-black text-slate-900 tracking-tight uppercase">Campaigns</h1>
-                    </div>
-                    <p className="text-slate-500 font-medium text-lg max-w-xl">
-                        Design and deploy bulk engagement sequences to reactivate your driver database.
-                    </p>
-                </div>
 
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={handleNewCampaign}
-                        className="flex items-center gap-2 px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/10 hover:bg-blue-600 hover:shadow-blue-500/20 transition-all active:scale-95 group"
-                    >
-                        <Plus size={18} className="group-hover:rotate-90 transition-transform" />
-                        Create Campaign
-                    </button>
-                </div>
-            </div>
-
-            {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-                {[
-                    { label: 'Live Campaigns', value: liveCount, icon: Zap, bgColor: 'bg-blue-50', textColor: 'text-blue-600', ringColor: 'ring-blue-100' },
-                    { label: 'Total Outreach', value: totalOutreach, icon: Users, bgColor: 'bg-emerald-50', textColor: 'text-emerald-600', ringColor: 'ring-emerald-100' },
-                ].map((stat, i) => (
-                    <div key={i} className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm flex items-center gap-5">
-                        <div className={`w-14 h-14 rounded-2xl ${stat.bgColor} flex items-center justify-center ${stat.textColor} ring-1 ${stat.ringColor}`}>
-                            <stat.icon size={26} />
+                        <div
+                            id="campaigns-tabpanel"
+                            role="tabpanel"
+                            aria-labelledby={`campaigns-tab-${activeTab}`}
+                            tabIndex={0}
+                            className="mt-ds-6 focus-visible:outline-none"
+                        >
+                            {loading ? (
+                                <div
+                                    role="status"
+                                    className="flex flex-col items-center justify-center gap-ds-4 py-ds-12 text-ds-content-muted"
+                                >
+                                    <Loader2 size={40} className="animate-spin" aria-hidden="true" />
+                                    <span className="text-ds-sm font-semibold uppercase tracking-wide">Synchronizing…</span>
+                                </div>
+                            ) : visibleCampaigns.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center gap-ds-4 rounded-ds-lg border-2 border-dashed border-ds-border bg-ds-surface px-ds-6 py-ds-12 text-center">
+                                    <span
+                                        aria-hidden="true"
+                                        className="flex h-16 w-16 items-center justify-center rounded-full bg-ds-surface-subtle text-ds-content-muted"
+                                    >
+                                        <Rocket size={32} />
+                                    </span>
+                                    <h2 className="text-ds-heading-md font-bold text-ds-content">
+                                        No {activeTab === 'drafts' ? 'Drafts' : 'Campaigns'} Found
+                                    </h2>
+                                    <p className="max-w-sm text-ds-sm text-ds-content-muted">
+                                        Ready to reactivate your driver database? Create your first automated messaging sequence.
+                                    </p>
+                                    <Button variant="primary" onClick={handleNewCampaign}>
+                                        Define Initial Campaign
+                                    </Button>
+                                </div>
+                            ) : (
+                                <ResponsiveGrid minItemWidth="280px">
+                                    {visibleCampaigns.map(campaign => (
+                                        <CampaignCard
+                                            key={campaign.id}
+                                            campaign={campaign}
+                                            onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : setViewingSession(campaign)}
+                                            onDelete={handleDeleteCampaign}
+                                            onCancel={activeTab === 'drafts' ? undefined : handleCancelCampaign}
+                                            onViewReport={() => setSelectedReportSessionId(campaign.id)}
+                                        />
+                                    ))}
+                                </ResponsiveGrid>
+                            )}
                         </div>
-                        <div>
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{stat.label}</div>
-                            <div className="text-2xl font-black text-slate-900 tracking-tight">{stat.value}</div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Content Tabs */}
-            <div className="flex items-center justify-between mb-8">
-                <div className="bg-white p-1 rounded-2xl border border-slate-200 flex gap-1">
-                    <button
-                        onClick={() => setActiveTab('drafts')}
-                        className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'drafts' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        <LayoutGrid size={16} /> Drafts
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('history')}
-                        className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        <History size={16} /> Past Sequences
-                    </button>
-                </div>
-            </div>
-
-            {/* List View */}
-            {loading ? (
-                <div className="py-32 flex flex-col items-center justify-center text-slate-400 animate-in fade-in">
-                    <Loader2 size={48} className="animate-spin mb-4" />
-                    <span className="font-bold text-lg tracking-tight uppercase tracking-widest">Synchronizing...</span>
-                </div>
-            ) : (activeTab === 'drafts' ? campaigns : sessions).length === 0 ? (
-                <div className="py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center animate-in zoom-in-95 duration-700">
-                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-6">
-                        <Rocket size={48} />
-                    </div>
-                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">No {activeTab === 'drafts' ? 'Drafts' : 'Campaigns'} Found</h3>
-                    <p className="text-slate-500 font-medium mb-10 text-center max-w-sm">
-                        Ready to reactivate your driver database? Create your first automated messaging sequence.
-                    </p>
-                    <button
-                        onClick={handleNewCampaign}
-                        className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95"
-                    >
-                        Define Initial Campaign
-                    </button>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in slide-in-from-bottom-5 duration-700">
-                    {(activeTab === 'drafts' ? campaigns : sessions).map(campaign => (
-                        <CampaignCard
-                            key={campaign.id}
-                            campaign={campaign}
-                            onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : setViewingSession(campaign)}
-                            onDelete={handleDeleteCampaign}
-                            onCancel={activeTab === 'drafts' ? undefined : handleCancelCampaign}
-                            onViewReport={() => setSelectedReportSessionId(campaign.id)}
-                        />
-                    ))}
-                </div>
-            )}
+                    </Section>
+                </Stack>
+            </PageContainer>
 
             <DetailedReportModal
                 companyId={companyId}

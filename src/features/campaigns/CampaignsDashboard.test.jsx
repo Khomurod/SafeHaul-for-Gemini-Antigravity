@@ -1,9 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { CampaignsDashboard } from './CampaignsDashboard';
-import { CampaignCard } from './components/CampaignCard';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import React from 'react';
-import { useToast } from '@shared/components/feedback/ToastProvider';
+import { useData } from '@/context/DataContext';
 
 // Mocks
 vi.mock('@shared/components/feedback/ToastProvider', () => ({
@@ -16,21 +16,28 @@ vi.mock('@/context/DataContext', () => ({
     }))
 }));
 
-// Mock Firestore
+// Mock Firestore. Returns are opaque objects the tests can inspect: doc() surfaces
+// its path, collection() records its segments, and every onSnapshot hands back a
+// tracked unsubscribe so listener cleanup can be asserted.
 const mockOnSnapshot = vi.fn();
 const mockDeleteDoc = vi.fn();
+const mockSetDoc = vi.fn();
+const mockCollection = vi.fn((...a) => ({ __collection: a }));
+const mockUnsubscribes = [];
 vi.mock('firebase/firestore', () => ({
-    collection: vi.fn(),
-    query: vi.fn(),
-    orderBy: vi.fn(),
+    collection: (...a) => mockCollection(...a),
+    query: (...a) => ({ __query: a }),
+    orderBy: (...a) => ({ __orderBy: a }),
     onSnapshot: (q, cb) => {
         mockOnSnapshot(q, cb);
-        return vi.fn(); // unsubscribe
+        const unsub = vi.fn();
+        mockUnsubscribes.push(unsub);
+        return unsub;
     },
-    doc: vi.fn(),
-    setDoc: vi.fn(),
+    doc: (_db, ...segs) => ({ path: segs.join('/') }),
+    setDoc: (...a) => mockSetDoc(...a),
     deleteDoc: (...args) => mockDeleteDoc(...args),
-    serverTimestamp: vi.fn()
+    serverTimestamp: () => '__serverTimestamp__'
 }));
 
 const mockCancelCallable = vi.fn().mockResolvedValue({ data: { success: true } });
@@ -47,19 +54,25 @@ vi.mock('@lib/firebase', () => ({
 }));
 
 // Mock child components — surface the cancel/delete affordances so the
-// dashboard handlers can be exercised.
+// dashboard handlers can be exercised, and record the props each card receives
+// so the frozen prop contract can be verified.
+const mockCardProps = [];
 vi.mock('./components/CampaignCard', () => ({
-    CampaignCard: ({ campaign, onCancel, onDelete }) => (
-        <div data-testid="campaign-card">
-            {campaign.name} - {campaign.status}
-            {onCancel && (
-                <button onClick={() => onCancel(campaign)}>cancel {campaign.id}</button>
-            )}
-            {onDelete && (
-                <button onClick={() => onDelete(campaign)}>delete {campaign.id}</button>
-            )}
-        </div>
-    )
+    CampaignCard: (props) => {
+        const { campaign, onCancel, onDelete } = props;
+        mockCardProps.push(props);
+        return (
+            <div data-testid="campaign-card">
+                {campaign.name} - {campaign.status}
+                {onCancel && (
+                    <button onClick={() => onCancel(campaign)}>cancel {campaign.id}</button>
+                )}
+                {onDelete && (
+                    <button onClick={() => onDelete(campaign)}>delete {campaign.id}</button>
+                )}
+            </div>
+        );
+    }
 }));
 
 vi.mock('./CampaignEditor', () => ({
@@ -208,11 +221,207 @@ describe('CampaignsDashboard cancel vs delete', () => {
     });
 });
 
-describe('CampaignCard Progress', () => {
-    it('renders progress bar when progress data is present', () => {
-        // We need to test the real component, not the mock above.
-        // So we define a separate test file or unmock here.
-        // But since we are mocking at top level, unmocking is hard.
-        // We can create a separate test file for CampaignCard.
+// --- Design-system shell migration coverage -------------------------------
+// These tests freeze the migrated presentation shell (header, stat cards,
+// accessible tablist, loading/empty states, card grid) and re-verify the
+// behavioral contracts the migration must preserve.
+describe('CampaignsDashboard shell', () => {
+    let draftCb;
+    let sessionCb;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockUnsubscribes.length = 0;
+        mockCardProps.length = 0;
+        draftCb = undefined;
+        sessionCb = undefined;
+        // Capture the two listener callbacks in effect-registration order.
+        mockOnSnapshot.mockImplementation((q, cb) => {
+            if (!draftCb) draftCb = cb;
+            else sessionCb = cb;
+        });
+        // Default to the enabled feature; the paywall test overrides this.
+        useData.mockReturnValue({
+            currentCompanyProfile: { features: { campaignsEnabled: true } },
+        });
+        window.confirm = vi.fn(() => true);
+    });
+
+    async function renderReady({ drafts = [], sessions = [], companyId = 'co-1' } = {}) {
+        render(<CampaignsDashboard companyId={companyId} />);
+        await React.act(async () => {
+            draftCb?.({ docs: drafts.map((d) => ({ id: d.id, data: () => d })) });
+            sessionCb?.({ docs: sessions.map((s) => ({ id: s.id, data: () => s })) });
+        });
+    }
+
+    it('renders the paywall and registers no listeners when the feature is disabled', () => {
+        useData.mockReturnValue({
+            currentCompanyProfile: { features: { campaignsEnabled: false } },
+        });
+
+        render(<CampaignsDashboard companyId="co-1" />);
+
+        expect(
+            screen.getByRole('heading', { name: 'Campaigns Module Unavailable' }),
+        ).toBeInTheDocument();
+        // No dashboard shell, and no Firestore listeners attached.
+        expect(screen.queryByRole('heading', { name: 'Campaigns' })).not.toBeInTheDocument();
+        expect(mockOnSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('attaches the drafts and sessions listeners on the exact collections and cleans them up', () => {
+        const { unmount } = render(<CampaignsDashboard companyId="co-1" />);
+
+        expect(mockOnSnapshot).toHaveBeenCalledTimes(2);
+        expect(mockCollection).toHaveBeenCalledWith(expect.anything(), 'companies', 'co-1', 'campaign_drafts');
+        expect(mockCollection).toHaveBeenCalledWith(expect.anything(), 'companies', 'co-1', 'bulk_sessions');
+        expect(mockUnsubscribes).toHaveLength(2);
+
+        unmount();
+
+        mockUnsubscribes.forEach((unsub) => expect(unsub).toHaveBeenCalledTimes(1));
+    });
+
+    it('computes live-campaign and total-outreach stats from the sessions', async () => {
+        await renderReady({
+            sessions: [
+                { id: 's1', status: 'active', progress: { processedCount: 10 } },
+                { id: 's2', status: 'queued', progress: { processedCount: 5 } },
+                { id: 's3', status: 'scheduled', progress: { processedCount: 0 } },
+                { id: 's4', status: 'completed', progress: { processedCount: 20 } },
+            ],
+        });
+
+        // liveCount = active + queued + scheduled = 3; totalOutreach = 10+5+0+20 = 35.
+        const live = document.getElementById('campaigns-stat-live');
+        const outreach = document.getElementById('campaigns-stat-outreach');
+        expect(live).toHaveTextContent('Live Campaigns');
+        expect(live).toHaveTextContent('3');
+        expect(outreach).toHaveTextContent('Total Outreach');
+        expect(outreach).toHaveTextContent('35');
+    });
+
+    it('exposes an accessible header, tablist and primary action', async () => {
+        await renderReady();
+
+        expect(screen.getByRole('heading', { level: 1, name: 'Campaigns' })).toBeInTheDocument();
+        const tablist = screen.getByRole('tablist', { name: 'Campaign views' });
+        expect(tablist).toBeInTheDocument();
+        expect(screen.getAllByRole('tab')).toHaveLength(2);
+        expect(screen.getByRole('button', { name: /Create Campaign/i })).toBeInTheDocument();
+    });
+
+    it('switches tabs and reflects the selection programmatically', async () => {
+        await renderReady({
+            drafts: [{ id: 'd1', name: 'Draft A', status: 'draft' }],
+            sessions: [{ id: 's1', name: 'Session A', status: 'completed' }],
+        });
+
+        const draftsTab = screen.getByRole('tab', { name: /Drafts/i });
+        const historyTab = screen.getByRole('tab', { name: /Past Sequences/i });
+
+        expect(draftsTab).toHaveAttribute('aria-selected', 'true');
+        expect(historyTab).toHaveAttribute('aria-selected', 'false');
+        expect(screen.getByText('Draft A - draft')).toBeInTheDocument();
+        expect(screen.queryByText('Session A - completed')).not.toBeInTheDocument();
+
+        fireEvent.click(historyTab);
+
+        expect(historyTab).toHaveAttribute('aria-selected', 'true');
+        expect(draftsTab).toHaveAttribute('aria-selected', 'false');
+        expect(screen.getByText('Session A - completed')).toBeInTheDocument();
+        expect(screen.queryByText('Draft A - draft')).not.toBeInTheDocument();
+    });
+
+    it('supports arrow-key navigation across the tabs', async () => {
+        await renderReady();
+
+        const draftsTab = screen.getByRole('tab', { name: /Drafts/i });
+        const historyTab = screen.getByRole('tab', { name: /Past Sequences/i });
+
+        draftsTab.focus();
+        fireEvent.keyDown(draftsTab, { key: 'ArrowRight' });
+        expect(historyTab).toHaveAttribute('aria-selected', 'true');
+        expect(historyTab).toHaveFocus();
+
+        fireEvent.keyDown(historyTab, { key: 'ArrowLeft' });
+        expect(draftsTab).toHaveAttribute('aria-selected', 'true');
+        expect(draftsTab).toHaveFocus();
+
+        fireEvent.keyDown(draftsTab, { key: 'End' });
+        expect(historyTab).toHaveFocus();
+        fireEvent.keyDown(historyTab, { key: 'Home' });
+        expect(draftsTab).toHaveFocus();
+    });
+
+    it('writes the exact new-campaign draft document and opens the editor', async () => {
+        render(<CampaignsDashboard companyId="co-123" />);
+
+        await React.act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Create Campaign/i }));
+        });
+
+        await waitFor(() => expect(mockSetDoc).toHaveBeenCalledTimes(1));
+        const [ref, payload] = mockSetDoc.mock.calls[0];
+        expect(ref.path).toMatch(/^companies\/co-123\/campaign_drafts\/camp_\d+$/);
+        expect(payload).toEqual({
+            name: 'Untitled Campaign',
+            status: 'draft',
+            createdAt: '__serverTimestamp__',
+            updatedAt: '__serverTimestamp__',
+            filters: {},
+            messageConfig: { method: 'sms', message: '' },
+        });
+        expect(screen.getByText('Editor')).toBeInTheDocument();
+    });
+
+    it('announces a loading status before the first snapshot resolves', () => {
+        render(<CampaignsDashboard companyId="co-1" />);
+
+        const status = screen.getByRole('status');
+        expect(status).toHaveTextContent(/Synchronizing/i);
+    });
+
+    it('renders empty-state headings and a create action per tab', async () => {
+        await renderReady({ drafts: [], sessions: [] });
+
+        expect(screen.getByRole('heading', { name: 'No Drafts Found' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Define Initial Campaign' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('tab', { name: /Past Sequences/i }));
+        expect(screen.getByRole('heading', { name: 'No Campaigns Found' })).toBeInTheDocument();
+    });
+
+    it('passes the frozen props to CampaignCard for drafts and sessions', async () => {
+        await renderReady({
+            drafts: [{ id: 'd1', name: 'Draft A', status: 'draft' }],
+            sessions: [{ id: 's1', name: 'Session A', status: 'completed' }],
+        });
+
+        const draftProps = mockCardProps.find((p) => p.campaign.id === 'd1');
+        expect(draftProps.onCancel).toBeUndefined(); // drafts cannot be cancelled
+        expect(typeof draftProps.onClick).toBe('function');
+        expect(typeof draftProps.onDelete).toBe('function');
+        expect(typeof draftProps.onViewReport).toBe('function');
+
+        fireEvent.click(screen.getByRole('tab', { name: /Past Sequences/i }));
+
+        const sessionProps = mockCardProps.find((p) => p.campaign.id === 's1');
+        expect(typeof sessionProps.onCancel).toBe('function'); // sessions offer Cancel
+        expect(typeof sessionProps.onDelete).toBe('function');
+        expect(typeof sessionProps.onViewReport).toBe('function');
+    });
+
+    it('has no accessibility violations in the loaded dashboard', async () => {
+        await renderReady({ drafts: [{ id: 'd1', name: 'Draft A', status: 'draft' }] });
+
+        // The "region" landmark rule is scoped out: this dashboard renders inside
+        // the company shell's <main> landmark in the app (and in the e2e axe pass),
+        // which is absent in this isolated unit render.
+        const results = await axe(document.body, {
+            rules: { region: { enabled: false } },
+        });
+        expect(results.violations).toEqual([]);
     });
 });
