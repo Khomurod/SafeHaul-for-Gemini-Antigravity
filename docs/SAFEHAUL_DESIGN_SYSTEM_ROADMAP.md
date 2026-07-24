@@ -1801,6 +1801,48 @@ The reverse directions are prohibited.
       unique; a snapshot failure raises a visible `role="alert"` instead of an
       empty table. `DocumentsManager`, `EnvelopeCreator`, backend functions and
       rules were untouched and stay open as separate slices.
+  - [x] Migrate the Documents Center page header (`DocumentsManager` header area
+    only) — page canvas, Back to Dashboard, Create Template, Send One-off.
+    - Complete when: back navigation and both creator transitions keep their
+      exact call order while the canvas, heading, icon and three actions adopt
+      `PageContainer`/`Stack`/`PageHeader` and approved `Button`s that wrap on
+      mobile.
+    - Completed: 2026-07-24 (GO) — PR #100, merged as `bfe4563`.
+    - Files: `src/features/company-admin/views/DocumentsManager.jsx`,
+      `src/features/company-admin/views/DocumentsManager.test.jsx`.
+    - Verification: 9 focused tests, three E-Doc E2E specs (26 Chromium +
+      Mobile Chrome checks), lint, production build, `git diff --check`, and a
+      built-CSS emission check for `bg-ds-canvas`, `flex-wrap`, `self-start`
+      and `text-ds-action-primary`.
+    - Notes: the tabs and content blocks moved one indent level because their
+      wrapper changed; no tab logic, class or prop was altered in that slice.
+  - [x] Migrate the Documents Center navigation and template-management surface
+    — the History/Templates tab interface in `DocumentsManager` plus the whole
+    of `TemplatesPanel`.
+    - Complete when: the `'list'`/`'templates'` state values (with `'list'`
+      initial), the exact `EnvelopeHistory` props, every `TemplatesPanel` prop,
+      the post-application ordering/required rules and persistence callbacks,
+      and every template use/edit/delete argument shape are preserved while the
+      tabs become a WAI-ARIA tab interface and the panel adopts
+      `Card`/`Button`/`IconButton`/`Badge`/`Stack`/`ResponsiveGrid`.
+    - Completed: 2026-07-24 (GO).
+    - Files: `src/features/company-admin/views/DocumentsManager.jsx`,
+      `src/features/company-admin/views/DocumentsManager.test.jsx`,
+      `src/features/company-admin/components/documents/TemplatesPanel.jsx`,
+      `src/features/company-admin/components/documents/TemplatesPanel.test.jsx`,
+      `e2e/edoc-documents-tabs-and-templates.spec.cjs`,
+      `e2e/edoc-recruiter-send-flow.spec.cjs` (selectors only), this roadmap.
+    - Verification: 22 DocumentsManager + 35 TemplatesPanel focused tests, 12
+      new Chromium + Mobile Chrome E2E checks, the existing E-Doc send/sign and
+      envelope-history regressions, the full frontend suite and coverage gate,
+      lint, typecheck, production build, `git diff --check`, built-CSS token
+      emission, unit and scoped real-browser axe, and a measured review at
+      1440×900, 1024×768 and 412×915. Detailed evidence is in the completion
+      log.
+    - Notes: the design system has no approved Tabs or Checkbox primitive, so
+      both stay feature-owned documented compositions. `SendTemplateModal`,
+      `EnvelopeCreator`, the prefill utilities, backend functions and rules were
+      untouched.
 
 - [ ] Public application and change-review portals.
   - Complete when: field/progress/state primitives migrate stepwise with draft,
@@ -1892,7 +1934,7 @@ Status `Not started` means audited but not migrated.
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
 | Campaigns | All interactive components migrated — `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, `CampaignEditor` shell, `ContentComposer`, `AudienceBuilder`, `VirtualLeadList`, and `LaunchPad`; only the decorative `DeviceMockup` illustration and the `CompanyCampaignsPage` fallback string remain unmigrated | Presentation-only throughout; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread and variable insertion; `AudienceBuilder` keeps the targeting/import hooks, exclusion resets and `finalCount`; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, mapping, pagination and exclusion rules; `LaunchPad` keeps the `initBulkSession` payload, launch guards, toasts, error mapping, estimate and preview truncation | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, launch payload and guards | Medium | High | **Complete** 2026-07-24 — all ten interactive components migrated; `CompanyCampaignsPage` fallback tokenized; decorative `DeviceMockup` status-bar text carries an approved documented exception | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview + 33 launch unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
-| E-Docs | `EnvelopeHistory` migrated to the approved `DataTable` with feature-owned status/delivery presentation; `DocumentsManager` and `EnvelopeCreator` still on legacy markup | Presentation-only for the history table: it keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink` and `getSignedDocumentUrl` callables, the `gs://` path cleaning, `window.confirm`, every toast string, and the case-sensitive action-visibility rules | Real-time status updates, void/copy-link/correct/download availability per status, delivery-method and email-failure presentation, signing-link confidentiality | High | High | **In progress** — `EnvelopeHistory` complete 2026-07-24 (GO); `DocumentsManager` + `EnvelopeCreator` remain separate slices | 46 history unit tests + 10 Chromium/Mobile Chrome E2E, 20 existing E-Doc regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
+| E-Docs | `EnvelopeHistory` (approved `DataTable`), the `DocumentsManager` page header/canvas, its History/Templates tab navigation (feature-owned WAI-ARIA tab interface), and the whole `TemplatesPanel` are migrated; `SendTemplateModal` and `EnvelopeCreator` still on legacy markup | Presentation-only throughout: the history table keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink`/`getSignedDocumentUrl` callables, `gs://` path cleaning, `window.confirm` and every toast; the header keeps back navigation and both creator transitions; the tabs keep the exact `'list'`/`'templates'` values with `'list'` initial; `TemplatesPanel` keeps every prop, the `postSubmitRequiredById = {}` default, the `!== false` required rule, `templates.find` lookup with null for missing ids, the id order, the move directions and first/last disabling, and all callback argument shapes | Real-time status updates, per-status action visibility, signing-link confidentiality, tab state values, post-application ordering/required persistence, template use/edit/delete argument shapes | High | High | **In progress** — `EnvelopeHistory`, the header, the tab navigation and `TemplatesPanel` complete 2026-07-24 (GO); `SendTemplateModal` + `EnvelopeCreator` remain separate slices | 46 history + 22 DocumentsManager + 35 TemplatesPanel unit tests, 22 new Chromium/Mobile Chrome E2E checks, existing E-Doc send/sign regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, built-CSS token emission, git diff --check passed |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
@@ -3538,6 +3580,195 @@ Apply checks proportionally, but never claim an unrun check:
 
 ---
 
+### Documents Center header completion log (GO)
+
+- Date: 2026-07-24. PR #100, merged as `bfe4563`.
+- Starting baseline: `main` at `3e61a30` (Merge PR #99 — envelope history).
+- Scope: the page header area of
+  `src/features/company-admin/views/DocumentsManager.jsx` only.
+- Go/no-go decision: **GO.** The header holds no data contract: back navigation
+  is a single `navigate('/company/dashboard')` call and the two create actions
+  are pure local state transitions, so nothing needed freezing beyond their call
+  order.
+- Migrated: the legacy `min-h-screen bg-gray-50 p-6 sm:p-8` canvas plus its
+  `max-w-6xl mx-auto space-y-6` wrapper became `bg-ds-canvas` +
+  `PageContainer width="standard"` + `Stack gap="lg"`; Back to Dashboard,
+  Create Template and Send One-off became approved `Button`s (ghost / secondary /
+  primary) with their icons inheriting the button's content colour; the heading
+  moved into `PageHeader` with the `FileSignature` icon on
+  `text-ds-action-primary` and `aria-hidden`, so the accessible name stayed
+  exactly "Documents Center"; the actions sit in a wrapping `Inline` and the
+  header is allowed to wrap, so they drop to their own line instead of
+  overflowing at narrow widths.
+- Preserved contracts: `navigate('/company/dashboard')`, and both create actions'
+  exact call order — `setEditRequestId(null)`, `setEditTemplateId(null)`,
+  `setCreatorInitialMode('template' | 'request')`, `setViewMode('create')`.
+- Verification: 9 focused tests; `edoc-recruiter-send-flow`,
+  `edoc-recruiter-send-and-sign` and `edoc-envelope-history` passed with 26
+  Chromium + Mobile Chrome checks; frontend lint 0 errors; production build and
+  `git diff --check` passed; `bg-ds-canvas`, `flex-wrap`, `self-start` and
+  `text-ds-action-primary` were each confirmed as emitted selectors in
+  `dist/assets/main-*.css`.
+- Notes: the tab and content blocks moved one indent level because their wrapper
+  changed; their markup, classes, logic and props were byte-identical otherwise.
+  The roadmap was deliberately not touched in that slice at the owner's request,
+  and is recorded here instead.
+
+---
+
+### Documents Center navigation and template-management completion log (GO)
+
+- Date: 2026-07-24.
+- Starting baseline: `main` at `bfe4563` (Merge PR #100 — Documents Center
+  header). All eight PR #100 lanes completed green on head `e5d1e08` before the
+  merge, and local `main` was confirmed equal to `origin/main` with a clean tree.
+- Scope: the History/Templates tab navigation inside
+  `src/features/company-admin/views/DocumentsManager.jsx` and the complete
+  presentation of
+  `src/features/company-admin/components/documents/TemplatesPanel.jsx` — one
+  cohesive navigation and template-management surface.
+- Go/no-go decision: **GO**, taken after auditing every prop and callback.
+  `activeTab` is pure local state with two values and no side effect, so the tab
+  interface is presentation-only. `TemplatesPanel` is already a props-only
+  component: all thirteen props arrive from `DocumentsManager`, every callback
+  has a fixed argument shape (`handleSavePostSubmitTemplates()` with no
+  arguments, `togglePostSubmitRequired?.(templateId)`,
+  `movePostSubmitTemplate(templateId, 'up' | 'down')`,
+  `isTemplateEnabledPostSubmit(tmp.id)`, `togglePostSubmitTemplate(tmp.id)`,
+  `handleUseTemplate(tmp)`, `handleEditTemplate(tmp)`,
+  `handleDeleteTemplate(tmp.id)`), and all of them are mockable, so the entire
+  behaviour could be frozen in tests before any markup changed. No Firestore
+  read/write, callable, send path or rule is involved.
+- Tab contract preserved exactly: initial value `'list'`; only `'list'` and
+  `'templates'` exist; History selects `'list'` and Templates selects
+  `'templates'`; History still renders
+  `<EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />`
+  and nothing else (a test asserts the prop set is exactly those two); and
+  `TemplatesPanel` still receives all thirteen props (a test asserts the exact
+  key set). `handleCorrect`, the creator transitions, `showDriverPicker`, the
+  `SendTemplateModal` wiring, the subscriptions, queries, writes, callable names
+  and payloads, and the E2E mock behaviour are unchanged; a test proves that
+  switching tabs performs no Firestore write, no callable and no navigation.
+- Accessible tab interface (feature-owned — the design system has no approved
+  Tabs primitive, and `SectionNavigation` is a vertical `nav` with Up/Down keys,
+  so it does not fit a horizontal tab interface): `role="tablist"` labelled
+  "Document Center views", `role="tab"` with stable per-instance ids,
+  `aria-selected`, `aria-controls` pointing at the single always-present
+  `role="tabpanel"`, the panel's `aria-labelledby` tracking the selected tab,
+  roving `tabIndex` (only the selected tab is in the tab order), ArrowLeft /
+  ArrowRight with wrap-around, Home / End, automatic activation so focus follows
+  selection, a `focus-visible:shadow-ds-focus` ring, a 44 px-tall activation
+  area, decorative icons `aria-hidden`, and a visually hidden "(selected)"
+  suffix so selection is never carried by the underline colour alone.
+- `TemplatesPanel` contracts preserved: the `postSubmitRequiredById = {}`
+  default; the exact heading "Post-Application Success Page Forms" and its
+  explanatory copy and meaning; `handleSavePostSubmitTemplates` on Save Forms
+  with `savingPostSubmitTemplates` driving the disabled/loading state; the exact
+  empty messages "No follow-up forms enabled yet." and "No templates saved
+  yet."; the `postSubmitTemplateIds` order; the
+  `templates.find((item) => item.id === templateId)` lookup returning `null` for
+  a missing template; `postSubmitRequiredById[templateId] !== false` as the
+  required rule; `togglePostSubmitRequired?.(templateId)` including the optional
+  call; `movePostSubmitTemplate(templateId, 'up' | 'down')` with move-up
+  disabled on the first row and move-down on the last; the
+  `template.title || 'Complete Form'` fallback; `templatesLoading` behaviour;
+  the original `templates` array order; `tmp.fields?.length || 0`; and the exact
+  delete/use/edit/post-submit callback arguments.
+- `TemplatesPanel` presentation: approved `Card` for the post-application
+  section and for every template; approved `Button` for Save Forms, Use and
+  Edit; approved `IconButton` for the two move controls and for Delete; an
+  approved `Badge` for the field count, which replaces the unsupported 10 px
+  uppercase text without changing its value; `Stack` and `ResponsiveGrid`
+  instead of the hand-rolled grid; and the hover-only Delete control is now
+  always rendered, keyboard-reachable and left at the default 40 px size so its
+  touch target matches the card's other actions.
+- Accessible names: every card action is unique and starts with its visible text
+  where it has any — `Delete <title>`, `Use <title>`, `Edit <title>` (WCAG
+  2.5.3) — and the ordering controls are `Move <title> up` / `Move <title> down`.
+  A disabled ordering control keeps a tooltip explaining why ("<title> is
+  already first"/"already last"), because a disabled button is skipped by
+  keyboard focus. The post-application Required checkbox is named "Required for
+  <title>" so rows are distinguishable; the card checkbox keeps exactly "Show on
+  post-submit success page", since the card's own heading supplies the template
+  and repeating the title would put a second copy of it in the card's text.
+- Checkboxes: the design system still has no approved Checkbox primitive, so
+  both native checkboxes stay feature-owned documented compositions with a
+  programmatic label, `accent-ds-action-primary`, a visible
+  `focus-visible:shadow-ds-focus` ring, a measured 44 px activation row and no
+  nested interactive controls.
+- Focused tests: 22 in `DocumentsManager.test.jsx` (default History selection,
+  switching both ways, roles and ARIA relationships, roving tabIndex,
+  ArrowLeft/ArrowRight with wrap, Home/End, focus following selection, ignored
+  keys, the exact `EnvelopeHistory` prop set, `onCorrect` opening the creator in
+  request mode, the exact `TemplatesPanel` prop set, no Firebase write/callable/
+  send on tab switches, and axe on both tabs) and 35 in
+  `TemplatesPanel.test.jsx` (all props and defaults, loading state, both exact
+  empty messages, save callback and saving state, required default true and
+  explicit optional, the exact Required callback value, the optional-callback
+  guard, missing-template null handling, id ordering, move directions and
+  disabled boundaries, the field-count value including the missing-array
+  default, the exact post-submit checkbox values and callback, the exact delete
+  id, whole-object Use/Edit arguments, unique accessible names, keyboard
+  activation, native checkbox labels, no 9 px/10 px classes, no raw hex colours,
+  long-title wrapping, row wrapping, and axe across loading/empty/populated).
+- E2E: `e2e/edoc-documents-tabs-and-templates.spec.cjs`, 12 passed across
+  Chromium and Mobile Chrome (default History, switching both ways, keyboard
+  ArrowRight/Home/End with focus following selection, tab-to-panel wiring,
+  card actions visible without hover, no document overflow at 1440/1024/412, and
+  a scoped real-browser axe pass with no serious/critical or contrast
+  violations).
+- Existing regressions: `edoc-recruiter-send-and-sign` (14),
+  `edoc-envelope-history` (10) and `guest-post-application-edoc` passed on
+  Chromium + Mobile Chrome. `edoc-recruiter-send-flow` needed two **selector**
+  updates and no behaviour change: the Templates control is now `role="tab"`
+  rather than `role="button"`, and the template's Use action is now
+  `Use E2E Test Document` rather than a bare `Use`. The flow it asserts —
+  Templates → Use → Send Document → signer handoff route — is unchanged and
+  passes.
+- Full frontend suite: 109 files / 1048 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate passed at 35.55% statements / 32.85% branches / 35.22% functions / 36.31%
+  lines.
+- Frontend lint 0 errors (158 pre-existing warnings); typecheck, production build
+  and `git diff --check` passed. Every new `--ds-*` utility was verified as an
+  emitted selector in `dist/assets/main-*.css` (`rounded-t-ds-xl`,
+  `border-ds-action-primary`, `min-h-11`, `accent-ds-action-primary`,
+  `bg-ds-status-accent-bg`, `text-ds-status-accent-fg`, `bg-ds-status-info-bg`,
+  `border-ds-status-info-border`, `px-ds-5`, `py-ds-4`).
+- Measured responsive review at 1440×900, 1024×768 and 412×915 on the Templates
+  tab: `document.documentElement.scrollWidth` equalled the viewport at every
+  width (no document-level horizontal overflow); both tabs stayed visible and
+  operable at 54 px tall; the checkbox activation row measured 44 px; and Use,
+  Edit, Delete and Save Forms were all visible without hover (Use/Edit 335 px
+  wide at 1024 and 165 px at 412, Delete 40 px square, Save Forms full-width at
+  412).
+- Retained motion: the only animations left are the panel's `animate-in`
+  transition and the loading spinner, both already neutralised by the global
+  `prefers-reduced-motion: reduce` rule in `src/shared/styles/designTokens.css`.
+- No raw hexadecimal colours and no 9 px or 10 px interface text remain in either
+  file (asserted in tests and re-checked by grep).
+- Privacy: every fixture is an artificial template ("Artificial Offer Letter",
+  "Artificial Policy Acknowledgement", "Artificial Equipment Checklist") or the
+  existing `E2E Test Document` mock. No real document, recipient or signing
+  information appears, nothing is snapshotted, and no send is triggered.
+- Backend/callable/rules checks: not applicable and not run — no Cloud Function,
+  callable or rule changed. `functions/node_modules` is not installed here, so
+  `npm run lint:backend` could not run locally (pre-existing; CI covers it).
+- Pre-existing failure recorded honestly, not introduced here: the non-blocking
+  `@a11y` **public signing room** journey in `e2e/a11y.spec.cjs` reports
+  `color-contrast x1` and `label x3`. This was reproduced on clean `main` with
+  this slice's changes stashed, is inside the signing room (`EnvelopeCreator` /
+  signer surface) which is explicitly out of this slice's scope, and belongs to
+  the still-open signing slice. The CI `e2e-a11y` lane is
+  `continue-on-error: true`, which is why it has not blocked.
+- Remaining E-Docs work: **`SendTemplateModal`** (the send/driver-picker dialog,
+  delivery-method controls and prefill inputs) and **`EnvelopeCreator` with its
+  PDF workbench components** (field placement, coordinates, zoom and gesture
+  behaviour — high risk, and the pre-existing signing-room axe findings belong
+  with it). Each needs its own audit and must not share a diff with the other.
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
@@ -3809,17 +4040,54 @@ cleaning and `signedPdfUrl || storagePath` source, every toast string, the
 email-failure override with its 80-character truncation, the delivery-method
 rules and all fallbacks are unchanged. `DataTable` is a genuine fit here — unlike
 the campaign results table and report modal, this table has no max-height or
-sticky-header constraint and no exact loading string to preserve. The remaining
-E-Docs slices are **`DocumentsManager`** (page shell, tabs, post-application
-template configuration) and **`EnvelopeCreator`** (PDF field placement), each of
-which needs its own audit and must not share a diff with the other.
+sticky-header constraint and no exact loading string to preserve.
+
+The **Documents Center page header** was then migrated and verified on 2026-07-24
+(GO; completion log in section 6, PR #100 merged as `bfe4563`): the canvas and
+container moved to `bg-ds-canvas` + `PageContainer`/`Stack`, the heading and its
+icon are tokenized through `PageHeader`, and Back to Dashboard / Create Template /
+Send One-off are approved `Button`s that wrap onto their own line instead of
+overflowing — while back navigation and both creator transitions keep their exact
+call order.
+
+The **Documents Center navigation and template-management surface** was then
+migrated and verified on 2026-07-24 (GO; completion log in section 6): the
+History/Templates control became a feature-owned WAI-ARIA tab interface
+(labelled `role="tablist"`, `aria-selected`/`aria-controls`, a connected
+`role="tabpanel"`, roving `tabIndex`, ArrowLeft/ArrowRight with wrap, Home/End,
+focus following selection, a visible focus ring and a visually hidden
+"(selected)" state so selection is never colour alone), and `TemplatesPanel` now
+consumes `Card`/`Button`/`IconButton`/`Badge`/`Stack`/`ResponsiveGrid` — the
+hover-only Delete control is always reachable, every card action is uniquely
+named (`Delete`/`Use`/`Edit` + title), the ordering controls are
+`Move <title> up`/`down` with tooltips explaining a disabled boundary, and the
+unsupported 10 px field-count text became an approved `Badge` with the same
+value. Meanwhile the `'list'`/`'templates'` state values (with `'list'` initial),
+the exact `EnvelopeHistory` props, all thirteen `TemplatesPanel` props, the
+`postSubmitRequiredById = {}` default, the `!== false` required rule, the
+`templates.find` lookup with `null` for missing ids, the id order, the move
+directions and first/last disabling, the `'Complete Form'` fallback, both exact
+empty messages, `templatesLoading`, `tmp.fields?.length || 0` and every callback
+argument shape are unchanged — and a test proves switching tabs performs no
+Firestore write, callable or navigation. The design system still has no approved
+Tabs or Checkbox primitive, so both remain documented feature-owned compositions.
+
+The remaining E-Docs slices are **`SendTemplateModal`** (the send/driver-picker
+dialog, delivery-method controls and prefill inputs) and **`EnvelopeCreator` with
+its PDF workbench components** (field placement, coordinates, zoom and gestures —
+high risk; the pre-existing non-blocking signing-room axe findings belong with
+it). Each needs its own audit and must not share a diff with the other.
 
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
-(the branding-upload exception), and a design-system Radio/Checkbox or
-segmented-control primitive (which would retire the verification RadioGroup and
-the change-review decision control) stay independently tracked. All public token
+(the branding-upload exception), a design-system Radio/Checkbox or
+segmented-control primitive (which would retire the verification RadioGroup, the
+change-review decision control, the settings question toggles and the two
+Documents Center template checkboxes), and a design-system **Tabs** primitive
+(currently missing: `SectionNavigation` is a vertical `nav` with Up/Down keys, so
+the Documents Center History/Templates tab interface is a documented
+feature-owned WAI-ARIA composition) stay independently tracked. All public token
 screens (`/verify/:token`, `/review-change/:token`, `/sandbox/transfer-success`)
 are migrated. The SMS number-assignment NO-GO and the new Integrations
 tenant-binding NO-GO are unchanged.
