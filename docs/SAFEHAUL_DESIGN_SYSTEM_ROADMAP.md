@@ -1777,9 +1777,30 @@ The reverse directions are prohibited.
     exception, and the `CompanyCampaignsPage` fallback is tokenized. No Campaigns
     file remains on legacy interface styling.
 
-- [ ] E-docs, driver dossier, and verification workflows.
+- [~] In progress — E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
     employment verification, uploads, previews, and audit behavior pass.
+  - [x] Migrate the E-Docs envelope history table (`EnvelopeHistory`) — the
+    Documents Center document/recipient/status/date/actions log.
+    - Complete when: the `signing_requests` real-time subscription and ordering,
+      the void write, both signing-link and signed-document callables, every
+      toast and error mapping, and the per-status action-visibility rules are
+      preserved while presentation adopts the approved `DataTable` with a
+      feature-owned status adapter.
+    - Completed: 2026-07-24 (GO).
+    - Files: `src/features/signing/components/EnvelopeHistory.jsx`,
+      `src/features/signing/components/EnvelopeHistory.test.jsx`,
+      `e2e/edoc-envelope-history.spec.cjs`, this roadmap.
+    - Verification: 46 focused unit tests, 10 Chromium + Mobile Chrome E2E
+      checks, the 20 existing E-Doc send/sign regressions, the full frontend
+      suite and coverage gate, lint, typecheck, production build,
+      `git diff --check`, built-CSS token-emission check, unit and scoped
+      real-browser axe, and review at 1440×900, 1024×768, and 412×915.
+      Detailed evidence is in the completion log.
+    - Notes: the 9 px delivery pills are gone and per-row action names are now
+      unique; a snapshot failure raises a visible `role="alert"` instead of an
+      empty table. `DocumentsManager`, `EnvelopeCreator`, backend functions and
+      rules were untouched and stay open as separate slices.
 
 - [ ] Public application and change-review portals.
   - Complete when: field/progress/state primitives migrate stepwise with draft,
@@ -1871,7 +1892,7 @@ Status `Not started` means audited but not migrated.
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
 | Campaigns | All interactive components migrated — `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, `CampaignEditor` shell, `ContentComposer`, `AudienceBuilder`, `VirtualLeadList`, and `LaunchPad`; only the decorative `DeviceMockup` illustration and the `CompanyCampaignsPage` fallback string remain unmigrated | Presentation-only throughout; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread and variable insertion; `AudienceBuilder` keeps the targeting/import hooks, exclusion resets and `finalCount`; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, mapping, pagination and exclusion rules; `LaunchPad` keeps the `initBulkSession` payload, launch guards, toasts, error mapping, estimate and preview truncation | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, launch payload and guards | Medium | High | **Complete** 2026-07-24 — all ten interactive components migrated; `CompanyCampaignsPage` fallback tokenized; decorative `DeviceMockup` status-bar text carries an approved documented exception | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview + 33 launch unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
-| E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
+| E-Docs | `EnvelopeHistory` migrated to the approved `DataTable` with feature-owned status/delivery presentation; `DocumentsManager` and `EnvelopeCreator` still on legacy markup | Presentation-only for the history table: it keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink` and `getSignedDocumentUrl` callables, the `gs://` path cleaning, `window.confirm`, every toast string, and the case-sensitive action-visibility rules | Real-time status updates, void/copy-link/correct/download availability per status, delivery-method and email-failure presentation, signing-link confidentiality | High | High | **In progress** — `EnvelopeHistory` complete 2026-07-24 (GO); `DocumentsManager` + `EnvelopeCreator` remain separate slices | 46 history unit tests + 10 Chromium/Mobile Chrome E2E, 20 existing E-Doc regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
@@ -1918,7 +1939,7 @@ short, long, empty, loading, error, and representative numeric/date data.
 | `company-admin/components/InlineLeaderboard.jsx` | Numeric compact DataTable | High | Medium | Metric formatting | Completed 2026-07-23 | Verified: representative/empty/error/retry unit states, header/cell end alignment under 1 px, compact density, long names, labeled mobile overflow, desktop/mobile axe |
 | `settings/number-assignment/AssignmentTable.jsx` | DataTable with form controls | High | High | Select/Checkbox | Not started | Header/cell alignment, control labels, save states, mobile |
 | `settings/questions/StandardQuestionsConfig.jsx` | Settings DataTable | Medium | High | Checkbox/Switch | Not started | Keyboard toggles, labels, sticky/overflow, mobile |
-| `signing/components/EnvelopeHistory.jsx` | DataTable | Medium | High | Status, IconButton | Not started | Document actions, dates, empty state, mobile |
+| `signing/components/EnvelopeHistory.jsx` | Approved `DataTable` (adopted — no max-height/sticky-header constraint and no exact loading string to preserve, so the results-table primitive-fit exception does not apply here) + `Badge`/`Button` with a feature-owned status adapter | Medium | High | Status, IconButton | Migrated 2026-07-24 (GO) | 5-column contract, row header + accessible per-row action names, text+icon status (never colour alone), announced loading/empty/error, labelled keyboard-focusable scroll region, 46 unit + 10 Chromium/Mobile Chrome E2E, 1440/1024/412 px, scoped axe |
 | `super-admin/components/CompaniesView.jsx` | DataTable | High | High | Badge, actions | Not started | Loading/error/empty, sticky header, permissions, long names |
 | `super-admin/components/FeaturesView.jsx` | DataTable/matrix | High | Very high | Switch/Checkbox, responsive matrix | Not started | Sticky first column, header/cell alignment, keyboard, overflow |
 | `super-admin/integrations/LineManager.jsx` | DataTable | Medium | High | Badge, actions | Not started | Phone/label/status/default/action alignment, keyboard |
@@ -3418,6 +3439,103 @@ Apply checks proportionally, but never claim an unrun check:
 - Commit/PR: feature commit + docs commit on
   `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
 
+### E-Docs envelope history completion log (GO)
+
+- Date: 2026-07-24.
+- Starting baseline: `main` at `e8f5cb1` (Merge PR #98 — LaunchPad dismissal
+  hardening). PR #98's final head `19d6df7` had all 8 CI lanes green, so nothing
+  needed resolving before starting.
+- Scope: `src/features/signing/components/EnvelopeHistory.jsx` only.
+  `DocumentsManager`, `EnvelopeCreator`, `TemplatesPanel`, `SendTemplateModal`,
+  backend functions, Firestore rules and Storage rules were not touched.
+- Go/no-go decision: **GO.** The full data and action contract was frozen before
+  any presentation change: a `signing_requests` `onSnapshot` subscription ordered
+  by `createdAt desc`, a direct `updateDoc` void write, and two callables
+  (`getSigningLink`, `getSignedDocumentUrl`). All three are mockable, the change
+  is presentation-only, no permission or rule is involved, and the component's
+  single consumer (`DocumentsManager`) passes exactly `companyId` + `onCorrect`,
+  which is unchanged.
+- `DataTable` adoption is a genuine fit here, explicitly unlike
+  `CampaignResultsTable`/`DetailedReportModal`: this table has no max-height
+  vertical scroll and no sticky header needing a definite-height ancestor, and no
+  exact loading string had to be preserved (the old loading state was a bare
+  unannounced spinner). So `DataTable`'s built-in `isLoading`, `empty`, `error`
+  and horizontal scroll region cover every state — note that the design system
+  has no `PageState` primitive, contrary to the older Phase 13 column text.
+- Preserved contracts: the exact `companies/{companyId}/signing_requests` query
+  and `orderBy('createdAt','desc')`; the unsubscribe on unmount; the
+  `if (!companyId) return` guard placed *before* `setLoading(true)` (so with no
+  company the table stays in its loading state, exactly as before); the
+  `{status:'voided', voidedAt: serverTimestamp()}` write and its document path;
+  the verbatim `window.confirm` text including the `"this document"` fallback;
+  `getSigningLink({companyId, requestId})` and the clipboard write;
+  `getSignedDocumentUrl({storagePath})` with the `gs://` bucket-prefix stripping,
+  the `signedPdfUrl || storagePath` source, and `window.open(url,'_blank')`;
+  every toast string and the `functions/not-found` mapping; the locally-obtained
+  `getFunctions()` in both handlers; the case-sensitive `status === 'signed' |
+  'voided' | 'sent'` action-visibility rules (deliberately left case-sensitive
+  while the badge lowercases — pre-existing behavior, not changed here); the
+  `emailStatus === 'failed'` override with its 80-character truncation and
+  `'Email delivery failed'` fallback; the delivery-method rules
+  (`sendEmail === false && sendSms !== true` → Manual); and the
+  `Untitled` / `—` / `--` fallbacks.
+- Accessibility fixes: the 9 px delivery-method pills are gone (approved 12 px
+  `Badge`s); status is text + icon in a toned `Badge`, never colour alone;
+  per-row action names are unique and start with their visible text
+  (`Download <title>`, `Link for <title>`, `Correct <title>`, `Void <title>`,
+  satisfying WCAG 2.5.3), replacing four repeated `Link`/`Void` names per table;
+  the document title is the row header; loading and empty are announced
+  (`role="status"`); the horizontal scroll region is labelled and
+  keyboard-focusable.
+- Behavior improvement (the one intentional non-presentation change, requested as
+  part of the slice): a snapshot error previously left the operator staring at an
+  empty history. The `onSnapshot` error callback now also sets a visible
+  `role="alert"` state ("Could not load document history. Please try again."),
+  while the subscription, the `console.error`, and every other code path stay
+  byte-for-byte the same.
+- Focused tests: 46 unit tests in
+  `src/features/signing/components/EnvelopeHistory.test.jsx` (subscription/query/
+  unsubscribe/guard, all six status mappings + unknown fallback, email-failure
+  override and truncation boundaries at 80/120 chars, delivery-method
+  combinations, every fallback, action visibility per status and with/without
+  `onCorrect`, the exact void write + confirmation + failure, per-row busy states,
+  copy-link payload/clipboard/error-message fallback, download raw-path/`gs://`/
+  `storagePath`-fallback/`functions/not-found`/generic error, keyboard action
+  activation, no 9 px or 10 px text, `vitest-axe` across mixed row states, and an
+  explicit assertion that the signing link never enters the DOM).
+- E2E: `e2e/edoc-envelope-history.spec.cjs`, 10 passed across Chromium and Mobile
+  Chrome (labelled keyboard-reachable scroll region, the five-column contract,
+  the announced data state, no document overflow at 1440/1024/412, scoped
+  real-browser axe with no serious/critical or contrast violations). The
+  `e2eEdoc=mock` harness stubs templates but not `signing_requests`, and seeding
+  it would mean editing `DocumentsManager` (out of scope), so the browser layer
+  asserts the shell and the vitest suite owns row/action behavior — recorded
+  honestly rather than papered over.
+- Existing E-Doc regressions: `edoc-recruiter-send-and-sign.spec.cjs`,
+  `edoc-recruiter-send-flow.spec.cjs` and `guest-post-application-edoc.spec.cjs`
+  — 20 passed on Chromium + Mobile Chrome.
+- Full frontend suite: 107 files / 991 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate passed at 34.58% statements / 32.34% branches / 34.2% functions / 35.37%
+  lines.
+- Frontend lint: 0 errors (158 pre-existing warnings); typecheck and production
+  build passed; `git diff --check` clean. Every `--ds-*` utility used by the
+  component was verified as an emitted selector in `dist/assets/main-*.css`
+  (the Phase 13 lesson about CSS-variable-only tokens being dropped from the
+  build).
+- Privacy: recipient names, emails, phone numbers, signing links and document
+  URLs are treated as sensitive. All fixtures are artificial — RFC 2606 reserved
+  `example.test` domains and a fictional `555-0142` number — no real signing link
+  or document URL is asserted, logged or snapshotted, and no screenshot of
+  populated history data was taken.
+- Backend/callable/rules checks: not applicable and not run — no Cloud Function,
+  callable or rule changed. `functions/node_modules` is not installed in this
+  environment, so `npm run lint:backend` cannot run here (pre-existing; CI covers
+  it).
+- Remaining E-Docs slices: `DocumentsManager` (page shell, tabs, post-application
+  template configuration) and `EnvelopeCreator` (PDF field placement) stay open as
+  separate audited slices.
+
 ---
 
 ## 7. Decisions and blockers
@@ -3673,6 +3791,29 @@ components plus the route wrapper are therefore on approved primitives and
 tokens, with no Campaigns file left on legacy interface styling. The recommended
 next area is the **E-Docs** document/envelope workflows — audited and scoped
 before any presentation change.
+
+**E-Docs is in progress.** The **envelope history table** (`EnvelopeHistory`) was
+audited and migrated on 2026-07-24 (GO; completion log in section 6): the
+Documents Center history now consumes the approved `DataTable` with a
+feature-owned status adapter, so the 9 px delivery pills are gone, status is text
++ icon in a toned `Badge`, each row's Download/Link/Correct/Void action carries a
+unique name prefixed with its visible label, the document title is the row
+header, loading/empty are announced, the horizontal scroll region is labelled and
+keyboard-focusable, and a snapshot failure now raises a visible `role="alert"`
+instead of an empty table — while the `signing_requests` `onSnapshot` query and
+ordering, the unsubscribe, the no-`companyId` guard placement, the
+`voided`/`serverTimestamp` write and its path, the `window.confirm` text, both
+callables (`getSigningLink`, `getSignedDocumentUrl`) with the `gs://` path
+cleaning and `signedPdfUrl || storagePath` source, every toast string, the
+`functions/not-found` mapping, the case-sensitive action-visibility rules, the
+email-failure override with its 80-character truncation, the delivery-method
+rules and all fallbacks are unchanged. `DataTable` is a genuine fit here — unlike
+the campaign results table and report modal, this table has no max-height or
+sticky-header constraint and no exact loading string to preserve. The remaining
+E-Docs slices are **`DocumentsManager`** (page shell, tabs, post-application
+template configuration) and **`EnvelopeCreator`** (PDF field placement), each of
+which needs its own audit and must not share a diff with the other.
+
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
