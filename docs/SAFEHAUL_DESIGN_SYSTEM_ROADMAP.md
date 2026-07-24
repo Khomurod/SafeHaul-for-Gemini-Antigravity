@@ -1370,8 +1370,55 @@ The reverse directions are prohibited.
       `isE2ETestMode`).
     - Commit/PR: feature + docs commits on
       `claude/safehaul-design-system-g1vr3a`; PR into `main`.
-  - Remaining Campaigns work: `CampaignEditor`, `CampaignDetails`, and
-    `DetailedReportModal` each remain separate slices with their own audits.
+  - [x] Migrate the detailed delivery-report dialog (`DetailedReportModal`).
+    - Complete when: the dialog adopts the shared accessible `Modal` plus
+      `Button`/`IconButton`/`Badge` and `--ds-*` tokens; backdrop close is kept
+      while Escape, focus trap, and focus restoration are added; loading is
+      announced; statuses are not colour-only; error text wraps; the results
+      table scrolls internally without document overflow; and every fetch/retry
+      contract, guard, message, and toast is preserved without any backend or
+      rules change.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/DetailedReportModal.jsx`,
+      `src/features/campaigns/components/DetailedReportModal.test.jsx`,
+      `e2e/campaign-report-modal.spec.cjs`, this roadmap.
+    - Verification: 17 focused tests passed (open/closed + missing-ID no-fetch
+      guards; exact `companies/{id}/bulk_sessions/{id}/logs` query with
+      `orderBy('timestamp','desc')` + `limit(200)` and id-preserving mapping;
+      exact loading/empty/fetch-error strings; delivered = `status==='delivered'`
+      or truthy `isSuccess`, else Failed; `hasFailures` = `failed` or
+      `isSuccess===false`; retry confirm text, `retryFailedAttempts({companyId,
+      originalSessionId})` payload, success toast + close-after-success, the
+      `success:false`/generic/thrown failure branches; dialog focus-in, Escape,
+      backdrop, header/footer close, focus restoration; container axe). Full
+      frontend suite 102 files / 816 tests (2 files / 48 emulator rules tests
+      skipped); frontend lint 0 errors; typecheck, production build, and
+      `git diff --check` passed. `campaign-report-modal.spec.cjs` passed 9
+      Chromium/Mobile Chrome checks with 1 viewport-specific skip; campaign
+      card/results/dashboard specs stay green.
+    - Visual/mobile/a11y: reviewed at 1440×900 and 412×915. The dialog is
+      centered with a dimmed backdrop; the header/footer close and X are named
+      controls; statuses are `Badge` success/danger with text (not colour-only);
+      error cells wrap (`overflow-wrap: anywhere`); the results table is a
+      labelled, keyboard-focusable scroll region (`scrollable-region-focusable`
+      resolved) with a sticky header, so wide content scrolls inside the dialog
+      with no document overflow at any width; on short viewports (landscape phone,
+      zoom) the overlay scrolls vertically and the panel is auto-margin centered,
+      so the Retry/Close controls are never clipped; loading is announced via a
+      `role="status"` live region. Unit axe clean; dialog-scoped real-browser axe
+      found no serious/critical violations.
+    - Notes: presentation only — the props (`companyId`, `sessionId`, `isOpen`,
+      `onClose`), the no-fetch-unless-open-with-both-IDs guard, the one-time
+      `getDocs` and mapping, the exact strings, `hasFailures`, the delivered/failed
+      rule, the retry confirmation/callable/toasts/close-after-success, and the
+      `CampaignsDashboard` wiring are unchanged. `retryFailedAttempts` and all
+      backend/rules are untouched. Recipient identity is sensitive and is never
+      logged, snapshotted, or tested with real data (tests use synthetic names +
+      `redacted-*` placeholders).
+    - Commit/PR: feature + docs commits on
+      `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
+  - Remaining Campaigns work: `CampaignEditor` and `CampaignDetails` each remain
+    separate slices with their own audits.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1510,7 +1557,7 @@ short, long, empty, loading, error, and representative numeric/date data.
 |---|---|---|---|---|---|---|
 | `shared/components/table/ModernDriverTable.jsx` | DataTable pilot/compatibility wrapper | Critical | High | Selection, pagination, Badge | In progress — Company candidate consumer migrated; Super Admin consumer remains | Verify remaining Super Admin behavior before adapting or removing the compatibility component |
 | `campaigns/components/CampaignResultsTable.jsx` | Card + Input + Badge + semantic DS-token table (DataTable not a fit — see Phase 13 note) | High | Medium | Status adapter | Migrated 2026-07-24 (GO) | 10px/contrast headers fixed, labelled search, text+icon status, readable errors, preserved max-height scroll + sticky header |
-| `campaigns/components/DetailedReportModal.jsx` | DataTable inside Dialog | Medium | High | Dialog, status | Not started | Dialog focus + table overflow, long message truncation |
+| `campaigns/components/DetailedReportModal.jsx` | Shared accessible `Modal` + `Button`/`IconButton`/`Badge` + semantic DS-token table in a labelled keyboard-focusable scroll region (DataTable not adopted — same primitive-fit exception as the results table) | Medium | High | Dialog, status | Migrated 2026-07-24 (GO) | Focus trap/Escape/restore added, backdrop preserved, text+badge status, wrapping errors, internal scroll with no doc overflow, 17 unit + Chromium/Mobile Chrome + dialog-scoped axe |
 | `company-admin/components/InlineLeaderboard.jsx` | Numeric compact DataTable | High | Medium | Metric formatting | Completed 2026-07-23 | Verified: representative/empty/error/retry unit states, header/cell end alignment under 1 px, compact density, long names, labeled mobile overflow, desktop/mobile axe |
 | `settings/number-assignment/AssignmentTable.jsx` | DataTable with form controls | High | High | Select/Checkbox | Not started | Header/cell alignment, control labels, save states, mobile |
 | `settings/questions/StandardQuestionsConfig.jsx` | Settings DataTable | Medium | High | Checkbox/Switch | Not started | Keyboard toggles, labels, sticky/overflow, mobile |
@@ -3174,8 +3221,18 @@ strings, status mapping, and timestamp/`Pending` formatting stay unchanged.
 `DataTable` was recorded as a primitive-fit exception here (it owns a horizontal
 column-scroll region and needs a definite-height ancestor for vertical
 stickiness, which would change the log's grow-to-content scroll behavior). The
+**detailed delivery-report dialog** (`DetailedReportModal`) was then migrated and
+verified on 2026-07-24 (GO; completion log in the Phase 13 Campaigns item): it now
+uses the shared accessible `Modal` (adding Escape, focus trap, and focus
+restoration while keeping backdrop close) plus `Button`/`IconButton`/`Badge`, with
+the log table in a labelled keyboard-focusable internal-scroll region so wide
+content scrolls without document overflow — while the props, the
+no-fetch-unless-open-with-both-IDs guard, the exact logs query/mapping, the
+loading/empty/fetch-error strings, `hasFailures`, the delivered/failed mapping,
+and the `retryFailedAttempts` confirmation/payload/toasts/close-after-success are
+all unchanged (`retryFailedAttempts` and all backend/rules untouched). The
 recommended next bounded slices are the remaining Campaigns pieces
-(`CampaignEditor`, `CampaignDetails`, `DetailedReportModal`) or the **E-Docs**
+(`CampaignEditor`, `CampaignDetails`) or the **E-Docs**
 document/envelope workflows — each audited and scoped on its own before any
 presentation change.
 The **sandbox application** screen remains tied to the The **sandbox application** screen remains tied to the

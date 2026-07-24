@@ -109,7 +109,11 @@ describe('UserProfilePage — initial load', () => {
     it('prefers Firestore name/photo/username and initializes the email edit value', async () => {
         renderPage();
 
-        expect(await screen.findByRole('textbox', { name: 'Display Name' })).toHaveValue('Firestore Name');
+        // Wait for the async getPortalUser state update to flush before asserting
+        // the loaded value (findByRole alone can resolve on the initial empty render).
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: 'Display Name' })).toHaveValue('Firestore Name');
+        });
         expect(screen.getByRole('textbox', { name: 'Username' })).toHaveValue('fsuser');
         expect(screen.getByRole('img', { name: 'Profile photo' })).toHaveAttribute('src', FS_PHOTO);
         expect(screen.getByText(CURRENT_EMAIL)).toBeInTheDocument();
@@ -120,7 +124,9 @@ describe('UserProfilePage — initial load', () => {
         userServiceMocks.getPortalUser.mockResolvedValue(null);
         renderPage();
 
-        expect(await screen.findByRole('textbox', { name: 'Display Name' })).toHaveValue('Old Name');
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: 'Display Name' })).toHaveValue('Old Name');
+        });
         expect(screen.getByRole('img', { name: 'Profile photo' })).toHaveAttribute('src', AUTH_PHOTO);
     });
 
@@ -128,7 +134,9 @@ describe('UserProfilePage — initial load', () => {
         userServiceMocks.getPortalUser.mockResolvedValue({ displayName: 'FS Display', username: '' });
         renderPage();
 
-        expect(await screen.findByRole('textbox', { name: 'Display Name' })).toHaveValue('FS Display');
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: 'Display Name' })).toHaveValue('FS Display');
+        });
         expect(screen.getByRole('img', { name: 'Profile photo' })).toHaveAttribute('src', AUTH_PHOTO);
     });
 
