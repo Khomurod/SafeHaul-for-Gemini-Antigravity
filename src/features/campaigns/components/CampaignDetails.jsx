@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-    ArrowLeft, Calendar, Users, MessageSquare,
+    ArrowLeft, Users, MessageSquare,
     BarChart3, Clock, CheckCircle2, AlertCircle, RefreshCw,
     Pause, Play, XCircle
 } from 'lucide-react';
@@ -9,6 +9,49 @@ import { functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { useData } from '@/context/DataContext';
+import { Badge, Button, Card, FieldMessage, IconButton } from '@/design-system/components';
+
+// Feature-owned domain → visual mapping (design system only knows generic tones).
+// Tones preserve the previous appearance: active=success, completed=info,
+// scheduled/paused=warning (amber/orange), queued=accent, failed=danger,
+// draft/cancelled/unknown=neutral.
+const STATUS_TONE = {
+    active: 'success',
+    draft: 'neutral',
+    completed: 'info',
+    scheduled: 'warning',
+    queued: 'accent',
+    failed: 'danger',
+    paused: 'warning',
+    cancelled: 'neutral',
+};
+
+function statusPresentation(status) {
+    const tone = STATUS_TONE[status] || 'neutral';
+    const label = typeof status === 'string' && status.length > 0
+        ? status.charAt(0).toUpperCase() + status.slice(1)
+        : 'Unknown';
+    return { tone, label };
+}
+
+function StatCard({ icon: Icon, label, value, tone }) {
+    const chip = {
+        info: 'bg-ds-status-info-bg text-ds-status-info-fg',
+        success: 'bg-ds-status-success-bg text-ds-status-success-fg',
+        danger: 'bg-ds-status-danger-bg text-ds-status-danger-fg',
+    }[tone];
+    return (
+        <Card>
+            <div className="mb-ds-2 flex items-center gap-ds-3">
+                <span className={`rounded-ds-md p-ds-2 ${chip}`} aria-hidden="true">
+                    <Icon size={20} />
+                </span>
+                <span className="text-ds-xs font-bold uppercase tracking-wide text-ds-content-muted">{label}</span>
+            </div>
+            <div className="text-ds-heading-lg font-bold text-ds-content">{value}</div>
+        </Card>
+    );
+}
 
 export function CampaignDetails({ campaign, onClose }) {
     const { currentCompanyProfile } = useData();
@@ -29,34 +72,20 @@ export function CampaignDetails({ campaign, onClose }) {
 
     if (tenantMismatch) {
         return (
-            <div className="p-6 text-center text-red-600">
+            <div className="p-ds-6 text-center text-ds-status-danger-fg">
                 <p className="font-semibold">This campaign belongs to a different company.</p>
-                <p className="text-sm mt-2">Close this view and open campaigns from your active company workspace.</p>
+                <p className="mt-ds-2 text-ds-sm">Close this view and open campaigns from your active company workspace.</p>
             </div>
         );
     }
 
     if (!effectiveCompanyId) {
         return (
-            <div className="p-6 text-center text-amber-700">
+            <div className="p-ds-6 text-center text-ds-status-warning-fg">
                 <p className="font-semibold">Company context is missing for this campaign.</p>
             </div>
         );
     }
-
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'active': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-            case 'draft': return 'bg-slate-100 text-slate-600 border-slate-200';
-            case 'completed': return 'bg-blue-100 text-blue-700 border-blue-200';
-            case 'scheduled': return 'bg-amber-100 text-amber-700 border-amber-200';
-            case 'queued': return 'bg-purple-100 text-purple-700 border-purple-200';
-            case 'failed': return 'bg-red-100 text-red-700 border-red-200';
-            case 'paused': return 'bg-orange-100 text-orange-700 border-orange-200';
-            case 'cancelled': return 'bg-gray-100 text-gray-700 border-gray-200';
-            default: return 'bg-slate-100 text-slate-600 border-slate-200';
-        }
-    };
 
     const formatDate = (timestamp) => {
         if (!timestamp) return 'N/A';
@@ -143,201 +172,169 @@ export function CampaignDetails({ campaign, onClose }) {
     const hasFailures = campaign.progress?.failedCount > 0;
     const isActive = ['active', 'queued', 'scheduled'].includes(campaign.status);
     const isPaused = campaign.status === 'paused';
+    const { tone, label } = statusPresentation(campaign.status);
 
     return (
-        <div className="flex flex-col h-screen bg-slate-50 overflow-hidden animate-in slide-in-from-right duration-300">
+        <div className="flex h-screen flex-col overflow-hidden bg-ds-surface-subtle">
             {/* Header */}
-            <div className="h-16 flex items-center justify-between px-8 border-b border-slate-200 bg-white">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={onClose}
-                        className="p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all"
-                    >
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div>
-                        <h2 className="text-xl font-black text-slate-900 leading-none">{campaign.name || 'Untitled Campaign'}</h2>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(campaign.status)}`}>
-                                {campaign.status}
-                            </span>
-                            <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
-                                <Clock size={12} /> {formatDate(campaign.createdAt)}
+            <div className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-ds-3 border-b border-ds-border bg-ds-surface px-ds-6 py-ds-3">
+                <div className="flex min-w-0 items-center gap-ds-3">
+                    <IconButton label="Back to campaigns" variant="ghost" size="sm" onClick={onClose}>
+                        <ArrowLeft size={20} aria-hidden="true" />
+                    </IconButton>
+                    <div className="min-w-0">
+                        <h2 className="truncate text-ds-heading-sm font-bold text-ds-content">{campaign.name || 'Untitled Campaign'}</h2>
+                        <div className="mt-ds-1 flex flex-wrap items-center gap-ds-2">
+                            <Badge tone={tone}>{label}</Badge>
+                            <span className="flex items-center gap-ds-1 text-ds-xs font-medium text-ds-content-muted">
+                                <Clock size={12} aria-hidden="true" /> {formatDate(campaign.createdAt)}
                             </span>
                         </div>
                     </div>
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-2">
-                    {/* Pause Button */}
+                <div className="flex flex-wrap items-center gap-ds-2">
                     {isActive && (
-                        <button
-                            onClick={handlePause}
-                            disabled={pausing}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-xs font-bold uppercase tracking-widest border border-orange-200 hover:bg-orange-100 transition-colors disabled:opacity-50"
-                        >
-                            <Pause size={14} className={pausing ? "animate-pulse" : ""} />
+                        <Button variant="secondary" size="sm" onClick={handlePause} loading={pausing}>
+                            {!pausing && <Pause size={14} aria-hidden="true" />}
                             {pausing ? 'Pausing...' : 'Pause'}
-                        </button>
+                        </Button>
                     )}
 
-                    {/* Resume Button — wired to resumeBulkSession Cloud Function */}
+                    {/* Resume — wired to resumeBulkSession Cloud Function */}
                     {isPaused && (
-                        <button
-                            onClick={handleResume}
-                            disabled={resuming}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold uppercase tracking-widest border border-emerald-200 hover:bg-emerald-100 transition-colors disabled:opacity-50"
-                        >
-                            <Play size={14} className={resuming ? "animate-pulse" : ""} />
+                        <Button variant="primary" size="sm" onClick={handleResume} loading={resuming}>
+                            {!resuming && <Play size={14} aria-hidden="true" />}
                             {resuming ? 'Resuming...' : 'Resume'}
-                        </button>
+                        </Button>
                     )}
 
-                    {/* Cancel Button */}
                     {(isActive || isPaused) && (
-                        <button
-                            onClick={handleCancel}
-                            disabled={cancelling}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-bold uppercase tracking-widest border border-slate-200 hover:bg-slate-100 transition-colors disabled:opacity-50"
-                        >
-                            <XCircle size={14} className={cancelling ? "animate-pulse" : ""} />
+                        <Button variant="secondary" size="sm" onClick={handleCancel} loading={cancelling}>
+                            {!cancelling && <XCircle size={14} aria-hidden="true" />}
                             {cancelling ? 'Cancelling...' : 'Details & Cancel'}
-                        </button>
+                        </Button>
                     )}
 
                     {hasFailures && !isActive && (
-                        <button
-                            onClick={handleRetry}
-                            disabled={retrying}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold uppercase tracking-widest border border-red-200 hover:bg-red-100 transition-colors disabled:opacity-50"
-                        >
-                            <RefreshCw size={14} className={retrying ? "animate-spin" : ""} />
+                        <Button variant="danger" size="sm" onClick={handleRetry} loading={retrying}>
+                            {!retrying && <RefreshCw size={14} aria-hidden="true" />}
                             {retrying ? 'Starting...' : 'Retry Failed'}
-                        </button>
+                        </Button>
                     )}
                 </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-8">
-                <div className="max-w-5xl mx-auto space-y-6">
+            <div className="min-w-0 flex-1 overflow-y-auto p-ds-6">
+                <div className="mx-auto flex max-w-5xl flex-col gap-ds-6">
 
                     {/* Failure reason — surface why a session failed so it's diagnosable
                         instead of just showing a red "FAILED" with no explanation. */}
                     {campaign.status === 'failed' && (campaign.error || campaign.failureReason) && (
-                        <div className="bg-red-50 border border-red-200 rounded-2xl p-5">
-                            <div className="flex items-start gap-3">
-                                <AlertCircle size={20} className="text-red-600 mt-0.5 shrink-0" />
-                                <div>
-                                    <p className="text-xs font-black text-red-700 uppercase tracking-widest mb-1">Why this campaign failed</p>
-                                    <p className="text-sm text-red-800 break-words">{campaign.error || campaign.failureReason}</p>
+                        <Card className="border-ds-status-danger-border bg-ds-status-danger-bg">
+                            <div className="flex items-start gap-ds-3">
+                                <AlertCircle size={20} className="mt-0.5 shrink-0 text-ds-status-danger-fg" aria-hidden="true" />
+                                <div className="min-w-0">
+                                    <p className="mb-ds-1 text-ds-xs font-bold uppercase tracking-wide text-ds-status-danger-fg">Why this campaign failed</p>
+                                    <FieldMessage tone="error" className="[overflow-wrap:anywhere]">
+                                        {campaign.error || campaign.failureReason}
+                                    </FieldMessage>
                                 </div>
                             </div>
-                        </div>
+                        </Card>
                     )}
 
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                                    <Users size={20} />
-                                </div>
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Audience</span>
-                            </div>
-                            <div className="text-2xl font-black text-slate-900">
-                                {campaign.progress ? campaign.progress.totalCount : campaign.matchCount || 0}
-                            </div>
-                        </div>
-
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-                                    <CheckCircle2 size={20} />
-                                </div>
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Sent</span>
-                            </div>
-                            <div className="text-2xl font-black text-slate-900">
-                                {campaign.progress ? campaign.progress.successCount : 0}
-                            </div>
-                        </div>
-
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-red-50 text-red-600 rounded-lg">
-                                    <AlertCircle size={20} />
-                                </div>
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Failed</span>
-                            </div>
-                            <div className="text-2xl font-black text-slate-900">
-                                {campaign.progress ? campaign.progress.failedCount : 0}
-                            </div>
-                        </div>
+                    <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
+                        <StatCard
+                            icon={Users}
+                            label="Audience"
+                            tone="info"
+                            value={campaign.progress ? campaign.progress.totalCount : campaign.matchCount || 0}
+                        />
+                        <StatCard
+                            icon={CheckCircle2}
+                            label="Sent"
+                            tone="success"
+                            value={campaign.progress ? campaign.progress.successCount : 0}
+                        />
+                        <StatCard
+                            icon={AlertCircle}
+                            label="Failed"
+                            tone="danger"
+                            value={campaign.progress ? campaign.progress.failedCount : 0}
+                        />
                     </div>
 
                     {/* Progress Section */}
                     {campaign.progress && (
-                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <BarChart3 size={16} className="text-blue-500" /> Campaign Progress
+                        <Card>
+                            <h3 className="mb-ds-4 flex items-center gap-ds-2 text-ds-sm font-bold uppercase tracking-wide text-ds-content">
+                                <BarChart3 size={16} className="text-ds-action-primary" aria-hidden="true" /> Campaign Progress
                             </h3>
-                            <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2">
+                            <div
+                                className="mb-ds-2 h-4 w-full overflow-hidden rounded-full bg-ds-surface-subtle"
+                                role="progressbar"
+                                aria-label="Campaign progress"
+                                aria-valuenow={campaign.progress.processedCount}
+                                aria-valuemin={0}
+                                aria-valuemax={campaign.progress.totalCount || 1}
+                            >
                                 <div
-                                    className="h-full bg-blue-500 transition-all duration-1000 ease-out"
+                                    className="h-full bg-ds-action-primary transition-all duration-1000 ease-out"
                                     style={{ width: `${progressPercent}%` }}
                                 />
                             </div>
-                            <div className="flex justify-between text-xs font-medium text-slate-500">
+                            <div className="flex justify-between text-ds-xs font-medium text-ds-content-muted">
                                 <span>{Math.round(progressPercent)}% Complete</span>
                                 <span>{campaign.progress.processedCount} / {campaign.progress.totalCount} leads processed</span>
                             </div>
-                        </div>
+                        </Card>
                     )}
 
                     {/* Message Configuration */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <MessageSquare size={16} className="text-purple-500" /> Message Content
+                    <Card>
+                        <h3 className="mb-ds-4 flex items-center gap-ds-2 text-ds-sm font-bold uppercase tracking-wide text-ds-content">
+                            <MessageSquare size={16} className="text-ds-status-accent-fg" aria-hidden="true" /> Message Content
                         </h3>
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-600 font-medium whitespace-pre-wrap">
+                        <div className="whitespace-pre-wrap rounded-ds-lg border border-ds-border-subtle bg-ds-surface-subtle p-ds-4 font-medium text-ds-content-secondary [overflow-wrap:anywhere]">
                             {campaign.messageConfig?.message || 'No message content defined.'}
                         </div>
-                        <div className="mt-4 flex gap-2">
-                            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold uppercase tracking-widest">
-                                {campaign.messageConfig?.method || 'SMS'}
-                            </span>
+                        <div className="mt-ds-4 flex gap-ds-2">
+                            <Badge tone="neutral">{campaign.messageConfig?.method || 'SMS'}</Badge>
                         </div>
-                    </div>
+                    </Card>
 
                     {/* Technical Details */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest mb-4">Details</h3>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <span className="block text-slate-400 text-xs font-bold uppercase mb-1">Campaign ID</span>
-                                <span className="font-mono text-slate-600">{campaign.id}</span>
+                    <Card>
+                        <h3 className="mb-ds-4 text-ds-sm font-bold uppercase tracking-wide text-ds-content">Details</h3>
+                        <dl className="grid grid-cols-1 gap-ds-4 text-ds-sm sm:grid-cols-2">
+                            <div className="min-w-0">
+                                <dt className="mb-ds-1 text-ds-xs font-bold uppercase text-ds-content-muted">Campaign ID</dt>
+                                <dd className="font-mono text-ds-content-secondary [overflow-wrap:anywhere]">{campaign.id}</dd>
                             </div>
-                            <div>
-                                <span className="block text-slate-400 text-xs font-bold uppercase mb-1">Created At</span>
-                                <span className="text-slate-600">{formatDate(campaign.createdAt)}</span>
+                            <div className="min-w-0">
+                                <dt className="mb-ds-1 text-ds-xs font-bold uppercase text-ds-content-muted">Created At</dt>
+                                <dd className="text-ds-content-secondary">{formatDate(campaign.createdAt)}</dd>
                             </div>
-                            <div>
-                                <span className="block text-slate-400 text-xs font-bold uppercase mb-1">Updated At</span>
-                                <span className="text-slate-600">{formatDate(campaign.updatedAt)}</span>
+                            <div className="min-w-0">
+                                <dt className="mb-ds-1 text-ds-xs font-bold uppercase text-ds-content-muted">Updated At</dt>
+                                <dd className="text-ds-content-secondary">{formatDate(campaign.updatedAt)}</dd>
                             </div>
                             {campaign.scheduledFor && (
-                                <div>
-                                    <span className="block text-slate-400 text-xs font-bold uppercase mb-1">Scheduled For</span>
-                                    <span className="text-slate-600">{formatDate(campaign.scheduledFor)}</span>
+                                <div className="min-w-0">
+                                    <dt className="mb-ds-1 text-ds-xs font-bold uppercase text-ds-content-muted">Scheduled For</dt>
+                                    <dd className="text-ds-content-secondary">{formatDate(campaign.scheduledFor)}</dd>
                                 </div>
                             )}
-                        </div>
-                    </div>
+                        </dl>
+                    </Card>
 
-                    {/* NEW: Individual Results Table */}
-                    {/* BUG-3 FIX: campaign.companyId is undefined (not stored on session doc).
-                        Use effectiveCompanyId which resolves from context/route params. */}
+                    {/* Individual Results Table.
+                        campaign.companyId is not stored on the session doc, so
+                        effectiveCompanyId resolves it from context. */}
                     <CampaignResultsTable companyId={effectiveCompanyId} campaignId={campaign.id} />
 
                 </div>

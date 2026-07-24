@@ -1417,8 +1417,58 @@ The reverse directions are prohibited.
       `redacted-*` placeholders).
     - Commit/PR: feature + docs commits on
       `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
-  - Remaining Campaigns work: `CampaignEditor` and `CampaignDetails` each remain
-    separate slices with their own audits.
+  - [x] Migrate the campaign detail view (`CampaignDetails`).
+    - Complete when: the full-screen detail view adopts `Card`/`Button`/
+      `IconButton`/`Badge`/`FieldMessage` and layout tokens; the progress bar is
+      a programmatic `progressbar`; status/actions are not colour-only; loading
+      is announced; failure text wraps; actions stay reachable (wrap) on mobile;
+      no document overflow; and every tenant/company guard, formatting, progress
+      calc, action-visibility rule, exact callable payload, confirmation, toast,
+      loading flag, and `onClose` is preserved with no backend or rules change.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/CampaignDetails.jsx`,
+      `src/features/campaigns/components/CampaignDetails.test.jsx`,
+      `e2e/campaign-details.spec.cjs`, this roadmap.
+    - Verification: 25 focused tests passed (null/tenant-mismatch/missing-company
+      guards; `effectiveCompanyId` fallback + exact `CampaignResultsTable` props;
+      capitalized status, progress calc + accessible `progressbar`, audience/sent/
+      failed from progress and the matchCount/zero fallbacks; failure reason and
+      message/method/id rendering; the active/queued/scheduled→Pause,
+      paused→Resume, active|paused→Cancel, failures-on-non-active→Retry visibility
+      rules; the exact `pause/resume/cancel/retry` callable names + payloads;
+      resume `success:false` keeps the view open; confirm-cancellation for
+      cancel/retry; success/failure/thrown branches; accessible back-close; axe).
+      Full frontend suite 102 files / 839 tests (2 files / 48 emulator rules tests
+      skipped); frontend lint 0 errors; typecheck, production build, and
+      `git diff --check` passed. `campaign-details.spec.cjs` passed 8
+      Chromium/Mobile Chrome checks; campaign card/results/report/dashboard specs
+      stay green.
+    - Visual/mobile/a11y: reviewed at 1440×900 and 412×915 (tablet overflow in
+      E2E). No document overflow; the header + action buttons wrap on mobile so
+      they stay reachable; status is a `Badge` with text (not colour-only); the
+      progress bar exposes `role="progressbar"` + `aria-valuenow/min/max`; the
+      failure reason uses a danger `FieldMessage` that wraps; action loading uses
+      the `Button` busy state. Full-page real-browser axe (view + migrated shell)
+      found no serious/critical violations.
+    - Notes: presentation only — `effectiveCompanyId`
+      (`campaign.companyId || currentCompanyProfile.id`), the tenant-mismatch and
+      missing-company states and their exact copy, `formatDate`, the progress/
+      audience/sent/failed calculations, the failure-reason source
+      (`error || failureReason`), the message/method/id/date rendering, the
+      `CampaignResultsTable` props, all four action-visibility rules, the exact
+      `pauseBulkSession`/`resumeBulkSession`/`cancelBulkSession`
+      (`{companyId: effectiveCompanyId, sessionId: campaign.id}`) and
+      `retryFailedAttempts` (`{companyId, originalSessionId}`) payloads, both
+      confirmations, all toasts, the per-action loading flags, and every `onClose`
+      path are unchanged. `MetricCard` was not used for the stat cards because its
+      tone set has no danger treatment for the red "Failed" count, so `Card` with
+      status tokens is the fit (recorded exception). Status label casing is
+      capitalized to match the already-migrated `CampaignCard`. No `CampaignEditor`
+      or backend/rules change.
+    - Commit/PR: feature + docs commits on
+      `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
+  - Remaining Campaigns work: `CampaignEditor` remains a separate slice with its
+    own audit.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1513,7 +1563,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CampaignCard` and the `CampaignsDashboard` shell (header, Create action, `MetricCard` stats, accessible Drafts/Past Sequences tablist, loading/empty states, card grid) migrated to approved layout/components; editor, details, results table, and report modal remain local | Presentation-only; `CampaignsDashboard` keeps the paywall, both listeners (`campaign_drafts`, `bulk_sessions`) + cleanup, stats math, exact new-draft write, `cancelBulkSession`, confirmations, delete logic, `'drafts'`/`'history'` values, and `CampaignCard`/report-modal wiring unchanged | Status presentation, Cancel-vs-Delete conditions, stats, tab selection/keyboard, progress/recipient counts, menu/open behavior | Medium | High | In progress — `CampaignCard` + dashboard shell completed 2026-07-24; editor/details/tables remain | 22 card + 16 dashboard unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe (no serious/critical or contrast), overflow, git diff --check passed |
+| Campaigns | `CampaignCard`, the `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, and the `CampaignDetails` detail view migrated to approved layout/components; only `CampaignEditor` remains local | Presentation-only; the dashboard keeps the paywall, both listeners (`campaign_drafts`, `bulk_sessions`) + cleanup, stats math, exact new-draft write, `cancelBulkSession`, confirmations, delete logic, tab values, and wiring unchanged; `CampaignDetails` keeps `effectiveCompanyId`, tenant/company guards, and the exact pause/resume/cancel/retry callable payloads | Status presentation, action-visibility rules, exact callables, progress/recipient counts, menu/open behavior | Medium | High | In progress — `CampaignCard`, dashboard shell, results table, report modal, and `CampaignDetails` completed 2026-07-24; `CampaignEditor` remains | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3231,10 +3281,20 @@ no-fetch-unless-open-with-both-IDs guard, the exact logs query/mapping, the
 loading/empty/fetch-error strings, `hasFailures`, the delivered/failed mapping,
 and the `retryFailedAttempts` confirmation/payload/toasts/close-after-success are
 all unchanged (`retryFailedAttempts` and all backend/rules untouched). The
-recommended next bounded slices are the remaining Campaigns pieces
-(`CampaignEditor`, `CampaignDetails`) or the **E-Docs**
-document/envelope workflows — each audited and scoped on its own before any
-presentation change.
+**campaign detail view** (`CampaignDetails`) was then migrated and verified on
+2026-07-24 (GO; completion log in the Phase 13 Campaigns item): the full-screen
+view now uses `Card`/`Button`/`IconButton`/`Badge`/`FieldMessage` and layout
+tokens with a programmatic `progressbar`, wrapping failure text, and mobile-
+reachable (wrapping) header actions — while `effectiveCompanyId`, the tenant-
+mismatch/missing-company states, the status/date formatting, the progress/
+audience/sent/failed calculations, the failure reason, the `CampaignResultsTable`
+props, all four action-visibility rules, and the exact `pauseBulkSession`/
+`resumeBulkSession`/`cancelBulkSession`/`retryFailedAttempts` payloads,
+confirmations, toasts, loading flags, and `onClose` paths are unchanged
+(`CampaignEditor` and all backend/rules untouched). With this, the only remaining
+Campaigns piece is **`CampaignEditor`**; the recommended next bounded slice is
+therefore `CampaignEditor` or the **E-Docs** document/envelope workflows — each
+audited and scoped on its own before any presentation change.
 The **sandbox application** screen remains tied to the The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
