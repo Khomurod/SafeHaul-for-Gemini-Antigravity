@@ -2,12 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { db } from '@lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { FileText, CheckCircle, Clock, Download, ExternalLink, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Edit3 } from 'lucide-react';
+import { FileText, CheckCircle, Clock, Download, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Edit3 } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
+import { Badge, Button, DataTable, defineTableColumns } from '@/design-system/components';
+
+/**
+ * Feature-owned domain → visual mapping for a signing-request status.
+ *
+ * The design system only knows generic Badge tones; this feature owns which
+ * status maps to which tone, icon and label. Tones preserve the previous
+ * appearance: signed=success (green), sent=info (blue), voided/seal-failed=
+ * danger (red), sealing/processing=warning (yellow/amber), unknown=neutral.
+ * Every badge pairs its tone with an icon and text, so status is never
+ * communicated by colour alone.
+ */
+const STATUS_PRESENTATION = {
+    signed: { tone: 'success', label: 'Signed', icon: CheckCircle },
+    sent: { tone: 'info', label: 'Sent', icon: Clock },
+    voided: { tone: 'danger', label: 'Voided', icon: Ban },
+    pending_seal: { tone: 'warning', label: 'Sealing...', icon: Loader2, spin: true },
+    error_sealing: { tone: 'danger', label: 'Seal Failed', icon: AlertCircle },
+    processing: { tone: 'warning', label: 'Processing', icon: Loader2, spin: true },
+};
 
 export default function EnvelopeHistory({ companyId, onCorrect }) {
     const [docs, setDocs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(null);
     const [copyingId, setCopyingId] = useState(null);
     const [voidingId, setVoidingId] = useState(null);
     const { showSuccess, showError } = useToast();
@@ -58,9 +79,13 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
         const unsub = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setDocs(data);
+            setLoadError(null);
             setLoading(false);
         }, (error) => {
             console.error("Error loading history:", error);
+            // Surface the failure visibly instead of showing an empty history.
+            // The subscription itself is unchanged; only the rendered state is.
+            setLoadError('Could not load document history. Please try again.');
             setLoading(false);
         });
         return () => unsub();
@@ -90,129 +115,181 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
         }
     };
 
-    const getStatusBadge = (doc) => {
-        if (doc.emailStatus === 'failed') {
+    const renderStatus = (docItem) => {
+        if (docItem.emailStatus === 'failed') {
             // Truncate error for operator debugging without exposing sensitive internals
-            const errorDetail = doc.emailError
-                ? (doc.emailError.length > 80 ? doc.emailError.substring(0, 80) + '…' : doc.emailError)
+            const errorDetail = docItem.emailError
+                ? (docItem.emailError.length > 80 ? docItem.emailError.substring(0, 80) + '…' : docItem.emailError)
                 : 'Email delivery failed';
             return (
-                <div className="flex flex-col gap-1">
-                    <span className="inline-flex items-center w-fit gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200" title={doc.emailError || "Email Delivery Failed"}>
-                        <AlertCircle size={12} /> Delivery Failed
+                <div className="flex flex-col items-start gap-ds-1">
+                    <span title={docItem.emailError || "Email Delivery Failed"}>
+                        <Badge tone="danger" icon={AlertCircle}>Delivery Failed</Badge>
                     </span>
-                    <span className="text-[10px] text-red-500 max-w-[200px] truncate" title={doc.emailError || ''}>
+                    <span
+                        className="max-w-[220px] text-ds-xs text-ds-status-danger-fg [overflow-wrap:anywhere]"
+                        title={docItem.emailError || ''}
+                    >
                         {errorDetail}
                     </span>
                 </div>
             );
         }
 
-        const s = (doc.status || '').toLowerCase();
-        if (s === 'signed') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200"><CheckCircle size={12} /> Signed</span>;
-        if (s === 'sent') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200"><Clock size={12} /> Sent</span>;
-        if (s === 'voided') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200"><Ban size={12} /> Voided</span>;
-        if (s === 'pending_seal') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200"><Loader2 size={12} className="animate-spin" /> Sealing...</span>;
-        // MED-2 FIX: Handle error_sealing and processing statuses
-        if (s === 'error_sealing') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200" title={doc.errorLog || 'Sealing failed'}><AlertCircle size={12} /> Seal Failed</span>;
-        if (s === 'processing') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200"><Loader2 size={12} className="animate-spin" /> Processing</span>;
-        return <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{doc.status}</span>;
+        const s = (docItem.status || '').toLowerCase();
+        const preset = STATUS_PRESENTATION[s];
+        if (preset) {
+            const Icon = preset.icon;
+            const badge = (
+                <Badge tone={preset.tone}>
+                    <Icon size={12} aria-hidden="true" className={preset.spin ? 'animate-spin' : undefined} />
+                    {preset.label}
+                </Badge>
+            );
+            // Preserve the sealing-failure tooltip.
+            return s === 'error_sealing'
+                ? <span title={docItem.errorLog || 'Sealing failed'}>{badge}</span>
+                : badge;
+        }
+        return <Badge tone="neutral">{docItem.status}</Badge>;
     };
 
-    if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin mx-auto text-blue-600" /></div>;
+    const renderDeliveryMethods = (docItem) => (
+        <div className="mt-ds-1 flex flex-wrap gap-ds-1">
+            {docItem.sendEmail && <Badge tone="info" icon={Mail}>Email</Badge>}
+            {docItem.sendSms && <Badge tone="success" icon={MessageSquare}>SMS</Badge>}
+            {docItem.sendEmail === false && docItem.sendSms !== true && (
+                <Badge tone="neutral">Manual</Badge>
+            )}
+        </div>
+    );
+
+    const renderActions = (docItem) => {
+        const title = docItem.title || 'Untitled';
+
+        if (docItem.status === 'signed') {
+            return (
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    aria-label={`Download ${title}`}
+                    onClick={() => handleDownload(docItem.signedPdfUrl || docItem.storagePath)}
+                >
+                    <Download size={14} aria-hidden="true" /> Download
+                </Button>
+            );
+        }
+
+        if (docItem.status === 'voided') {
+            return <span className="text-ds-xs italic text-ds-content-muted">No actions</span>;
+        }
+
+        return (
+            <div className="flex flex-wrap items-center justify-end gap-ds-2">
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={copyingId === docItem.id}
+                    aria-label={`Link for ${title}`}
+                    title="Copy full signing link"
+                    onClick={() => handleCopyLink(docItem)}
+                >
+                    {copyingId !== docItem.id && <Copy size={12} aria-hidden="true" />} Link
+                </Button>
+                {docItem.status === 'sent' && (
+                    <>
+                        {onCorrect && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                aria-label={`Correct ${title}`}
+                                title="Correct this document"
+                                onClick={() => onCorrect(docItem)}
+                            >
+                                <Edit3 size={12} aria-hidden="true" /> Correct
+                            </Button>
+                        )}
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            loading={voidingId === docItem.id}
+                            aria-label={`Void ${title}`}
+                            title="Void this document"
+                            onClick={() => handleVoid(docItem)}
+                        >
+                            {voidingId !== docItem.id && <Ban size={12} aria-hidden="true" />} Void
+                        </Button>
+                    </>
+                )}
+            </div>
+        );
+    };
+
+    const columns = defineTableColumns([
+        {
+            key: 'title',
+            header: 'Document Title',
+            rowHeader: true,
+            width: 'lg',
+            render: (docItem) => (
+                <span className="flex items-center gap-ds-2 font-medium text-ds-content [overflow-wrap:anywhere]">
+                    <FileText size={16} className="shrink-0 text-ds-action-primary" aria-hidden="true" />
+                    {docItem.title || 'Untitled'}
+                </span>
+            ),
+        },
+        {
+            key: 'recipient',
+            header: 'Recipient',
+            width: 'lg',
+            render: (docItem) => (
+                <div className="min-w-0">
+                    <div className="font-medium text-ds-content [overflow-wrap:anywhere]">{docItem.recipientName}</div>
+                    <div className="text-ds-xs text-ds-content-muted [overflow-wrap:anywhere]">
+                        {docItem.recipientEmail || docItem.recipientPhone || '—'}
+                    </div>
+                    {/* FEAT-4: Delivery method badge */}
+                    {renderDeliveryMethods(docItem)}
+                </div>
+            ),
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            width: 'md',
+            render: renderStatus,
+        },
+        {
+            key: 'createdAt',
+            header: 'Sent Date',
+            align: 'end',
+            width: 'sm',
+            render: (docItem) => (
+                <span className="font-mono text-ds-sm text-ds-content-secondary">
+                    {docItem.createdAt?.seconds ? new Date(docItem.createdAt.seconds * 1000).toLocaleDateString() : '--'}
+                </span>
+            ),
+        },
+        {
+            key: 'actions',
+            header: 'Actions',
+            align: 'end',
+            width: 'actions',
+            priority: 'actions',
+            render: renderActions,
+        },
+    ]);
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase border-b border-gray-200">
-                        <tr>
-                            <th className="px-6 py-3">Document Title</th>
-                            <th className="px-6 py-3">Recipient</th>
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3 text-right">Sent Date</th>
-                            <th className="px-6 py-3 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {docs.length === 0 ? (
-                            <tr>
-                                <td colSpan="5" className="p-8 text-center text-gray-400">No documents sent yet.</td>
-                            </tr>
-                        ) : (
-                            docs.map((doc) => (
-                                <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-2">
-                                        <FileText size={16} className="text-blue-500" /> {doc.title || 'Untitled'}
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-600">
-                                        <div className="font-medium text-gray-900">{doc.recipientName}</div>
-                                        <div className="text-xs text-gray-400">{doc.recipientEmail || doc.recipientPhone || '—'}</div>
-                                        {/* FEAT-4: Delivery method badge */}
-                                        <div className="flex gap-1 mt-1">
-                                            {doc.sendEmail && <span className="inline-flex items-center gap-0.5 text-[9px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full"><Mail size={8} /> Email</span>}
-                                            {doc.sendSms && <span className="inline-flex items-center gap-0.5 text-[9px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full"><MessageSquare size={8} /> SMS</span>}
-                                            {doc.sendEmail === false && doc.sendSms !== true && <span className="text-[9px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded-full">Manual</span>}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {getStatusBadge(doc)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right text-sm text-gray-500 font-mono">
-                                        {doc.createdAt?.seconds ? new Date(doc.createdAt.seconds * 1000).toLocaleDateString() : '--'}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-1.5">
-                                            {doc.status === 'signed' ? (
-                                                <button
-                                                    onClick={() => handleDownload(doc.signedPdfUrl || doc.storagePath)}
-                                                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
-                                                >
-                                                    <Download size={14} /> Download
-                                                </button>
-                                            ) : doc.status === 'voided' ? (
-                                                <span className="text-xs text-gray-400 italic">No actions</span>
-                                            ) : (
-                                                <>
-                                                    <button
-                                                        onClick={() => handleCopyLink(doc)}
-                                                        disabled={copyingId === doc.id}
-                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 text-gray-600 hover:bg-gray-100 disabled:opacity-50 rounded-lg text-xs font-bold transition-colors"
-                                                        title="Copy full signing link"
-                                                    >
-                                                        {copyingId === doc.id ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />} Link
-                                                    </button>
-                                                    {doc.status === 'sent' && (
-                                                        <>
-                                                            {onCorrect && (
-                                                                <button
-                                                                    onClick={() => onCorrect(doc)}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-bold transition-colors"
-                                                                    title="Correct this document"
-                                                                >
-                                                                    <Edit3 size={12} /> Correct
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={() => handleVoid(doc)}
-                                                                disabled={voidingId === doc.id}
-                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 rounded-lg text-xs font-bold transition-colors"
-                                                                title="Void this document"
-                                                            >
-                                                                {voidingId === doc.id ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />} Void
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        <DataTable
+            ariaLabel="Document history"
+            data={docs}
+            columns={columns}
+            isLoading={loading}
+            loadingLabel="Loading document history"
+            error={loadError ? { message: loadError } : undefined}
+            empty={{ title: 'No documents sent yet.' }}
+            getRowLabel={(docItem) => docItem.title || 'Untitled'}
+        />
     );
 }
