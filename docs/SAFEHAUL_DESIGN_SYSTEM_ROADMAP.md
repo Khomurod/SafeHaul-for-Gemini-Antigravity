@@ -1310,7 +1310,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Email Settings | Approved `FormSection`, `FormField`, `Input`, `Textarea`, `Button`, `Badge`, `Card`, and `FieldMessage` replace the local status banner, SMTP fields, test/save buttons, and setup-guide chrome (provider instructions stay feature-owned) | `getEmailSettingsMeta`/`testEmailConnection`/`saveEmailSettings` callables, sanitized metadata load, and password-isolation rules remain feature-owned and unchanged | Secret/autofill handling, required validation, test/save distinction, long errors | High / Very high | Compatibility slice completed 2026-07-23 | 24 focused render + 12 existing logic tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, secret-payload contract, label association, guide disclosure, axe, overflow passed |
 | SMS / number assignment | Default-line select + editable recruiter matrix (`<select>` per row), verify buttons, diagnostic modal, save; renders alongside the shared secret-entry `LineManager` (out of scope) | `useLineAssignments` owns the `sms_provider` listener, roster join, one-time token backfill, `verifyLineConnection`, and token-based `saveSmsLineAssignments`; correctness depends on server-side token→phone resolution | Editable matrix (not a display table), DLP token redaction, markup-coupled 15-case safety suite, color-only status, 9/10 px status text, secret-entry entanglement | High / Very high | Deep-audited 2026-07-23; **not migrated (NO-GO)** — blocked on the editable-matrix responsive/interaction owner decision and unproven DataTable-for-form-controls fit | Owner decision on editable-matrix strategy; then per-row select labels, token-redaction save contract, verify/backfill/diagnostic callables, status text+tone, DataTable-with-controls parity, keyboard/mobile |
 | Automated SMS | Approved `FormSection`, `FormField`, `Textarea`, `Button`, and `FieldMessage` replace the local heading/labels/textareas/save styling for three SMS-template textareas (`templateContactAttempt1/2/3`) and one save action | Three SMS-template textareas and one save action backed by a single Firestore document `companies/{companyId}/settings/automated_sms`; read/write remain feature-owned and unchanged | Template preservation, loading/error state, textarea description/limits | Medium / High | Compatibility slice completed 2026-07-23 | 12 focused contract tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, label association, loading announce, save states, axe, overflow passed |
-| Integrations | Connection cards and buttons, including disabled states | Firebase callable/SDK connection workflows and feature availability | External SDK state, disabled explanation, destructive/reconnect behavior | Medium / Very high | Audited; not migrated | Integration mocks/contracts, permissions, loading/error, mobile |
+| Integrations | Facebook Lead Ads connection card: dynamic FB SDK load, `FB.login` popup, browser Graph API page lookup + first-page auto-select, `connectFacebookPage` callable; local-only Connected state | `connectFacebookPage` callable, `functions/integrations/facebook.js` token exchange/`integrations_index` write/webhook, feature-flag visibility | External SDK state, sensitive short-lived token, **tenant binding `companyId = request.auth.uid`**, non-persistent Connected state, no disconnect/reconnect | Medium / Very high | Deep-audited 2026-07-23; **not migrated (NO-GO)** — blocked on a tenant-binding correctness/security defect (`request.auth.uid` used as the company id, incompatible with the auto-id + membership multi-tenant model); presentation withheld so the UI does not imply the workflow is production-ready | Separate integration-correctness/security project to fix tenant binding; then SDK-load/login-scope/graph/first-page/callable mocks, token-safety, feature-flag/permission, connected-state, keyboard/mobile |
 | Billing | Approved `FormSection`, `FieldDisplay`, `Badge`, and `FieldMessage` replace the local heading/card/plan/support styling | Plan value display only; `planType` read from the loaded profile, unchanged | Empty/long plan content and support messaging | Low / Low | Compatibility slice completed 2026-07-23 | 7 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, labelled plan/badge status, support copy, axe, overflow passed |
 | `/company/profile` account profile/security | 8 inputs, 8 labels, avatar file input, 6 buttons, password/email forms | Firebase Auth profile/email/password, reauthentication, Storage upload, Firestore user writes/query | Keyboard-inaccessible avatar surface, nested click targets, validation/error association, security/autofill, upload and reauth regressions | High / Very high | Audited; defer until form/upload/dialog foundations are proven | Auth/storage mocks, validation branches, save/email/password/upload workflows, keyboard/autofill, desktop/mobile |
 
@@ -2543,6 +2543,106 @@ Apply checks proportionally, but never claim an unrun check:
   Broader Settings/Profile work (Integrations, Company Profile application
   questions, `/company/profile` account security) remains separate.
 
+### Company Settings Integrations deep-audit log (NO-GO)
+
+- Date: 2026-07-23.
+- Checkpoint boundary: `origin/main` at `3bb5f9c` (the merged Team & Users PR
+  #83) with a clean working tree; the Team & Users slice was confirmed not to
+  have touched `CompanySettings.jsx` or `functions/hrAdmin.js`. This is an
+  audit/documentation-only checkpoint — **no source or presentation file was
+  changed**.
+- Scope audited: `src/features/settings/components/IntegrationsTab.jsx`,
+  `CompanySettings.jsx` (feature-flag visibility + admin gate),
+  `functions/integrations/facebook.js` (`connectFacebookPage`,
+  `facebookWebhook`/`facebookWebhookV1`, `processLead`), `functions/index.js`
+  export mapping, `docs/callable-frontend-map.md`, and the company/membership/
+  lead architecture.
+- Settings-visibility contract (frozen): the Integrations nav item shows only
+  when `currentCompanyProfile?.features?.callTracking !== false`
+  (`CompanySettings.jsx`); the standard admin gate + `/company/dashboard`
+  redirect apply. Unchanged.
+- SDK-loading contract (frozen): on mount, if `window.FB` exists →
+  `setIsSdkLoaded(true)` and no script insertion; otherwise assign
+  `window.fbAsyncInit` calling `window.FB.init({ appId:
+  import.meta.env.VITE_FACEBOOK_APP_ID, cookie: true, xfbml: true, version:
+  'v19.0' })` then `setIsSdkLoaded(true)`, and inject a `<script
+  id="facebook-jssdk" src="https://connect.facebook.net/en_US/sdk.js">` before
+  the first `<script>` (skipped when the id already exists). Audit notes (not to
+  be "fixed" in a presentation slice): if no first `<script>` exists,
+  `fjs.parentNode` throws; if the script tag exists but `window.FB` never
+  initialized, `isSdkLoaded` stays false with no retry; unmount before
+  `fbAsyncInit` fires can call `setIsSdkLoaded` after unmount; and the effect
+  overwrites any pre-existing `window.fbAsyncInit` (no coordination with other
+  consumers).
+- Login/scopes contract (frozen): not-ready → `showError('Facebook SDK not
+  loaded yet. Please refresh.')`; otherwise `setConnecting(true)` then
+  `window.FB.login(cb, { scope: 'pages_show_list,pages_read_engagement,
+  leads_retrieval,pages_manage_metadata,pages_manage_ads' })`. On
+  `response.authResponse` → pass `response.authResponse.accessToken` onward; else
+  `setConnecting(false)` and, when `response.status !== 'unknown'`,
+  `showError('Facebook login failed or was cancelled.')` ('unknown' = silent
+  popup close).
+- Graph-API/page-selection contract (frozen): the browser fetches
+  `https://graph.facebook.com/v19.0/me/accounts?access_token={shortLivedUserToken}`,
+  parses JSON, expects `data[]`, throws `No Facebook Pages found for this user.`
+  when empty, and **auto-selects `pagesResp.data[0]`** (no picker, no sort/filter
+  — a first-page-only behavior recorded here explicitly).
+- Callable contract (frozen): `httpsCallable(functions, 'connectFacebookPage')({
+  shortLivedUserToken, pageId: pageToConnect.id, pageName: pageToConnect.name })`;
+  success → `setConnectedPage(pageToConnect.name)` +
+  `showSuccess('Successfully connected Facebook Page: {pageName}')`; failure →
+  `console.error(error)` + `showError(error.message || 'Failed to connect
+  Facebook Page.')`; `connecting` resets in the `finally`.
+- Token-security contract: the frontend uses only the public
+  `VITE_FACEBOOK_APP_ID`; no `FACEBOOK_APP_SECRET`/`FACEBOOK_VERIFY_TOKEN`, no
+  token exchange, and no long-lived/page tokens exist in the browser (verified by
+  `grep`). The short-lived token flows into the Graph fetch and the callable and
+  must never reach console/toast/tests/screenshots/logs — a constraint any future
+  GO slice must keep.
+- Connected-state limitation (frozen, must not be masked): `connectedPage` lives
+  only in local React state — it is not loaded from Firestore or a callable, is
+  lost on refresh, has no disconnect/reconnect flow, and renders a disabled
+  "Connected" button after success. A presentation migration must not imply
+  persistence.
+- **Tenant-binding audit (the blocker):** `connectFacebookPage` derives
+  `const companyId = request.auth.uid;` (the backend comment itself says
+  "Assumes 1:1 user-company mapping for simplicity"). It then writes
+  `integrations_index/{pageId}` with `companyId = uid`, and the webhook
+  `processLead` ingests each lead to `companies/{companyId}/leads` with that same
+  `uid`. But SafeHaul is explicitly multi-tenant: companies are created via
+  `addDoc(collection(db,'companies'), { ownerId: user.uid, … })` so the company
+  **document id is an auto-generated Firestore id, not the owner's uid**; users
+  are linked to companies through the `memberships` collection and
+  `roles[companyId]` custom claims; and every lead consumer reads
+  `companies/{realCompanyId}/leads` (e.g. `useCompanyDashboard.js`,
+  `QuickLeadModal`, `LeadAssignmentModal`, `useSystemHealth`). The
+  `IntegrationsTab` receives **no** `companyId` prop and the callable payload
+  carries none, so the binding is entirely `uid`-derived. Consequence: connected
+  Facebook leads would be written to `companies/{uid}/leads` — a path that is not
+  the user's real company doc — so they would never reach the intended company's
+  dashboard, and a page-to-tenant mapping keyed on `uid` breaks for any
+  membership/multi-company user. `request.auth.uid` is therefore an incompatible
+  (legacy one-user/one-company) assumption, not the intended company identifier.
+- Go/no-go decision: **NO-GO.** Per the tenant-binding rule, the tenant binding
+  is incompatible with the multi-tenant company model, so: no backend change is
+  made here; the presentation is **not** migrated (polishing the card would imply
+  a production-ready workflow it is not); and this defect is handed off to a
+  separate integration-correctness/security project with its own scope, tests,
+  and security review. The SDK-load edge cases and the non-persistent
+  connected-state are secondary reasons the card should not be presented as
+  finished.
+- Verification performed for this audit: full frontend suite passed unchanged
+  (96 files / 692 tests, 48 emulator-gated rules skipped); frontend lint 0
+  errors; the callable-contract check passed (`OK | mapped 101 | raw 101`) and
+  `connectFacebookPage` is exported from `functions/index.js`; no Facebook secret
+  appears in `src/`; no real Facebook login/Graph request was made. No Facebook
+  backend unit test exists under `functions/test`, and the `functions` jest
+  runner is not installed in this environment — recorded honestly. Working tree
+  contained only this roadmap documentation change.
+- Outcome: Integrations marked deep-audited-but-not-migrated (NO-GO); no source
+  changed; contracts frozen above for a future slice once the tenant binding is
+  corrected under a separate security-reviewed project.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2567,6 +2667,17 @@ Apply checks proportionally, but never claim an unrun check:
   actions, status) to a scroll table or stacked cards needs an owner decision and
   a proof of behavior parity before migration. This blocked the SMS
   number-assignment slice on 2026-07-23 (deep-audit log in section 6).
+
+- `[!]` Correct the Facebook Integrations tenant binding before any Integrations
+  presentation migration. `connectFacebookPage` uses `companyId =
+  request.auth.uid`, which is incompatible with SafeHaul's auto-id + membership
+  multi-tenant model, so connected leads ingest to `companies/{uid}/leads`
+  instead of the real company. This is a backend correctness/security defect that
+  must be fixed under a separate, security-reviewed integration-correctness
+  project (explicit company id in the callable payload or via membership/claims,
+  with tests) — not as part of a design-system slice. The Integrations
+  presentation stays unmigrated until this is resolved (deep-audit log in section
+  6).
 
 These decisions do not block compatibility-first migrations that preserve the
 current identity and record evidence. They do block declaring the affected
@@ -2635,19 +2746,31 @@ New User form now uses `FormSection`/`FormField`/`Input`/`Select`/`Button`, and
 `setDoc` write, the tracking-link construction, the admin permission gate, and
 `functions/hrAdmin.js` are all unchanged.
 
+The **Company Settings Integrations** area was deep-audited on 2026-07-23 and
+returned **NO-GO** (deep-audit log in section 6): the Facebook Lead Ads workflow
+binds the tenant on `companyId = request.auth.uid`, which is incompatible with
+SafeHaul's auto-id + membership multi-tenant model, so connected leads would
+ingest to `companies/{uid}/leads` instead of the real company. Per the
+tenant-binding rule, no backend was changed and the presentation was **not**
+migrated (polishing the card would imply a production-ready workflow it is not);
+the fix belongs to a separate, security-reviewed integration-correctness project.
+All contracts (SDK load, login/scopes, Graph first-page selection, callable,
+token safety, connected-state limitation) are frozen in section 6.
+
 The recommended next bounded slice is one of the remaining Settings/Profile
-in-phase items: **Integrations** (audit first), or the higher-risk **Company
-Profile — application questions** (switch semantics, required/hidden exclusivity,
-DOT protections, destructive actions) and the **`/company/profile`
-account-security** screen — each needing its own audit. The **sandbox
-application** screen remains tied to the public-application migration. The Phase 3
-link-style Button variant (Login text-link and reveal-adornment exceptions), a
-design-system file-input primitive (the branding-upload exception), and a
-design-system Radio/Checkbox or segmented-control primitive (which would retire
-the verification RadioGroup and the change-review decision control) stay
-independently tracked. All public token screens (`/verify/:token`,
-`/review-change/:token`, `/sandbox/transfer-success`) are migrated. The SMS
-number-assignment NO-GO is unchanged.
+in-phase items with no such backend blocker: the **`/company/profile`
+account-security** screen (avatar upload + Auth reauthentication/email/password
+change — audit first) or the higher-risk **Company Profile — application
+questions** (switch semantics, required/hidden exclusivity, DOT protections,
+destructive actions). The **sandbox application** screen remains tied to the
+public-application migration. The Phase 3 link-style Button variant (Login
+text-link and reveal-adornment exceptions), a design-system file-input primitive
+(the branding-upload exception), and a design-system Radio/Checkbox or
+segmented-control primitive (which would retire the verification RadioGroup and
+the change-review decision control) stay independently tracked. All public token
+screens (`/verify/:token`, `/review-change/:token`, `/sandbox/transfer-success`)
+are migrated. The SMS number-assignment NO-GO and the new Integrations
+tenant-binding NO-GO are unchanged.
 
 Sequence (whichever slice the owner selects):
 
