@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useId, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '@lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -25,6 +25,21 @@ import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { Button } from '@/design-system/components';
 import { Inline, PageContainer, PageHeader, Stack } from '@/design-system/layouts';
+
+/**
+ * The two Documents Center views, in tab order. The `id` values are the exact
+ * `activeTab` state values the rest of this view already depends on ('list' is
+ * the initial value) — the tab interface only changes how they are presented.
+ *
+ * The design system has no approved Tabs primitive yet (tracked in the
+ * roadmap), so this WAI-ARIA tab interface stays feature-owned.
+ */
+const DOCUMENT_TABS = [
+    { id: 'list', label: 'History', icon: History },
+    { id: 'templates', label: 'Templates', icon: FileText },
+];
+
+const TAB_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
 
 export default function DocumentsManager() {
     const { currentCompanyProfile, loading } = useData();
@@ -61,6 +76,28 @@ export default function DocumentsManager() {
     const [postSubmitRequiredById, setPostSubmitRequiredById] = useState({});
     const [savingPostSubmitTemplates, setSavingPostSubmitTemplates] = useState(false);
     const isE2EEdocMock = isE2ETestMode && getE2EQueryParam('e2eEdoc', '') === 'mock';
+
+    const rawId = useId().replace(/:/g, '');
+    const tabPanelId = `edocs-tabpanel-${rawId}`;
+    const tabIdFor = (value) => `edocs-tab-${value}-${rawId}`;
+    const tabRefs = useRef({});
+
+    // Automatic activation: arrow/Home/End both select and move focus, so the
+    // panel always matches the focused tab.
+    const handleTabKeyDown = (event) => {
+        if (!TAB_KEYS.has(event.key)) return;
+        event.preventDefault();
+        const currentIndex = DOCUMENT_TABS.findIndex((tab) => tab.id === activeTab);
+        const lastIndex = DOCUMENT_TABS.length - 1;
+        let nextIndex = currentIndex;
+        if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + DOCUMENT_TABS.length) % DOCUMENT_TABS.length;
+        if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % DOCUMENT_TABS.length;
+        if (event.key === 'Home') nextIndex = 0;
+        if (event.key === 'End') nextIndex = lastIndex;
+        const nextTab = DOCUMENT_TABS[nextIndex];
+        setActiveTab(nextTab.id);
+        tabRefs.current[nextTab.id]?.focus();
+    };
 
     if (currentCompanyProfile?.features?.eDocs === false) {
         return <FeatureLockedModal featureName="E-Docs" onClose={() => navigate('/company/dashboard')} />;
@@ -458,16 +495,50 @@ export default function DocumentsManager() {
                         />
                     </Stack>
 
-                    <div className="flex border-b border-gray-200 bg-white px-4 rounded-t-xl">
-                        <button onClick={() => setActiveTab('list')} className={`px-6 py-4 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${activeTab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-                            <History size={16} /> History
-                        </button>
-                        <button onClick={() => setActiveTab('templates')} className={`px-6 py-4 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${activeTab === 'templates' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-                            <FileText size={16} /> Templates
-                        </button>
+                    <div
+                        role="tablist"
+                        aria-label="Document Center views"
+                        onKeyDown={handleTabKeyDown}
+                        className="flex flex-wrap rounded-t-ds-xl border-b border-ds-border bg-ds-surface px-ds-2"
+                    >
+                        {DOCUMENT_TABS.map((tab) => {
+                            const Icon = tab.icon;
+                            const isSelected = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    ref={(node) => { tabRefs.current[tab.id] = node; }}
+                                    type="button"
+                                    role="tab"
+                                    id={tabIdFor(tab.id)}
+                                    aria-selected={isSelected}
+                                    aria-controls={tabPanelId}
+                                    // Roving tabIndex: only the selected tab is in the tab order.
+                                    tabIndex={isSelected ? 0 : -1}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex min-h-11 items-center gap-ds-2 border-b-2 px-ds-5 py-ds-4 text-ds-sm font-bold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                        isSelected
+                                            ? 'border-ds-action-primary text-ds-action-primary'
+                                            : 'border-transparent text-ds-content-secondary hover:text-ds-content'
+                                    }`}
+                                >
+                                    <Icon size={16} aria-hidden="true" />
+                                    {tab.label}
+                                    {/* Selection is carried by aria-selected plus this text, never
+                                        by the underline colour alone. */}
+                                    {isSelected && <span className="ds-visually-hidden"> (selected)</span>}
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div
+                        id={tabPanelId}
+                        role="tabpanel"
+                        aria-labelledby={tabIdFor(activeTab)}
+                        tabIndex={-1}
+                        className="animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    >
                         {activeTab === 'list' ? (
                             <EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />
                         ) : (
