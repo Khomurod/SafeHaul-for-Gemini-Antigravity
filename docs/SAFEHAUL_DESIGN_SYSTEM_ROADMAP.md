@@ -1934,7 +1934,7 @@ Status `Not started` means audited but not migrated.
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
 | Campaigns | All interactive components migrated — `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, `CampaignEditor` shell, `ContentComposer`, `AudienceBuilder`, `VirtualLeadList`, and `LaunchPad`; only the decorative `DeviceMockup` illustration and the `CompanyCampaignsPage` fallback string remain unmigrated | Presentation-only throughout; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread and variable insertion; `AudienceBuilder` keeps the targeting/import hooks, exclusion resets and `finalCount`; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, mapping, pagination and exclusion rules; `LaunchPad` keeps the `initBulkSession` payload, launch guards, toasts, error mapping, estimate and preview truncation | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, launch payload and guards | Medium | High | **Complete** 2026-07-24 — all ten interactive components migrated; `CompanyCampaignsPage` fallback tokenized; decorative `DeviceMockup` status-bar text carries an approved documented exception | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview + 33 launch unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
-| E-Docs | `EnvelopeHistory` (approved `DataTable`), the `DocumentsManager` page header/canvas, its History/Templates tab navigation (feature-owned WAI-ARIA tab interface), and the whole `TemplatesPanel` are migrated; `SendTemplateModal` and `EnvelopeCreator` still on legacy markup | Presentation-only throughout: the history table keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink`/`getSignedDocumentUrl` callables, `gs://` path cleaning, `window.confirm` and every toast; the header keeps back navigation and both creator transitions; the tabs keep the exact `'list'`/`'templates'` values with `'list'` initial; `TemplatesPanel` keeps every prop, the `postSubmitRequiredById = {}` default, the `!== false` required rule, `templates.find` lookup with null for missing ids, the id order, the move directions and first/last disabling, and all callback argument shapes | Real-time status updates, per-status action visibility, signing-link confidentiality, tab state values, post-application ordering/required persistence, template use/edit/delete argument shapes | High | High | **In progress** — `EnvelopeHistory`, the header, the tab navigation and `TemplatesPanel` complete 2026-07-24 (GO); `SendTemplateModal` + `EnvelopeCreator` remain separate slices | 46 history + 22 DocumentsManager + 35 TemplatesPanel unit tests, 22 new Chromium/Mobile Chrome E2E checks, existing E-Doc send/sign regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, built-CSS token emission, git diff --check passed |
+| E-Docs | `EnvelopeHistory` (approved `DataTable`), the `DocumentsManager` page header/canvas, its History/Templates tab navigation (feature-owned WAI-ARIA tab interface), and the whole `TemplatesPanel` are migrated; `SendTemplateModal` (shared accessible Modal, labelled fields, pressed delivery group) is migrated; only `EnvelopeCreator` remains on legacy markup | Presentation-only throughout: the history table keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink`/`getSignedDocumentUrl` callables, `gs://` path cleaning, `window.confirm` and every toast; the header keeps back navigation and both creator transitions; the tabs keep the exact `'list'`/`'templates'` values with `'list'` initial; `TemplatesPanel` keeps every prop, the `postSubmitRequiredById = {}` default, the `!== false` required rule, `templates.find` lookup with null for missing ids, the id order, the move directions and first/last disabling, and all callback argument shapes | Real-time status updates, per-status action visibility, signing-link confidentiality, tab state values, post-application ordering/required persistence, template use/edit/delete argument shapes | High | High | **In progress** — `EnvelopeHistory`, the header, the tab navigation, `TemplatesPanel` and `SendTemplateModal` complete 2026-07-24 (GO); only `EnvelopeCreator` remains | 46 history + 22 DocumentsManager + 35 TemplatesPanel + 51 SendTemplateModal unit tests, 22 new Chromium/Mobile Chrome E2E checks, existing E-Doc send/sign regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, built-CSS token emission, git diff --check passed |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
@@ -3761,11 +3761,85 @@ Apply checks proportionally, but never claim an unrun check:
   signer surface) which is explicitly out of this slice's scope, and belongs to
   the still-open signing slice. The CI `e2e-a11y` lane is
   `continue-on-error: true`, which is why it has not blocked.
-- Remaining E-Docs work: **`SendTemplateModal`** (the send/driver-picker dialog,
-  delivery-method controls and prefill inputs) and **`EnvelopeCreator` with its
-  PDF workbench components** (field placement, coordinates, zoom and gesture
+- Remaining E-Docs work after this slice: **`EnvelopeCreator` with its PDF
+  workbench components** (field placement, coordinates, zoom and gesture
   behaviour — high risk, and the pre-existing signing-room axe findings belong
-  with it). Each needs its own audit and must not share a diff with the other.
+  with it). It needs its own audit and must not share a diff with anything else.
+
+### Send-template dialog (`SendTemplateModal`) — completed 2026-07-24 (GO)
+
+- **Decision: GO.** The audit froze the contract before any edit. All 20 props
+  are pure pass-through, the component holds no state, performs no I/O and adds
+  no validation: recipient-name and delivery-specific validation stay in
+  `executeTemplateSend`, and quick-select filtering stays in `filteredDrivers` —
+  both owned by `DocumentsManager`. A presentation migration therefore cannot
+  change behaviour provided every value, setter, order, key, id and string is
+  preserved, which the focused tests assert individually.
+- **Frozen and verified unchanged:** `selectedTemplate`, `onClose`,
+  `manualName`/`setManualName`, `manualEmail`/`setManualEmail`,
+  `manualPhone`/`setManualPhone`, `deliveryMethod`/`setDeliveryMethod`,
+  `editablePrefillPartition`, `prefillValues`/`setPrefillValues`,
+  `prefillValuesByGroupKey`/`setPrefillValuesByGroupKey`, `sending`,
+  `executeTemplateSend`, `filteredDrivers`, `searchQuery`/`setSearchQuery`,
+  `handleQuickSelect`. Also frozen: `slugPrefillGroupId` (string coercion,
+  `[^a-zA-Z0-9_-]` → `_`, 96-char truncation); the delivery order/keys/labels
+  `email→Email, sms→SMS, both→Both, copy→Copy Link`; the section-visibility rule;
+  group then plain-field order; the `group.members` tooltip; the
+  `— applies to N places` copy shown only above 1; every `DateTripletField` prop
+  (`label=""`, `idPrefix`, `name`, `|| ''` value, `required={false}`,
+  `maxToday`, `minYear={1920}`) and its functional merge; the grouped and plain
+  functional merges; all placeholders and ids; the
+  `sending || !manualName.trim()` disabled expression; the
+  `Copy Signing Link` / `Send Document` texts; `filteredDrivers.slice(0, 20)`;
+  the `No email` / `No phone` fallbacks with the visible `|` separator; and the
+  `Or Quick-Select a Lead` / `No leads found.` copy.
+- **The one documented behavioural hardening:** the legacy overlay had no
+  backdrop dismissal *and no Escape handler at all*. Adopting the shared
+  accessible `Modal` adds a focus trap, focus restoration and Escape dismissal,
+  so dismissal is deliberately gated — `closeOnBackdrop={false}` preserves the
+  previous "backdrop never closes" behaviour, `closeOnEscape={!sending}` keeps an
+  in-flight send visible, and the explicit Close control is disabled while
+  `sending`. No send operation, callback or parent state is touched.
+- **Accessibility/presentation:** dialog named by its `Send Document` heading and
+  described by the `Sending: <title>` subtitle; initial focus on Recipient name;
+  all three recipient fields and the lead search use `FormField` + `Input` with
+  visible labels (placeholders retained, so existing selectors keep working);
+  delivery options are an `aria-labelledby` group of approved `Button`s with
+  `aria-pressed` plus icon *and* text; the submit is an approved `Button` with an
+  `aria-busy` loading state and a `role="status"` "Sending document…"
+  announcement; quick-select rows stay native buttons whose accessible name
+  starts with the driver name; the 10 px prefill labels became `--ds-*` xs; the
+  panel is capped at `90vh` with one internal scroll region so the submit stays
+  reachable at 412×915 without document scrolling; prefill and lead lists keep
+  their internal scrolling; no raw hex colours and no animation were added.
+  `FormField` takes a plain-string label, so grouped prefill labels — which carry
+  the member tooltip and the applies-count fragment — compose the approved
+  `Label` + `Input` pair directly instead; noted rather than worked around.
+- **Evidence:** 51 focused unit tests (dialog name/close/backdrop/Escape both
+  ways/disabled close/initial focus/trap/restore/busy; recipient values,
+  placeholders, labels and exact setter arguments; delivery order, four keys,
+  labels, setter argument per option, `aria-pressed`, keyboard; prefill
+  visibility, ordering, slug transformation including special characters and a
+  120-char key, tooltip fallback to member id, applies-count condition, every
+  `DateTripletField` prop and all three merge paths preserving other keys;
+  disabled expression, both button texts, busy state, exactly one
+  `executeTemplateSend` per admitted activation and none while sending;
+  quick-select search setter, empty message, 20-row slice, order, exact driver
+  object, fallbacks, unique names, keyboard; plus 9/10 px and internal-scroll
+  guardrails and two `vitest-axe` passes). Migrated-file coverage **100%
+  statements/branches/functions/lines**. Sibling E-Docs units stay green
+  (`DocumentsManager` 22, `TemplatesPanel` 35, `EnvelopeHistory` 46). Full
+  frontend suite 110 files / 1099 tests passed (2 files / 48 emulator-gated rules
+  skipped); lint 0 errors; typecheck, production build and `git diff --check`
+  passed. Playwright ran one suite at a time:
+  `edoc-send-template-modal.spec.cjs` 8 passed on Chromium and 7 on Mobile Chrome
+  (viewport-specific skips), then the full E-Docs sweep of 29 Chromium checks
+  including the untouched `edoc-recruiter-send-flow` regression — its heading,
+  placeholder and button selectors still resolve, so **no E2E selector
+  compatibility edits were needed**. Real-browser axe scoped to the dialog found
+  no serious/critical and no color-contrast violations. Privacy: fixtures use
+  only reserved `example.test` addresses and fictional `555-01xx` numbers, with
+  no real recipient data, signing links or document URLs.
 
 ---
 
@@ -4072,11 +4146,12 @@ argument shape are unchanged — and a test proves switching tabs performs no
 Firestore write, callable or navigation. The design system still has no approved
 Tabs or Checkbox primitive, so both remain documented feature-owned compositions.
 
-The remaining E-Docs slices are **`SendTemplateModal`** (the send/driver-picker
-dialog, delivery-method controls and prefill inputs) and **`EnvelopeCreator` with
-its PDF workbench components** (field placement, coordinates, zoom and gestures —
-high risk; the pre-existing non-blocking signing-room axe findings belong with
-it). Each needs its own audit and must not share a diff with the other.
+**`SendTemplateModal`** (the send/driver-picker dialog, delivery-method controls
+and prefill inputs) was migrated and verified on 2026-07-24 (GO; completion log
+above). The single remaining E-Docs slice is **`EnvelopeCreator` with its PDF
+workbench components** (field placement, coordinates, zoom and gestures — high
+risk; the pre-existing non-blocking signing-room axe findings belong with it). It
+needs its own audit and must not share a diff with anything else.
 
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
