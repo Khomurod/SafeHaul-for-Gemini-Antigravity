@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { Loader2, Check, X, Pencil, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Button, Card, Input } from '@/design-system/components';
 
 const MOCK_REVIEW = {
     applicantName: 'Test Driver',
@@ -21,10 +22,12 @@ function previewValue(v) {
 }
 const isScalar = (v) => v === null || v === undefined || typeof v !== 'object';
 
+// Feature-owned segmented decision control. Active tone uses semantic status
+// tokens; icon + label + aria-pressed carry the state (not colour alone).
 const ACTIONS = [
-    { id: 'approve', label: 'Approve', icon: Check, cls: 'border-green-500 bg-green-50 text-green-700' },
-    { id: 'reject', label: 'Reject', icon: X, cls: 'border-red-400 bg-red-50 text-red-700' },
-    { id: 'edit', label: 'Edit', icon: Pencil, cls: 'border-blue-500 bg-blue-50 text-blue-700' },
+    { id: 'approve', label: 'Approve', icon: Check, activeCls: 'border-ds-status-success-border bg-ds-status-success-bg text-ds-status-success-fg' },
+    { id: 'reject', label: 'Reject', icon: X, activeCls: 'border-ds-status-danger-border bg-ds-status-danger-bg text-ds-status-danger-fg' },
+    { id: 'edit', label: 'Edit', icon: Pencil, activeCls: 'border-ds-status-info-border bg-ds-status-info-bg text-ds-status-info-fg' },
 ];
 
 export function ReviewChangePortal() {
@@ -96,52 +99,61 @@ export function ReviewChangePortal() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-start justify-center p-4 sm:p-6">
-            <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden my-6">
-                <div className="bg-slate-900 text-white p-6">
+        <div className="flex min-h-screen items-start justify-center bg-ds-canvas p-4 sm:p-6">
+            <Card as="main" padding="none" className="my-6 w-full max-w-xl overflow-hidden">
+                <div className="bg-slate-900 p-6 text-white">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-500 rounded-lg"><ShieldCheck size={22} /></div>
-                        <div>
+                        <span className="rounded-ds-lg bg-ds-action-primary p-2">
+                            <ShieldCheck size={22} aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0">
                             <h1 className="text-lg font-bold">Review changes to your application</h1>
-                            <p className="text-slate-400 text-sm">Your recruiter proposed edits. Approve, reject, or fix each one.</p>
+                            <p className="text-sm text-slate-400">Your recruiter proposed edits. Approve, reject, or fix each one.</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="p-6">
+                <div className="p-ds-6">
                     {loading ? (
-                        <div className="flex items-center justify-center py-16 text-slate-500">
-                            <Loader2 className="animate-spin mr-2" size={20} /> Loading…
+                        <div role="status" className="flex items-center justify-center py-16 text-ds-content-muted">
+                            <Loader2 className="mr-2 animate-spin" size={20} aria-hidden="true" /> Loading…
                         </div>
                     ) : error ? (
-                        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                            <AlertCircle size={18} className="shrink-0 mt-0.5" /> {error}
+                        <div role="alert" className="flex items-start gap-2 rounded-ds-lg border border-ds-status-danger-border bg-ds-status-danger-bg p-ds-4 text-ds-sm text-ds-status-danger-fg">
+                            <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" /> {error}
                         </div>
                     ) : done ? (
-                        <div className="text-center py-12">
-                            <CheckCircle2 size={48} className="text-green-600 mx-auto mb-4" />
-                            <h2 className="text-xl font-bold text-slate-900 mb-1">Thank you!</h2>
-                            <p className="text-slate-600 text-sm">Your responses have been recorded.</p>
+                        <div role="status" className="py-12 text-center">
+                            <CheckCircle2 size={48} className="mx-auto mb-4 text-ds-status-success-fg" aria-hidden="true" />
+                            <h2 className="mb-1 text-ds-heading-lg font-bold text-ds-content">Thank you!</h2>
+                            <p className="text-ds-sm text-ds-content-secondary">Your responses have been recorded.</p>
                         </div>
                     ) : pending.length === 0 ? (
-                        <div className="text-center py-12">
-                            <CheckCircle2 size={40} className="text-green-600 mx-auto mb-3" />
-                            <p className="text-slate-600 text-sm">There are no changes left to review.</p>
+                        <div role="status" className="py-12 text-center">
+                            <CheckCircle2 size={40} className="mx-auto mb-3 text-ds-status-success-fg" aria-hidden="true" />
+                            <p className="text-ds-sm text-ds-content-secondary">There are no changes left to review.</p>
                         </div>
                     ) : (
                         <div className="space-y-5">
                             {pending.map((c) => {
                                 const r = resolutions[c.fieldKey] || { action: 'approve' };
                                 const canEdit = isScalar(c.proposedValue) && isScalar(c.originalValue);
+                                const fieldName = c.fieldLabel || c.fieldKey;
                                 return (
-                                    <div key={c.fieldKey} className="rounded-xl border border-slate-200 p-4">
-                                        <p className="text-xs font-bold text-slate-500 uppercase mb-2">{c.fieldLabel || c.fieldKey}</p>
-                                        <div className="flex items-center gap-2 text-sm mb-3 flex-wrap">
-                                            <span className="line-through text-slate-400">{previewValue(c.originalValue)}</span>
-                                            <span aria-hidden>→</span>
-                                            <span className="font-semibold text-slate-900">{previewValue(c.proposedValue)}</span>
+                                    <div key={c.fieldKey} className="rounded-ds-lg border border-ds-border p-ds-4">
+                                        <p className="mb-2 text-ds-xs font-bold uppercase tracking-wide text-ds-content-muted">{fieldName}</p>
+                                        <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-ds-sm">
+                                            <span className="text-ds-content-muted">
+                                                <span className="text-ds-xs font-semibold uppercase">Current: </span>
+                                                <span className="line-through">{previewValue(c.originalValue)}</span>
+                                            </span>
+                                            <span aria-hidden="true" className="text-ds-content-muted">→</span>
+                                            <span className="text-ds-content">
+                                                <span className="text-ds-xs font-semibold uppercase text-ds-content-muted">Proposed: </span>
+                                                <span className="font-semibold">{previewValue(c.proposedValue)}</span>
+                                            </span>
                                         </div>
-                                        <div role="group" aria-label={`Decision for ${c.fieldLabel || c.fieldKey}`} className="flex gap-2">
+                                        <div role="group" aria-label={`Decision for ${fieldName}`} className="flex flex-wrap gap-2">
                                             {ACTIONS.filter((a) => a.id !== 'edit' || canEdit).map((a) => {
                                                 const active = r.action === a.id;
                                                 const Icon = a.icon;
@@ -151,20 +163,20 @@ export function ReviewChangePortal() {
                                                         type="button"
                                                         aria-pressed={active}
                                                         onClick={() => setAction(c.fieldKey, a.id)}
-                                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border transition-colors ${active ? a.cls : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                                                        className={`inline-flex min-h-10 items-center gap-1.5 rounded-ds-md border px-3 text-ds-sm font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${active ? a.activeCls : 'border-ds-border bg-ds-surface text-ds-content-secondary hover:bg-ds-surface-subtle'}`}
                                                     >
-                                                        <Icon size={15} /> {a.label}
+                                                        <Icon size={15} aria-hidden="true" /> {a.label}
                                                     </button>
                                                 );
                                             })}
                                         </div>
                                         {r.action === 'edit' && canEdit && (
-                                            <input
+                                            <Input
                                                 type="text"
                                                 value={r.value ?? ''}
                                                 onChange={(e) => setValue(c.fieldKey, e.target.value)}
-                                                aria-label={`Corrected value for ${c.fieldLabel || c.fieldKey}`}
-                                                className="mt-3 w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                aria-label={`Corrected value for ${fieldName}`}
+                                                className="mt-3"
                                                 placeholder="Enter the correct value"
                                             />
                                         )}
@@ -172,22 +184,19 @@ export function ReviewChangePortal() {
                                 );
                             })}
 
-                            <button
-                                type="button"
-                                onClick={handleSubmit}
-                                disabled={submitting}
-                                className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center gap-2"
-                            >
-                                {submitting && <Loader2 size={18} className="animate-spin" />}
+                            <Button type="button" variant="primary" size="lg" fullWidth loading={submitting} onClick={handleSubmit}>
                                 Submit my responses
-                            </button>
-                            <p className="text-[11px] text-slate-400 text-center">
+                            </Button>
+                            <p role="status" className="ds-visually-hidden">
+                                {submitting ? 'Submitting your responses…' : ''}
+                            </p>
+                            <p className="text-center text-ds-xs text-ds-content-muted">
                                 Approved or your edited values become part of your application. Rejected changes keep your original answer.
                             </p>
                         </div>
                     )}
                 </div>
-            </div>
+            </Card>
         </div>
     );
 }
