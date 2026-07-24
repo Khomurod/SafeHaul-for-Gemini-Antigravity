@@ -262,10 +262,14 @@ export const UserProfilePage = () => {
     };
 
     const getInitials = (name) => {
-        if (!name) return 'U';
-        const parts = name.split(' ');
+        // Trim-safe: the initials prop is evaluated eagerly regardless of whether
+        // a photo exists, so a whitespace-only name must not throw (it would crash
+        // the page even for photo-backed accounts).
+        const trimmed = (name || '').trim();
+        if (!trimmed) return 'U';
+        const parts = trimmed.split(/\s+/).filter(Boolean);
         if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-        return name.substring(0, 2).toUpperCase();
+        return trimmed.substring(0, 2).toUpperCase();
     };
 
     return (

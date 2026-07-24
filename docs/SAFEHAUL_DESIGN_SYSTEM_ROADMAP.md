@@ -2754,10 +2754,11 @@ Apply checks proportionally, but never claim an unrun check:
 - Diff review: `git diff --check` passed; the changed file plus the two new test
   files, the new avatar component, and the new E2E spec contain no unrelated
   application/backend changes.
-- Known pre-existing behavior left unchanged: `getInitials` throws on a
-  whitespace-only name; this latent edge case predates the migration and was
-  intentionally not altered to avoid a behavior change (the empty-name save
-  validation already blocks submission).
+- Avatar initials robustness: because the initials prop is evaluated eagerly
+  (regardless of whether a photo exists), `getInitials` was made trim-safe so a
+  whitespace-only name cannot throw. This restores the original property that a
+  photo-backed account always renders its image and never crashes; normal-name
+  output ("John Doe" → "JD") is unchanged. Locked by a regression test.
 - Commit/PR: feature commit + docs commit on
   `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
 

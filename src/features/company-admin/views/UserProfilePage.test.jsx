@@ -131,6 +131,19 @@ describe('UserProfilePage — initial load', () => {
         expect(await screen.findByRole('textbox', { name: 'Display Name' })).toHaveValue('FS Display');
         expect(screen.getByRole('img', { name: 'Profile photo' })).toHaveAttribute('src', AUTH_PHOTO);
     });
+
+    it('renders (does not crash) for a photo-backed account with a whitespace-only name', async () => {
+        // Regression: initials are computed eagerly as a prop, so a blank name
+        // must not throw even though the image branch is what actually renders.
+        userServiceMocks.getPortalUser.mockResolvedValue({
+            name: '   ',
+            username: '',
+            photoURL: FS_PHOTO,
+        });
+        renderPage();
+
+        expect(await screen.findByRole('img', { name: 'Profile photo' })).toHaveAttribute('src', FS_PHOTO);
+    });
 });
 
 describe('UserProfilePage — avatar upload', () => {
