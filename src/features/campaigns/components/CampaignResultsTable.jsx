@@ -1,16 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { collection, query, limit, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '@lib/firebase';
 import { CheckCircle2, AlertCircle, Clock, Search } from 'lucide-react';
+import { Card, Badge, Input, Label } from '@/design-system/components';
+import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+
+// Artificial fixtures for the deterministic E2E design-system review of this
+// table (populated state, scroll/sticky header, statuses, filtering). Never real
+// recipient contact data — fictional 555-01xx numbers only.
+const E2E_SEED_NOW = { toDate: () => new Date() };
+const E2E_SEED_LOGS = Array.from({ length: 12 }, (_, i) => ({
+    id: `e2e_log_${i}`,
+    recipientName: `E2E Recipient ${i + 1}`,
+    recipientIdentity: `555-01${String(i).padStart(2, '0')}`,
+    status: i % 3 === 0 ? 'delivered' : 'failed',
+    error: i % 3 === 1 ? 'Carrier rejected the message.' : undefined,
+    timestamp: i === 11 ? undefined : E2E_SEED_NOW,
+}));
 
 export function CampaignResultsTable({ companyId, campaignId }) {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const searchId = useId();
+    const isE2ECampaignMock = isE2ETestMode && getE2EQueryParam('e2eCampaign', '') === 'mock';
 
     useEffect(() => {
         const fetchLogs = async () => {
             if (!companyId || !campaignId) {
+                setLoading(false);
+                return;
+            }
+            if (isE2ECampaignMock) {
+                setLogs(E2E_SEED_LOGS);
                 setLoading(false);
                 return;
             }
@@ -30,72 +52,106 @@ export function CampaignResultsTable({ companyId, campaignId }) {
             }
         };
         fetchLogs();
-    }, [companyId, campaignId]);
+    }, [companyId, campaignId, isE2ECampaignMock]);
 
     const filteredLogs = logs.filter(log =>
         log.recipientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         log.recipientIdentity?.includes(searchTerm)
     );
 
-    if (loading) return <div className="p-8 text-center text-slate-400 text-sm font-medium animate-pulse">Loading detailed results...</div>;
+    if (loading) {
+        return (
+            <Card padding="lg" className="text-center">
+                <p role="status" className="text-ds-sm font-medium text-ds-content-muted">
+                    Loading detailed results...
+                </p>
+            </Card>
+        );
+    }
 
-    if (logs.length === 0) return <div className="p-8 text-center text-slate-400 text-sm font-medium">No messages sent yet.</div>;
+    if (logs.length === 0) {
+        return (
+            <Card padding="lg" className="text-center">
+                <p role="status" className="text-ds-sm font-medium text-ds-content-muted">
+                    No messages sent yet.
+                </p>
+            </Card>
+        );
+    }
 
     return (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">Recipient Log</h3>
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                    <input
-                        type="text"
+        <Card padding="none" className="overflow-hidden">
+            <div className="flex flex-col gap-ds-3 border-b border-ds-border-subtle bg-ds-surface-subtle p-ds-4 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-ds-sm font-bold uppercase tracking-wide text-ds-content">Recipient Log</h3>
+                <div className="flex items-center gap-ds-2">
+                    <Search className="text-ds-content-muted" size={16} aria-hidden="true" />
+                    <Label htmlFor={searchId} className="sr-only">Search recipients by name or contact</Label>
+                    <Input
+                        id={searchId}
+                        type="search"
                         placeholder="Search name or phone..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-blue-300 w-48 transition-all"
+                        className="w-full sm:w-56"
                     />
                 </div>
             </div>
 
-            <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 sticky top-0 z-10">
+            <div
+                role="region"
+                aria-label="Recipient delivery log"
+                tabIndex={0}
+                className="custom-scrollbar max-h-[400px] overflow-auto focus-visible:outline-none focus-visible:shadow-ds-focus"
+            >
+                <table className="w-full min-w-[640px] border-collapse text-left">
+                    <caption className="sr-only">Recipient delivery log</caption>
+                    <thead className="sticky top-0 z-10 bg-ds-surface-subtle">
                         <tr>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Recipient</th>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact</th>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Time</th>
+                            <th scope="col" className="px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">Recipient</th>
+                            <th scope="col" className="px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">Contact</th>
+                            <th scope="col" className="px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">Status</th>
+                            <th scope="col" className="px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">Time</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {filteredLogs.map(log => (
-                            <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-6 py-3">
-                                    <div className="text-sm font-bold text-slate-900">{log.recipientName || 'Unknown'}</div>
-                                </td>
-                                <td className="px-6 py-3">
-                                    <div className="text-xs font-mono text-slate-500">{log.recipientIdentity}</div>
-                                </td>
-                                <td className="px-6 py-3">
-                                    <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide ${log.status === 'delivered' ? 'text-emerald-600' : 'text-red-500'}`}>
-                                        {log.status === 'delivered' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-                                        {log.status === 'delivered' ? 'Delivered' : 'Failed'}
-                                    </div>
-                                    {log.error && (
-                                        <div className="text-[10px] text-red-400 mt-1 font-medium">{log.error}</div>
-                                    )}
-                                </td>
-                                <td className="px-6 py-3">
-                                    <div className="text-xs text-slate-400 font-medium flex items-center gap-1">
-                                        <Clock size={12} />
-                                        {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'}
-                                    </div>
+                    <tbody className="divide-y divide-ds-border-subtle">
+                        {filteredLogs.length === 0 ? (
+                            <tr>
+                                <td colSpan={4} className="px-ds-6 py-ds-8 text-center text-ds-sm font-medium text-ds-content-muted">
+                                    No recipients match your search.
                                 </td>
                             </tr>
-                        ))}
+                        ) : (
+                            filteredLogs.map(log => {
+                                const delivered = log.status === 'delivered';
+                                return (
+                                    <tr key={log.id} className="transition-colors hover:bg-ds-surface-subtle">
+                                        <th scope="row" className="px-ds-6 py-ds-3 text-left align-top">
+                                            <span className="text-ds-sm font-bold text-ds-content">{log.recipientName || 'Unknown'}</span>
+                                        </th>
+                                        <td className="px-ds-6 py-ds-3 align-top">
+                                            <span className="font-mono text-ds-xs text-ds-content-secondary">{log.recipientIdentity}</span>
+                                        </td>
+                                        <td className="px-ds-6 py-ds-3 align-top">
+                                            <Badge tone={delivered ? 'success' : 'danger'} icon={delivered ? CheckCircle2 : AlertCircle}>
+                                                {delivered ? 'Delivered' : 'Failed'}
+                                            </Badge>
+                                            {log.error && (
+                                                <p className="mt-ds-1 text-ds-xs font-medium text-ds-status-danger-fg">{log.error}</p>
+                                            )}
+                                        </td>
+                                        <td className="px-ds-6 py-ds-3 align-top">
+                                            <span className="inline-flex items-center gap-ds-1 text-ds-xs font-medium text-ds-content-muted">
+                                                <Clock size={12} aria-hidden="true" />
+                                                {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })
+                        )}
                     </tbody>
                 </table>
             </div>
-        </div>
+        </Card>
     );
 }
