@@ -1234,9 +1234,49 @@ The reverse directions are prohibited.
     Integrations remain separate NO-GO slices and must not be migrated together
     with anything else.
 
-- [ ] Campaigns.
+- [~] In progress — Campaigns.
   - Complete when: campaign cards/editor/results/report dialogs migrate without
     changing targeting, sending, reporting, or status behavior.
+  - [x] Migrate the campaign list card (`CampaignCard`) and its status/menu
+    presentation.
+    - Complete when: the card consumes approved primitives; status is a
+      feature-mapped Badge tone/label; the options menu is an accessible popover
+      with the exact Cancel-vs-Delete conditions; progress/leads/failed/method/
+      date/View Report/Details are preserved; desktop/tablet/mobile layout,
+      overflow, keyboard, and scoped axe pass without touching listeners,
+      callables, permissions, or data shapes.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/CampaignCard.jsx`,
+      `src/features/campaigns/components/CampaignCard.test.jsx`,
+      `e2e/campaign-card.spec.cjs`, this roadmap.
+    - Verification: 22 focused card tests passed; full frontend coverage gate
+      passed with 102 files / 780 tests and the existing 2 files / 48
+      emulator-dependent rules tests skipped; frontend lint 0 errors (163
+      existing warnings); typecheck, production build, and `git diff --check`
+      passed. `campaign-card.spec.cjs` passed 9 Chromium/Mobile Chrome checks
+      with 3 intentional viewport-specific skips.
+    - Visual/mobile/a11y: reviewed at 1440×900 and 412×915 (tablet overflow
+      checked in E2E). No document-level horizontal overflow; the options menu
+      is an accessible popover (`aria-haspopup`/`aria-expanded`, `role="menu"`/
+      `menuitem`, Escape-to-close, click-outside preserved); the card opens from
+      a keyboard-focusable Details button as well as the mouse whole-card click.
+      Card-scoped real-browser axe found no serious or critical violations.
+    - Notes: `CampaignCard` is presentation-only — the `CampaignsDashboard` keeps
+      both Firestore listeners (`campaign_drafts`, `bulk_sessions`), the
+      `cancelBulkSession` callable, the `window.confirm` messages, and the
+      draft/session delete logic unchanged. Status tones preserve the prior
+      appearance (active=success, completed=info, scheduled=warning, everything
+      else neutral); `isCancellableSessionStatus` still decides Cancel vs Delete.
+      No approved DS menu primitive exists, so the popover is a documented
+      feature-level composition. 10 px card text was replaced with the supported
+      `--ds-*` xs size. The dashboard shell (header, stat cards, tabs) remains
+      legacy and out of this slice — its pre-existing 10 px stat-label contrast
+      findings are tracked for a later dashboard slice.
+    - Commit/PR: feature + docs commits on
+      `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
+  - Remaining Campaigns work: the dashboard shell/stats/tabs, `CampaignEditor`,
+    `CampaignDetails`, `CampaignResultsTable`, and `DetailedReportModal` each
+    remain separate slices with their own audits.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1331,7 +1371,7 @@ Status `Not started` means audited but not migrated.
 | Company workspace shell | `company-admin/layout/*`; feature-owned sidebar/topbar consuming WorkspaceFrame and approved controls | Layout primitives consumed by feature-owned shell | High | Medium | Tokens, controls, layouts | Completed 2026-07-23 | Verified: routes, roles, flags, persisted desktop collapse, overflow, keyboard/focus, 1440/1024/412 px, Mobile Chrome, scoped axe |
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
-| Campaigns | `CompanyCampaignsPage`, `CampaignsDashboard`, local cards/results/report modal | PageHeader, Card, DataTable, Dialog, Badge, PageState | Medium | High | Controls, cards, table, dialog, status | Not started | Campaign unit tests, targeting/send/report behavior, mobile |
+| Campaigns | `CampaignCard` migrated to `Card`/`Badge`/`IconButton` with a feature-mapped status tone/label, an accessible options popover, and a keyboard-openable Details control; `CompanyCampaignsPage`/`CampaignsDashboard` shell, editor, details, results table, and report modal remain local | Card is presentation-only; `CampaignsDashboard` keeps both listeners (`campaign_drafts`, `bulk_sessions`), `cancelBulkSession`, confirmations, and delete logic unchanged | Status presentation, Cancel-vs-Delete conditions, progress/recipient counts, menu/open behavior | Medium | High | In progress — `CampaignCard` completed 2026-07-24; shell/editor/details/tables remain | 22 card unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, card-scoped axe, overflow, git diff --check passed |
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
@@ -3014,11 +3054,17 @@ token safety, connected-state limitation) are frozen in section 6.
 The **`/company/profile` account-security** screen and the **Company Profile —
 application questions** interface were both migrated and verified on 2026-07-24
 (GO; completion logs in section 6), which resolves every in-phase Company
-Settings / Profile item. The recommended next bounded slice is therefore a fresh
-feature area — the **Campaigns** screens (`CompanyCampaignsPage`,
-`CampaignsDashboard`, cards/results/report modal) or the **E-Docs**
-document/envelope workflows — each to be audited and scoped on its own before any
-presentation change. The **sandbox application** screen remains tied to the
+Settings / Profile item. The **Campaigns** area migration then began with its
+safest bounded slice — the **campaign list card** (`CampaignCard`), migrated and
+verified on 2026-07-24 (GO; completion log in the Phase 13 Campaigns item): the
+card now uses `Card`/`Badge`/`IconButton` with a feature-mapped status tone/label
+and an accessible options popover, while `CampaignsDashboard` keeps both Firestore
+listeners, the `cancelBulkSession` callable, confirmations, and delete logic
+unchanged. The recommended next bounded slices are the remaining Campaigns pieces
+(the dashboard shell/stats/tabs, `CampaignEditor`, `CampaignDetails`,
+`CampaignResultsTable`, `DetailedReportModal`) or the **E-Docs** document/envelope
+workflows — each audited and scoped on its own before any presentation change.
+The **sandbox application** screen remains tied to the The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
 (the branding-upload exception), and a design-system Radio/Checkbox or
