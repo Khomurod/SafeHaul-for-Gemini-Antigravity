@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Plus, Eye, EyeOff, GripVertical, Save, Loader2, Shield, AlertCircle } from 'lucide-react';
+import { Plus, Eye, EyeOff, Save, Shield } from 'lucide-react';
+import { Button, Card, Badge } from '@/design-system/components';
 import { QuestionEditor } from './QuestionEditor';
 import { INITIAL_QUESTION_STATE } from './QuestionConfig';
 
@@ -42,108 +43,120 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
         onChange(_questions);
     };
 
-    const renderPreviewInput = (q) => {
-        const commonClasses = "w-full p-3 border border-gray-300 rounded-lg bg-white opacity-75 cursor-not-allowed";
+    // Keyboard-accessible reordering. Mutates the same array-order format that
+    // drag-and-drop produces, so the saved `customQuestions` shape is identical.
+    const moveQuestion = (from, to) => {
+        if (to < 0 || to >= questions.length) return;
+        const _questions = [...questions];
+        const [moved] = _questions.splice(from, 1);
+        _questions.splice(to, 0, moved);
+        onChange(_questions);
+    };
 
+    const renderPreviewInput = (q) => {
+        const commonClasses = "w-full rounded-ds-md border border-ds-border bg-ds-surface p-ds-3 text-ds-content opacity-75";
+
+        // Preview controls are non-interactive visual mockups; the real,
+        // labelled inputs live in the public application. They are hidden from
+        // assistive tech (the question label above conveys the meaning).
         switch (q.type) {
             case 'paragraph':
-                return <textarea className={commonClasses} rows="3" disabled placeholder="Long answer text..." />;
+                return <textarea className={commonClasses} rows="3" disabled aria-hidden="true" tabIndex={-1} placeholder="Long answer text..." />;
             case 'multipleChoice':
                 return (
-                    <div className="space-y-2">
+                    <div className="space-y-ds-2">
                         {q.options?.map((opt, i) => (
-                            <div key={i} className="flex items-center gap-2">
-                                <div className="w-4 h-4 rounded-full border border-gray-400"></div>
-                                <span className="text-gray-600 text-sm">{opt}</span>
+                            <div key={i} className="flex items-center gap-ds-2">
+                                <span className="h-4 w-4 rounded-full border border-ds-border" aria-hidden="true"></span>
+                                <span className="text-ds-sm text-ds-content-secondary">{opt}</span>
                             </div>
                         ))}
                     </div>
                 );
             case 'checkboxes':
                 return (
-                    <div className="space-y-2">
+                    <div className="space-y-ds-2">
                         {q.options?.map((opt, i) => (
-                            <div key={i} className="flex items-center gap-2">
-                                <div className="w-4 h-4 rounded border border-gray-400"></div>
-                                <span className="text-gray-600 text-sm">{opt}</span>
+                            <div key={i} className="flex items-center gap-ds-2">
+                                <span className="h-4 w-4 rounded border border-ds-border" aria-hidden="true"></span>
+                                <span className="text-ds-sm text-ds-content-secondary">{opt}</span>
                             </div>
                         ))}
                     </div>
                 );
             case 'dropdown':
                 return (
-                    <select className={commonClasses} disabled>
+                    <select className={commonClasses} disabled aria-hidden="true" tabIndex={-1}>
                         <option>Select an option...</option>
                         {q.options?.map((opt, i) => <option key={i}>{opt}</option>)}
                     </select>
                 );
             case 'fileUpload':
                 return (
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50">
-                        <p className="text-gray-500 text-sm">Upload file button will appear here</p>
+                    <div className="rounded-ds-lg border-2 border-dashed border-ds-border p-ds-6 text-center bg-ds-surface-subtle">
+                        <p className="text-ds-sm text-ds-content-muted">Upload file button will appear here</p>
                     </div>
                 );
             case 'date':
-                return <input type="date" className={commonClasses} disabled />;
+                return <input type="date" className={commonClasses} disabled aria-hidden="true" tabIndex={-1} />;
             case 'time':
-                return <input type="time" className={commonClasses} disabled />;
+                return <input type="time" className={commonClasses} disabled aria-hidden="true" tabIndex={-1} />;
             case 'linearScale':
                 return (
-                    <div className="flex items-center justify-between px-4 py-2 bg-gray-50 rounded border border-gray-200">
-                        <span className="text-xs text-gray-500">{q.min || 1} ({q.minLabel || 'Min'})</span>
-                        <div className="flex gap-2">
+                    <div className="flex items-center justify-between rounded-ds-md border border-ds-border-subtle bg-ds-surface-subtle px-ds-4 py-ds-2">
+                        <span className="text-ds-xs text-ds-content-muted">{q.min || 1} ({q.minLabel || 'Min'})</span>
+                        <div className="flex gap-ds-2">
                             {[1, 2, 3, 4, 5].map(n => (
-                                <div key={n} className="w-4 h-4 rounded-full border border-gray-400"></div>
+                                <span key={n} className="h-4 w-4 rounded-full border border-ds-border" aria-hidden="true"></span>
                             ))}
                         </div>
-                        <span className="text-xs text-gray-500">{q.max || 5} ({q.maxLabel || 'Max'})</span>
+                        <span className="text-ds-xs text-ds-content-muted">{q.max || 5} ({q.maxLabel || 'Max'})</span>
                     </div>
                 );
             default:
-                return <input type="text" className={commonClasses} disabled placeholder="Short answer text" />;
+                return <input type="text" className={commonClasses} disabled aria-hidden="true" tabIndex={-1} placeholder="Short answer text" />;
         }
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-ds-6">
 
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm sticky top-0 z-20">
+            <Card className="sticky top-0 z-20 flex flex-col items-start justify-between gap-ds-4 sm:flex-row sm:items-center">
                 <div>
-                    <h3 className="text-lg font-bold text-gray-900">Custom Questions</h3>
-                    <p className="text-sm text-gray-500">{questions.length} questions added</p>
+                    <h4 className="text-ds-body font-bold text-ds-content">Custom Questions</h4>
+                    <p className="text-ds-sm text-ds-content-muted" role="status">{questions.length} questions added</p>
                 </div>
-                <div className="flex gap-3">
-                    <button
+                <div className="flex gap-ds-3">
+                    <Button
+                        variant="secondary"
+                        size="md"
                         onClick={() => setPreviewMode(!previewMode)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${previewMode
-                                ? 'bg-purple-100 text-purple-700'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                            }`}
+                        aria-pressed={previewMode}
                     >
-                        {previewMode ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {previewMode ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
                         {previewMode ? 'Edit Mode' : 'Preview'}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="md"
                         onClick={onSave}
-                        disabled={loading}
-                        className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-md transition-all"
+                        loading={loading}
                     >
-                        {loading ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                        {!loading && <Save size={18} aria-hidden="true" />}
                         Save Changes
-                    </button>
+                    </Button>
                 </div>
-            </div>
+            </Card>
 
-            <div className="space-y-4 min-h-[200px]">
+            <div className="min-h-[200px] space-y-ds-4">
                 {questions.length === 0 && (
-                    <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
-                        <p className="text-gray-400 font-medium">No questions yet.</p>
-                        <button
-                            onClick={addQuestion}
-                            className="mt-4 text-blue-600 hover:text-blue-800 font-bold text-sm"
-                        >
-                            + Add your first question
-                        </button>
+                    <div className="rounded-ds-xl border-2 border-dashed border-ds-border-subtle py-ds-12 text-center">
+                        <p className="font-medium text-ds-content-muted">No questions yet.</p>
+                        <div className="mt-ds-4 flex justify-center">
+                            <Button variant="ghost" size="sm" onClick={addQuestion}>
+                                <Plus size={16} aria-hidden="true" /> Add your first question
+                            </Button>
+                        </div>
                     </div>
                 )}
 
@@ -152,60 +165,54 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
                         key={question.id || index}
                         draggable={!previewMode}
                         onDragStart={(e) => { dragItem.current = index; e.currentTarget.style.opacity = '0.5'; }}
-                        onDragEnter={(e) => { dragOverItem.current = index; }}
+                        onDragEnter={() => { dragOverItem.current = index; }}
                         onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; handleSort(); }}
                         onDragOver={(e) => e.preventDefault()}
-                        className={`transition-all duration-200 ${previewMode ? '' : 'cursor-move'}`}
+                        className="transition-all duration-200"
                     >
                         {previewMode ? (
-                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                                <div className="mb-3">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <label className="block text-sm font-bold text-gray-800">
+                            <Card>
+                                <div className="mb-ds-3">
+                                    <div className="mb-ds-1 flex flex-wrap items-center gap-ds-2">
+                                        <span className="text-ds-sm font-bold text-ds-content">
                                             {question.label || 'Untitled Question'}
-                                            {question.required && <span className="text-red-500 ml-1">*</span>}
-                                        </label>
+                                            {question.required && <span className="ml-1 text-ds-status-danger-fg" aria-hidden="true">*</span>}
+                                        </span>
                                         {question.dotRequired && (
-                                            <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
-                                                <Shield size={10} /> DOT
-                                            </span>
+                                            <Badge tone="warning" icon={Shield}>DOT</Badge>
                                         )}
                                         {!question.canCompanyHide && (
-                                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                                                Locked
-                                            </span>
+                                            <Badge tone="neutral">Locked</Badge>
                                         )}
                                     </div>
                                     {question.fmcsaReference && (
-                                        <p className="text-xs text-amber-600 font-medium">{question.fmcsaReference}</p>
+                                        <p className="text-ds-xs font-medium text-ds-status-warning-fg">{question.fmcsaReference}</p>
                                     )}
-                                    {question.helpText && <p className="text-xs text-gray-500">{question.helpText}</p>}
+                                    {question.helpText && <p className="text-ds-xs text-ds-content-muted">{question.helpText}</p>}
                                 </div>
                                 {renderPreviewInput(question)}
-                            </div>
+                            </Card>
                         ) : (
                             <QuestionEditor
                                 question={question}
                                 index={index}
                                 onChange={updateQuestion}
                                 onDelete={deleteQuestion}
+                                onMoveUp={(i) => moveQuestion(i, i - 1)}
+                                onMoveDown={(i) => moveQuestion(i, i + 1)}
+                                canMoveUp={index > 0}
+                                canMoveDown={index < questions.length - 1}
                             />
                         )}
                     </div>
                 ))}
             </div>
 
-            {!previewMode && (
-                <div className="flex justify-center pt-4">
-                    <button
-                        onClick={addQuestion}
-                        className="group flex flex-col items-center gap-2 text-gray-400 hover:text-blue-600 transition-colors"
-                    >
-                        <div className="w-12 h-12 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center group-hover:border-blue-500 group-hover:bg-blue-50 transition-all shadow-sm">
-                            <Plus size={24} />
-                        </div>
-                        <span className="text-sm font-medium">Add Question</span>
-                    </button>
+            {!previewMode && questions.length > 0 && (
+                <div className="flex justify-center pt-ds-4">
+                    <Button variant="ghost" size="md" onClick={addQuestion}>
+                        <Plus size={20} aria-hidden="true" /> Add Question
+                    </Button>
                 </div>
             )}
         </div>

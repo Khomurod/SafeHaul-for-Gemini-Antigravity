@@ -1,5 +1,6 @@
 import React from 'react';
 import { HelpCircle } from 'lucide-react';
+import { Card } from '@/design-system/components';
 import { CustomQuestionsBuilder } from '../questions/CustomQuestionsBuilder';
 import { StandardQuestionsConfig } from '../questions/StandardQuestionsConfig';
 
@@ -13,11 +14,15 @@ export function QuestionsTabContent({
     loading
 }) {
     return (
-        <div className="space-y-8 animate-in slide-in-from-bottom-2">
-            <div>
-                <div className="mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">Standard DOT Questions</h3>
-                    <p className="text-sm text-gray-500">Configure visibility and requirements for standard application fields.</p>
+        <div className="space-y-ds-8">
+            <section aria-labelledby="standard-questions-heading">
+                <div className="mb-ds-4">
+                    <h3 id="standard-questions-heading" className="text-ds-heading-sm font-bold text-ds-content">
+                        Standard DOT Questions
+                    </h3>
+                    <p className="text-ds-sm text-ds-content-muted">
+                        Configure visibility and requirements for standard application fields.
+                    </p>
                 </div>
 
                 {isCompanyAdmin ? (
@@ -26,18 +31,20 @@ export function QuestionsTabContent({
                         onChange={onConfigChange}
                     />
                 ) : (
-                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center text-gray-500">
+                    <Card className="text-center text-ds-content-muted">
                         <p>Read-only view for standard questions.</p>
-                    </div>
+                    </Card>
                 )}
-            </div>
+            </section>
 
-            <div className="border-t border-gray-200 pt-6">
-                <div className="mb-6">
-                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                        <HelpCircle size={20} className="text-blue-600" /> Custom Questions
+            <section aria-labelledby="custom-questions-heading" className="border-t border-ds-border-subtle pt-ds-6">
+                <div className="mb-ds-6">
+                    <h3 id="custom-questions-heading" className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                        <HelpCircle size={20} className="text-ds-action-primary" aria-hidden="true" /> Custom Questions
                     </h3>
-                    <p className="text-sm text-gray-500">Add specific questions for your company (e.g. "Do you have flatbed experience?").</p>
+                    <p className="text-ds-sm text-ds-content-muted">
+                        Add specific questions for your company (e.g. "Do you have flatbed experience?").
+                    </p>
                 </div>
 
                 {isCompanyAdmin ? (
@@ -48,11 +55,11 @@ export function QuestionsTabContent({
                         loading={loading}
                     />
                 ) : (
-                    <div className="p-6 bg-gray-50 border border-gray-200 rounded-xl text-center text-gray-500">
+                    <Card className="text-center text-ds-content-muted">
                         <p>Only Company Admins can edit application questions.</p>
-                    </div>
+                    </Card>
                 )}
-            </div>
+            </section>
         </div>
     );
 }
