@@ -1319,9 +1319,59 @@ The reverse directions are prohibited.
       documented feature-level composition following the WAI-ARIA tabs pattern.
     - Commit/PR: feature + docs commits on
       `claude/safehaul-design-system-g1vr3a`; PR into `main`.
-  - Remaining Campaigns work: `CampaignEditor`, `CampaignDetails`,
-    `CampaignResultsTable`, and `DetailedReportModal` each remain separate slices
-    with their own audits.
+  - [x] Migrate the campaign results table (`CampaignResultsTable`) — recipient
+    delivery log with search, status, and per-row error.
+    - Complete when: the log consumes approved primitives (`Card`, `Input`,
+      `Label`, `Badge`); the former 10 px low-contrast headers are fixed; search
+      is labelled; loading is announced; statuses are text + icon (never
+      colour-only); per-row errors are readable; the scrollable results area and
+      sticky header are preserved; and no query, mapping, search logic, or
+      messages change.
+    - Completed: 2026-07-24.
+    - Files: `src/features/campaigns/components/CampaignResultsTable.jsx`,
+      `src/features/campaigns/components/CampaignResultsTable.test.jsx`,
+      `e2e/campaign-results-table.spec.cjs`, this roadmap.
+    - Verification: 11 focused tests passed (exact `getDocs` query — path,
+      `orderBy('timestamp','desc')`, `limit(200)`, one read; no-query on missing
+      IDs; announced loading; empty state; case-insensitive name / substring
+      identity filtering; `delivered`→Delivered, all else→Failed mapping; per-row
+      error; timestamp + `Pending` fallback; labelled search + column headers;
+      container axe). Full frontend suite 102 files / 799 tests passed (2 files /
+      48 emulator rules tests skipped); migrated file coverage 88% lines / 91%
+      branches (uncovered are the fetch-catch and E2E-seed branches); lint 0
+      errors; typecheck, production build, and `git diff --check` passed.
+      `campaign-results-table.spec.cjs` passed 8 Chromium/Mobile Chrome checks
+      (2 viewport-specific skips); the campaign-card/dashboard/launch specs stay
+      green.
+    - Visual/mobile/a11y: reviewed populated at 1440 and 412; no document-level
+      horizontal overflow at 1440/1024/412 (wide content scrolls inside the
+      results region). Headers now use the supported `--ds-*` xs size with
+      `content-secondary` colour; statuses are `Badge` success/danger with a
+      check/alert icon plus text; per-row errors use the readable danger token;
+      the search field has a programmatic label; the scroll region is a labelled,
+      keyboard-focusable region with the sticky header preserved. Real-browser
+      axe scoped to the table found no serious/critical and no color-contrast
+      violations.
+    - Notes: presentation only — props (`companyId`, `campaignId`), the
+      no-query-on-missing-IDs guard, the one-time `getDocs` on
+      `companies/{companyId}/bulk_sessions/{campaignId}/logs` with
+      `orderBy('timestamp','desc')` + `limit(200)`, the id-preserving log
+      mapping, the `recipientName`/`recipientIdentity` search, the exact loading
+      and empty strings, the `delivered`→Delivered / else→Failed rule, the
+      console-only fetch-error handling, and the timestamp/`Pending` formatting
+      are all unchanged. `DataTable` was intentionally not adopted here: it owns a
+      horizontal column-scroll region and requires a definite-height ancestor for
+      its vertical sticky scroll, which would replace the log's `max-height`
+      grow-to-content behavior, and its skeleton loading would change the exact
+      loading string — so `Card`/`Input`/`Badge` plus a semantic DS-token table
+      are the safe fit (recorded as a primitive-fit exception). Recipient identity
+      is sensitive: it is never logged, snapshotted, or seeded with real data
+      (E2E uses artificial names + fictional 555-01xx contacts, guarded by
+      `isE2ETestMode`).
+    - Commit/PR: feature + docs commits on
+      `claude/safehaul-design-system-g1vr3a`; PR into `main`.
+  - Remaining Campaigns work: `CampaignEditor`, `CampaignDetails`, and
+    `DetailedReportModal` each remain separate slices with their own audits.
 
 - [ ] E-docs, driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
@@ -1459,7 +1509,7 @@ short, long, empty, loading, error, and representative numeric/date data.
 | Current table | Target | Priority | Risk | Additional dependencies | Status | Verification needed |
 |---|---|---|---|---|---|---|
 | `shared/components/table/ModernDriverTable.jsx` | DataTable pilot/compatibility wrapper | Critical | High | Selection, pagination, Badge | In progress — Company candidate consumer migrated; Super Admin consumer remains | Verify remaining Super Admin behavior before adapting or removing the compatibility component |
-| `campaigns/components/CampaignResultsTable.jsx` | Compact DataTable | High | Medium | Status adapter | Not started | Remove 10px text, contact/status/time alignment, loading |
+| `campaigns/components/CampaignResultsTable.jsx` | Card + Input + Badge + semantic DS-token table (DataTable not a fit — see Phase 13 note) | High | Medium | Status adapter | Migrated 2026-07-24 (GO) | 10px/contrast headers fixed, labelled search, text+icon status, readable errors, preserved max-height scroll + sticky header |
 | `campaigns/components/DetailedReportModal.jsx` | DataTable inside Dialog | Medium | High | Dialog, status | Not started | Dialog focus + table overflow, long message truncation |
 | `company-admin/components/InlineLeaderboard.jsx` | Numeric compact DataTable | High | Medium | Metric formatting | Completed 2026-07-23 | Verified: representative/empty/error/retry unit states, header/cell end alignment under 1 px, compact density, long names, labeled mobile overflow, desktop/mobile axe |
 | `settings/number-assignment/AssignmentTable.jsx` | DataTable with form controls | High | High | Select/Checkbox | Not started | Header/cell alignment, control labels, save states, mobile |
@@ -3113,10 +3163,21 @@ and `MetricCard`; the former 10 px low-contrast stat labels are fixed and the ta
 are an accessible WAI-ARIA tablist (programmatic selection + keyboard), all while
 the paywall, both listeners + cleanup, stats math, the exact new-draft write,
 `cancelBulkSession`, confirmations, delete logic, tab values, and
-`CampaignCard`/report-modal wiring stay unchanged. The recommended next bounded
-slices are the remaining Campaigns pieces (`CampaignEditor`, `CampaignDetails`,
-`CampaignResultsTable`, `DetailedReportModal`) or the **E-Docs** document/envelope
-workflows — each audited and scoped on its own before any presentation change.
+`CampaignCard`/report-modal wiring stay unchanged. The **campaign results table**
+(`CampaignResultsTable`) was then migrated and verified on 2026-07-24 (GO;
+completion log in the Phase 13 Campaigns item): the recipient delivery log now
+uses `Card`/`Input`/`Label`/`Badge` with a semantic DS-token table, fixing the
+10 px low-contrast headers, labelling the search, making statuses text + icon and
+per-row errors readable, and preserving the `max-height` scroll region and sticky
+header — while the exact Firestore read, log mapping, search logic, loading/empty
+strings, status mapping, and timestamp/`Pending` formatting stay unchanged.
+`DataTable` was recorded as a primitive-fit exception here (it owns a horizontal
+column-scroll region and needs a definite-height ancestor for vertical
+stickiness, which would change the log's grow-to-content scroll behavior). The
+recommended next bounded slices are the remaining Campaigns pieces
+(`CampaignEditor`, `CampaignDetails`, `DetailedReportModal`) or the **E-Docs**
+document/envelope workflows — each audited and scoped on its own before any
+presentation change.
 The **sandbox application** screen remains tied to the The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
 text-link and reveal-adornment exceptions), a design-system file-input primitive
