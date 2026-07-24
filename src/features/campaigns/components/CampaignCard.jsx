@@ -1,6 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, MessageSquare, ChevronRight, MoreVertical, Trash2, Ban } from 'lucide-react';
+import { Card, Badge, IconButton } from '@/design-system/components';
 import { isCancellableSessionStatus } from '../constants/campaignConstants';
+
+/**
+ * Feature-owned domain → visual mapping for a campaign/session status.
+ *
+ * The design system only knows generic Badge tones; the campaigns feature owns
+ * which status maps to which tone and label. Tones preserve the previous
+ * appearance: active=success (emerald), completed=info (blue), scheduled=warning
+ * (amber), and everything else (draft/queued/paused/cancelled/failed/unknown)
+ * uses the neutral slate treatment the old default branch produced.
+ */
+const STATUS_TONE = {
+    active: 'success',
+    completed: 'info',
+    scheduled: 'warning',
+    draft: 'neutral',
+};
+
+function statusPresentation(status) {
+    const tone = STATUS_TONE[status] || 'neutral';
+    const label = typeof status === 'string' && status.length > 0
+        ? status.charAt(0).toUpperCase() + status.slice(1)
+        : 'Unknown';
+    return { tone, label };
+}
 
 export function CampaignCard({ campaign, onClick, onDelete, onCancel, onViewReport }) {
     const [showMenu, setShowMenu] = useState(false);
@@ -12,54 +37,66 @@ export function CampaignCard({ campaign, onClick, onDelete, onCancel, onViewRepo
                 setShowMenu(false);
             }
         };
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') setShowMenu(false);
+        };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
     }, []);
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'active': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-            case 'draft': return 'bg-slate-100 text-slate-600 border-slate-200';
-            case 'completed': return 'bg-blue-100 text-blue-700 border-blue-200';
-            case 'scheduled': return 'bg-amber-100 text-amber-700 border-amber-200';
-            default: return 'bg-slate-100 text-slate-600 border-slate-200';
-        }
-    };
+    const { tone, label } = statusPresentation(campaign.status);
+    const method = (campaign.messageConfig?.method || 'SMS');
 
     return (
-        <div
+        <Card
+            as="article"
             onClick={onClick}
-            className="group bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-500/5 transition-all cursor-pointer"
+            className="group cursor-pointer transition-all hover:border-ds-action-primary hover:shadow-ds-md"
         >
-            <div className="flex justify-between items-start mb-4">
-                <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(campaign.status)}`}>
-                    {campaign.status}
-                </div>
+            <div className="mb-ds-4 flex items-start justify-between gap-ds-2">
+                <Badge tone={tone}>{label}</Badge>
+
                 <div className="relative" ref={menuRef}>
-                    <button
+                    <IconButton
+                        label="Campaign options"
+                        size="sm"
+                        variant="ghost"
+                        aria-haspopup="menu"
+                        aria-expanded={showMenu}
                         onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-                        className={`p-1 rounded-lg transition-colors ${showMenu ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
                     >
-                        <MoreVertical size={18} />
-                    </button>
+                        <MoreVertical size={18} aria-hidden="true" />
+                    </IconButton>
 
                     {showMenu && (
-                        <div className="absolute right-0 top-8 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-10 animate-in fade-in zoom-in-95 duration-200">
+                        <div
+                            role="menu"
+                            aria-label="Campaign actions"
+                            className="absolute right-0 top-full z-10 mt-ds-1 w-48 rounded-ds-lg border border-ds-border-subtle bg-ds-surface py-ds-1 shadow-ds-lg"
+                        >
                             {/* Live sessions must be cancelled (worker stops safely, history
                                 is kept); only drafts and stopped sessions can be deleted. */}
                             {onCancel && isCancellableSessionStatus(campaign.status) ? (
                                 <button
+                                    type="button"
+                                    role="menuitem"
                                     onClick={(e) => { e.stopPropagation(); setShowMenu(false); onCancel(campaign); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 font-medium text-left"
+                                    className="flex w-full items-center gap-ds-2 px-ds-4 py-ds-2 text-left text-ds-sm font-medium text-ds-status-warning-fg hover:bg-ds-surface-subtle focus-visible:bg-ds-surface-subtle focus-visible:outline-none"
                                 >
-                                    <Ban size={14} /> Cancel Campaign
+                                    <Ban size={14} aria-hidden="true" /> Cancel Campaign
                                 </button>
                             ) : (
                                 <button
+                                    type="button"
+                                    role="menuitem"
                                     onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete && onDelete(campaign); }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium text-left"
+                                    className="flex w-full items-center gap-ds-2 px-ds-4 py-ds-2 text-left text-ds-sm font-medium text-ds-status-danger-fg hover:bg-ds-surface-subtle focus-visible:bg-ds-surface-subtle focus-visible:outline-none"
                                 >
-                                    <Trash2 size={14} /> Delete Campaign
+                                    <Trash2 size={14} aria-hidden="true" /> Delete Campaign
                                 </button>
                             )}
                         </div>
@@ -67,73 +104,85 @@ export function CampaignCard({ campaign, onClick, onDelete, onCancel, onViewRepo
                 </div>
             </div>
 
-            <h3 className="text-lg font-black text-slate-900 group-hover:text-blue-600 transition-colors truncate mb-1">
+            <h3 className="mb-ds-1 truncate text-ds-heading-sm font-bold text-ds-content transition-colors group-hover:text-ds-action-primary">
                 {campaign.name || 'Untitled Campaign'}
             </h3>
-            <p className="text-slate-500 text-sm font-medium mb-6 line-clamp-2">
+            <p className="mb-ds-6 line-clamp-2 text-ds-sm font-medium text-ds-content-muted">
                 {campaign.messageConfig?.message || 'No content defined...'}
             </p>
 
-            <div className="border-t border-slate-100 pt-5">
+            <div className="border-t border-ds-border-subtle pt-ds-5">
                 {campaign.progress ? (
                     <div>
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Progress</span>
-                            <span className="text-[10px] font-bold text-slate-600">
+                        <div className="mb-ds-2 flex items-center justify-between">
+                            <span className="text-ds-xs font-bold uppercase tracking-wide text-ds-content-muted">Progress</span>
+                            <span className="text-ds-xs font-bold text-ds-content-secondary">
                                 {campaign.progress.processedCount} / {campaign.progress.totalCount}
                             </span>
                         </div>
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                            className="h-2 w-full overflow-hidden rounded-full bg-ds-surface-subtle"
+                            role="progressbar"
+                            aria-label="Send progress"
+                            aria-valuenow={campaign.progress.processedCount}
+                            aria-valuemin={0}
+                            aria-valuemax={campaign.progress.totalCount || 1}
+                        >
                             <div
-                                className="h-full bg-blue-500 transition-all duration-500"
+                                className="h-full bg-ds-action-primary transition-all duration-500"
                                 style={{ width: `${(campaign.progress.processedCount / (campaign.progress.totalCount || 1)) * 100}%` }}
                             />
                         </div>
-                        <div className="mt-3 flex gap-4">
+                        <div className="mt-ds-3 flex gap-ds-4">
                             {campaign.progress.failedCount > 0 && (
-                                <span className="text-[10px] font-bold text-red-500">
+                                <span className="text-ds-xs font-bold text-ds-status-danger-fg">
                                     {campaign.progress.failedCount} Failed
                                 </span>
                             )}
-                            <span className="text-[10px] font-bold text-slate-400 ml-auto uppercase">
-                                {campaign.messageConfig?.method || 'SMS'}
+                            <span className="ml-auto text-ds-xs font-bold uppercase text-ds-content-muted">
+                                {method}
                             </span>
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="flex items-center gap-2 text-slate-400">
-                            <Users size={16} />
-                            <span className="text-xs font-bold text-slate-600">{campaign.matchCount || 0} leads</span>
+                    <div className="grid grid-cols-2 gap-ds-4">
+                        <div className="flex items-center gap-ds-2 text-ds-content-muted">
+                            <Users size={16} aria-hidden="true" />
+                            <span className="text-ds-xs font-bold text-ds-content-secondary">{campaign.matchCount || 0} leads</span>
                         </div>
-                        <div className="flex items-center gap-2 text-slate-400">
-                            <MessageSquare size={16} />
-                            <span className="text-xs font-bold text-slate-600 uppercase">{campaign.messageConfig?.method || 'SMS'}</span>
+                        <div className="flex items-center gap-ds-2 text-ds-content-muted">
+                            <MessageSquare size={16} aria-hidden="true" />
+                            <span className="text-ds-xs font-bold uppercase text-ds-content-secondary">{method}</span>
                         </div>
                     </div>
                 )}
             </div>
 
-            <div className="mt-4 flex items-center justify-between text-[10px] uppercase tracking-widest font-black">
-                <span className="flex items-center gap-1.5 text-slate-400">
-                    <Calendar size={12} />
+            <div className="mt-ds-4 flex items-center justify-between gap-ds-2 text-ds-xs font-bold uppercase tracking-wide">
+                <span className="flex items-center gap-ds-1 text-ds-content-muted">
+                    <Calendar size={12} aria-hidden="true" />
                     {campaign.updatedAt?.toDate() ? new Date(campaign.updatedAt.toDate()).toLocaleDateString() : 'Just now'}
                 </span>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-ds-3">
                     {onViewReport && campaign.status !== 'draft' && (
                         <button
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); onViewReport(); }}
-                            className="text-blue-500 hover:text-blue-700 hover:underline"
+                            className="rounded-ds-sm text-ds-content-link hover:underline focus-visible:outline-none focus-visible:shadow-ds-focus"
                         >
                             View Report
                         </button>
                     )}
-                    <span className="flex items-center gap-0.5 text-slate-400 group-hover:text-blue-500 transition-all">
-                        Details <ChevronRight size={12} />
-                    </span>
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onClick?.(); }}
+                        className="flex items-center gap-0.5 rounded-ds-sm text-ds-content-muted transition-colors hover:text-ds-action-primary group-hover:text-ds-action-primary focus-visible:outline-none focus-visible:shadow-ds-focus"
+                    >
+                        Details <ChevronRight size={12} aria-hidden="true" />
+                    </button>
                 </div>
             </div>
-        </div>
+        </Card>
     );
 }
