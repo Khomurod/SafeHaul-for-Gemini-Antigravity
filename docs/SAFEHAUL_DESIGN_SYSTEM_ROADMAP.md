@@ -1134,9 +1134,52 @@ The reverse directions are prohibited.
       corrected here). No backend, Cloud Function, Firebase rules, storage,
       database, permissions, route, or data-format change was made.
     - Commit/PR: checkpoint `9c05f9e`.
+  - [x] Migrate the `/company/profile` account profile & security screen
+    (`UserProfilePage`).
+    - Complete when: the initial data preference/fallback, avatar type/size
+      validation and exact Storage upload sequence, profile validation and
+      username query (including the permission-denied skip), the email
+      reauthentication/update sequence with all mapped errors and cancel/reset,
+      and the password validation/reauthentication/update/reset are preserved;
+      the avatar upload becomes keyboard-accessible with no nested interactive
+      elements; passwords are never exposed; correct autocomplete is applied;
+      labels, focus, control sizing, desktop/tablet/mobile layout, overflow,
+      axe, and final diff are verified without any backend or rules change.
+    - Completed: 2026-07-24.
+    - Files: `src/features/company-admin/views/UserProfilePage.jsx`,
+      `src/features/company-admin/views/UserProfilePage.test.jsx`,
+      `src/features/company-admin/components/profile/ProfileAvatarField.jsx`,
+      `src/features/company-admin/components/profile/ProfileAvatarField.test.jsx`,
+      `e2e/company-profile-security.spec.cjs`, this roadmap.
+    - Verification: 2 focused files / 38 tests passed; full frontend coverage
+      gate passed with 98 files / 730 tests and the existing 2 files / 48
+      emulator-dependent rules tests skipped; frontend lint passed with 0 errors
+      and 166 existing warnings; typecheck, production build, and
+      `git diff --check` passed. `company-profile-security.spec.cjs` passed 9
+      Chromium/Mobile Chrome checks with 3 intentional viewport-specific skips.
+      Backend/callable/rules checks were not run and are not applicable: this
+      diff changes no Cloud Function, callable, or rule (`functions/node_modules`
+      is not installed here, so backend lint was not run — recorded honestly).
+    - Visual/mobile/a11y: manually reviewed at 1440×900, 1024×768, and 412×915
+      plus the desktop email-edit state. No document-level horizontal overflow at
+      any width; single-column mobile; 44 px controls; visible focus; labelled
+      fields; a single keyboard-accessible avatar trigger with a visually hidden
+      labelled input and a `role="status"` upload announcement. Unit axe reported
+      no violations; scoped real-browser axe reported no serious or critical
+      violations. Full GO completion log is in section 6.
+    - Notes: the avatar handler, profile/email/password handlers, Storage path,
+      Auth calls, Firestore writes, and all toast messages are behavior-identical;
+      only presentation and accessibility changed. Username uniqueness remains
+      not server-enforced. Passwords stay in transient state only. No backend,
+      Cloud Function, Firebase rules, storage, database, permissions, route, or
+      data-format change was made.
+    - Commit/PR: feature + docs commits on
+      `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
   - Notes: Company Profile branding/questions, Team & Users,
-    SMS/number assignment, Integrations, and `/company/profile` remain separate
-    slices and must not be migrated together.
+    SMS/number assignment, and Integrations remain separate slices and must not
+    be migrated together. `/company/profile` account security is now migrated
+    (GO); the remaining in-phase profile risk is Company Profile — application
+    questions.
 
 - [ ] Campaigns.
   - Complete when: campaign cards/editor/results/report dialogs migrate without
@@ -1239,7 +1282,7 @@ Status `Not started` means audited but not migrated.
 | E-Docs | `DocumentsManager`, `EnvelopeCreator`, `EnvelopeHistory` | Page structure, controls, DataTable, Dialog, PageState | High | High | Controls, forms, table, dialog | Not started | Template/send/history tests, PDF workflow, desktop/mobile |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
-| User profile | `UserProfilePage`; dense local forms/actions | PageHeader, Card, Field, Button, InlineAlert | Medium | High | Forms, controls, cards, feedback | Not started | Profile/security actions, upload, validation, mobile |
+| User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
 | Company settings | `CompanySettings` tabs and settings components | Tabs, PageHeader, Field family, Table, Dialog, PageState | High | High | Controls, forms, table, dialog, status | Not started | All save/integration/number/team/question tests and mobile |
 | Super Admin `/super-admin/*` | feature-local view router, tables, forms, modals, analytics | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | Not started | Permissions, maintenance actions, integrations, analytics, desktop/mobile |
 | Public application `/apply/:slug` | `PublicApplyHandler`, shared feature-coupled `Stepper`, step forms | Feature-owned wizard using Progress, Field, Button, Card, PageState | Critical | Very high | Forms, feedback, layout, compatibility plan | Not started | Draft/offline/upload/validation/submission/consent, full mobile E2E |
@@ -1312,7 +1355,7 @@ own rows. Data and workflow ownership stays in the feature.
 | Automated SMS | Approved `FormSection`, `FormField`, `Textarea`, `Button`, and `FieldMessage` replace the local heading/labels/textareas/save styling for three SMS-template textareas (`templateContactAttempt1/2/3`) and one save action | Three SMS-template textareas and one save action backed by a single Firestore document `companies/{companyId}/settings/automated_sms`; read/write remain feature-owned and unchanged | Template preservation, loading/error state, textarea description/limits | Medium / High | Compatibility slice completed 2026-07-23 | 12 focused contract tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, label association, loading announce, save states, axe, overflow passed |
 | Integrations | Facebook Lead Ads connection card: dynamic FB SDK load, `FB.login` popup, browser Graph API page lookup + first-page auto-select, `connectFacebookPage` callable; local-only Connected state | `connectFacebookPage` callable, `functions/integrations/facebook.js` token exchange/`integrations_index` write/webhook, feature-flag visibility | External SDK state, sensitive short-lived token, **tenant binding `companyId = request.auth.uid`**, non-persistent Connected state, no disconnect/reconnect | Medium / Very high | Deep-audited 2026-07-23; **not migrated (NO-GO)** — blocked on a tenant-binding correctness/security defect (`request.auth.uid` used as the company id, incompatible with the auto-id + membership multi-tenant model); presentation withheld so the UI does not imply the workflow is production-ready | Separate integration-correctness/security project to fix tenant binding; then SDK-load/login-scope/graph/first-page/callable mocks, token-safety, feature-flag/permission, connected-state, keyboard/mobile |
 | Billing | Approved `FormSection`, `FieldDisplay`, `Badge`, and `FieldMessage` replace the local heading/card/plan/support styling | Plan value display only; `planType` read from the loaded profile, unchanged | Empty/long plan content and support messaging | Low / Low | Compatibility slice completed 2026-07-23 | 7 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, labelled plan/badge status, support copy, axe, overflow passed |
-| `/company/profile` account profile/security | 8 inputs, 8 labels, avatar file input, 6 buttons, password/email forms | Firebase Auth profile/email/password, reauthentication, Storage upload, Firestore user writes/query | Keyboard-inaccessible avatar surface, nested click targets, validation/error association, security/autofill, upload and reauth regressions | High / Very high | Audited; defer until form/upload/dialog foundations are proven | Auth/storage mocks, validation branches, save/email/password/upload workflows, keyboard/autofill, desktop/mobile |
+| `/company/profile` account profile/security | Approved `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack` replace the local form/card/button styling; avatar upload moved to the keyboard-accessible `ProfileAvatarField` (visually hidden labelled input, `role="status"`, focus return, no nested interactives); autocomplete added | Firebase Auth profile/email/password, reauthentication, Storage `avatars/{uid}/{file.name}` upload, Firestore user writes/query all remain feature-owned and byte-for-byte unchanged | Passwords kept in transient state only; validation/error association; upload and reauth regressions | High / Very high | **Migrated (GO)** 2026-07-24 | 38 focused tests (load prefs/fallback, avatar type/size + exact Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check passed; backend/callable/rules not applicable (no backend change) |
 
 ---
 
@@ -2643,6 +2686,81 @@ Apply checks proportionally, but never claim an unrun check:
   changed; contracts frozen above for a future slice once the tenant binding is
   corrected under a separate security-reviewed project.
 
+### Company account profile & security completion log (GO)
+
+- Date: 2026-07-24.
+- Starting baseline: `main` at `b47874b` (Merge PR #84 — Integrations
+  deep-audit NO-GO). Local branch started clean at that commit.
+- Scope: `/company/profile` → `UserProfilePage`. Application questions and
+  Integrations were explicitly excluded from this diff.
+- Go/no-go decision: **GO.** Every Auth, Storage, and Firestore contract is
+  mockable and testable without any backend or rules change. No callable, rule,
+  route, permission, or data-shape change was needed or made.
+- Audited contracts, all preserved verbatim:
+  - Initial load: Auth `currentUser` base values, `getPortalUser(uid)`,
+    Firestore `name || displayName` preference, Firestore `photoURL`
+    preference, username load, and `newEmail` initialized to `currentUser.email`.
+  - Avatar: size `< 2 MB` check first, then `image/*` type check, both with
+    their exact messages; Storage path `avatars/{uid}/{file.name}`;
+    `uploadBytes` → `getDownloadURL` → Auth `updateProfile({ photoURL })` →
+    Firestore `users/{uid}.photoURL`; existing success/failure toasts.
+  - Profile save: empty display-name validation; best-effort username
+    uniqueness query; permission-denied uniqueness check skipped (not blocking)
+    with the SEC-002 comment retained; Auth display-name update only when the
+    value changed; Firestore `{ name, username }` write; existing messages.
+    Username uniqueness remains **not** server-enforced (unchanged).
+  - Email change: new-email + current-password requirement; same-email
+    cancellation; `EmailAuthProvider.credential(currentUser.email, password)`;
+    `reauthenticateWithCredential`; `updateEmail`; Firestore
+    `users/{uid}.email`; the four error mappings (wrong password, email in use,
+    requires recent login, generic); cancel/reset restoring the current email
+    and clearing the password.
+  - Password change: current+new requirement; confirmation match; six-character
+    minimum; reauthentication with current email+password; `updatePassword`;
+    full field reset on success; existing messages and loading states.
+- Presentation changes: the screen now consumes `FormSection`, `FormField`,
+  `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, and `Stack`
+  with `--ds-*` tokens. The nested/clickable avatar surface (clickable wrapper +
+  hover overlay + nested corner `<button>` + hidden input) was replaced by a
+  single keyboard-accessible `ProfileAvatarField` trigger with a visually hidden
+  labelled input, a `role="status"` upload announcement, and focus return; no
+  nested interactive elements remain. Correct autocomplete was added: email
+  `email`, all current-password fields `current-password`, and the new/confirm
+  password fields `new-password`.
+- Sensitive-data handling: passwords stay only in transient component state and
+  are never written to logs, Firestore, Storage, analytics, or browser storage;
+  a test asserts non-exposure. All test/E2E credentials are artificial.
+- Focused tests: 2 files passed, 38 tests
+  (`UserProfilePage.test.jsx` 29, `ProfileAvatarField.test.jsx` 9).
+- Full frontend coverage gate: 98 files passed, 730 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their existing environment guard.
+  Coverage was 30.6% statements, 27.75% branches, 29.1% functions, 31.37% lines.
+- Route-manifest tests: `appRouteManifest.test.js` passed within the suite.
+- Frontend lint: passed with 0 errors and 166 pre-existing warnings.
+- Typecheck: passed (`tsc -p jsconfig.json --noEmit`).
+- Production build: passed.
+- Playwright, Chromium + Mobile Chrome (`company-profile-security.spec.cjs`):
+  9 passed, 3 intentionally skipped because each keyboard/geometry assertion
+  only applies to its matching viewport.
+- Accessibility: unit `vitest-axe` reported no violations on the page and the
+  avatar component; scoped real-browser axe reported no serious or critical
+  violations.
+- Visual review at 1440×900, 1024×768, and 412×915 (plus the desktop email-edit
+  state): no document-level horizontal overflow at any width; single-column
+  mobile layout; 44 px controls; visible focus; labelled fields.
+- Backend/callable/rules checks: not run and not applicable — this diff changes
+  no Cloud Function, callable payload, or rule; `functions/node_modules` is not
+  installed in this environment, so backend lint was not run (recorded honestly).
+- Diff review: `git diff --check` passed; the changed file plus the two new test
+  files, the new avatar component, and the new E2E spec contain no unrelated
+  application/backend changes.
+- Known pre-existing behavior left unchanged: `getInitials` throws on a
+  whitespace-only name; this latent edge case predates the migration and was
+  intentionally not altered to avoid a behavior change (the empty-name save
+  validation already blocks submission).
+- Commit/PR: feature commit + docs commit on
+  `claude/company-profile-security-migration-mjdbm1`; PR into `main`.
+
 ---
 
 ## 7. Decisions and blockers
@@ -2707,11 +2825,20 @@ The **Company Profile branding-upload** section was migrated and verified on
 2026-07-23 (completion log in section 6): `BrandingSection` now uses an approved
 `Button` and `FieldMessage` with a labelled, keyboard-triggered file input, and
 the exact `uploadCompanyLogo` Storage path and `companyLogoUrl` Firestore field
-are preserved and locked by tests. The remaining Settings/Profile in-phase items
-are **Company Profile — application questions** (High/Very high: switch
-semantics, required/hidden exclusivity, DOT protections, destructive actions),
-**Team & Users**, **Integrations**, and the separate **`/company/profile`
-account-security** screen — each needing its own audit.
+are preserved and locked by tests. The separate **`/company/profile`
+account-security** screen was migrated and verified on 2026-07-24 (GO;
+completion log in section 6): `UserProfilePage` now consumes `FormSection`,
+`FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`,
+and `Stack`, its avatar upload moved to the keyboard-accessible
+`ProfileAvatarField` (no nested interactive elements), and correct autocomplete
+was added, while every Auth reauthentication/email/password contract, the exact
+`avatars/{uid}/{file.name}` Storage sequence, the username query with its
+permission-denied skip, and all Firestore writes and toast messages are
+preserved. The remaining Settings/Profile in-phase item is **Company Profile —
+application questions** (High/Very high: switch semantics, required/hidden
+exclusivity, DOT protections, destructive actions); **Team & Users** and
+**Integrations** are otherwise resolved (Team & Users migrated; Integrations
+NO-GO).
 
 The **Sandbox Transfer Success** status screen (`/sandbox/transfer-success`) was
 migrated and verified on 2026-07-23 (completion log in section 6): it now
@@ -2757,10 +2884,9 @@ the fix belongs to a separate, security-reviewed integration-correctness project
 All contracts (SDK load, login/scopes, Graph first-page selection, callable,
 token safety, connected-state limitation) are frozen in section 6.
 
-The recommended next bounded slice is one of the remaining Settings/Profile
-in-phase items with no such backend blocker: the **`/company/profile`
-account-security** screen (avatar upload + Auth reauthentication/email/password
-change — audit first) or the higher-risk **Company Profile — application
+The **`/company/profile` account-security** screen was migrated and verified on
+2026-07-24 (GO; completion log in section 6). The recommended next bounded slice
+is now the higher-risk **Company Profile — application
 questions** (switch semantics, required/hidden exclusivity, DOT protections,
 destructive actions). The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
@@ -2785,7 +2911,7 @@ Sequence (whichever slice the owner selects):
 
 Do not start any remaining slice in the same unreviewed diff as another. SMS
 number-assignment, Company Profile branding upload/application questions, Team &
-Users, Integrations, and `/company/profile` account security each remain
-independent items with their own audits and behavior-preservation evidence. The
-SMS number-assignment slice stays blocked until the editable-matrix strategy is
-owner-approved.
+Users, and Integrations each remain independent items with their own audits and
+behavior-preservation evidence. `/company/profile` account security is migrated
+(GO) and no longer open. The SMS number-assignment slice stays blocked until the
+editable-matrix strategy is owner-approved.
