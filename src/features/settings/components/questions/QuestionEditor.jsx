@@ -10,6 +10,7 @@ import {
     Select,
 } from '@/design-system/components';
 import { QUESTION_TYPES, hasOptions } from './QuestionConfig';
+import { ToggleSwitch } from './ToggleSwitch';
 
 export function QuestionEditor({
     question,
@@ -236,29 +237,14 @@ export function QuestionEditor({
                 </div>
 
                 <div className="flex items-center justify-end gap-ds-3 border-t border-ds-border-subtle pt-ds-4">
-                    <span id={`q-${rawId}-required-label`} className="text-ds-sm font-medium text-ds-content-secondary">
+                    <span className="text-ds-sm font-medium text-ds-content-secondary" aria-hidden="true">
                         Required
                     </span>
-                    <button
-                        type="button"
-                        role="switch"
-                        aria-checked={question.required || false}
-                        aria-labelledby={`q-${rawId}-required-label`}
-                        onClick={() => handleChange('required', !(question.required || false))}
-                        className={[
-                            'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors',
-                            'focus-visible:outline-none focus-visible:shadow-ds-focus',
-                            question.required ? 'bg-ds-action-primary border-transparent' : 'bg-ds-surface-subtle border-ds-border',
-                        ].join(' ')}
-                    >
-                        <span
-                            aria-hidden="true"
-                            className={[
-                                'pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-ds-surface shadow-ds-xs transition-transform',
-                                question.required ? 'translate-x-[18px]' : 'translate-x-[3px]',
-                            ].join(' ')}
-                        />
-                    </button>
+                    <ToggleSwitch
+                        checked={question.required || false}
+                        label="Required"
+                        onChange={(next) => handleChange('required', next)}
+                    />
                 </div>
             </div>
         </div>
