@@ -152,6 +152,14 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
                     onClose={() => setShowConfirm(false)}
                     labelledBy={confirmTitleId}
                     describedBy={confirmDescId}
+                    // A launch is in flight and cannot be recalled, so casual
+                    // dismissal is blocked while the callable is pending: losing
+                    // the dialog would hide the in-progress state while the
+                    // campaign still sends. Before launch both routes behave
+                    // normally, and the `finally` block closes the dialog on
+                    // success and on failure alike.
+                    closeOnEscape={!isLaunching}
+                    closeOnBackdrop={!isLaunching}
                     className="w-full max-w-md overflow-hidden rounded-ds-xl border border-ds-border bg-ds-surface p-ds-6 text-left shadow-ds-lg"
                 >
                     <h3 id={confirmTitleId} className="mb-ds-2 text-ds-heading-sm font-bold text-ds-content">Confirm campaign launch</h3>

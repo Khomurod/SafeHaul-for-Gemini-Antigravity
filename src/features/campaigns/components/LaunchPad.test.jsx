@@ -387,6 +387,108 @@ describe('LaunchPad — migrated launch flow', () => {
         });
     });
 
+    describe('dismissal is blocked while a launch is in flight', () => {
+        // The backdrop is the Modal overlay (the dialog's parent). It dismisses
+        // only when the mousedown starts and ends on the overlay itself, so the
+        // event must target that element directly.
+        const clickBackdrop = () => {
+            const overlay = screen.getByRole('dialog').parentElement;
+            fireEvent.mouseDown(overlay);
+        };
+
+        it('closes on Escape before launching', () => {
+            renderPad();
+            openConfirm();
+
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(callable).not.toHaveBeenCalled();
+        });
+
+        it('closes on a backdrop click before launching', () => {
+            renderPad();
+            openConfirm();
+
+            clickBackdrop();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(callable).not.toHaveBeenCalled();
+        });
+
+        it('ignores Escape and backdrop clicks while the callable is pending', async () => {
+            let resolveLaunch;
+            callable.mockReturnValue(new Promise((resolve) => { resolveLaunch = resolve; }));
+            renderPad();
+            openConfirm();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Confirm Launch' }));
+            expect(callable).toHaveBeenCalledTimes(1);
+
+            // In flight: neither dismissal route may hide the in-progress state.
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+            expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+            clickBackdrop();
+            expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+            // Duplicate-launch protection is unchanged by the new props.
+            fireEvent.click(screen.getByRole('button', { name: 'Confirm Launch' }));
+            expect(callable).toHaveBeenCalledTimes(1);
+
+            await React.act(async () => {
+                resolveLaunch({ data: { success: true, targetCount: 40, sessionId: 'session-1' } });
+            });
+        });
+
+        it('closes through the existing finally path once the launch succeeds', async () => {
+            let resolveLaunch;
+            callable.mockReturnValue(new Promise((resolve) => { resolveLaunch = resolve; }));
+            renderPad();
+            openConfirm();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Confirm Launch' }));
+            expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+            await React.act(async () => {
+                resolveLaunch({ data: { success: true, targetCount: 40, sessionId: 'session-1' } });
+            });
+
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /Launch Immediately/ })).toBeEnabled();
+        });
+
+        it('closes through the existing finally path once the launch fails', async () => {
+            const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+            let rejectLaunch;
+            callable.mockReturnValue(new Promise((_resolve, reject) => { rejectLaunch = reject; }));
+            renderPad();
+            openConfirm();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Confirm Launch' }));
+            expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+            await React.act(async () => {
+                rejectLaunch(new Error('temporary outage'));
+            });
+
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(toast.showError).toHaveBeenCalledWith('temporary outage');
+            expect(screen.getByRole('button', { name: /Launch Immediately/ })).toBeEnabled();
+            consoleError.mockRestore();
+        });
+
+        it('restores normal dismissal after a completed launch', async () => {
+            renderPad();
+            openConfirm();
+            await confirmLaunch();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+            // Not launching any more, so Escape dismisses again.
+            openConfirm();
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+    });
+
     describe('E2E mock mode', () => {
         it('short-circuits the backend and still reports success', async () => {
             e2e.enabled = true;
