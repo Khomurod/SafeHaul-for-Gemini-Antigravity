@@ -1,10 +1,12 @@
-import React, { useState, useRef } from 'react';
-import { Rocket, Loader2, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import React, { useState, useRef, useId } from 'react';
+import { Rocket, AlertTriangle, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
+import { Badge, Button, Card } from '@/design-system/components';
+import { Modal } from '@shared/components/modals/Modal';
 
 export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     const navigate = useNavigate();
@@ -13,6 +15,10 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     const [showConfirm, setShowConfirm] = useState(false);
     const launchLockRef = useRef(false);
     const isE2ECampaignMock = isE2ETestMode && getE2EQueryParam('e2eCampaign', '') === 'mock';
+
+    const rawId = useId().replace(/:/g, '');
+    const confirmTitleId = `launchpad-confirm-title-${rawId}`;
+    const confirmDescId = `launchpad-confirm-desc-${rawId}`;
 
     const handleLaunch = async () => {
         if (!companyId) return showError("Company ID missing");
@@ -53,6 +59,7 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
                 showError(result.data.message || "Launch failed");
             }
         } catch (err) {
+            // Only the failure reason is logged — never the audience or message body.
             console.error("Launch Error:", err);
             // Extract user-friendly message from Firebase error
             const msg = err.message || '';
@@ -80,88 +87,101 @@ export function LaunchPad({ companyId, campaign, onLaunchSuccess }) {
     // Time Estimation (Sequential: 3s per lead)
     const estimatedMinutes = Math.ceil(((campaign.matchCount || 0) * 3) / 60);
 
-    return (
-        <div className="max-w-2xl mx-auto text-center pt-12">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Rocket size={32} className="text-blue-600" />
-                </div>
+    const methodLabel = campaign.messageConfig?.method === 'email' ? 'Email' : 'SMS';
+    const previewMessage = campaign.messageConfig?.message || '';
 
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">Ready for Liftoff?</h2>
-                <p className="text-slate-500 mb-8 max-w-md mx-auto">
-                    You are about to message <strong>{campaign.matchCount || 0}</strong> recipients via <strong>{campaign.messageConfig?.method === 'email' ? 'Email' : 'SMS'}</strong>.
+    return (
+        <div className="mx-auto max-w-2xl pt-ds-12 text-center">
+            <Card padding="lg">
+                <span aria-hidden="true" className="mx-auto mb-ds-4 flex h-16 w-16 items-center justify-center rounded-full bg-ds-status-info-bg text-ds-status-info-fg">
+                    <Rocket size={32} />
+                </span>
+
+                <h2 className="mb-ds-2 text-ds-heading-lg font-bold text-ds-content">Ready for Liftoff?</h2>
+                <p className="mx-auto mb-ds-8 max-w-md text-ds-body text-ds-content-secondary">
+                    You are about to message <strong>{campaign.matchCount || 0}</strong> recipients via <strong>{methodLabel}</strong>.
                 </p>
 
                 {errors.length > 0 ? (
-                    <div className="bg-red-50 p-6 rounded-2xl mb-8 text-left">
-                        <h3 className="flex items-center gap-2 font-bold text-red-700 mb-3">
-                            <AlertTriangle size={18} /> Pre-Flight Checks Failed
+                    /* Failure is stated by an icon + heading text, never colour alone. */
+                    <div role="alert" className="mb-ds-8 rounded-ds-lg border border-ds-status-danger-border bg-ds-status-danger-bg p-ds-6 text-left">
+                        <h3 className="mb-ds-3 flex items-center gap-ds-2 font-bold text-ds-status-danger-fg">
+                            <AlertTriangle size={18} aria-hidden="true" /> Pre-Flight Checks Failed
                         </h3>
-                        <ul className="space-y-2">
+                        <ul className="flex flex-col gap-ds-2">
                             {errors.map((err, i) => (
-                                <li key={i} className="text-sm text-red-600 flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-red-400"></div> {err}
+                                <li key={i} className="flex items-center gap-ds-2 text-ds-sm text-ds-status-danger-fg">
+                                    <AlertCircle size={14} aria-hidden="true" className="shrink-0" /> {err}
                                 </li>
                             ))}
                         </ul>
                     </div>
                 ) : (
-                    <div className="bg-emerald-50 p-6 rounded-2xl mb-8 flex flex-col items-center justify-center gap-2 text-emerald-800 font-bold">
-                        <div className="flex items-center gap-2">
-                            <CheckCircle size={20} /> All Systems Go
+                    <div role="status" className="mb-ds-8 flex flex-col items-center justify-center gap-ds-2 rounded-ds-lg border border-ds-status-success-border bg-ds-status-success-bg p-ds-6 font-bold text-ds-status-success-fg">
+                        <div className="flex items-center gap-ds-2">
+                            <CheckCircle size={20} aria-hidden="true" /> All Systems Go
                         </div>
                         {campaign.matchCount > 0 && (
-                            <div className="text-xs font-medium text-emerald-600 flex items-center gap-1">
-                                <Clock size={12} /> Est. Duration: ~{estimatedMinutes} min
-                            </div>
+                            <Badge tone="success" icon={Clock}>Est. Duration: ~{estimatedMinutes} min</Badge>
                         )}
                     </div>
                 )}
 
-                <div className="flex gap-4">
-                    <button
-                        disabled={!isValid || isLaunching}
+                <div className="flex gap-ds-4">
+                    <Button
+                        variant="primary"
+                        size="lg"
+                        fullWidth
+                        disabled={!isValid}
+                        loading={isLaunching}
                         onClick={() => setShowConfirm(true)}
-                        className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-black text-lg shadow-lg shadow-blue-200 flex items-center justify-center gap-3 transition-all"
                     >
-                        {isLaunching ? <Loader2 size={24} className="animate-spin" /> : <Rocket size={24} />}
+                        {!isLaunching && <Rocket size={24} aria-hidden="true" />}
                         Launch Immediately
-                    </button>
+                    </Button>
                 </div>
 
-                {showConfirm && (
-                    <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl text-left">
-                            <h3 className="text-lg font-bold text-slate-900 mb-2">Confirm campaign launch</h3>
-                            <p className="text-sm text-slate-600 mb-4">
-                                Send to <strong>{campaign.matchCount || 0}</strong> recipients via{' '}
-                                <strong>{campaign.messageConfig?.method === 'email' ? 'Email' : 'SMS'}</strong>?
-                            </p>
-                            <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg mb-4 line-clamp-4">
-                                {(campaign.messageConfig?.message || '').slice(0, 280)}
-                                {(campaign.messageConfig?.message || '').length > 280 ? '…' : ''}
-                            </p>
-                            <div className="flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowConfirm(false)}
-                                    className="flex-1 py-2 border border-slate-200 rounded-lg font-semibold text-slate-600"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={isLaunching}
-                                    onClick={handleLaunch}
-                                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50"
-                                >
-                                    Confirm Launch
-                                </button>
-                            </div>
-                        </div>
+                {/* Announce the in-flight launch to assistive technology. */}
+                <p role="status" className="ds-visually-hidden">
+                    {isLaunching ? 'Launching campaign…' : ''}
+                </p>
+            </Card>
+
+            {showConfirm && (
+                <Modal
+                    onClose={() => setShowConfirm(false)}
+                    labelledBy={confirmTitleId}
+                    describedBy={confirmDescId}
+                    className="w-full max-w-md overflow-hidden rounded-ds-xl border border-ds-border bg-ds-surface p-ds-6 text-left shadow-ds-lg"
+                >
+                    <h3 id={confirmTitleId} className="mb-ds-2 text-ds-heading-sm font-bold text-ds-content">Confirm campaign launch</h3>
+                    <p id={confirmDescId} className="mb-ds-4 text-ds-sm text-ds-content-secondary">
+                        Send to <strong>{campaign.matchCount || 0}</strong> recipients via{' '}
+                        <strong>{methodLabel}</strong>?
+                    </p>
+                    <p className="mb-ds-4 rounded-ds-md bg-ds-surface-subtle p-ds-3 text-ds-xs text-ds-content-secondary line-clamp-4">
+                        {previewMessage.slice(0, 280)}
+                        {previewMessage.length > 280 ? '…' : ''}
+                    </p>
+                    <div className="flex flex-col gap-ds-3 sm:flex-row">
+                        <Button
+                            variant="secondary"
+                            fullWidth
+                            onClick={() => setShowConfirm(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="primary"
+                            fullWidth
+                            loading={isLaunching}
+                            onClick={handleLaunch}
+                        >
+                            Confirm Launch
+                        </Button>
                     </div>
-                )}
-            </div>
+                </Modal>
+            )}
         </div>
     );
 }

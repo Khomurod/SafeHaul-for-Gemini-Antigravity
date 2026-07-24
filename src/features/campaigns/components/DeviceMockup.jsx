@@ -1,5 +1,17 @@
 import React from 'react';
 
+/**
+ * Decorative phone frame used to preview campaign message content.
+ *
+ * Approved design-system exception (recorded in the roadmap): this is a
+ * *simulation* of device chrome, not SafeHaul interface text. The hard-coded
+ * bezel geometry and the simulated "9:41" status time deliberately keep their
+ * literal sizes — the status time stays `text-[10px]` because a real phone
+ * status bar is that small, and promoting it to the supported `--ds-*` xs size
+ * would make the mockup read as oversized UI rather than as a phone. The
+ * 9px/10px ban targets real interface text; nothing here conveys product
+ * information, and the status bar is presentational only.
+ */
 export function DeviceMockup({ children, type = 'sms' }) {
     return (
         <div className="relative mx-auto border-gray-800 dark:border-gray-800 bg-gray-800 border-[14px] rounded-[2.5rem] h-[600px] w-[300px] shadow-xl">
