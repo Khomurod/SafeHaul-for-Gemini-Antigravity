@@ -245,6 +245,15 @@ describe('DetailedReportModal — dialog behavior & a11y', () => {
         trigger.remove();
     });
 
+    it('keeps the whole dialog scrollable on short viewports (controls never clipped)', async () => {
+        renderModal();
+        const dialog = await screen.findByRole('dialog', { name: 'Delivery Report' });
+        // The overlay (dialog's parent) scrolls vertically and the panel is
+        // auto-margin centered, so a tall report can never clip Close/Retry.
+        expect(dialog.parentElement.className).toContain('overflow-y-auto');
+        expect(dialog.className).toContain('m-auto');
+    });
+
     it('has no accessibility violations with delivered and failed rows', async () => {
         fs.getDocs.mockResolvedValue({
             docs: [

@@ -1402,7 +1402,9 @@ The reverse directions are prohibited.
       error cells wrap (`overflow-wrap: anywhere`); the results table is a
       labelled, keyboard-focusable scroll region (`scrollable-region-focusable`
       resolved) with a sticky header, so wide content scrolls inside the dialog
-      with no document overflow at any width; loading is announced via a
+      with no document overflow at any width; on short viewports (landscape phone,
+      zoom) the overlay scrolls vertically and the panel is auto-margin centered,
+      so the Retry/Close controls are never clipped; loading is announced via a
       `role="status"` live region. Unit axe clean; dialog-scoped real-browser axe
       found no serious/critical violations.
     - Notes: presentation only — the props (`companyId`, `sessionId`, `isOpen`,
