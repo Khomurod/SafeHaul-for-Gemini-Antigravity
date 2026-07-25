@@ -1777,7 +1777,7 @@ The reverse directions are prohibited.
     exception, and the `CompanyCampaignsPage` fallback is tokenized. No Campaigns
     file remains on legacy interface styling.
 
-- [~] In progress — E-docs (**complete**), driver dossier, and verification workflows.
+- [~] In progress — E-docs is **complete**; driver dossier and verification workflows remain.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
     employment verification, uploads, previews, and audit behavior pass.
   - [x] Migrate the E-Docs envelope history table (`EnvelopeHistory`) — the
@@ -1934,7 +1934,7 @@ Status `Not started` means audited but not migrated.
 | Company dashboard | `CompanyAdminDashboard`, MetricCard compatibility adapter, DataTable leaderboard | PageHeader, Card, Metric, DataTable, Dialog, PageState | High | Medium | Controls, cards, table, dialog | Completed 2026-07-23 | Verified: dashboard/onboarding tests, stats/actions, leaderboard loading/empty/error/retry, import/lead routes, numeric alignment, desktop/mobile, scoped axe; Dialog/PageState family migration remains a separate shared phase |
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
 | Campaigns | All interactive components migrated — `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, `CampaignEditor` shell, `ContentComposer`, `AudienceBuilder`, `VirtualLeadList`, and `LaunchPad`; only the decorative `DeviceMockup` illustration and the `CompanyCampaignsPage` fallback string remain unmigrated | Presentation-only throughout; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread and variable insertion; `AudienceBuilder` keeps the targeting/import hooks, exclusion resets and `finalCount`; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, mapping, pagination and exclusion rules; `LaunchPad` keeps the `initBulkSession` payload, launch guards, toasts, error mapping, estimate and preview truncation | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, launch payload and guards | Medium | High | **Complete** 2026-07-24 — all ten interactive components migrated; `CompanyCampaignsPage` fallback tokenized; decorative `DeviceMockup` status-bar text carries an approved documented exception | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview + 33 launch unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
-| E-Docs | `EnvelopeHistory` (approved `DataTable`), the `DocumentsManager` page header/canvas, its History/Templates tab navigation (feature-owned WAI-ARIA tab interface), and the whole `TemplatesPanel` are migrated; `SendTemplateModal`'s own surface (shared accessible Modal, labelled fields, pressed delivery group, approved Button rows) is migrated — with a recorded exception for the nested legacy `DateTripletField` it renders for date-triplet prefill groups; the `EnvelopeCreator` shell (sub-slice A), its `FieldPropertiesPanel` rail (sub-slice B), the `EnvelopeSidebar` (sub-slice C) and the shared `DateTripletField` (sub-slice D — which closed the nested-control exception, so the send dialog is migrated without qualification) are migrated; only `ResizableDraggableField` and `PdfFieldWorkbench` remain on legacy markup | Presentation-only throughout: the history table keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink`/`getSignedDocumentUrl` callables, `gs://` path cleaning, `window.confirm` and every toast; the header keeps back navigation and both creator transitions; the tabs keep the exact `'list'`/`'templates'` values with `'list'` initial; `TemplatesPanel` keeps every prop, the `postSubmitRequiredById = {}` default, the `!== false` required rule, `templates.find` lookup with null for missing ids, the id order, the move directions and first/last disabling, and all callback argument shapes | Real-time status updates, per-status action visibility, signing-link confidentiality, tab state values, post-application ordering/required persistence, template use/edit/delete argument shapes | High | High | **In progress** — `EnvelopeHistory`, the header, the tab navigation, `TemplatesPanel` and `SendTemplateModal` complete 2026-07-24 (GO); `EnvelopeCreator` sub-slices A–D complete 2026-07-25 (GO); only sub-slices E (`ResizableDraggableField`) and F (`PdfFieldWorkbench` + responsive/accessibility close-out) remain | 46 history + 22 DocumentsManager + 35 TemplatesPanel + 51 SendTemplateModal + 21 creator-shell + 30 field-properties + 42 sidebar + 31 date-triplet unit tests, 52 new Chromium/Mobile Chrome E2E checks, existing E-Doc send/sign regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, built-CSS token emission, git diff --check passed |
+| E-Docs | `EnvelopeHistory` (approved `DataTable`), the `DocumentsManager` page header/canvas, its History/Templates tab navigation (feature-owned WAI-ARIA tab interface), and the whole `TemplatesPanel` are migrated; `SendTemplateModal`'s own surface (shared accessible Modal, labelled fields, pressed delivery group, approved Button rows) is migrated — with a recorded exception for the nested legacy `DateTripletField` it renders for date-triplet prefill groups; the `EnvelopeCreator` shell (sub-slice A), its `FieldPropertiesPanel` rail (sub-slice B), the `EnvelopeSidebar` (sub-slice C) and the shared `DateTripletField` (sub-slice D — which closed the nested-control exception, so the send dialog is migrated without qualification) are migrated; every E-Docs component is migrated | Presentation-only throughout: the history table keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink`/`getSignedDocumentUrl` callables, `gs://` path cleaning, `window.confirm` and every toast; the header keeps back navigation and both creator transitions; the tabs keep the exact `'list'`/`'templates'` values with `'list'` initial; `TemplatesPanel` keeps every prop, the `postSubmitRequiredById = {}` default, the `!== false` required rule, `templates.find` lookup with null for missing ids, the id order, the move directions and first/last disabling, and all callback argument shapes | Real-time status updates, per-status action visibility, signing-link confidentiality, tab state values, post-application ordering/required persistence, template use/edit/delete argument shapes | High | High | **Complete** 2026-07-25 — `EnvelopeHistory`, the header, the tab navigation, `TemplatesPanel` and `SendTemplateModal` (GO 2026-07-24); `EnvelopeCreator` sub-slices A–F (GO 2026-07-25); final audit closed the signing-surface axe findings | 46 history + 22 DocumentsManager + 35 TemplatesPanel + 51 SendTemplateModal + 21 creator-shell + 30 field-properties + 42 sidebar + 31 date-triplet unit tests, 52 new Chromium/Mobile Chrome E2E checks, existing E-Doc send/sign regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, built-CSS token emission, git diff --check passed |
 | Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
 | Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
@@ -4354,6 +4354,72 @@ all of them; sub-slices A–D must not touch any of that logic at all.
 
 ---
 
+### Public signing experience — campaign audit and plan (2026-07-25)
+
+The public signing room is the last unmigrated E-Doc-adjacent surface. Audited in
+full at `main` `991966e` and divided into the fewest reviewable slices:
+
+| Surface | Lines | Slice |
+| --- | --- | --- |
+| `StatusScreens.jsx` — loading, error, voided, success, ESIGN consent | 144 | **1 — done 2026-07-25** |
+| `SigningRoom.jsx` — shell, header, progress, zoom, PDF surface, navigation, submission | 632 | 2 |
+| `SignerField.jsx`, `SignerFieldOverlay.jsx`, `SignatureSheet.jsx` — the five field types | 317 | 3 |
+| Final audit, roadmap, grep sweep | — | 4 |
+
+- `MonthYearField` is **not** part of this campaign: grep confirms its only
+  consumers are `Step1_Contact` and `Step6_Employment` in the driver application,
+  not any signing flow. It stays open under the shared-form-controls item.
+- Frozen across the whole campaign: the `sign/:companyId/:requestId` route and its
+  `token` query contract, `useSigningEnvelope`, the `submitSignature` callable,
+  the draft read/write helpers, `markRequestSigned`/`readSigningReturnPath`, the
+  percentage field geometry in `signerFieldStyle`, the flow helpers
+  (`sortFieldsForFlow`, `isFieldComplete`, `findFirstIncompleteField`,
+  `findNextField`), `ensureFieldVisible`, the pinch/zoom mathematics in
+  `envelopePdfZoom` + `usePdfZoomGestures`, and the ESIGN consent gate that must
+  precede document display.
+
+### Signing status screens completion log (GO) — slice 1
+
+- Date: 2026-07-25. Baseline `main` `991966e`, verified equal to `origin/main`
+  with a clean tree; PR #112 confirmed merged with all eight lanes green.
+- Scope: `src/features/signing/components/signing-room/StatusScreens.jsx`.
+- Go/no-go: **GO.** All five screens are presentational: their only inputs are
+  `error`, `recipientName`, `title`, `onAgree` and `onReturnToDocuments`, and
+  their only side effect is `window.close()`.
+- Frozen strings (several asserted by E2E and the `@a11y` journey):
+  "Loading secure document...", "Access Denied", "Document Voided", the voided
+  body copy, "Document Signed!", the sealed-and-sent sentence,
+  "Return to Required Documents", "Close Window", "Decline",
+  "Electronic Signature Consent", "Required before signing", the `a document`
+  title fallback, all five disclosure clauses, and
+  **"I Agree - Proceed to Sign"**. `window.close()` still backs every
+  Close/Decline control and both callbacks fire unchanged.
+- Accessibility: each screen is now a `<main>` landmark with exactly one `<h1>`,
+  where previously the pages had no landmark and no heading level 1 at all — a
+  signer landing on an expired or voided link heard an unlabelled page. The error
+  and voided screens are `role="alert"`; the loading screen announces through an
+  inner `role="status"` (not on `<main>`, which axe correctly rejects as an
+  invalid role for that element — caught by the new unit axe pass); the ESIGN
+  disclosure is a labelled `<section>` so its terms can be found and re-read; and
+  every control is an approved `Button` where the Close/Decline actions were bare
+  `<button>`s styled as text links.
+- The success screen's entrance animation is now `motion-safe:`-gated, asserted
+  by a test.
+- Focused tests: 23 in `StatusScreens.test.jsx` — every frozen string, both
+  success variants and their action order, `window.close()` wiring for all three
+  Close/Decline controls, the disclosure region and all five clauses, the title
+  fallback, approved-primitive assertions, one `<h1>` per screen, no legacy
+  palette/hex/small text, reduced motion, and `vitest-axe` on all five screens.
+- Verification: signing suites 278 tests passing; full suite, lint, typecheck,
+  production build and `git diff --check` green.
+- Also in this slice: the roadmap's E-Docs status was **self-contradictory** after
+  PR #112 — a completion log declared the area done while the §5.1 inventory row
+  still read "In progress" and claimed `ResizableDraggableField` and
+  `PdfFieldWorkbench` were legacy. Raised as P2 in review on #112 and reconciled
+  here so the permanent record states one status.
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
@@ -4608,7 +4674,7 @@ tokens, with no Campaigns file left on legacy interface styling. The recommended
 next area is the **E-Docs** document/envelope workflows — audited and scoped
 before any presentation change.
 
-**E-Docs is in progress.** The **envelope history table** (`EnvelopeHistory`) was
+**E-Docs is complete.** The **envelope history table** (`EnvelopeHistory`) was
 audited and migrated on 2026-07-24 (GO; completion log in section 6): the
 Documents Center history now consumes the approved `DataTable` with a
 feature-owned status adapter, so the 9 px delivery pills are gone, status is text
