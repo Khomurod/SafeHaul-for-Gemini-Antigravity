@@ -3775,7 +3775,7 @@ getBoundingClientRect|xPercent|yPercent|zoom|scale|Document|Page`) per file:
 | `fieldDefinitions.jsx` | 0 | definitions/icons only; its palette-`color` strings are consumed solely by the sidebar and moved with **C — done 2026-07-25** |
 | `EnvelopeSidebar.jsx` | 3 | **C — done 2026-07-25** |
 | `DateTripletField.jsx` (shared) | 0 geometry, but legacy selects + raw palette | **D — done 2026-07-25**; closes the gap recorded on PR #102 |
-| `ResizableDraggableField.jsx` | 7 (drag/resize) | E — high risk |
+| `ResizableDraggableField.jsx` | 7 (drag/resize) | **E — done 2026-07-25** |
 | `PdfFieldWorkbench.jsx` | 12 (PDF render, zoom, page refs, coordinates) | F — highest risk |
 
 Each sub-slice gets its own audit, tests, E2E and PR, ordered safest first. No
@@ -4160,6 +4160,77 @@ all of them; sub-slices A–D must not touch any of that logic at all.
 
 ---
 
+### Placed-field overlay completion log (GO)
+
+- Date: 2026-07-25. Sub-slice E of the E-Docs close-out.
+- Starting baseline: `main` at `8540624` (Merge PR #109 — reconciliation), all
+  eight lanes green, local equal to `origin/main`, clean tree.
+- Scope: `ResizableDraggableField.jsx` only. `PdfFieldWorkbench`,
+  `EnvelopeCreator`, the zoom hook and the field utilities were not touched.
+- Go/no-go decision: **GO**, after freezing the whole geometry contract in tests
+  *before* editing. The component takes eleven props from `PdfFieldWorkbench`
+  (`field`, `pageNum`, `pageWidth`, `pageHeight`, `onStop`, `onResize`,
+  `onRemove`, `getIcon`, `onLabelChange`, `isSelected`, `onSelect`), holds only
+  derived size state, and performs no I/O — so the mathematics is fully testable
+  in isolation with `react-draggable` stubbed.
+- Frozen and verified unchanged: `(field.width / 100) * pageWidth` and the three
+  sibling conversions; the `pageHeight || 800` fallback (a zero height counts as
+  absent); the `useEffect` re-sync when the size props change; the 8 px minimum
+  floor in both dimensions; the window-level `mousemove`/`mouseup` listener
+  lifecycle including removal on `mouseup`; `onResize(id, (w / pageWidth) * 100,
+  (h / safePageHeight) * 100)`; `onStop(id, pageNum, (x / pageWidth) * 100,
+  (y / safePageHeight) * 100)`; `bounds="parent"`; the
+  `cancel=".resize-handle, .label-input"` selectors and therefore both class
+  names; the `size.width > 40` label-visibility threshold; `onSelect(field.id)`
+  with `stopPropagation`; `onLabelChange(field.id, value)`; and `onRemove` firing
+  on `mouseDown` so a drag never starts.
+- Presentation and accessibility: field-type tones moved from the raw palette to
+  `--ds-*` status tokens, merged only where hues were adjacent (signature +
+  initial → warning), so the four groups still match the palette buttons
+  one-for-one; the selection ring uses `ring-ds-focus`; the remove control gained
+  `Remove <label> from page <n>` with an `Untitled field` fallback and a
+  focus-visible ring; the label editor gained
+  `Label for <type> field on page <n>`; the 9 px label text became `text-ds-xs`;
+  and the resize affordance is no longer `opacity-0` until hover, so touch and
+  low-vision users can see it.
+- Focused tests: 31 in `ResizableDraggableField.test.jsx` with `react-draggable`
+  replaced by a harness that records its props — position/size conversions, both
+  page-height fallbacks, the size re-sync, the drag bounds and cancel selectors,
+  the drop payload including a non-default page number, the resize payload, the
+  8 px floor, live growth during the gesture, listener teardown after `mouseup`,
+  selection with `stopPropagation`, the ring only when selected, label editing,
+  both sides of the 40 px threshold, removal on `mousedown`, all five tone
+  mappings, the retained cancel class names, the non-hover-only handle, no legacy
+  palette/hex/9–10 px text, and `vitest-axe`.
+- E2E: `e2e/edoc-placed-field-overlay.spec.cjs`, 6 passed on Chromium (6 skipped
+  on the mobile lane with an explicit reason — the workbench is a desktop surface
+  and its responsive gap is owned by sub-slice F). It places a field on an
+  artificial inline PDF and asserts the named controls, the visible resize
+  affordance, **a real pointer resize gesture** that grows the box and leaves the
+  field inside its page, in-place label editing reflected in the sidebar's placed
+  list, no document overflow at 1440/1024, and a scoped real-browser axe pass.
+- Regressions: `edoc-field-properties-panel`, `edoc-envelope-sidebar`,
+  `edoc-envelope-creator-shell` and the full `edoc-recruiter-send-and-sign`
+  (including the document-first mobile signing gestures) — 47 passed on Chromium
+  + Mobile Chrome.
+- Full frontend suite: 115 files / 1254 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their guard. Lint 0 errors, typecheck,
+  production build and `git diff --check` passed, and the new tokens
+  (`bg-ds-status-warning-bg`, `border-ds-status-info-border`,
+  `bg-ds-action-danger`, `ring-ds-focus`, `shadow-ds-md`) were each confirmed
+  emitted in `dist/assets/main-*.css`.
+- **Open item carried to sub-slice F:** placement is still pointer-only. The
+  overlay cannot be moved or resized from the keyboard, and the resize affordance
+  is deliberately `aria-hidden` because it has no keyboard behaviour to expose.
+  Adding keyboard placement would change interaction behaviour rather than
+  presentation, so it is recorded here for the F accessibility close-out instead
+  of being smuggled into this slice.
+- Privacy: all fixtures are artificial; the E2E PDF is generated inline and no
+  real document, recipient or signing data is used or snapshotted.
+- Backend/rules: untouched.
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
@@ -4498,8 +4569,17 @@ sr-only "required" — while every emit, clamp and `maxToday` rule and the froze
 control exception recorded on PR #102, so `SendTemplateModal` is now migrated
 without qualification.
 
-Sub-slices **E (`ResizableDraggableField`)** and **F (`PdfFieldWorkbench`)**
-remain open. A responsive gap is recorded against F: the creator's fixed
+**Sub-slice E (`ResizableDraggableField`)** is complete, migrated and verified on
+2026-07-25 (GO; completion log in section 6): the placed-field overlay now uses
+the same `--ds-*` status tones as the sidebar palette (which is what makes the
+palette a legend for the overlays), the remove control and label editor have
+accessible names, the 9 px label text is gone, and the resize affordance is no
+longer hover-only — while every percentage↔pixel conversion, the
+`pageHeight || 800` fallback, the 8 px floor, `bounds="parent"`, the
+`.resize-handle, .label-input` cancel selectors, the `size.width > 40` threshold
+and both callback payloads are unchanged.
+
+Sub-slice **F (`PdfFieldWorkbench`)** remains open. A responsive gap is recorded against F: the creator's fixed
 three-column layout clips the properties rail below roughly 600 px, which
 predates the migration and is not owned by sub-slice B or C (the sidebar's own
 E2E confirms no document-level horizontal overflow at 1440/1024/412).
