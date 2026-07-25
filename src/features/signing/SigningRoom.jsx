@@ -377,9 +377,14 @@ export default function SigningRoom() {
     const renderedWidth = Math.round(fitWidth * zoom);
     const zoomLabel = `${Math.round(zoom * 100)}%`;
 
+    // Position in the signing order is passed down so every control gets a
+    // uniquely distinguishing accessible name even when several fields share the
+    // same author label (P1 from review on PR #112).
     const renderField = (field) => (
         <SignerField
             field={field}
+            fieldPosition={orderedFields.findIndex((f) => f.id === field.id) + 1}
+            fieldTotal={orderedFields.length}
             signed={request.status === 'signed'}
             fieldValues={fieldValues}
             handleFieldChange={handleFieldChange}

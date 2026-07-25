@@ -5,7 +5,12 @@ import { SignerFieldOverlay } from '@features/signing/components/SignerFieldOver
 
 /**
  * Renders one signer-facing field overlay (text/date/checkbox/signature/initial).
- * Extracted verbatim from SigningRoom.jsx's renderField switch.
+ *
+ * Presentation only: the locked-field rule (`isFieldLocked`), every change/focus/
+ * Enter-advance handler, the signature-tap flow, the rendered ink `img`, and the
+ * `data-signer-input` hooks the E2E specs drive are unchanged. Field tones use the
+ * same `--ds-*` status tokens as the creator palette and the placed-field
+ * overlays, so the whole E-Doc family shares one colour legend.
  */
 
 const fillClass = 'w-full h-full min-w-0 min-h-0 box-border';
@@ -15,13 +20,21 @@ const fillClass = 'w-full h-full min-w-0 min-h-0 box-border';
  *
  * These inputs are absolutely positioned over the PDF, so there is nowhere to put
  * a visible label — the field's own label is the only thing that identifies it.
- * Without this the date and checkbox controls had no accessible name at all
- * (axe `label`, critical), leaving a signer unable to tell which box they were
- * ticking. Falls back to the field type so the name is never empty.
+ *
+ * A bare label is not enough. The palette defaults give every checkbox the label
+ * "Checkbox", so an envelope with several of them produced indistinguishable
+ * controls: axe's `label` rule passed merely because the string was non-empty
+ * while a signer still could not tell which box they were ticking. Raised as P1 in
+ * review on PR #112 and fixed here by appending stable contextual information —
+ * the field's position in the signing order and its page — so every control is
+ * uniquely identifiable even when the author supplied no meaningful label.
  */
-function fieldLabel(field) {
+function fieldLabel(field, position, total) {
     const label = typeof field.label === 'string' ? field.label.trim() : '';
-    return label || `${field.type} field`;
+    const base = label || `${field.type} field`;
+    const page = Number(field.pageNumber) || 1;
+    if (!position || !total) return `${base}, page ${page}`;
+    return `${base}, field ${position} of ${total} on page ${page}`;
 }
 
 export function SignerField({
@@ -32,6 +45,8 @@ export function SignerField({
     handleFieldFocus,
     handleEnterAdvance,
     handleSignatureTap,
+    fieldPosition,
+    fieldTotal,
 }) {
     if (signed) return null;
 
@@ -40,7 +55,7 @@ export function SignerField({
             if (isFieldLocked(field)) {
                 return (
                     <SignerFieldOverlay field={field} interactive={false}>
-                        <div className={`${fillClass} border-2 border-blue-300 bg-blue-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium overflow-hidden`}>
+                        <div className={`${fillClass} flex items-center overflow-hidden rounded border-2 border-ds-status-info-border bg-ds-status-info-bg px-2 text-ds-sm font-medium text-ds-content`}>
                             {field.defaultValue || ''}
                         </div>
                     </SignerFieldOverlay>
@@ -49,9 +64,9 @@ export function SignerField({
             return (
                 <SignerFieldOverlay field={field}>
                     <input
-                        className={`${fillClass} border-2 border-blue-400 bg-blue-50/90 px-2 text-base md:text-sm rounded`}
+                        className={`${fillClass} rounded border-2 border-ds-status-info-border bg-ds-status-info-bg px-2 text-base md:text-ds-sm`}
                         placeholder="Type here..."
-                        aria-label={fieldLabel(field)}
+                        aria-label={fieldLabel(field, fieldPosition, fieldTotal)}
                         value={fieldValues[field.id] || ''}
                         data-signer-input={field.id}
                         enterKeyHint="next"
@@ -66,7 +81,7 @@ export function SignerField({
             if (isFieldLocked(field)) {
                 return (
                     <SignerFieldOverlay field={field} interactive={false}>
-                        <div className={`${fillClass} border-2 border-green-300 bg-green-50/90 px-2 text-sm rounded flex items-center text-gray-700 font-medium overflow-hidden`}>
+                        <div className={`${fillClass} flex items-center overflow-hidden rounded border-2 border-ds-status-success-border bg-ds-status-success-bg px-2 text-ds-sm font-medium text-ds-content`}>
                             {field.defaultValue || ''}
                         </div>
                     </SignerFieldOverlay>
@@ -76,8 +91,8 @@ export function SignerField({
                 <SignerFieldOverlay field={field}>
                     <input
                         type="date"
-                        className={`${fillClass} border-2 border-green-400 bg-green-50/90 px-2 text-base md:text-sm rounded`}
-                        aria-label={fieldLabel(field)}
+                        className={`${fillClass} rounded border-2 border-ds-status-success-border bg-ds-status-success-bg px-2 text-base md:text-ds-sm`}
+                        aria-label={fieldLabel(field, fieldPosition, fieldTotal)}
                         value={fieldValues[field.id] || ''}
                         data-signer-input={field.id}
                         onFocus={handleFieldFocus}
@@ -93,8 +108,8 @@ export function SignerField({
                     <label className={`${fillClass} flex items-center justify-center cursor-pointer m-0`}>
                         <input
                             type="checkbox"
-                            className="w-full h-full max-w-full max-h-full min-w-0 min-h-0 accent-purple-600 cursor-pointer m-0"
-                            aria-label={fieldLabel(field)}
+                            className="m-0 h-full max-h-full w-full min-w-0 min-h-0 max-w-full cursor-pointer accent-ds-status-accent-fg"
+                            aria-label={fieldLabel(field, fieldPosition, fieldTotal)}
                             checked={!!fieldValues[field.id]}
                             onChange={(e) => handleFieldChange(field.id, e.target.checked)}
                         />
@@ -106,8 +121,8 @@ export function SignerField({
             const isInitial = field.type === 'initial';
             const value = fieldValues[field.id];
             const palette = isInitial
-                ? { signed: 'bg-orange-50/80 border-orange-500', empty: 'bg-orange-50/90 border-orange-400 hover:bg-orange-100 animate-pulse', text: 'text-orange-700' }
-                : { signed: 'bg-yellow-50/80 border-yellow-500', empty: 'bg-yellow-50/90 border-yellow-400 hover:bg-yellow-100 animate-pulse', text: 'text-yellow-700' };
+                ? { signed: 'bg-ds-status-warning-bg border-ds-status-warning-border', empty: 'bg-ds-status-warning-bg border-ds-status-warning-border motion-safe:animate-pulse', text: 'text-ds-status-warning-fg' }
+                : { signed: 'bg-ds-status-warning-bg border-ds-status-warning-border', empty: 'bg-ds-status-warning-bg border-ds-status-warning-border motion-safe:animate-pulse', text: 'text-ds-status-warning-fg' };
             return (
                 <SignerFieldOverlay field={field}>
                     <button
@@ -118,7 +133,7 @@ export function SignerField({
                                 ? (isInitial ? 'Initials added — tap to redraw' : 'Signature added — tap to redraw')
                                 : (isInitial ? 'Tap to add initials' : 'Tap to sign')
                         }
-                        className={`${fillClass} cursor-pointer border-2 ${value ? 'border-solid p-0.5' : 'border-dashed'} rounded flex items-center justify-center gap-1 shadow-sm transition ${value ? palette.signed : palette.empty}`}
+                        className={`${fillClass} flex cursor-pointer items-center justify-center gap-1 rounded border-2 shadow-ds-xs transition focus-visible:outline-none focus-visible:shadow-ds-focus ${value ? 'border-solid p-0.5' : 'border-dashed'} ${value ? palette.signed : palette.empty}`}
                     >
                         {value ? (
                             // Show the actual ink on the document — the signer
@@ -130,7 +145,7 @@ export function SignerField({
                                 draggable={false}
                             />
                         ) : (
-                            <span className={`${palette.text} font-medium text-xs flex items-center gap-1`}>
+                            <span className={`${palette.text} flex items-center gap-1 text-ds-xs font-medium`}>
                                 {isInitial ? <Fingerprint size={12} /> : <PenTool size={14} />}
                                 {isInitial ? 'Initial' : 'Sign'}
                             </span>

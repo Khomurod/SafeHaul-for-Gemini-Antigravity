@@ -4363,7 +4363,8 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
 | --- | --- | --- |
 | `StatusScreens.jsx` — loading, error, voided, success, ESIGN consent | 144 | **1 — done 2026-07-25** |
 | `SigningRoom.jsx` — shell, header, progress, zoom, PDF surface, navigation, submission | 632 | **2 — done 2026-07-25** |
-| `SignerField.jsx`, `SignerFieldOverlay.jsx`, `SignatureSheet.jsx` — the five field types | 317 | 3 |
+| `SignerField.jsx` — the five field types + accessible naming | 147 | **3 — done 2026-07-25** |
+| `SignatureSheet.jsx` — signature/initial capture sheet | 135 | 4 (with the final audit) |
 | Final audit, roadmap, grep sweep | — | 4 |
 
 - `MonthYearField` is **not** part of this campaign: grep confirms its only
@@ -4489,6 +4490,48 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
   Chromium + Mobile Chrome.
 - Remaining: slice 3 (field layer, including the generic signer-name defect
   raised as P1 in review on PR #112) and slice 4 (final audit).
+
+---
+
+### Signer field layer completion log (GO) — slice 3
+
+- Date: 2026-07-25. Baseline `main` `2d32aa9`; slice 2 open as PR #114.
+- Scope: `src/features/signing/components/signing-room/SignerField.jsx` and the
+  one line in `SigningRoom.jsx` that passes each field's position down.
+  `SignerFieldOverlay` needed no change — it already carries only geometry and the
+  44 px touch target. `SignatureSheet` moves to slice 4.
+- **Closes P1 from review on PR #112.** The earlier accessibility fix gave every
+  signer control an `aria-label` from its field label, which made axe's `label`
+  rule pass — but the palette defaults label every checkbox "Checkbox", so an
+  envelope with several of them still presented *indistinguishable* controls, and
+  a generic name never identified the statement being accepted. The reviewer was
+  right that the reported defect survived. Names now append stable contextual
+  information: `"<label>, field <n> of <m> on page <p>"`, falling back to
+  `"<type> field, …"` when the author supplied nothing and to `"<label>, page <p>"`
+  when no position is available. Two identically labelled checkboxes are now
+  "Checkbox, field 2 of 5 on page 1" and "Checkbox, field 4 of 5 on page 1".
+  Position comes from `orderedFields` — the flow-sorted list the signing order
+  already uses — so it is stable rather than DOM-order dependent.
+- Frozen and verified unchanged: the `signed` short-circuit; the `isFieldLocked`
+  rule and the static locked rendering for text and date; every
+  `handleFieldChange` payload (string for text/date, boolean for checkbox); the
+  focus and Enter-advance wiring; the signature-tap flow and its four aria-label
+  variants; the rendered ink `<img>` with its alt text; and the
+  `data-signer-input` hooks the E2E specs drive.
+- Presentation: field tones moved to the same `--ds-*` status tokens the creator
+  palette and placed-field overlays use, so the whole E-Doc family shares one
+  colour legend; the attention pulse is `motion-safe:` gated; and the signature
+  placeholder gained a visible focus treatment.
+- Focused tests: 17 in `SignerField.test.jsx` — the two-identical-checkboxes case
+  that motivated the fix, the type fallback, whitespace-only labels, date/text
+  naming, the no-position fallback, the signed short-circuit, both change payload
+  shapes, the `data-signer-input` hook, locked rendering, the signature sheet
+  opening, the redraw wording with ink present, no legacy palette/hex/small text
+  across all five types, the reduced-motion gate, the focus treatment, and
+  `vitest-axe` for every field type.
+- Verification: 302 signing tests; full suite, lint, typecheck, production build
+  and `git diff --check` green; the three signing E2E specs — 22 passed on
+  Chromium + Mobile Chrome.
 
 ---
 
