@@ -33,12 +33,16 @@ async function openPropertiesFor(page, paletteField) {
 
   // Artificial file only — the palette unlocks as soon as a PDF is attached.
   await page.setInputFiles('#pdf-upload', pdfFile('artificial-agreement.pdf'));
-  await page.getByRole('button', { name: paletteField, exact: true }).click();
+  // Sub-slice C gave every palette button a descriptive name ("Add Text field"),
+  // so the plain field label is no longer the accessible name.
+  await page.getByRole('button', { name: `Add ${paletteField} field`, exact: true }).click();
 
-  // Select the placed field from the sidebar list. That list is still legacy
-  // markup (sub-slice C owns EnvelopeSidebar); this page badge is its most
-  // stable handle today and should be revisited when that slice lands.
-  await page.getByText('P1', { exact: true }).click();
+  // Select the placed field from the sidebar list. Sub-slice C turned each row
+  // into a real button named "<label> P<page>", which replaces the page-badge
+  // text click this helper used while that list was legacy markup.
+  await page.getByRole('list', { name: /^Placed/ })
+    .getByRole('button', { name: new RegExp(`${paletteField}.*P1`) })
+    .click();
   await expect(rail(page).getByLabel('Field Label')).toBeVisible({ timeout: 10_000 });
 }
 
