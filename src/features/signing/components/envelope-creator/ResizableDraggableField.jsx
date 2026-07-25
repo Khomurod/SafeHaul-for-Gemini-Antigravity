@@ -163,6 +163,13 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
                     arrow key resizes it.
                 </span>
 
+                {/* DOCUMENTED EXCEPTION — this corner control is not the approved
+                    IconButton. It is a ~14px round badge pinned to the corner of a
+                    field whose minimum size is 8px; the approved primitive carries a
+                    min-height and padding that would overflow the field it belongs
+                    to. It keeps an accessible name, a focus-visible ring and the
+                    `--ds-*` tokens. Retiring it needs a compact icon-button size in
+                    the design system, recorded in the roadmap gap list. */}
                 <button
                     type="button"
                     aria-label={`Remove ${fieldName} from page ${pageNum}`}

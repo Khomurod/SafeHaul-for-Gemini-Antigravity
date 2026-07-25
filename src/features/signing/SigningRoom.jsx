@@ -505,7 +505,9 @@ export default function SigningRoom() {
                     <button
                         onClick={handleFinishSigning}
                         disabled={submitting}
-                        className="hidden md:flex px-6 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 transition items-center gap-2 disabled:opacity-50"
+                        /* green-600 on white measured 3.29:1 — below the 4.5:1 minimum for 14px bold.
+                           The success foreground token (green-800) keeps the green identity at ~6.5:1. */
+                        className="hidden md:flex px-6 py-2 bg-ds-status-success-fg text-ds-content-inverse font-bold rounded shadow hover:opacity-90 transition items-center gap-2 disabled:opacity-50"
                     >
                         {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                         Finish & Submit
@@ -610,7 +612,7 @@ export default function SigningRoom() {
                         type="button"
                         onClick={handleFinishSigning}
                         disabled={submitting}
-                        className="px-5 py-3 bg-green-600 text-white font-bold rounded-xl shadow text-sm flex items-center gap-1.5 disabled:opacity-50 active:scale-[0.98] transition"
+                        className="px-5 py-3 bg-ds-status-success-fg text-ds-content-inverse font-bold rounded-xl shadow text-sm flex items-center gap-1.5 disabled:opacity-50 active:scale-[0.98] transition"
                     >
                         {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                         Finish & Submit

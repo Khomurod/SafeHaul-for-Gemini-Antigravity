@@ -10,6 +10,20 @@ import { SignerFieldOverlay } from '@features/signing/components/SignerFieldOver
 
 const fillClass = 'w-full h-full min-w-0 min-h-0 box-border';
 
+/**
+ * Accessible name for a signer control.
+ *
+ * These inputs are absolutely positioned over the PDF, so there is nowhere to put
+ * a visible label — the field's own label is the only thing that identifies it.
+ * Without this the date and checkbox controls had no accessible name at all
+ * (axe `label`, critical), leaving a signer unable to tell which box they were
+ * ticking. Falls back to the field type so the name is never empty.
+ */
+function fieldLabel(field) {
+    const label = typeof field.label === 'string' ? field.label.trim() : '';
+    return label || `${field.type} field`;
+}
+
 export function SignerField({
     field,
     signed,
@@ -37,6 +51,7 @@ export function SignerField({
                     <input
                         className={`${fillClass} border-2 border-blue-400 bg-blue-50/90 px-2 text-base md:text-sm rounded`}
                         placeholder="Type here..."
+                        aria-label={fieldLabel(field)}
                         value={fieldValues[field.id] || ''}
                         data-signer-input={field.id}
                         enterKeyHint="next"
@@ -62,6 +77,7 @@ export function SignerField({
                     <input
                         type="date"
                         className={`${fillClass} border-2 border-green-400 bg-green-50/90 px-2 text-base md:text-sm rounded`}
+                        aria-label={fieldLabel(field)}
                         value={fieldValues[field.id] || ''}
                         data-signer-input={field.id}
                         onFocus={handleFieldFocus}
@@ -78,6 +94,7 @@ export function SignerField({
                         <input
                             type="checkbox"
                             className="w-full h-full max-w-full max-h-full min-w-0 min-h-0 accent-purple-600 cursor-pointer m-0"
+                            aria-label={fieldLabel(field)}
                             checked={!!fieldValues[field.id]}
                             onChange={(e) => handleFieldChange(field.id, e.target.checked)}
                         />
