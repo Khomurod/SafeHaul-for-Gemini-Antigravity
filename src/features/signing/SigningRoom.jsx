@@ -508,15 +508,15 @@ export default function SigningRoom() {
                 <div className="flex shrink-0 items-center gap-ds-2 md:gap-ds-3">
                     {progressChip}
                     <div className="hidden md:block">{zoomControls}</div>
-                    {/* The signer's primary action keeps its green identity: the success
-                        foreground token measures ~6.5:1 against white, where the previous
-                        green-600 was 3.29:1. Approved Button carries shape, size, focus and
-                        loading; only the background is overridden, because Button has no
-                        success variant — the toned-Button gap already recorded in the
-                        roadmap. This override retires when that variant lands. */}
+                    {/* The signer's primary action keeps its green identity through the
+                        approved `tone="success"` capability. An earlier attempt overrode
+                        the background with a utility class, which lost to Button's own
+                        `[data-variant]` rule and left the control blue (P2 in review on
+                        PR #114); the tone is now part of the primitive instead. */}
                     <Button
                         variant="primary"
-                        className="hidden bg-ds-status-success-fg md:inline-flex"
+                        tone="success"
+                        className="hidden md:inline-flex"
                         loading={submitting}
                         onClick={handleFinishSigning}
                     >
@@ -617,12 +617,10 @@ export default function SigningRoom() {
                         <ChevronDown size={16} aria-hidden="true" /> Next field
                     </Button>
                 ) : (
-                    /* Same documented tone override as the desktop CTA: the approved
-                       Button has no success variant (the toned-Button gap already
-                       recorded in the roadmap), and green is this action's meaning. */
+                    /* Same approved success tone as the desktop CTA. */
                     <Button
                         variant="primary"
-                        className="bg-ds-status-success-fg"
+                        tone="success"
                         loading={submitting}
                         onClick={handleFinishSigning}
                     >

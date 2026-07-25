@@ -3,6 +3,13 @@ import './Button.css';
 
 const VARIANTS = new Set(['primary', 'secondary', 'ghost', 'danger']);
 const SIZES = new Set(['sm', 'md', 'lg']);
+/**
+ * Optional colour tone layered over a variant, for actions whose meaning is
+ * carried by colour in the domain (a signing submit reads as green). `default`
+ * leaves the variant's own colours alone. Tone never replaces a text label:
+ * callers must still say what the action does.
+ */
+const TONES = new Set(['default', 'success']);
 
 function normalizeOption(value, options, fallback, name) {
   const normalized = value ?? fallback;
@@ -16,6 +23,7 @@ export const Button = forwardRef(function Button({
   children,
   variant = 'secondary',
   size = 'md',
+  tone = 'default',
   loading = false,
   disabled = false,
   fullWidth = false,
@@ -26,6 +34,7 @@ export const Button = forwardRef(function Button({
 }, ref) {
   const normalizedVariant = normalizeOption(variant, VARIANTS, 'secondary', 'variant');
   const normalizedSize = normalizeOption(size, SIZES, 'md', 'size');
+  const normalizedTone = normalizeOption(tone, TONES, 'default', 'tone');
 
   return (
     <button
@@ -35,6 +44,7 @@ export const Button = forwardRef(function Button({
       className={`ds-button ${className}`.trim()}
       data-variant={normalizedVariant}
       data-size={normalizedSize}
+      data-tone={normalizedTone === 'default' ? undefined : normalizedTone}
       data-full-width={fullWidth || undefined}
       data-justify={justify}
       disabled={disabled || loading}
