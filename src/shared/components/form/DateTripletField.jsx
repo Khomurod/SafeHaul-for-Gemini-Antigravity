@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
     parseIsoDateParts,
     buildIsoDate,
     daysInMonth,
 } from '@shared/utils/dateFormHelpers';
+import { FieldMessage, Select } from '@/design-system/components';
 
 const MONTH_NAMES = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -15,6 +16,16 @@ const emptyTriplet = () => ({ year: '', month: '', day: '' });
 /**
  * Month / Day / Year dropdowns — stores YYYY-MM-DD in parent when complete.
  * Keeps partial selections locally so users can fill in any order.
+ *
+ * Presentation is migrated to the approved `Select`/`FieldMessage` primitives and
+ * `--ds-*` tokens; every piece of date logic below (partial-selection handling,
+ * day clamping, the `maxToday` cap, and exactly when the parent is emitted) is
+ * unchanged, and the `${idPrefix}-month|day|year` element ids are a frozen
+ * contract — `e2e/public-application.spec.cjs` selects them directly.
+ *
+ * The three selects are grouped so assistive technology hears the field name
+ * once, and each control's own name is composed from it ("Date of Birth month")
+ * instead of a bare "Month".
  */
 export default function DateTripletField({
     label,
@@ -28,6 +39,10 @@ export default function DateTripletField({
     maxYear,
     maxToday = false,
 }) {
+    const rawId = useId().replace(/:/g, '');
+    const groupLabelId = `${idPrefix}-group-label-${rawId}`;
+    const helpTextId = `${idPrefix}-help-${rawId}`;
+
     const today = new Date();
     const ty = today.getFullYear();
     const tm = today.getMonth() + 1;
@@ -150,25 +165,38 @@ export default function DateTripletField({
         if (maxToday && p.year === ty && p.month === tm) dayCount = Math.min(dayCount, td);
     }
 
+    const partName = (part) => (label ? `${label} ${part}` : part);
+
     return (
-        <div className="space-y-1">
+        <div className="flex flex-col gap-ds-1">
             {label ? (
-                <span className="block text-sm font-medium text-gray-700 mb-1">
-                    {label} {required && <span className="text-red-500">*</span>}
+                <span id={groupLabelId} className="mb-ds-1 block text-ds-sm font-medium text-ds-content">
+                    {label}
+                    {required && (
+                        <>
+                            {' '}
+                            <span aria-hidden="true" className="text-ds-status-danger-fg">*</span>
+                            <span className="ds-visually-hidden"> required</span>
+                        </>
+                    )}
                 </span>
             ) : (
-                required && <span className="sr-only">Required date</span>
+                required && <span id={groupLabelId} className="ds-visually-hidden">Required date</span>
             )}
-            {helpText && <p className="text-xs text-gray-500 mb-1">{helpText}</p>}
-            <div className="grid grid-cols-3 gap-2">
+            {helpText && <FieldMessage id={helpTextId} tone="help" className="mb-ds-1">{helpText}</FieldMessage>}
+            <div
+                role="group"
+                aria-labelledby={label || required ? groupLabelId : undefined}
+                aria-describedby={helpText ? helpTextId : undefined}
+                className="grid grid-cols-3 gap-ds-2"
+            >
                 <div>
-                    <label className="sr-only" htmlFor={`${idPrefix}-month`}>Month</label>
-                    <select
+                    <label className="ds-visually-hidden" htmlFor={`${idPrefix}-month`}>{partName('month')}</label>
+                    <Select
                         id={`${idPrefix}-month`}
                         value={p.month === '' ? '' : String(p.month)}
                         onChange={onMonthChange}
                         required={required}
-                        className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 text-sm"
                     >
                         <option value="">Month</option>
                         {MONTH_NAMES.map((nm, i) => {
@@ -180,16 +208,15 @@ export default function DateTripletField({
                                 </option>
                             );
                         })}
-                    </select>
+                    </Select>
                 </div>
                 <div>
-                    <label className="sr-only" htmlFor={`${idPrefix}-day`}>Day</label>
-                    <select
+                    <label className="ds-visually-hidden" htmlFor={`${idPrefix}-day`}>{partName('day')}</label>
+                    <Select
                         id={`${idPrefix}-day`}
                         value={p.day === '' ? '' : String(p.day)}
                         onChange={onDayChange}
                         required={required}
-                        className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 text-sm"
                     >
                         <option value="">Day</option>
                         {Array.from({ length: dayCount }, (_, i) => i + 1).map((d) => (
@@ -197,16 +224,15 @@ export default function DateTripletField({
                                 {d}
                             </option>
                         ))}
-                    </select>
+                    </Select>
                 </div>
                 <div>
-                    <label className="sr-only" htmlFor={`${idPrefix}-year`}>Year</label>
-                    <select
+                    <label className="ds-visually-hidden" htmlFor={`${idPrefix}-year`}>{partName('year')}</label>
+                    <Select
                         id={`${idPrefix}-year`}
                         value={p.year === '' ? '' : String(p.year)}
                         onChange={onYearChange}
                         required={required}
-                        className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 text-sm"
                     >
                         <option value="">Year</option>
                         {yearOptions.map((y) => (
@@ -214,7 +240,7 @@ export default function DateTripletField({
                                 {y}
                             </option>
                         ))}
-                    </select>
+                    </Select>
                 </div>
             </div>
         </div>
