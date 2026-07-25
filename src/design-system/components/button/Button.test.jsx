@@ -6,7 +6,17 @@ import { axe } from 'vitest-axe';
 import { describe, expect, it } from 'vitest';
 import { Button, IconButton } from './Button';
 
-const BUTTON_CSS = readFileSync(path.join(__dirname, 'Button.css'), 'utf8');
+/*
+ * Comments are stripped before any selector matching. `selectorFor` captures
+ * everything back to the previous `}`, so a comment sitting above a rule would
+ * be counted as part of its prelude — and the comment above the tone rule
+ * mentions `[data-tone]`, `[data-variant]` and `.bg-ds-status-success-fg`,
+ * which inflated the tone count from 3 to 7. The specificity guard would then
+ * have passed even with the tone selector weakened back to a losing form,
+ * which is the exact defect it exists to catch (P2 in review on PR #116).
+ */
+const BUTTON_CSS = readFileSync(path.join(__dirname, 'Button.css'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
  * Counts the class and attribute selectors in a rule, which is the middle
@@ -20,7 +30,13 @@ function classAndAttributeCount(selector) {
 function selectorFor(declaration) {
   const match = BUTTON_CSS.match(new RegExp(`([^{}]+)\\{[^}]*${declaration}`));
   if (!match) throw new Error(`No rule found declaring ${declaration}`);
-  return match[1].trim();
+  const selector = match[1].trim();
+  // Fail loudly rather than silently counting stray text as part of the
+  // prelude: a real selector here always starts at the `.ds-button` class.
+  if (!selector.startsWith('.ds-button')) {
+    throw new Error(`Parsed prelude for ${declaration} is not a selector: ${selector}`);
+  }
+  return selector;
 }
 
 describe('Button', () => {
