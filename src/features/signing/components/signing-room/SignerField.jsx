@@ -125,6 +125,19 @@ export function SignerField({
                 : { signed: 'bg-ds-status-warning-bg border-ds-status-warning-border', empty: 'bg-ds-status-warning-bg border-ds-status-warning-border motion-safe:animate-pulse', text: 'text-ds-status-warning-fg' };
             return (
                 <SignerFieldOverlay field={field}>
+                    {/*
+                     * Documented exception (compact icon-button gap in the
+                     * roadmap). This control must fill the author-placed field
+                     * box exactly — which can be as small as 8 px — while
+                     * carrying the dashed placeholder treatment and, once
+                     * signed, the stamped ink `img` at the box's own aspect.
+                     * The approved `Button` imposes a min-height, inline
+                     * padding and its own background, all of which would break
+                     * the overlay's alignment with the PDF coordinates. Same
+                     * constraint that keeps the creator's corner remove badge a
+                     * feature-owned composition. It still carries an explicit
+                     * accessible name, a focus-visible ring and `--ds-*` tones.
+                     */}
                     <button
                         type="button"
                         onClick={() => handleSignatureTap(field)}

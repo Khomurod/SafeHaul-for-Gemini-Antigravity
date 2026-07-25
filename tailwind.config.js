@@ -15,6 +15,7 @@ export default {
         'ds-content-muted': 'var(--ds-color-content-muted)',
         'ds-content-inverse': 'var(--ds-color-content-inverse)',
         'ds-content-link': 'var(--ds-color-content-link)',
+        'ds-overlay': 'var(--ds-color-overlay)',
         'ds-border': 'var(--ds-color-border)',
         'ds-border-subtle': 'var(--ds-color-border-subtle)',
         'ds-focus': 'var(--ds-color-focus)',

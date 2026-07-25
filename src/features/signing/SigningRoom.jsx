@@ -59,6 +59,11 @@ const MIN_FIT_WIDTH = 260;
 const MIN_COMFORTABLE_FIELD_PX = 22;
 const AUTO_ZOOM_MAX = 2.5;
 
+// The 2-second highlight that marks the field a signer was just sent to. Named
+// so the add and remove calls cannot drift apart, and tokenised so the flash
+// matches the focus ring the rest of the app uses.
+const FIELD_FLASH_CLASSES = ['ring-2', 'ring-ds-focus', 'ring-offset-2'];
+
 // Draft storage lives in @features/signing/utils/signingDraft (extracted verbatim).
 
 export default function SigningRoom() {
@@ -209,9 +214,11 @@ export default function SigningRoom() {
         const target = overlayEl || pageRefs.current[Number(field.pageNumber) || 1];
         if (!target) return;
         target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-        target.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+        // Applied imperatively, which is why the slice 2 JSX sweep missed the
+        // legacy `ring-blue-500` here. The flash now uses the focus-ring token.
+        target.classList.add(...FIELD_FLASH_CLASSES);
         setTimeout(() => {
-            target.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+            target.classList.remove(...FIELD_FLASH_CLASSES);
         }, 2000);
     }, [scrollerEl]);
 
