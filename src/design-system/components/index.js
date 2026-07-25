@@ -2,6 +2,7 @@ export { Badge } from './badge';
 export { Button, IconButton } from './button';
 export { Card, MetricCard } from './card';
 export { SectionNavigation } from './section-navigation';
+export { StatusMedallion } from './status-medallion';
 export {
   FieldDisplay,
   FieldMessage,

@@ -4410,8 +4410,31 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
   Close/Decline controls, the disclosure region and all five clauses, the title
   fallback, approved-primitive assertions, one `<h1>` per screen, no legacy
   palette/hex/small text, reduced motion, and `vitest-axe` on all five screens.
-- Verification: signing suites 278 tests passing; full suite, lint, typecheck,
-  production build and `git diff --check` green.
+- New approved primitive: **`StatusMedallion`** (`design-system/components/
+  status-medallion`) — the toned circular icon disc above a status heading, with
+  `neutral|info|success|warning|danger|accent` tones and `md|lg` sizes, always
+  `aria-hidden` because the heading carries the meaning. Added in response to a P1
+  review finding on PR #113: the first revision owned that reusable treatment in a
+  feature-local `StatusIcon` (and a second inline copy on the consent screen),
+  which the design-system policy prohibits without a recorded gap. The feature now
+  keeps only the domain → tone/icon decision. 6 primitive tests.
+- **Desktop/tablet/mobile visual review (measured, 2026-07-25).** Recorded in
+  response to a second P1 review finding on PR #113, which correctly noted the
+  first log claimed completion without this evidence:
+  - 1440×900 — consent card 512 px centred; Decline and Agree side by side at
+    225 px each; `scrollWidth` 1440 = viewport and `scrollHeight` 900 = viewport,
+    so no overflow in either axis.
+  - 1024×768 — identical side-by-side layout, card 512 px, no overflow.
+  - 412×915 — the action row **stacks**: Decline and Agree each 330 px full-width,
+    card 380 px inside the 412 px viewport, no horizontal or vertical overflow.
+  - One `<h1>` and one `StatusMedallion` present at every width.
+- **Keyboard review (measured, 2026-07-25).** Tab order on the consent screen is
+  Decline → "I Agree - Proceed to Sign", matching DOM and visual order; both
+  actions are reachable; the focused control carries a visible solid focus
+  outline; and pressing Enter on the agree action proceeds to the document
+  surface, so the ESIGN gate is fully operable without a pointer.
+- Verification: signing suites 278 tests passing plus 6 new primitive tests; full
+  suite, lint, typecheck, production build and `git diff --check` green.
 - Also in this slice: the roadmap's E-Docs status was **self-contradictory** after
   PR #112 — a completion log declared the area done while the §5.1 inventory row
   still read "In progress" and claimed `ResizableDraggableField` and

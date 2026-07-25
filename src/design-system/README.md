@@ -68,6 +68,10 @@ verified.
   Input, Textarea, Button, Badge, Card, and FieldMessage while the SMTP fields,
   callable contracts, password rules, provider setup guide, test/save workflows,
   status mapping, and messages remain feature-owned.
+- The public signing room's status screens (loading, access denied, voided,
+  signed, ESIGN consent) consume Card, Button, Stack, and the `StatusMedallion`
+  primitive, while the signing feature keeps the domain-to-tone/icon decision,
+  every frozen user-facing string, and the `window.close()` behaviour.
 - The Login screen consumes FormField, Input, Button, IconButton, and Card, and
   migrates its password-reset overlay to the shared accessible Modal, while
   authentication, redirects, password visibility, and the reset workflow remain

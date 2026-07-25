@@ -2,8 +2,7 @@ import React, { useId } from 'react';
 import {
     Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileText, Ban,
 } from 'lucide-react';
-import { Button } from '@/design-system/components';
-import { Card } from '@/design-system/components';
+import { Button, Card, StatusMedallion } from '@/design-system/components';
 import { Stack } from '@/design-system/layouts';
 
 /**
@@ -14,6 +13,9 @@ import { Stack } from '@/design-system/layouts';
  * "Document Signed!", "Return to Required Documents", "Close Window",
  * "Decline") — as is the `window.close()` behaviour behind every Close/Decline
  * control and the `onAgree` / `onReturnToDocuments` callbacks.
+ *
+ * The circular status disc is the approved `StatusMedallion`; this feature keeps
+ * only the domain → tone/icon decision, not the shape or spacing.
  *
  * Accessibility: each screen is now a `<main>` landmark with a single `<h1>`, so
  * a signer landing on one hears what it is instead of an unlabelled page. The
@@ -35,24 +37,6 @@ function StatusPage({ children, labelledBy }) {
     );
 }
 
-/** Circular status icon. Decorative — the heading carries the meaning. */
-function StatusIcon({ children, tone = 'info', size = 'md' }) {
-    const tones = {
-        info: 'bg-ds-status-info-bg text-ds-status-info-fg',
-        success: 'bg-ds-status-success-bg text-ds-status-success-fg',
-        danger: 'bg-ds-status-danger-bg text-ds-status-danger-fg',
-    };
-    const sizes = { md: 'h-16 w-16', lg: 'h-20 w-20' };
-    return (
-        <span
-            aria-hidden="true"
-            className={`mx-auto mb-ds-4 flex shrink-0 items-center justify-center rounded-full ${tones[tone]} ${sizes[size]}`}
-        >
-            {children}
-        </span>
-    );
-}
-
 export function SigningLoadingScreen() {
     return (
         <main className="flex h-screen items-center justify-center bg-ds-canvas">
@@ -71,7 +55,7 @@ export function SigningErrorScreen({ error }) {
     return (
         <StatusPage labelledBy={headingId}>
             <Card padding="lg" className="max-w-md text-center" role="alert">
-                <StatusIcon tone="danger"><AlertTriangle size={32} /></StatusIcon>
+                <StatusMedallion tone="danger" className="mx-auto mb-ds-4"><AlertTriangle size={32} /></StatusMedallion>
                 <h1 id={headingId} className="mb-ds-2 text-ds-heading-sm font-bold text-ds-content">Access Denied</h1>
                 <p className="text-ds-content-secondary [overflow-wrap:anywhere]">{error}</p>
             </Card>
@@ -85,7 +69,7 @@ export function SigningVoidedScreen() {
     return (
         <StatusPage labelledBy={headingId}>
             <Card padding="lg" className="max-w-md text-center" role="alert">
-                <StatusIcon tone="danger" size="lg"><Ban size={48} /></StatusIcon>
+                <StatusMedallion tone="danger" size="lg" className="mx-auto mb-ds-6"><Ban size={48} /></StatusMedallion>
                 <h1 id={headingId} className="mb-ds-2 text-ds-heading-md font-bold text-ds-content">Document Voided</h1>
                 <p className="mb-ds-6 text-ds-content-secondary">
                     This document has been voided by the sender and is no longer accessible.
@@ -106,7 +90,7 @@ export function SigningSuccessScreen({ recipientName, onReturnToDocuments }) {
                 padding="lg"
                 className="max-w-md text-center motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-300"
             >
-                <StatusIcon tone="success" size="lg"><CheckCircle size={48} /></StatusIcon>
+                <StatusMedallion tone="success" size="lg" className="mx-auto mb-ds-6"><CheckCircle size={48} /></StatusMedallion>
                 <h1 id={headingId} className="mb-ds-2 text-ds-heading-md font-bold text-ds-content">Document Signed!</h1>
                 <p className="mb-ds-6 text-ds-content-secondary">
                     Thank you, <strong>{recipientName}</strong>. The document has been securely sealed and sent to the sender.
@@ -143,12 +127,7 @@ export function EsignConsentScreen({ title, onAgree }) {
         <StatusPage labelledBy={headingId}>
             <Card padding="lg" className="w-full max-w-lg">
                 <div className="mb-ds-5 flex items-center gap-ds-3">
-                    <span
-                        aria-hidden="true"
-                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ds-status-info-bg text-ds-status-info-fg"
-                    >
-                        <ShieldCheck size={28} />
-                    </span>
+                    <StatusMedallion tone="info"><ShieldCheck size={28} /></StatusMedallion>
                     <div>
                         <h1 id={headingId} className="text-ds-heading-sm font-bold text-ds-content">
                             Electronic Signature Consent
