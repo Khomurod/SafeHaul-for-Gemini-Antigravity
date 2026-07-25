@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import Draggable from 'react-draggable';
 import { X, Scaling } from 'lucide-react';
 
@@ -35,6 +35,7 @@ const FIELD_TONE_FALLBACK = 'bg-ds-status-accent-bg border-ds-status-accent-bord
 
 export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, onSelect }) => {
     const nodeRef = useRef(null);
+    const hintId = `placed-field-hint-${useId().replace(/:/g, '')}`;
     const safePageHeight = pageHeight || 800;
     const wPx = (field.width / 100) * pageWidth;
     const hPx = (field.height / 100) * safePageHeight;
@@ -85,6 +86,39 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
     const tone = FIELD_TONE[field.type] || FIELD_TONE_FALLBACK;
     const fieldName = field.label || 'Untitled field';
 
+    /**
+     * Keyboard placement. Purely additive: the pointer path above is untouched,
+     * and these handlers emit the *same* `onStop` / `onResize` payloads in
+     * percentages, clamped so a field can never leave its page — the keyboard
+     * equivalent of `bounds="parent"`.
+     *
+     * Arrow keys move by 1% (Shift: 5%); Alt+arrows resize by the same steps.
+     */
+    const handleKeyDown = (e) => {
+        const step = e.shiftKey ? 5 : 1;
+        let dx = 0;
+        let dy = 0;
+        if (e.key === 'ArrowLeft') dx = -step;
+        else if (e.key === 'ArrowRight') dx = step;
+        else if (e.key === 'ArrowUp') dy = -step;
+        else if (e.key === 'ArrowDown') dy = step;
+        else return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.altKey) {
+            const nextWidth = Math.min(100 - field.x, Math.max(1, field.width + dx));
+            const nextHeight = Math.min(100 - field.y, Math.max(1, field.height + dy));
+            onResize(field.id, nextWidth, nextHeight);
+            return;
+        }
+
+        const nextX = Math.min(100 - field.width, Math.max(0, field.x + dx));
+        const nextY = Math.min(100 - field.height, Math.max(0, field.y + dy));
+        onStop(field.id, pageNum, nextX, nextY);
+    };
+
     return (
         <Draggable
             nodeRef={nodeRef}
@@ -95,8 +129,17 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
         >
             <div
                 ref={nodeRef}
+                // Focusable so the field can be reached, selected and moved without a
+                // pointer. The accessible name states where it is; the description
+                // states how to move it.
+                tabIndex={0}
+                role="group"
+                aria-label={`${fieldName}, ${field.type} field on page ${pageNum}`}
+                aria-describedby={hintId}
+                onFocus={() => onSelect(field.id)}
+                onKeyDown={handleKeyDown}
                 onClick={(e) => { e.stopPropagation(); onSelect(field.id); }}
-                className={`group absolute z-50 flex cursor-move flex-col rounded-ds-sm border-2 pointer-events-auto shadow-ds-md transition
+                className={`group absolute z-50 flex cursor-move flex-col rounded-ds-sm border-2 pointer-events-auto shadow-ds-md transition focus-visible:outline-none focus-visible:shadow-ds-focus
                     ${isSelected ? 'ring-2 ring-ds-focus ring-offset-1' : ''}
                     ${tone}`
                 }
@@ -114,6 +157,11 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
                         />
                     )}
                 </div>
+
+                <span id={hintId} className="ds-visually-hidden">
+                    Arrow keys move the field by one percent, Shift by five, and Alt with an
+                    arrow key resizes it.
+                </span>
 
                 <button
                     type="button"

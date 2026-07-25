@@ -253,6 +253,82 @@ describe('ResizableDraggableField — selection, label and removal', () => {
     });
 });
 
+describe('ResizableDraggableField — keyboard placement', () => {
+    function box(container) {
+        return container.querySelector('[data-draggable]');
+    }
+
+    it('is reachable by keyboard and selects on focus', () => {
+        const { container } = renderField();
+        const target = box(container);
+        expect(target).toHaveAttribute('tabindex', '0');
+        fireEvent.focus(target);
+        expect(handlers.onSelect).toHaveBeenCalledWith('f-1');
+    });
+
+    it('names itself and describes how to move', () => {
+        renderField({ type: 'signature', label: 'Signature' }, { pageNum: 2 });
+        const target = screen.getByRole('group', { name: 'Signature, signature field on page 2' });
+        const describedBy = target.getAttribute('aria-describedby');
+        expect(document.getElementById(describedBy)).toHaveTextContent(/Arrow keys move the field/);
+    });
+
+    it.each([
+        ['ArrowRight', 11, 20],
+        ['ArrowLeft', 9, 20],
+        ['ArrowDown', 10, 21],
+        ['ArrowUp', 10, 19],
+    ])('moves by one percent on %s', (key, x, y) => {
+        const { container } = renderField({ x: 10, y: 20 });
+        fireEvent.keyDown(box(container), { key });
+        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, x, y);
+    });
+
+    it('moves by five percent with Shift', () => {
+        const { container } = renderField({ x: 10, y: 20 });
+        fireEvent.keyDown(box(container), { key: 'ArrowRight', shiftKey: true });
+        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, 15, 20);
+    });
+
+    it('clamps movement to the page just like bounds="parent"', () => {
+        const { container } = renderField({ x: 0, y: 0 });
+        fireEvent.keyDown(box(container), { key: 'ArrowLeft' });
+        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, 0, 0);
+
+        handlers.onStop.mockClear();
+        // width 25 → the right edge stops at 75. The y axis is clamped in the same
+        // move, so a field already past the bottom edge (96 + height 5) is pulled
+        // back to 95 rather than left hanging off the page.
+        const wide = renderField({ x: 74, y: 96, width: 25, height: 5 });
+        fireEvent.keyDown(wide.container.querySelector('[data-draggable]'), { key: 'ArrowRight', shiftKey: true });
+        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, 75, 95);
+    });
+
+    it('resizes with Alt and keeps the field inside the page', () => {
+        const { container } = renderField({ x: 10, y: 20, width: 25, height: 5 });
+        fireEvent.keyDown(box(container), { key: 'ArrowRight', altKey: true });
+        expect(handlers.onResize).toHaveBeenCalledWith('f-1', 26, 5);
+
+        handlers.onResize.mockClear();
+        fireEvent.keyDown(box(container), { key: 'ArrowDown', altKey: true });
+        expect(handlers.onResize).toHaveBeenCalledWith('f-1', 25, 6);
+    });
+
+    it('never resizes below one percent', () => {
+        const { container } = renderField({ width: 1, height: 1 });
+        fireEvent.keyDown(box(container), { key: 'ArrowLeft', altKey: true });
+        expect(handlers.onResize).toHaveBeenCalledWith('f-1', 1, 1);
+    });
+
+    it('ignores keys outside the placement contract', () => {
+        const { container } = renderField();
+        fireEvent.keyDown(box(container), { key: 'Enter' });
+        fireEvent.keyDown(box(container), { key: 'a' });
+        expect(handlers.onStop).not.toHaveBeenCalled();
+        expect(handlers.onResize).not.toHaveBeenCalled();
+    });
+});
+
 describe('ResizableDraggableField — presentation', () => {
     it.each([
         ['signature', 'warning'],
