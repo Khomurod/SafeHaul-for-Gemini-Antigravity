@@ -113,29 +113,26 @@ export function EnvelopeSidebar({
                     >
                         Delivery
                     </h3>
+                    {/* Two-state toggle group built from the approved Button, matching the
+                        creator shell's mode toggle: variant carries the visual state and
+                        aria-pressed plus the check icon carry it non-visually. */}
                     <div role="group" aria-labelledby={deliveryLabelId} className="grid grid-cols-2 gap-ds-1">
                         {DELIVERY_OPTIONS.map(opt => {
                             const OptionIcon = opt.icon;
                             const isSelected = deliveryMethod === opt.key;
                             return (
-                                <button
+                                <Button
                                     key={opt.key}
-                                    type="button"
+                                    variant={isSelected ? 'primary' : 'secondary'}
+                                    size="sm"
                                     aria-pressed={isSelected}
                                     onClick={() => setDeliveryMethod(opt.key)}
-                                    // Selection is carried by aria-pressed and the check icon,
-                                    // never by the border/background colour alone.
-                                    className={`flex min-h-11 items-center justify-center gap-ds-1 rounded-ds-lg border px-ds-2 text-ds-xs font-bold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
-                                        isSelected
-                                            ? 'border-ds-action-primary bg-ds-status-info-bg text-ds-status-info-fg'
-                                            : 'border-ds-border bg-ds-surface text-ds-content-secondary hover:bg-ds-surface-subtle'
-                                    }`}
                                 >
                                     {isSelected
                                         ? <Check size={12} aria-hidden="true" />
                                         : <OptionIcon size={12} aria-hidden="true" />}
                                     {opt.label}
-                                </button>
+                                </Button>
                             );
                         })}
                     </div>
@@ -198,6 +195,23 @@ export function EnvelopeSidebar({
                         </Button>
                     </div>
                 ) : (
+                    /* DOCUMENTED TEMPORARY EXCEPTION — palette buttons are not the
+                       approved `Button`.
+
+                       The approved Button exposes only primary / secondary / ghost /
+                       danger; it has no semantic status tone. The tone here is
+                       load-bearing rather than decorative: `ResizableDraggableField`
+                       colour-codes each placed overlay by field type, so these
+                       buttons are the legend for what appears on the PDF. Rendering
+                       them as `variant="secondary"` would flatten all eight to one
+                       colour and break that pairing.
+
+                       They already use semantic `--ds-*` status tokens (no raw
+                       palette), a 44 px activation height, a focus-visible ring and
+                       unique `Add <label> field` names. The missing capability — a
+                       toned Button variant — is recorded in the roadmap next to the
+                       Tabs and Checkbox gaps, and this exception retires when that
+                       variant exists. */
                     <div className="flex flex-col gap-ds-4">
                         {FIELD_CATEGORIES.map((category) => (
                             <div key={category.title}>
@@ -250,11 +264,19 @@ export function EnvelopeSidebar({
                                                 : 'border-ds-border bg-ds-surface-subtle'
                                         }`}
                                     >
-                                        <button
-                                            type="button"
+                                        {/* Approved Button as the row control, following the
+                                            precedent set for the send dialog's quick-select
+                                            rows: ghost + fullWidth + justify="start" carries
+                                            two-part row content because the primitive uses
+                                            min-height rather than a fixed height. */}
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            fullWidth
+                                            justify="start"
                                             aria-pressed={isSelected}
+                                            className="min-w-0 flex-1"
                                             onClick={() => setSelectedFieldId(f.id)}
-                                            className="flex min-h-11 min-w-0 flex-1 items-center gap-ds-2 rounded-ds-lg px-ds-2 text-left text-ds-xs focus-visible:outline-none focus-visible:shadow-ds-focus"
                                         >
                                             <span className="shrink-0 text-ds-content-secondary" aria-hidden="true">
                                                 {getIcon(f.type)}
@@ -263,7 +285,7 @@ export function EnvelopeSidebar({
                                             <span className="shrink-0 rounded-ds-sm bg-ds-status-neutral-bg px-ds-1 text-ds-xs text-ds-content-secondary">
                                                 P{f.page}
                                             </span>
-                                        </button>
+                                        </Button>
                                         <IconButton
                                             label={`Remove ${f.label} on page ${f.page}`}
                                             variant="ghost"

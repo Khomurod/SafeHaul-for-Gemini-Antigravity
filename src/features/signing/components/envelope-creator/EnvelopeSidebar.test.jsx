@@ -285,6 +285,62 @@ describe('EnvelopeSidebar — placed fields', () => {
 });
 
 describe('EnvelopeSidebar — presentation and accessibility', () => {
+    it('uses the approved Button for the delivery toggle group', () => {
+        renderSidebar({ deliveryMethod: 'sms' });
+        const group = screen.getByRole('group', { name: 'Delivery' });
+        for (const button of within(group).getAllByRole('button')) {
+            expect(button).toHaveClass('ds-button');
+        }
+        expect(screen.getByRole('button', { name: 'SMS' })).toHaveAttribute('data-variant', 'primary');
+        expect(screen.getByRole('button', { name: 'Email' })).toHaveAttribute('data-variant', 'secondary');
+    });
+
+    it('uses the approved Button for each placed-field row and its remove control', () => {
+        renderSidebar({ file: { name: 'artificial.pdf' }, fields: [FIELD_A, FIELD_B] });
+        for (const row of screen.getAllByRole('listitem')) {
+            const [rowButton, removeButton] = within(row).getAllByRole('button');
+            expect(rowButton).toHaveClass('ds-button');
+            expect(rowButton).toHaveAttribute('data-variant', 'ghost');
+            expect(rowButton).toHaveAttribute('data-justify', 'start');
+            expect(removeButton).toHaveClass('ds-icon-button');
+        }
+    });
+
+    it('keeps the palette buttons as the one documented non-Button exception', () => {
+        // The approved Button has no semantic status tone, and the tone here is the
+        // legend for the PDF overlay colours. Recorded in-code and in the roadmap.
+        renderSidebar({ file: { name: 'artificial.pdf' } });
+        const palette = screen.getAllByRole('button', { name: /^Add .* field$/ });
+        expect(palette).toHaveLength(8);
+        for (const button of palette) {
+            expect(button).not.toHaveClass('ds-button');
+            expect(button.className).toContain('min-h-11');
+            expect(button.className).toContain('focus-visible:shadow-ds-focus');
+            expect(button.className).toMatch(/bg-ds-status-(warning|success|info|accent)-bg/);
+        }
+    });
+
+    it('leaves no other raw button in the sidebar', () => {
+        const { container } = renderSidebar({
+            file: { name: 'artificial.pdf' },
+            fields: [FIELD_A, FIELD_B],
+        });
+        const raw = Array.from(container.querySelectorAll('button'))
+            .filter((b) => !b.classList.contains('ds-button'))
+            .map((b) => b.getAttribute('aria-label') || b.textContent.trim());
+        // Only the eight documented palette buttons remain.
+        expect(raw).toEqual([
+            'Add Signature field',
+            'Add Initial field',
+            'Add Date Signed field',
+            'Add Name field',
+            'Add Email field',
+            'Add Company field',
+            'Add Text field',
+            'Add Checkbox field',
+        ]);
+    });
+
     it('uses no unsupported 9px or 10px interface text and no raw hex colours', () => {
         const { container } = renderSidebar({ file: { name: 'artificial.pdf' }, fields: [FIELD_A, FIELD_B] });
         expect(container.innerHTML).not.toMatch(/text-\[9px\]|text-\[10px\]/);
