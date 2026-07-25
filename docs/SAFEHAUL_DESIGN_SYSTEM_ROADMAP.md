@@ -4364,8 +4364,8 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
 | `StatusScreens.jsx` — loading, error, voided, success, ESIGN consent | 144 | **1 — done 2026-07-25** |
 | `SigningRoom.jsx` — shell, header, progress, zoom, PDF surface, navigation, submission | 632 | **2 — done 2026-07-25** |
 | `SignerField.jsx` — the five field types + accessible naming | 147 | **3 — done 2026-07-25** |
-| `SignatureSheet.jsx` — signature/initial capture sheet | 135 | 4 (with the final audit) |
-| Final audit, roadmap, grep sweep | — | 4 |
+| `SignatureSheet.jsx` — signature/initial capture sheet | 135 | **4 — done 2026-07-25** |
+| Final audit, roadmap, grep sweep | — | **4 — done 2026-07-25** |
 
 - `MonthYearField` is **not** part of this campaign: grep confirms its only
   consumers are `Step1_Contact` and `Step6_Employment` in the driver application,
@@ -4542,6 +4542,89 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
 - Verification: 302 signing tests; full suite, lint, typecheck, production build
   and `git diff --check` green; the three signing E2E specs — 22 passed on
   Chromium + Mobile Chrome.
+
+### Signature capture sheet completion log (GO) — slice 4
+
+- Scope: `src/features/signing/components/SignatureSheet.jsx` (135 lines), the
+  last legacy component in the signing surface.
+- Frozen: the accessible dialog name (`Draw your signature` / `Draw your
+  initials`, which `SigningRoom.test.jsx` queries) · the Cancel / Clear /
+  `Adopt & continue` controls and their `onCancel` / `clear` / `adopt` handlers ·
+  the trimmed-PNG `onAdopt` payload and its `getTrimmedCanvas` → `toDataURL`
+  fallback · `data-testid="signature-sheet-canvas"` · `touchAction: 'none'` ·
+  `minWidth={1.2}`, `maxWidth={2.6}`, `velocityFilterWeight={0.7}` · the
+  wrapper-measured canvas size with its resize/orientation re-measure · both
+  safe-area insets.
+- Migrated: every legacy palette class to `--ds-*` tokens; the three controls to
+  approved `Button`s; `text-[11px]` legal text to `text-ds-xs` (12 px) on
+  `content-secondary` rather than `gray-500`; the overlay to a new
+  `bg-ds-overlay` Tailwind bridge for the `--ds-color-overlay` token that
+  already existed but was unreachable from a utility class.
+- **The dialog now delegates to the shared accessible `Modal`.** The hand-rolled
+  overlay had `role="dialog"` and `aria-modal` but none of the behaviour those
+  promise: no focus move-in, no focus restore, no Tab trap, and no Escape. All
+  four now come from the shared primitive. The accessible name moves from a
+  duplicated `aria-label` to `aria-labelledby` on the visible `<h2>` (identical
+  string, so the frozen name is unchanged), and the legal consent paragraph
+  becomes the dialog's `aria-describedby`. Backdrop dismissal is explicitly
+  **off**: a stray tap outside the pad must not discard a half-drawn signature,
+  which matches the behaviour this surface already had.
+- Fixed a dead control: adopting an empty pad returned silently, with no
+  explanation and nothing announced. The no-op contract is unchanged — `onAdopt`
+  is still not called — but the reason is now announced through a `role="status"`
+  region that is mounted before it has content, so the message is announced when
+  it appears instead of the region arriving whole.
+- **Documented non-migration.** `penColor` stays the literal `#0f172a` rather
+  than a token reference. This is document *content*, not interface chrome: the
+  PNG is stamped into a sealed, legally binding PDF, so re-theming the app must
+  never be able to retint a document somebody has already signed. The value
+  equals `--ds-color-slate-900`; the duplication is deliberate and explained at
+  the constant.
+- Focused tests: 18 in a new `SignatureSheet.test.jsx` — the frozen dialog name
+  in both variants, all three handlers, the trimmed-PNG payload, the canvas hook
+  and ink colour, all four empty-pad cases, Escape-cancels, backdrop-does-**not**
+  cancel, focus move-in, the `aria-describedby` wiring, no legacy palette or
+  small text, approved `Button`s on all three controls, and `vitest-axe` per
+  variant. The safe-area assertion reads the source, not the DOM: happy-dom
+  cannot parse `max(0.75rem, env(safe-area-inset-top))` and drops the
+  declaration, so a DOM assertion would test happy-dom rather than the code.
+- Added an `@a11y` E2E scan of the **open** capture dialog. The existing signing
+  room scan can never reach it, because the pad only exists while the dialog is
+  raised — and that is the step that actually binds the signer. 0 serious or
+  critical violations.
+
+### Public signing experience — final audit (2026-07-25)
+
+Grep sweep across `src/features/signing` after slice 4:
+
+- Legacy palette classes in non-test source: **none remaining.** The sweep found
+  one that every prior slice missed — `ring-blue-500` in `SigningRoom`'s
+  scroll-to-field flash — because it is applied imperatively via
+  `classList.add`, so the slice 2 JSX-scoped assertion could not see it. Now a
+  named `FIELD_FLASH_CLASSES` constant using `ring-ds-focus`, verified present in
+  the built CSS. **Lesson recorded: a JSX-only legacy-class assertion does not
+  cover classes added through the DOM API.**
+- Raw hex in non-test source: only `SIGNATURE_INK`, documented above as document
+  content. The other grep hits are `PR #112`/`#114` references in comments.
+- 9/10/11 px interface text: none in source; the only matches are the assertions
+  that forbid it.
+- Raw `<button>` elements: three, each a documented feature-owned composition
+  tied to a recorded gap — the creator's eight field-palette buttons (remaining
+  toned-`Button` tones), the creator's ~14 px corner remove badge (compact
+  icon-button size), and the signer's signature/initial placeholder. The last of
+  these had **no** recorded exception until this audit; it is now documented at
+  the call site. It must fill an author-placed box that can be as small as 8 px
+  while carrying the dashed placeholder treatment and the stamped ink `img` at
+  the box's own aspect, and the approved `Button`'s min-height, inline padding
+  and background would break alignment with the PDF coordinates.
+
+Not part of this campaign, and still open under their own items:
+
+- `src/shared/components/signature/SignaturePad.jsx` is a **different** legacy
+  signature control (`text-gray-400`); grep confirms its consumer is the
+  verification respondent flow, not any signing route.
+- `MonthYearField` remains untouched — its only consumers are `Step1_Contact`
+  and `Step6_Employment` in the driver application.
 
 ---
 
