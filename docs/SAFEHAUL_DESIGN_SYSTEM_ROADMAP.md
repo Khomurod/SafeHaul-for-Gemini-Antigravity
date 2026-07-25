@@ -3761,10 +3761,69 @@ Apply checks proportionally, but never claim an unrun check:
   signer surface) which is explicitly out of this slice's scope, and belongs to
   the still-open signing slice. The CI `e2e-a11y` lane is
   `continue-on-error: true`, which is why it has not blocked.
-- Remaining E-Docs work after this slice: **`EnvelopeCreator` with its PDF
-  workbench components** (field placement, coordinates, zoom and gesture
-  behaviour — high risk, and the pre-existing signing-room axe findings belong
-  with it). It needs its own audit and must not share a diff with anything else.
+### `EnvelopeCreator` audit and sub-slice plan (2026-07-25)
+
+The creator was audited before any edit. It is already split into a shell plus
+five child modules, which gives clean seams. Risk was measured by counting
+geometry/gesture/PDF concerns (`onMouseDown|onMouseMove|clientX|clientY|
+getBoundingClientRect|xPercent|yPercent|zoom|scale|Document|Page`) per file:
+
+| Module | Risky concerns | Planned sub-slice |
+| --- | --- | --- |
+| `EnvelopeCreator.jsx` shell (top bar, hydrating screen, layout wrapper) | 0 in the shell region | **A — done 2026-07-25** |
+| `FieldPropertiesPanel.jsx` | 0 | B |
+| `fieldDefinitions.jsx` | 0 | folded into B (definitions/icons only) |
+| `EnvelopeSidebar.jsx` | 3 | C |
+| `DateTripletField.jsx` (shared) | 0 geometry, but legacy selects + raw palette | D — closes the gap recorded on PR #102 |
+| `ResizableDraggableField.jsx` | 7 (drag/resize) | E — high risk |
+| `PdfFieldWorkbench.jsx` | 12 (PDF render, zoom, page refs, coordinates) | F — highest risk |
+
+Each sub-slice gets its own audit, tests, E2E and PR, ordered safest first. No
+sub-slice may share a diff with another. Field geometry, zoom, drag/drop,
+upload, Firebase, template, routing and permission contracts are frozen across
+all of them; sub-slices A–D must not touch any of that logic at all.
+
+### Sub-slice A — creator shell — completed 2026-07-25 (GO)
+
+- **Scope:** the top bar only (heading matrix, creator-mode toggle, Cancel, save
+  action), the hydrating screen and the layout/rail wrapper. **36 insertions /
+  23 deletions**, verified to touch zero lines containing `handleSave`,
+  `addField`, `updateFieldPosition`, `updateFieldSize`, `uploadBytes`,
+  `writeBatch`, `storagePath`, `xPercent`, `pdfViewportWidth` or `accessToken`.
+- **Frozen and verified unchanged:** props (`companyId`, `onClose`,
+  `initialMode`, `editRequestId`, `editTemplateId`, `companyName`); the
+  `creatorMode` initialiser (`editTemplateId ? 'template' : initialMode`) and its
+  `'request'`/`'template'` values; the four-case heading matrix (Edit Template /
+  Correct Document / Create Template / New Envelope); the toggle visibility rule
+  (`!isEditingRequest && !isEditingTemplate`) and its exact `setCreatorMode`
+  arguments; `onClose` on Cancel; `handleSave` with `disabled={loading}`; the
+  four-case save-label matrix (Save Template Changes / Save Correction / Save
+  Template / Send Document); the `Loading document for editing...` copy; the
+  `w-80`/`w-0` properties-rail rule; and every prop handed to `EnvelopeSidebar`,
+  `PdfFieldWorkbench` and `FieldPropertiesPanel`.
+- **Presentation/accessibility:** approved `Button` for Cancel, the save action
+  and both toggle options; the mode toggle is an `aria-label`led group exposing
+  `aria-pressed` so selection is never colour-only; the hydrating screen and an
+  in-flight save both announce through `role="status"`; `--ds-*` tokens replace
+  the raw gray/white/blue/purple palette; the rail transition respects
+  `motion-reduce`. The save button no longer changes hue by mode — the label
+  already distinguishes the action, and both are the approved primary variant.
+- **Evidence:** 21 focused shell tests (heading matrix ×4, toggle visibility in
+  both editing modes, `aria-pressed` both ways, keyboard reachability, save-label
+  matrix ×4, `onClose`, the preserved "Please upload a file and place at least
+  one field." guard proving `handleSave` is still wired, the announced hydrating
+  screen, the rail collapse rule, the full frozen prop sets for all three
+  children, 9/10 px guardrail and two `vitest-axe` passes). Whole-file coverage
+  is 33% statements — expected and reported honestly: this sub-slice covers the
+  shell only, and the save/hydration/field logic it deliberately does not touch
+  is left for sub-slices B–F. Full frontend suite 1120 tests passed; lint 0
+  errors; typecheck, build and `git diff --check` passed. Playwright ran one
+  suite at a time: the new `edoc-envelope-creator-shell.spec.cjs` passed 7 on
+  Chromium and 6 on Mobile Chrome, then the full E-Docs sweep of **36 Chromium
+  checks**. Real-browser axe scoped to the top bar found no serious/critical and
+  no color-contrast violations. The spec never activates the save action, so no
+  Firestore or Storage write is attempted.
+- **Remaining E-Docs work:** sub-slices B–F above.
 
 ### Send-template dialog (`SendTemplateModal`) — completed 2026-07-24 (GO)
 
