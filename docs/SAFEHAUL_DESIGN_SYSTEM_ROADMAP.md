@@ -4471,12 +4471,22 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
   card to `Card` + `StatusMedallion` + `role="alert"`; and the page-render and
   document-loading placeholders to announced `role="status"` regions. The bouncing
   jump pill is now `motion-safe:` gated.
-- **Documented exception (tied to an existing gap).** Both submit CTAs keep
-  `className="bg-ds-status-success-fg"` over `variant="primary"`. Green is this
-  action's meaning, and the approved `Button` has no success variant — the
-  toned-`Button` gap already recorded in the gap list. The primitive still carries
-  shape, size, focus and loading; only the background is overridden, and the
-  override retires when that variant lands. Noted in code at both call sites.
+- **Exception withdrawn; the gap was closed instead.** The first revision kept
+  `className="bg-ds-status-success-fg"` over `variant="primary"` on both submit
+  CTAs and recorded it as a documented exception. Review on PR #114 (P2) showed
+  that override never took effect: a single-class utility is specificity
+  `(0,1,0)` and `Button`'s own `.ds-button[data-variant='primary']` rule is
+  `(0,2,0)`, so the shipped CSS kept the blue background **and** the blue hover
+  state. The "exception" was dead code and the visual-verification claim for it
+  was wrong. Corrected by closing the recorded toned-`Button` gap for real: the
+  design system now owns `tone` (`default` | `success`) with
+  `--ds-color-action-success{,-hover}` semantic tokens, and both CTAs use
+  `tone="success"`. Two of the added `Button` tests assert the tone rule
+  outranks the variant rule for background *and* hover, so the same class of
+  silent-override mistake fails loudly next time; the shipped
+  `dist/assets/main-*.css` was re-checked to confirm both rules and both tokens
+  survive the production build. `Button`'s README now forbids feature-side
+  background overrides on a `Button` and says to add a tone instead.
 - Focused tests: 7 added to `SigningRoom.test.jsx` (header naming, the announced
   progress status, the labelled zoom group with named buttons, approved submit
   primitives, keyboard-reachable zoom, no legacy palette/hex/small text **scoped
@@ -4913,12 +4923,14 @@ change-review decision control, the settings question toggles and the two
 Documents Center template checkboxes), a design-system **Tabs** primitive
 (currently missing: `SectionNavigation` is a vertical `nav` with Up/Down keys, so
 the Documents Center History/Templates tab interface is a documented
-feature-owned WAI-ARIA composition), and a **toned/status `Button` variant**
-(currently missing: `Button` offers only primary/secondary/ghost/danger, so the
-envelope creator's eight field-palette buttons stay a documented feature-owned
-composition — their status tone is the legend for the field-type colours
-`ResizableDraggableField` paints on the PDF, and flattening them to `secondary`
-would break that pairing), and a **compact icon-button size** (currently missing:
+feature-owned WAI-ARIA composition), the **remaining toned `Button` tones**
+(partly closed: `Button` now supports `tone="success"` alongside
+primary/secondary/ghost/danger, which retired the signing room's two submit-CTA
+overrides; the info/accent/warning tones the envelope creator's eight
+field-palette buttons need are still missing, so those stay a documented
+feature-owned composition — their status tone is the legend for the field-type
+colours `ResizableDraggableField` paints on the PDF, and flattening them to
+`secondary` would break that pairing), and a **compact icon-button size** (currently missing:
 the approved `IconButton`'s smallest size carries a min-height and padding that
 would overflow the envelope creator's ~14 px corner remove badge, which sits on a
 field whose minimum size is 8 px, so that one control stays a documented
