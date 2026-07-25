@@ -184,14 +184,36 @@ describe('EnvelopeCreator shell — hydrating state', () => {
 
 describe('EnvelopeCreator shell — layout and child contracts', () => {
     it('collapses the properties rail until a field is selected', () => {
+        // The rail became responsive in the sub-slice F close-out: it collapses to
+        // `md:w-0` and is `hidden` below the breakpoint (where a 320px column had
+        // nowhere to go and was clipped off-screen), and when a field is selected
+        // it is a full-width sheet below `md` and the original `md:w-80` column
+        // above it. The behaviour asserted here is unchanged.
         const { container } = setup();
-        const rail = container.querySelector('.overflow-y-auto.border-l');
-        expect(rail.className).toContain('w-0');
+        const collapsed = container.querySelector('.overflow-y-auto');
+        expect(collapsed.className).toContain('md:w-0');
+        expect(collapsed.className).toContain('hidden');
         expect(screen.queryByTestId('properties-panel')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'select field' }));
-        expect(container.querySelector('.overflow-y-auto.border-l').className).toContain('w-80');
+        const rail = container.querySelector('.overflow-y-auto.border-l');
+        expect(rail.className).toContain('md:w-80');
+        expect(rail).toHaveAccessibleName('Field properties');
         expect(screen.getByTestId('properties-panel')).toBeInTheDocument();
+    });
+
+    it('offers a dismiss control only in the mobile sheet presentation', () => {
+        const { container } = setup();
+        fireEvent.click(screen.getByRole('button', { name: 'select field' }));
+
+        const close = screen.getByRole('button', { name: 'Close field properties' });
+        // Present in the DOM but scoped to below the md breakpoint, because on
+        // mobile the sheet covers the canvas that would otherwise deselect.
+        expect(close.closest('div').className).toContain('md:hidden');
+
+        fireEvent.click(close);
+        expect(screen.queryByTestId('properties-panel')).not.toBeInTheDocument();
+        expect(container.querySelector('.overflow-y-auto').className).toContain('hidden');
     });
 
     it('passes the frozen prop sets to the sidebar and workbench', () => {

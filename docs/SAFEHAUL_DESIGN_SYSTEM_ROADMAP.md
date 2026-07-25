@@ -3776,7 +3776,7 @@ getBoundingClientRect|xPercent|yPercent|zoom|scale|Document|Page`) per file:
 | `EnvelopeSidebar.jsx` | 3 | **C — done 2026-07-25** |
 | `DateTripletField.jsx` (shared) | 0 geometry, but legacy selects + raw palette | **D — done 2026-07-25**; closes the gap recorded on PR #102 |
 | `ResizableDraggableField.jsx` | 7 (drag/resize) | **E — done 2026-07-25** |
-| `PdfFieldWorkbench.jsx` | 12 (PDF render, zoom, page refs, coordinates) | F — highest risk |
+| `PdfFieldWorkbench.jsx` | 12 (PDF render, zoom, page refs, coordinates) | **F — done 2026-07-25** |
 
 Each sub-slice gets its own audit, tests, E2E and PR, ordered safest first. No
 sub-slice may share a diff with another. Field geometry, zoom, drag/drop,
@@ -4231,6 +4231,78 @@ all of them; sub-slices A–D must not touch any of that logic at all.
 
 ---
 
+### PDF workbench and creator close-out completion log (GO)
+
+- Date: 2026-07-25. Sub-slice F of the E-Docs close-out.
+- Starting baseline: `main` at `c36beea` (Merge PR #110 — placed-field overlay),
+  all eight lanes green, clean tree.
+- Scope: `PdfFieldWorkbench.jsx`, the properties-rail layout in
+  `EnvelopeCreator.jsx`, and keyboard placement in `ResizableDraggableField.jsx`.
+- Go/no-go decision: **GO.** The workbench is props-only and holds no state; every
+  contract the rest of the creator depends on was enumerated and frozen before
+  editing.
+- Frozen and verified unchanged: the `workbenchRef` the Ctrl/⌘+wheel listener
+  tests with `el.contains(e.target)`; the canvas `onClick` that deselects; the
+  toolbar's `stopPropagation` so its own clicks do not deselect; the exact
+  `clampPdfViewportWidth(w ± 48)` steps; the `PDF_VIEWPORT_WIDTH_DEFAULT` reset;
+  `zoomPercentLabel`; `onLoadSuccess({ numPages })`; the
+  `pageRefs.current[pageNum]` registration; `data-page-num`; the
+  `Page {n} / {total}` badge text; `renderAnnotationLayer`/`renderTextLayer`
+  false; the `absolute inset-0 z-10 pointer-events-none` overlay layer; the
+  `f.page === pageNum` filter; and `pageHeight={dims ? dims.height : 900}`.
+- Workbench presentation and accessibility: canvas, page frames, active-page
+  border and page badge moved to `--ds-*` tokens; the three zoom controls became
+  approved `IconButton`/`Button` with real names (`Zoom out`, `Zoom in`, and
+  `Reset zoom to 100 percent, currently N percent`) where before they carried only
+  a `title` and were nameless to assistive technology; the toolbar is a labelled
+  `role="group"`; a `role="status"` announces the level; and the 11 px toolbar and
+  10 px badge text are now `text-ds-xs`.
+- **Debt 1 closed — mobile rail clipping.** `EnvelopeCreator` rendered a fixed
+  `w-64` sidebar, the workbench and a `w-80` rail in one non-wrapping row inside
+  `overflow-hidden`, so below roughly 600 px the rail was pushed off-screen and
+  its controls were unreachable. Below `md` it is now a full-width sheet
+  (`fixed inset-y-0 right-0 max-w-sm`) with its own **Close field properties**
+  control — necessary because the usual dismissal (clicking the canvas) is covered
+  by the sheet. At `md` and above the markup is byte-identical to before
+  (`md:static md:w-80 md:shrink-0`), and the dismiss control is `md:hidden`.
+- **Debt 2 closed — pointer-only placement.** The overlay is now focusable
+  (`tabIndex={0}`), selects on focus, carries the name
+  `<label>, <type> field on page <n>` and an `aria-describedby` hint, and accepts
+  arrow keys to move by 1 % (Shift: 5 %) and Alt+arrows to resize. This is purely
+  additive: the pointer path is untouched, and the handlers emit the *same*
+  `onStop`/`onResize` percentage payloads, clamped to the page as the keyboard
+  equivalent of `bounds="parent"` — including re-clamping the other axis, so a
+  field already past an edge is pulled back rather than left hanging.
+- Focused tests: 114 across the three envelope-creator suites, of which 10 new
+  keyboard-placement tests (focus selects, the name and hint, all four arrow
+  directions, the Shift step, clamping at both edges, Alt resize in both
+  dimensions, the 1 % resize floor, and ignored keys) plus two rewritten shell
+  assertions for the responsive rail and its mobile-only dismiss control.
+- E2E: `e2e/edoc-workbench-closeout.spec.cjs`, **14 passed** on Chromium +
+  Mobile Chrome — named zoom controls with the announced level, zoom out/in/reset
+  driven from the keyboard, keyboard move and Alt-resize of a placed field, **the
+  rail on-screen and dismissible at 412 px** (the case that used to be clipped),
+  the desktop rail staying inline with no document overflow, and a scoped
+  real-browser axe pass.
+- Regressions: `edoc-field-properties-panel`, `edoc-placed-field-overlay`,
+  `edoc-envelope-creator-shell`, `edoc-envelope-sidebar` and the full
+  `edoc-recruiter-send-and-sign` — **53 passed** on Chromium + Mobile Chrome.
+- Full frontend suite: 115 files / 1266 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their guard. Lint 0 errors, typecheck,
+  production build and `git diff --check` passed; new tokens confirmed emitted in
+  `dist/assets/main-*.css`. No 9/10/11 px interface text and no raw hex remain
+  anywhere in the envelope-creator tree or `EnvelopeCreator.jsx`.
+- **Debt 3 still open — signing-surface axe findings.** The non-blocking `@a11y`
+  public signing room journey reports `color-contrast x1` and `label x3`. Those
+  are in `SigningRoom`/`SignerField`, a *different* surface from the creator, so
+  they are deliberately **not** claimed by this slice; they are the subject of the
+  final E-Docs audit rather than being folded into a workbench diff.
+- Privacy: all fixtures artificial; the E2E PDF is generated inline. No real
+  document, recipient or signing data is used or snapshotted, and no send occurs.
+- Backend/rules: untouched.
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
@@ -4579,7 +4651,23 @@ longer hover-only — while every percentage↔pixel conversion, the
 `.resize-handle, .label-input` cancel selectors, the `size.width > 40` threshold
 and both callback payloads are unchanged.
 
-Sub-slice **F (`PdfFieldWorkbench`)** remains open. A responsive gap is recorded against F: the creator's fixed
+**Sub-slice F (`PdfFieldWorkbench` + the responsive/accessibility close-out)** is
+complete, migrated and verified on 2026-07-25 (GO; completion log in section 6):
+the workbench canvas, page frames and zoom toolbar are tokenized, all three zoom
+controls have accessible names (they previously had `title` only), the zoom level
+is announced, and the 11 px/10 px text is gone — while the `workbenchRef`, the
+canvas-click deselect, the toolbar's `stopPropagation`, the ±48 px zoom steps,
+`PDF_VIEWPORT_WIDTH_DEFAULT`, `zoomPercentLabel`, `onLoadSuccess`, the `pageRefs`
+registration, `data-page-num`, the badge text, the render flags, the
+`pointer-events-none` overlay layer, the page filter and the
+`pageHeight={dims ? dims.height : 900}` fallback are unchanged. Two of the three
+recorded debts are closed with it: the **properties rail no longer clips** below
+~600 px (it presents as a full-width sheet with its own dismiss control, since the
+canvas that normally deselects sits underneath it, and desktop is byte-identical),
+and **placement is no longer pointer-only** (the overlay is focusable, selects on
+focus, and moves with arrow keys — Shift for a larger step, Alt to resize —
+reusing the same percentage payloads and clamping so a field can never leave its
+page). A responsive gap is recorded against F: the creator's fixed
 three-column layout clips the properties rail below roughly 600 px, which
 predates the migration and is not owned by sub-slice B or C (the sidebar's own
 E2E confirms no document-level horizontal overflow at 1440/1024/412).

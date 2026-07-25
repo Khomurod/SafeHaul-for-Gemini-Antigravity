@@ -638,14 +638,40 @@ export default function EnvelopeCreator({
                     getIcon={getIcon}
                 />
 
-                {/* RIGHT SIDEBAR: Field Properties Editor */}
-                <div className={`shrink-0 overflow-y-auto border-l bg-ds-surface shadow-ds-lg transition-all duration-200 motion-reduce:transition-none ${selectedFieldId ? 'w-80 border-ds-border-subtle' : 'w-0 border-l-0'}`}>
+                {/* RIGHT SIDEBAR: Field Properties Editor.
+
+                    Desktop is unchanged: a shrink-0 column that animates between
+                    w-80 and w-0. Below `md` the fixed three-column row had no room
+                    left for a 320px rail, so it was clipped off-screen and its
+                    controls were unreachable. There it now presents as a full-width
+                    sheet with its own close control, because the usual way to
+                    dismiss it — clicking the canvas — sits underneath the sheet. */}
+                <div
+                    role={selectedFieldId ? 'group' : undefined}
+                    aria-label={selectedFieldId ? 'Field properties' : undefined}
+                    className={`overflow-y-auto bg-ds-surface shadow-ds-lg transition-all duration-200 motion-reduce:transition-none ${
+                        selectedFieldId
+                            ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm border-l border-ds-border-subtle md:static md:z-auto md:w-80 md:max-w-none md:shrink-0'
+                            : 'hidden md:block md:w-0 md:shrink-0'
+                    }`}
+                >
                     {selectedFieldId && (
-                        <FieldPropertiesPanel
-                            activeField={activeField}
-                            updateActiveField={updateActiveField}
-                            getIcon={getIcon}
-                        />
+                        <>
+                            <div className="flex justify-end p-ds-2 md:hidden">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setSelectedFieldId(null)}
+                                >
+                                    Close field properties
+                                </Button>
+                            </div>
+                            <FieldPropertiesPanel
+                                activeField={activeField}
+                                updateActiveField={updateActiveField}
+                                getIcon={getIcon}
+                            />
+                        </>
                     )}
                 </div>
             </div>

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ZoomIn, ZoomOut } from 'lucide-react';
+import { IconButton, Button } from '@/design-system/components';
 import { ResizableDraggableField } from './ResizableDraggableField';
 import {
     PDF_VIEWPORT_WIDTH_DEFAULT,
@@ -18,7 +19,18 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 /**
  * Center column of the envelope creator: PDF viewer with zoom controls and the
- * draggable field overlay per page. Extracted verbatim from EnvelopeCreator.jsx.
+ * draggable field overlay per page.
+ *
+ * Presentation only. Everything the rest of the creator depends on is frozen:
+ * the `workbenchRef` the Ctrl/⌘+wheel listener tests with `el.contains(e.target)`,
+ * the canvas click that deselects, the toolbar's `stopPropagation` so its own
+ * clicks do not deselect, the exact ±48 px zoom steps through
+ * `clampPdfViewportWidth`, the `PDF_VIEWPORT_WIDTH_DEFAULT` reset,
+ * `zoomPercentLabel`, `onLoadSuccess({ numPages })`, the `pageRefs` registration,
+ * the `data-page-num` attribute, the `Page {n} / {total}` badge text, the
+ * `renderAnnotationLayer`/`renderTextLayer` flags, the `pointer-events-none`
+ * overlay layer, the `f.page === pageNum` filter and the
+ * `pageHeight={dims ? dims.height : 900}` fallback.
  */
 export function PdfFieldWorkbench({
     workbenchRef,
@@ -40,44 +52,56 @@ export function PdfFieldWorkbench({
     updateFieldLabel,
     getIcon,
 }) {
+    const rawId = useId().replace(/:/g, '');
+    const zoomLabelId = `pdf-zoom-label-${rawId}`;
+    const zoomPercent = zoomPercentLabel(pdfViewportWidth);
+
     return (
         <div
             ref={workbenchRef}
-            className="flex-1 overflow-y-auto bg-gray-200 p-8 flex justify-center relative scroll-smooth"
+            className="relative flex flex-1 justify-center overflow-y-auto bg-ds-canvas p-ds-8 scroll-smooth"
             onClick={() => setSelectedFieldId(null)}
         >
             {file && (
                 <div
-                    className="absolute top-3 right-6 z-30 flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-300 bg-white/95 px-2 py-1.5 text-[11px] shadow-md backdrop-blur-sm"
+                    role="group"
+                    aria-labelledby={zoomLabelId}
+                    className="absolute right-6 top-3 z-30 flex flex-wrap items-center gap-ds-1 rounded-ds-xl border border-ds-border bg-ds-surface px-ds-2 py-ds-1 text-ds-xs shadow-ds-md"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <span className="font-bold text-gray-500 pr-0.5">PDF zoom</span>
-                    <button
-                        type="button"
-                        title="Zoom out"
-                        className="p-1 rounded-md hover:bg-gray-100 text-gray-700"
+                    <span id={zoomLabelId} className="pr-0.5 font-bold text-ds-content-secondary">PDF zoom</span>
+                    <IconButton
+                        label="Zoom out"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setPdfViewportWidth((w) => clampPdfViewportWidth(w - 48))}
                     >
-                        <ZoomOut size={14} />
-                    </button>
-                    <button
-                        type="button"
-                        title="Reset zoom"
-                        className="min-w-[3rem] px-1.5 py-0.5 rounded-md bg-gray-100 font-mono font-bold text-gray-800 hover:bg-gray-200"
+                        <ZoomOut size={14} aria-hidden="true" />
+                    </IconButton>
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        aria-label={`Reset zoom to 100 percent, currently ${zoomPercent} percent`}
+                        className="min-w-[3rem] font-mono"
                         onClick={() => setPdfViewportWidth(PDF_VIEWPORT_WIDTH_DEFAULT)}
                     >
-                        {zoomPercentLabel(pdfViewportWidth)}%
-                    </button>
-                    <button
-                        type="button"
-                        title="Zoom in"
-                        className="p-1 rounded-md hover:bg-gray-100 text-gray-700"
+                        {zoomPercent}%
+                    </Button>
+                    <IconButton
+                        label="Zoom in"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setPdfViewportWidth((w) => clampPdfViewportWidth(w + 48))}
                     >
-                        <ZoomIn size={14} />
-                    </button>
-                    <span className="hidden md:inline text-gray-400 border-l border-gray-200 pl-2 ml-0.5">
+                        <ZoomIn size={14} aria-hidden="true" />
+                    </IconButton>
+                    <span className="ml-0.5 hidden border-l border-ds-border-subtle pl-2 text-ds-content-secondary md:inline">
                         Ctrl/⌘ + scroll
+                    </span>
+                    {/* Announce the level so keyboard and screen-reader users get the
+                        same feedback the visible percentage gives everyone else. */}
+                    <span role="status" className="ds-visually-hidden">
+                        {`Zoom ${zoomPercent} percent`}
                     </span>
                 </div>
             )}
@@ -85,16 +109,29 @@ export function PdfFieldWorkbench({
                 <Document
                     file={file}
                     onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                    className="flex flex-col gap-8 pb-16"
+                    className="flex flex-col gap-ds-8 pb-16"
                 >
                     {numPages > 0 && Array.from(new Array(numPages), (el, index) => {
                         const pageNum = index + 1;
                         const dims = pageDimensions[pageNum];
 
                         return (
-                            <div key={pageNum} ref={(el) => (pageRefs.current[pageNum] = el)} data-page-num={pageNum} className={`relative shadow-2xl border-2 bg-white inline-block ring-1 ring-black/5 ${activePage === pageNum ? 'border-blue-400' : 'border-gray-400'}`}>
+                            <div
+                                key={pageNum}
+                                ref={(el) => (pageRefs.current[pageNum] = el)}
+                                data-page-num={pageNum}
+                                className={`relative inline-block border-2 bg-ds-surface shadow-ds-lg ${
+                                    activePage === pageNum ? 'border-ds-action-primary' : 'border-ds-border'
+                                }`}
+                            >
                                 {/* FEAT-1: Page label badge */}
-                                <div className={`absolute top-2 left-2 z-20 px-2 py-1 rounded-md text-[10px] font-bold ${activePage === pageNum ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                                <div
+                                    className={`absolute left-2 top-2 z-20 rounded-ds-md px-2 py-1 text-ds-xs font-bold ${
+                                        activePage === pageNum
+                                            ? 'bg-ds-action-primary text-ds-content-inverse'
+                                            : 'bg-ds-status-neutral-bg text-ds-status-neutral-fg'
+                                    }`}
+                                >
                                     Page {pageNum} / {numPages}
                                 </div>
                                 <Page
