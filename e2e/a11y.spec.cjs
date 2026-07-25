@@ -33,4 +33,19 @@ test.describe('@a11y mobile-critical journeys (no serious/critical violations)',
         await expect(page.locator('[data-signing-page="1"]')).toBeVisible({ timeout: 10_000 });
         expect(await seriousViolations(page)).toEqual([]);
     });
+
+    // The signature pad is the one signing surface a scan of the room never
+    // reaches, because it only exists while the dialog is open — and it is the
+    // step that actually binds the signer. Scanned with the dialog raised so its
+    // contrast and naming are covered too.
+    test('signature capture dialog', async ({ page }) => {
+        await page.goto('/sign/e2e-company/e2e-request?token=e2e-token&e2eSign=mock');
+        await page.getByRole('button', { name: /I Agree - Proceed to Sign/i }).click();
+        await expect(page.locator('[data-signing-page="1"]')).toBeVisible({ timeout: 10_000 });
+
+        await page.getByRole('button', { name: /Tap to sign|tap to redraw/i }).first().click();
+        await expect(page.getByRole('dialog', { name: /Draw your signature/i })).toBeVisible();
+
+        expect(await seriousViolations(page)).toEqual([]);
+    });
 });
