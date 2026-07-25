@@ -2,7 +2,37 @@ import React, { useState, useRef, useEffect } from 'react';
 import Draggable from 'react-draggable';
 import { X, Scaling } from 'lucide-react';
 
-/** Resizable & draggable field overlay — extracted verbatim from EnvelopeCreator.jsx. */
+/**
+ * Resizable & draggable field overlay.
+ *
+ * Presentation only. Every calculation below is frozen: the percentage↔pixel
+ * conversions in both directions, the `pageHeight || 800` fallback, the 8 px
+ * minimum size floor, the window-level mousemove/mouseup lifecycle, the
+ * `bounds="parent"` constraint, the `.resize-handle, .label-input` drag
+ * exclusions, the `size.width > 40` label threshold, and the exact
+ * `onStop(id, pageNum, x%, y%)` / `onResize(id, w%, h%)` payloads.
+ *
+ * The two class names `resize-handle` and `label-input` are load-bearing — they
+ * are the selectors react-draggable's `cancel` prop matches — so they are kept
+ * verbatim alongside the token classes.
+ *
+ * Field-type tones use the same `--ds-*` status tokens as the sidebar palette,
+ * which is what makes the palette a legend for these overlays.
+ */
+
+/**
+ * Domain → visual mapping for a placed field. Merged only where the previous
+ * hues were adjacent (signature yellow + initial orange → warning), so the four
+ * groups stay distinguishable and match the palette buttons one-for-one.
+ */
+const FIELD_TONE = {
+    signature: 'bg-ds-status-warning-bg border-ds-status-warning-border',
+    initial: 'bg-ds-status-warning-bg border-ds-status-warning-border',
+    text: 'bg-ds-status-info-bg border-ds-status-info-border',
+    date: 'bg-ds-status-success-bg border-ds-status-success-border',
+};
+const FIELD_TONE_FALLBACK = 'bg-ds-status-accent-bg border-ds-status-accent-border';
+
 export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, onSelect }) => {
     const nodeRef = useRef(null);
     const safePageHeight = pageHeight || 800;
@@ -52,6 +82,9 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
         onStop(field.id, pageNum, (data.x / pageWidth) * 100, (data.y / safePageHeight) * 100);
     };
 
+    const tone = FIELD_TONE[field.type] || FIELD_TONE_FALLBACK;
+    const fieldName = field.label || 'Untitled field';
+
     return (
         <Draggable
             nodeRef={nodeRef}
@@ -63,21 +96,18 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
             <div
                 ref={nodeRef}
                 onClick={(e) => { e.stopPropagation(); onSelect(field.id); }}
-                className={`absolute cursor-move pointer-events-auto border-2 rounded flex flex-col shadow-lg transition z-50 group
-                    ${isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
-                    ${field.type === 'signature' ? 'bg-yellow-400/80 border-yellow-600' :
-                        field.type === 'initial' ? 'bg-orange-300/80 border-orange-600' :
-                            field.type === 'text' ? 'bg-blue-100/90 border-blue-500' :
-                                field.type === 'date' ? 'bg-green-100/90 border-green-500' :
-                                    'bg-purple-100/90 border-purple-500'}`
+                className={`group absolute z-50 flex cursor-move flex-col rounded-ds-sm border-2 pointer-events-auto shadow-ds-md transition
+                    ${isSelected ? 'ring-2 ring-ds-focus ring-offset-1' : ''}
+                    ${tone}`
                 }
                 style={{ width: size.width, height: size.height }}
             >
-                <div className="flex items-center gap-1 p-1 overflow-hidden shrink-0">
-                    {getIcon(field.type)}
+                <div className="flex shrink-0 items-center gap-ds-1 overflow-hidden p-ds-1">
+                    <span aria-hidden="true" className="text-ds-content">{getIcon(field.type)}</span>
                     {size.width > 40 && (
                         <input
-                            className="label-input bg-transparent border-none text-[9px] font-bold uppercase w-full focus:ring-0 p-0 truncate cursor-text"
+                            className="label-input w-full cursor-text truncate border-none bg-transparent p-0 text-ds-xs font-bold uppercase text-ds-content focus:ring-0"
+                            aria-label={`Label for ${field.type} field on page ${pageNum}`}
                             value={field.label}
                             onChange={(e) => onLabelChange(field.id, e.target.value)}
                             onMouseDown={(e) => e.stopPropagation()}
@@ -86,17 +116,25 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
                 </div>
 
                 <button
+                    type="button"
+                    aria-label={`Remove ${fieldName} from page ${pageNum}`}
                     onMouseDown={(e) => { e.stopPropagation(); onRemove(field.id); }}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow hover:bg-red-700 z-50"
+                    className="absolute -right-2 -top-2 z-50 rounded-full bg-ds-action-danger p-0.5 text-ds-content-inverse shadow-ds-sm focus-visible:outline-none focus-visible:shadow-ds-focus"
                 >
-                    <X size={10} />
+                    <X size={10} aria-hidden="true" />
                 </button>
 
+                {/* The resize affordance stays a pointer-only control: react-draggable
+                    cancels dragging on `.resize-handle`, and the mousemove/mouseup
+                    mathematics above is frozen. Keyboard-operable placement is an open
+                    item recorded against the sub-slice F close-out. It is no longer
+                    hover-only, so touch and low-vision users can see it. */}
                 <div
-                    className="resize-handle absolute bottom-0 right-0 w-3 h-3 cursor-se-resize flex items-end justify-end p-0.5 opacity-0 group-hover:opacity-100 transition"
+                    className="resize-handle absolute bottom-0 right-0 flex h-3 w-3 cursor-se-resize items-end justify-end p-0.5 opacity-60 transition group-hover:opacity-100"
                     onMouseDown={handleMouseDown}
+                    aria-hidden="true"
                 >
-                    <Scaling size={10} className="text-gray-600" />
+                    <Scaling size={10} className="text-ds-content-secondary" />
                 </div>
             </div>
         </Draggable>
