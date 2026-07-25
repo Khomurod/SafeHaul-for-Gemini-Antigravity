@@ -280,3 +280,73 @@ describe('SigningRoom', () => {
     expect(screen.queryByText(/Rendering page 1/i)).not.toBeInTheDocument();
   });
 });
+
+describe('SigningRoom — migrated shell presentation', () => {
+  it('names the document and the signer in the header', async () => {
+    await renderRoomPastConsent();
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/Signing as:/)).toBeInTheDocument();
+  });
+
+  it('announces the remaining-field count instead of relying on chip colour', async () => {
+    await renderRoomPastConsent();
+    const statuses = await screen.findAllByRole('status');
+    const progress = statuses.find((n) => /remaining|left|complete|Done/i.test(n.textContent));
+    expect(progress).toBeTruthy();
+  });
+
+  it('exposes the zoom controls as a labelled group of named buttons', async () => {
+    await renderRoomPastConsent();
+    const groups = await screen.findAllByRole('group', { name: 'Document zoom' });
+    expect(groups.length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Zoom out' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Zoom in' }).length).toBeGreaterThan(0);
+  });
+
+  it('uses approved Buttons for the submit action', async () => {
+    await renderRoomPastConsent();
+    const submits = await screen.findAllByRole('button', { name: /Finish & Submit/ });
+    expect(submits.length).toBeGreaterThan(0);
+    for (const submit of submits) {
+      expect(submit).toHaveClass('ds-button');
+    }
+  });
+
+  it('keeps the zoom controls reachable from the keyboard', async () => {
+    await renderRoomPastConsent();
+    const zoomOut = (await screen.findAllByRole('button', { name: 'Zoom out' }))[0];
+    zoomOut.focus();
+    expect(zoomOut).toHaveFocus();
+  });
+
+  it('uses no legacy palette classes, raw hex or unsupported small text in the shell', async () => {
+    const { container } = await renderRoomPastConsent();
+    await screen.findAllByRole('button', { name: /Finish & Submit/ });
+
+    // Scoped to the shell this slice owns — header, scroller chrome and both
+    // action bars. The field overlays and the signature sheet are still legacy
+    // and are migrated in slice 3, so asserting the whole tree here would fail
+    // for work that is deliberately out of this diff.
+    const shell = container.firstElementChild;
+    const header = shell.querySelector('header');
+    const actionBars = Array.from(shell.querySelectorAll(':scope > div')).filter(
+      (node) => !node.hasAttribute('data-signing-scroller'),
+    );
+    const shellMarkup = [header, ...actionBars]
+      .filter(Boolean)
+      .map((node) => node.outerHTML)
+      .join('');
+
+    expect(shellMarkup).not.toMatch(/(bg|text|border)-(gray|blue|green|red|amber)-\d{2,3}/);
+    expect(shellMarkup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(shellMarkup).not.toMatch(/text-\[(9|10|11)px\]/);
+  });
+
+  it('gates the bouncing jump pill behind reduced-motion', async () => {
+    const { container } = await renderRoomPastConsent();
+    await screen.findAllByRole('button', { name: /Finish & Submit/ });
+    if (container.innerHTML.includes('animate-bounce')) {
+      expect(container.innerHTML).toContain('motion-safe:animate-bounce');
+    }
+  });
+});
