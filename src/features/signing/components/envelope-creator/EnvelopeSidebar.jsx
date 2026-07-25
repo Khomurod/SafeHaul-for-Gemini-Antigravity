@@ -1,11 +1,45 @@
-import React from 'react';
-import { X, Mail, MessageSquare, Copy, Send } from 'lucide-react';
+import React, { useId, useRef } from 'react';
+import { X, Mail, MessageSquare, Copy, Send, Check } from 'lucide-react';
+import { Button, IconButton } from '@/design-system/components';
+import { FormField, Input } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
 import { FIELD_CATEGORIES } from './fieldDefinitions';
 
 /**
  * Left sidebar of the envelope creator: recipient/delivery inputs, the field
- * palette, and the placed-fields list. Extracted verbatim from EnvelopeCreator.jsx.
+ * palette, and the placed-fields list.
+ *
+ * Presentation only. Every prop, callback argument and conditional below is the
+ * pre-migration contract: EnvelopeCreator still owns the recipient state, the
+ * upload validation, field creation/removal and the selection.
+ *
+ * Two compositions stay feature-owned because the design system has no approved
+ * primitive for them yet (both tracked in the roadmap): the delivery-method
+ * toggle group (no segmented-control primitive) and the file input (no
+ * file-input primitive — this follows the same visually-hidden-input + approved
+ * Button pattern already used by the branding upload).
  */
+
+/**
+ * Delivery options in their original order. The `key` values are the exact
+ * `deliveryMethod` values EnvelopeCreator sends to the backend, so they are
+ * frozen; only the presentation around them changed.
+ */
+const DELIVERY_OPTIONS = [
+    { key: 'email', icon: Mail, label: 'Email' },
+    { key: 'sms', icon: MessageSquare, label: 'SMS' },
+    { key: 'both', icon: Send, label: 'Both' },
+    { key: 'copy', icon: Copy, label: 'Link' },
+];
+
+function Kbd({ children }) {
+    return (
+        <kbd className="rounded-ds-sm border border-ds-border bg-ds-surface-subtle px-ds-1 font-mono text-ds-xs text-ds-content">
+            {children}
+        </kbd>
+    );
+}
+
 export function EnvelopeSidebar({
     creatorMode,
     isEditingTemplate,
@@ -26,101 +60,163 @@ export function EnvelopeSidebar({
     removeField,
     getIcon,
 }) {
+    const rawId = useId().replace(/:/g, '');
+    const recipientHeadingId = `envelope-recipient-heading-${rawId}`;
+    const deliveryLabelId = `envelope-delivery-label-${rawId}`;
+    const paletteHeadingId = `envelope-palette-heading-${rawId}`;
+    const placedHeadingId = `envelope-placed-heading-${rawId}`;
+    const uploadHelpId = `envelope-upload-help-${rawId}`;
+    const fileInputRef = useRef(null);
+
     return (
-        <div className="w-64 bg-white border-r flex flex-col z-10 shadow-lg shrink-0 overflow-y-auto">
+        <aside
+            aria-label="Envelope setup"
+            className="z-10 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-ds-border bg-ds-surface shadow-ds-lg"
+        >
             {/* Recipient Info (only in request mode) */}
             {creatorMode === 'request' && !isEditingTemplate && (
-                <div className="p-4 border-b">
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 tracking-wider">Recipient</label>
-                    <input
-                        type="text" placeholder="Name *"
-                        className="w-full mb-2 p-2 text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors"
-                        value={recipientName} onChange={e => setRecipientName(e.target.value)}
-                    />
-                    <input
-                        type="email" placeholder="Email"
-                        className="w-full mb-2 p-2 text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors"
-                        value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)}
-                    />
-                    <input
-                        type="tel" placeholder="Phone"
-                        className="w-full mb-2 p-2 text-sm border rounded-lg bg-gray-50 focus:bg-white transition-colors"
-                        value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)}
-                    />
+                <section aria-labelledby={recipientHeadingId} className="border-b border-ds-border p-ds-4">
+                    <h3
+                        id={recipientHeadingId}
+                        className="mb-ds-2 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary"
+                    >
+                        Recipient
+                    </h3>
+                    <Stack gap="sm">
+                        <FormField label="Name" required>
+                            <Input
+                                type="text"
+                                value={recipientName}
+                                onChange={e => setRecipientName(e.target.value)}
+                            />
+                        </FormField>
+                        <FormField label="Email">
+                            <Input
+                                type="email"
+                                value={recipientEmail}
+                                onChange={e => setRecipientEmail(e.target.value)}
+                            />
+                        </FormField>
+                        <FormField label="Phone">
+                            <Input
+                                type="tel"
+                                value={recipientPhone}
+                                onChange={e => setRecipientPhone(e.target.value)}
+                            />
+                        </FormField>
+                    </Stack>
+
                     {/* Delivery Method */}
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 tracking-wider">Delivery</label>
-                    <div className="grid grid-cols-4 gap-1">
-                        {[
-                            { key: 'email', icon: <Mail size={11} />, label: 'Email' },
-                            { key: 'sms', icon: <MessageSquare size={11} />, label: 'SMS' },
-                            { key: 'both', icon: <Send size={11} />, label: 'Both' },
-                            { key: 'copy', icon: <Copy size={11} />, label: 'Link' },
-                        ].map(opt => (
-                            <button
-                                key={opt.key}
-                                type="button"
-                                onClick={() => setDeliveryMethod(opt.key)}
-                                className={`flex flex-col items-center gap-0.5 p-1.5 rounded-lg text-[9px] font-bold border transition-all ${
-                                    deliveryMethod === opt.key
-                                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                        : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
-                                }`}
-                            >
-                                {opt.icon}
-                                {opt.label}
-                            </button>
-                        ))}
+                    <h3
+                        id={deliveryLabelId}
+                        className="mb-ds-1 mt-ds-4 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary"
+                    >
+                        Delivery
+                    </h3>
+                    <div role="group" aria-labelledby={deliveryLabelId} className="grid grid-cols-2 gap-ds-1">
+                        {DELIVERY_OPTIONS.map(opt => {
+                            const OptionIcon = opt.icon;
+                            const isSelected = deliveryMethod === opt.key;
+                            return (
+                                <button
+                                    key={opt.key}
+                                    type="button"
+                                    aria-pressed={isSelected}
+                                    onClick={() => setDeliveryMethod(opt.key)}
+                                    // Selection is carried by aria-pressed and the check icon,
+                                    // never by the border/background colour alone.
+                                    className={`flex min-h-11 items-center justify-center gap-ds-1 rounded-ds-lg border px-ds-2 text-ds-xs font-bold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                        isSelected
+                                            ? 'border-ds-action-primary bg-ds-status-info-bg text-ds-status-info-fg'
+                                            : 'border-ds-border bg-ds-surface text-ds-content-secondary hover:bg-ds-surface-subtle'
+                                    }`}
+                                >
+                                    {isSelected
+                                        ? <Check size={12} aria-hidden="true" />
+                                        : <OptionIcon size={12} aria-hidden="true" />}
+                                    {opt.label}
+                                </button>
+                            );
+                        })}
                     </div>
-                </div>
+                </section>
             )}
 
             {/* Semantic Field Palette */}
-            <div className="p-4 flex-1">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-3 tracking-wider">
+            <section aria-labelledby={paletteHeadingId} className="flex-1 p-ds-4">
+                <h3
+                    id={paletteHeadingId}
+                    className="mb-ds-3 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary"
+                >
                     {creatorMode === 'request' ? 'Fields' : 'Setup Fields'}
-                </label>
+                </h3>
                 {file && (
-                    <p className="text-[10px] text-gray-400 mb-3 leading-snug">
+                    <p className="mb-ds-3 text-ds-xs leading-snug text-ds-content-secondary">
                         Duplicate a placed field: select it on the PDF, then{' '}
-                        <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">Ctrl+C</kbd>
+                        <Kbd>Ctrl+C</Kbd>
                         {' / '}
-                        <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">⌘C</kbd>
+                        <Kbd>⌘C</Kbd>
                         , then{' '}
-                        <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">Ctrl+V</kbd>
+                        <Kbd>Ctrl+V</Kbd>
                         {' / '}
-                        <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">⌘V</kbd>
+                        <Kbd>⌘V</Kbd>
                         . Same size; repeats step to the right (wraps below).
                         {' '}
                         Over the PDF,{' '}
-                        <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">Ctrl</kbd>
+                        <Kbd>Ctrl</Kbd>
                         {' / '}
-                        <kbd className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono text-[9px]">⌘</kbd>
+                        <Kbd>⌘</Kbd>
                         {' + '}scroll zooms the document only (not the whole page).
                     </p>
                 )}
 
                 {!file ? (
-                    <div className="text-center p-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:border-blue-400 transition-colors">
-                        <p className="text-xs text-gray-400 mb-2 font-medium">Upload a PDF first</p>
-                        <input type="file" accept="application/pdf" onChange={handleFileChange} className="hidden" id="pdf-upload" />
-                        <label htmlFor="pdf-upload" className="px-3 py-1.5 bg-white border border-gray-300 rounded shadow-sm text-xs font-bold cursor-pointer hover:bg-gray-50 active:scale-95 transition-transform inline-block">Choose File</label>
+                    <div className="rounded-ds-xl border-2 border-dashed border-ds-border bg-ds-surface-subtle p-ds-4 text-center">
+                        <p id={uploadHelpId} className="mb-ds-2 text-ds-sm font-medium text-ds-content-secondary">
+                            Upload a PDF first
+                        </p>
+                        {/* Visually hidden rather than display:none so the control stays
+                            reachable; the approved Button is the visible trigger. */}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="application/pdf"
+                            onChange={handleFileChange}
+                            className="ds-visually-hidden"
+                            tabIndex={-1}
+                            aria-label="Choose a PDF file"
+                            aria-describedby={uploadHelpId}
+                            id="pdf-upload"
+                        />
+                        <Button
+                            type="button"
+                            size="sm"
+                            aria-describedby={uploadHelpId}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            Choose File
+                        </Button>
                     </div>
                 ) : (
-                    <div className="space-y-4">
+                    <div className="flex flex-col gap-ds-4">
                         {FIELD_CATEGORIES.map((category) => (
                             <div key={category.title}>
-                                <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{category.title}</h4>
-                                <div className="space-y-1">
+                                <h4 className="mb-ds-1 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">
+                                    {category.title}
+                                </h4>
+                                <div className="flex flex-col gap-ds-1">
                                     {category.items.map((item) => {
                                         const IconComp = item.icon;
                                         return (
                                             <button
                                                 key={item.templateId}
+                                                type="button"
                                                 onClick={() => addField(item.templateId)}
-                                                className={`w-full flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all text-left active:scale-[0.98] ${item.color}`}
+                                                aria-label={`Add ${item.label} field`}
+                                                className={`flex min-h-11 w-full items-center gap-ds-2 rounded-ds-lg border px-ds-3 py-ds-2 text-left transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${item.color}`}
                                             >
-                                                <IconComp size={15} />
-                                                <span className="text-xs font-semibold">{item.label}</span>
+                                                <IconComp size={15} aria-hidden="true" />
+                                                <span className="text-ds-xs font-semibold">{item.label}</span>
                                             </button>
                                         );
                                     })}
@@ -132,30 +228,59 @@ export function EnvelopeSidebar({
 
                 {/* Placed Fields List */}
                 {fields.length > 0 && (
-                    <div className="mt-4">
-                        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 tracking-wider">Placed ({fields.length})</label>
-                        <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                            {fields.map((f) => (
-                                <div
-                                    key={f.id}
-                                    onClick={() => setSelectedFieldId(f.id)}
-                                    className={`flex justify-between items-center p-2 border rounded-lg text-xs cursor-pointer transition-all ${
-                                        selectedFieldId === f.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-2 truncate">
-                                        <div className="text-gray-400 shrink-0">{getIcon(f.type)}</div>
-                                        <span className="font-bold truncate">{f.label}</span>
-                                        <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full shrink-0">P{f.page}</span>
-                                    </div>
-                                    <button onClick={(e) => { e.stopPropagation(); removeField(f.id); }} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"><X size={12} /></button>
-                                </div>
-                            ))}
-                        </div>
+                    <div className="mt-ds-4">
+                        <h4
+                            id={placedHeadingId}
+                            className="mb-ds-1 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary"
+                        >
+                            Placed ({fields.length})
+                        </h4>
+                        {/* Each row is a real button plus a sibling remove button, so the
+                            list no longer nests an interactive control inside a clickable
+                            div and both actions are keyboard reachable. */}
+                        <ul aria-labelledby={placedHeadingId} className="flex max-h-48 flex-col gap-ds-1 overflow-y-auto pr-1">
+                            {fields.map((f) => {
+                                const isSelected = selectedFieldId === f.id;
+                                return (
+                                    <li
+                                        key={f.id}
+                                        className={`flex items-center justify-between gap-ds-1 rounded-ds-lg border transition-colors ${
+                                            isSelected
+                                                ? 'border-ds-action-primary bg-ds-status-info-bg'
+                                                : 'border-ds-border bg-ds-surface-subtle'
+                                        }`}
+                                    >
+                                        <button
+                                            type="button"
+                                            aria-pressed={isSelected}
+                                            onClick={() => setSelectedFieldId(f.id)}
+                                            className="flex min-h-11 min-w-0 flex-1 items-center gap-ds-2 rounded-ds-lg px-ds-2 text-left text-ds-xs focus-visible:outline-none focus-visible:shadow-ds-focus"
+                                        >
+                                            <span className="shrink-0 text-ds-content-secondary" aria-hidden="true">
+                                                {getIcon(f.type)}
+                                            </span>
+                                            <span className="truncate font-bold text-ds-content">{f.label}</span>
+                                            <span className="shrink-0 rounded-ds-sm bg-ds-status-neutral-bg px-ds-1 text-ds-xs text-ds-content-secondary">
+                                                P{f.page}
+                                            </span>
+                                        </button>
+                                        <IconButton
+                                            label={`Remove ${f.label} on page ${f.page}`}
+                                            variant="ghost"
+                                            size="sm"
+                                            className="shrink-0"
+                                            onClick={(e) => { e.stopPropagation(); removeField(f.id); }}
+                                        >
+                                            <X size={12} aria-hidden="true" />
+                                        </IconButton>
+                                    </li>
+                                );
+                            })}
+                        </ul>
                     </div>
                 )}
-            </div>
-        </div>
+            </section>
+        </aside>
     );
 }
 
