@@ -21,6 +21,7 @@ import {
     PDF_VIEWPORT_WIDTH_DEFAULT,
     adjustPdfViewportWidth,
 } from '@features/signing/utils/envelopePdfZoom';
+import { Button } from '@/design-system/components';
 import { FIELD_TEMPLATES, getFieldIcon } from './components/envelope-creator/fieldDefinitions';
 import { FieldPropertiesPanel } from './components/envelope-creator/FieldPropertiesPanel';
 import { EnvelopeSidebar } from './components/envelope-creator/EnvelopeSidebar';
@@ -531,51 +532,63 @@ export default function EnvelopeCreator({
     // Show loading state while hydrating for Correct flow
     if (hydrating) {
         return (
-            <div className="flex flex-col h-screen bg-gray-100 items-center justify-center gap-3">
-                <Loader2 className="animate-spin text-blue-600" size={36} />
-                <p className="text-gray-500 font-medium text-sm">Loading document for editing...</p>
+            <div role="status" className="flex h-screen flex-col items-center justify-center gap-ds-3 bg-ds-canvas">
+                <Loader2 className="animate-spin text-ds-action-primary" size={36} aria-hidden="true" />
+                <p className="text-ds-sm font-medium text-ds-content-secondary">Loading document for editing...</p>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-screen bg-gray-100 font-sans">
+        <div className="flex h-screen flex-col bg-ds-canvas">
             {/* TOP BAR */}
-            <div className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm z-20 shrink-0">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
-                        {creatorMode === 'template' ? <FileText className="text-purple-600" /> : <UploadCloud className="text-blue-600" />}
+            <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-ds-3 border-b border-ds-border-subtle bg-ds-surface px-ds-6 py-ds-4 shadow-ds-xs">
+                <div className="flex flex-wrap items-center gap-ds-4">
+                    <h2 className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                        {creatorMode === 'template'
+                            ? <FileText className="text-ds-status-accent-fg" aria-hidden="true" />
+                            : <UploadCloud className="text-ds-action-primary" aria-hidden="true" />}
                         {isEditingTemplate ? 'Edit Template' : isEditingRequest ? 'Correct Document' : creatorMode === 'template' ? 'Create Template' : 'New Envelope'}
                     </h2>
                     {!isEditingRequest && !isEditingTemplate && (
-                        <div className="flex bg-gray-100 p-1 rounded-lg">
-                            <button
+                        /* Mode is a two-option toggle, so selection is exposed with
+                           aria-pressed and stated by the button label, never colour alone. */
+                        <div role="group" aria-label="Creator mode" className="flex gap-ds-1 rounded-ds-md bg-ds-surface-subtle p-ds-1">
+                            <Button
+                                variant={creatorMode === 'request' ? 'primary' : 'ghost'}
+                                size="sm"
+                                aria-pressed={creatorMode === 'request'}
                                 onClick={() => setCreatorMode('request')}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition ${creatorMode === 'request' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 One-off Send
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant={creatorMode === 'template' ? 'primary' : 'ghost'}
+                                size="sm"
+                                aria-pressed={creatorMode === 'template'}
                                 onClick={() => setCreatorMode('template')}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition ${creatorMode === 'template' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
                             >
                                 Save Template
-                            </button>
+                            </Button>
                         </div>
                     )}
                 </div>
-                <div className="flex gap-3">
-                    <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                    <button
+                <div className="flex flex-wrap gap-ds-3">
+                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                    <Button
+                        variant="primary"
                         onClick={handleSave}
                         disabled={loading}
-                        className={`px-6 py-2 text-white font-bold rounded-lg flex items-center gap-2 disabled:opacity-50 transition-all shadow-md
-                    ${creatorMode === 'template' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                        loading={loading}
                     >
-                        {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />}
+                        {!loading && <Save size={18} aria-hidden="true" />}
                         {isEditingTemplate ? 'Save Template Changes' : isEditingRequest ? 'Save Correction' : creatorMode === 'template' ? 'Save Template' : 'Send Document'}
-                    </button>
+                    </Button>
                 </div>
+                {/* Announce the in-flight save to assistive technology. */}
+                <p role="status" className="ds-visually-hidden">
+                    {loading ? 'Saving document, please wait…' : ''}
+                </p>
             </div>
 
             {/* 3-COLUMN LAYOUT */}
@@ -626,7 +639,7 @@ export default function EnvelopeCreator({
                 />
 
                 {/* RIGHT SIDEBAR: Field Properties Editor */}
-                <div className={`bg-white border-l shadow-lg shrink-0 overflow-y-auto transition-all duration-200 ${selectedFieldId ? 'w-80' : 'w-0 border-l-0'}`}>
+                <div className={`shrink-0 overflow-y-auto border-l bg-ds-surface shadow-ds-lg transition-all duration-200 motion-reduce:transition-none ${selectedFieldId ? 'w-80 border-ds-border-subtle' : 'w-0 border-l-0'}`}>
                     {selectedFieldId && (
                         <FieldPropertiesPanel
                             activeField={activeField}
