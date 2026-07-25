@@ -73,6 +73,23 @@ function renderPage() {
     return render(<UserProfilePage />);
 }
 
+/**
+ * Waits until the async Firestore profile load has flushed into the form.
+ *
+ * The Display Name textbox mounts before `getPortalUser` resolves, so waiting on
+ * the control alone let a Save click fire against pre-hydration state — a race
+ * that only surfaced under CI load. Every test that acts on loaded values waits
+ * on the values themselves.
+ */
+async function hydrated() {
+    const name = await screen.findByRole('textbox', { name: 'Display Name' });
+    await waitFor(() => {
+        expect(name).toHaveValue('Firestore Name');
+        expect(screen.getByRole('textbox', { name: 'Username' })).toHaveValue('fsuser');
+    });
+    return name;
+}
+
 async function fillPassword({ current = CURRENT_PASSWORD, next = NEW_PASSWORD, confirm = NEW_PASSWORD } = {}) {
     fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: current } });
     fireEvent.change(screen.getByLabelText('New Password'), { target: { value: next } });
@@ -162,7 +179,7 @@ describe('UserProfilePage — avatar upload', () => {
 
     it('rejects files 2 MB or larger before touching Storage', async () => {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
 
         const big = new File(['x'], 'big.png', { type: 'image/png' });
         Object.defineProperty(big, 'size', { value: 2 * 1024 * 1024 + 1 });
@@ -174,7 +191,7 @@ describe('UserProfilePage — avatar upload', () => {
 
     it('rejects non-image files', async () => {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
 
         const pdf = new File(['x'], 'doc.pdf', { type: 'application/pdf' });
         selectFile(pdf);
@@ -186,7 +203,7 @@ describe('UserProfilePage — avatar upload', () => {
     it('uploads to avatars/{uid}/{file.name} and updates Auth then Firestore', async () => {
         const { ref } = await import('firebase/storage');
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
 
         const file = new File(['x'], 'me.png', { type: 'image/png' });
         selectFile(file);
@@ -214,7 +231,7 @@ describe('UserProfilePage — avatar upload', () => {
         storageMocks.uploadBytes.mockRejectedValueOnce(new Error('network'));
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
 
         selectFile(new File(['x'], 'me.png', { type: 'image/png' }));
 
@@ -228,7 +245,7 @@ describe('UserProfilePage — avatar upload', () => {
 describe('UserProfilePage — profile save', () => {
     it('blocks an empty display name', async () => {
         renderPage();
-        const name = await screen.findByRole('textbox', { name: 'Display Name' });
+        const name = await hydrated();
         fireEvent.change(name, { target: { value: '' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
@@ -239,7 +256,7 @@ describe('UserProfilePage — profile save', () => {
     it('runs the username uniqueness query and saves the exact payload', async () => {
         const { where } = await import('firebase/firestore');
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
         await waitFor(() => {
@@ -259,7 +276,7 @@ describe('UserProfilePage — profile save', () => {
     it('rejects a username already used by another account', async () => {
         fsMocks.getDocs.mockResolvedValue(snapshot(['someone-else']));
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
         await waitFor(() => {
@@ -274,7 +291,7 @@ describe('UserProfilePage — profile save', () => {
         fsMocks.getDocs.mockRejectedValueOnce(new Error('permission-denied'));
         const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
         await waitFor(() => {
@@ -308,7 +325,7 @@ describe('UserProfilePage — profile save', () => {
         fsMocks.updateDoc.mockRejectedValueOnce(new Error('offline'));
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
         await waitFor(() => {
@@ -321,7 +338,7 @@ describe('UserProfilePage — profile save', () => {
 describe('UserProfilePage — email change', () => {
     async function openEmailEditor() {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         fireEvent.click(screen.getByRole('button', { name: 'Change Email' }));
         return screen.getByRole('group', { name: 'Change email address' });
     }
@@ -406,7 +423,7 @@ describe('UserProfilePage — email change', () => {
 describe('UserProfilePage — password change', () => {
     it('requires both current and new password', async () => {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
 
         expect(toastMocks.showError).toHaveBeenCalledWith(
@@ -416,7 +433,7 @@ describe('UserProfilePage — password change', () => {
 
     it('requires the confirmation to match', async () => {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         await fillPassword({ confirm: 'different' });
         fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
 
@@ -425,7 +442,7 @@ describe('UserProfilePage — password change', () => {
 
     it('requires at least six characters', async () => {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         await fillPassword({ next: 'a1b2', confirm: 'a1b2' });
         fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
 
@@ -434,7 +451,7 @@ describe('UserProfilePage — password change', () => {
 
     it('reauthenticates, updates the password, and resets the fields', async () => {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         await fillPassword();
         fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
 
@@ -461,7 +478,7 @@ describe('UserProfilePage — password change', () => {
         authFns.reauthenticateWithCredential.mockRejectedValueOnce(wrong);
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         await fillPassword();
         fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
         await waitFor(() =>
@@ -487,7 +504,7 @@ describe('UserProfilePage — sensitive data and accessibility', () => {
             vi.spyOn(console, 'error').mockImplementation(() => {}),
         ];
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         await fillPassword();
         fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
         await waitFor(() =>
@@ -512,7 +529,7 @@ describe('UserProfilePage — sensitive data and accessibility', () => {
 
     it('applies correct autocomplete attributes to sensitive fields', async () => {
         renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
 
         expect(screen.getByLabelText('Current Password')).toHaveAttribute('autocomplete', 'current-password');
         expect(screen.getByLabelText('New Password')).toHaveAttribute('autocomplete', 'new-password');
@@ -527,7 +544,7 @@ describe('UserProfilePage — sensitive data and accessibility', () => {
 
     it('has no accessibility violations', async () => {
         const { container } = renderPage();
-        await screen.findByRole('textbox', { name: 'Display Name' });
+        await hydrated();
         expect((await axe(container)).violations).toEqual([]);
     });
 });
