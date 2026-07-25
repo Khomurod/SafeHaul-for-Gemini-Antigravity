@@ -24,28 +24,42 @@ export const FIELD_TEMPLATES = {
     checkbox: { type: 'checkbox', required: false, label: 'Checkbox', readOnly: false, prefillPolicy: 'editable', defaultValue: '', fontSize: 'Auto' },
 };
 
+/**
+ * Palette-button tones, expressed with semantic design-system tokens instead of
+ * the previous hard-coded Tailwind palette. Only adjacent hues were merged
+ * (yellow+orange → warning, indigo+purple → accent), so the four visual groups —
+ * signature-style, date, signer info and data fields — stay distinct. These
+ * strings are consumed only by `EnvelopeSidebar`.
+ */
+const FIELD_TONE = {
+    warning: 'border-ds-status-warning-border bg-ds-status-warning-bg text-ds-status-warning-fg hover:bg-ds-surface-subtle',
+    success: 'border-ds-status-success-border bg-ds-status-success-bg text-ds-status-success-fg hover:bg-ds-surface-subtle',
+    info: 'border-ds-status-info-border bg-ds-status-info-bg text-ds-status-info-fg hover:bg-ds-surface-subtle',
+    accent: 'border-ds-status-accent-border bg-ds-status-accent-bg text-ds-status-accent-fg hover:bg-ds-surface-subtle',
+};
+
 export const FIELD_CATEGORIES = [
     {
         title: 'Standard Fields',
         items: [
-            { templateId: 'signature', label: 'Signature', icon: PenTool, color: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100' },
-            { templateId: 'initial', label: 'Initial', icon: Fingerprint, color: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100' },
-            { templateId: 'date_signed', label: 'Date Signed', icon: Calendar, color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
+            { templateId: 'signature', label: 'Signature', icon: PenTool, color: FIELD_TONE.warning },
+            { templateId: 'initial', label: 'Initial', icon: Fingerprint, color: FIELD_TONE.warning },
+            { templateId: 'date_signed', label: 'Date Signed', icon: Calendar, color: FIELD_TONE.success },
         ]
     },
     {
         title: 'Signer Info',
         items: [
-            { templateId: 'name', label: 'Name', icon: User, color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
-            { templateId: 'email_field', label: 'Email', icon: Mail, color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
-            { templateId: 'company', label: 'Company', icon: Building2, color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+            { templateId: 'name', label: 'Name', icon: User, color: FIELD_TONE.info },
+            { templateId: 'email_field', label: 'Email', icon: Mail, color: FIELD_TONE.info },
+            { templateId: 'company', label: 'Company', icon: Building2, color: FIELD_TONE.info },
         ]
     },
     {
         title: 'Data Fields',
         items: [
-            { templateId: 'text', label: 'Text', icon: Type, color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' },
-            { templateId: 'checkbox', label: 'Checkbox', icon: CheckSquare, color: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
+            { templateId: 'text', label: 'Text', icon: Type, color: FIELD_TONE.accent },
+            { templateId: 'checkbox', label: 'Checkbox', icon: CheckSquare, color: FIELD_TONE.accent },
         ]
     }
 ];

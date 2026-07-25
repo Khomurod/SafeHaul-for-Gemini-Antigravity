@@ -1,0 +1,85 @@
+// E2E coverage for the envelope creator's left sidebar. The creator is opened
+// through the Documents Center "Send One-off" action under the e2eEdoc mock, so
+// no real recipient, document or signing data is involved and no send is
+// triggered — the spec stops at the pre-upload state.
+//
+// The exact callbacks, delivery keys and palette template ids are covered by the
+// vitest suite in
+// src/features/signing/components/envelope-creator/EnvelopeSidebar.test.jsx.
+const { test, expect } = require('@playwright/test');
+const AxeBuilder = require('@axe-core/playwright').default;
+
+const URL = '/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock';
+
+async function openCreator(page) {
+  await page.goto(URL);
+  await expect(page.getByRole('heading', { level: 1, name: 'Documents Center' })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Send One-off' }).click();
+  await expect(page.getByRole('complementary', { name: 'Envelope setup' })).toBeVisible({ timeout: 20_000 });
+}
+
+test.describe('E-Doc envelope creator sidebar', () => {
+  test.describe.configure({ timeout: 90_000 });
+
+  test('exposes the sidebar as a labelled region with labelled recipient inputs', async ({ page }) => {
+    await openCreator(page);
+    const sidebar = page.getByRole('complementary', { name: 'Envelope setup' });
+
+    await expect(sidebar.getByRole('heading', { name: 'Recipient' })).toBeVisible();
+    await expect(sidebar.getByLabel(/^Name/)).toBeVisible();
+    await expect(sidebar.getByLabel('Email')).toBeVisible();
+    await expect(sidebar.getByLabel('Phone')).toBeVisible();
+
+    // Typing lands in the labelled control, not a placeholder-only input.
+    await sidebar.getByLabel(/^Name/).fill('Pat Example');
+    await expect(sidebar.getByLabel(/^Name/)).toHaveValue('Pat Example');
+  });
+
+  test('states the delivery selection without relying on colour', async ({ page }) => {
+    await openCreator(page);
+    const group = page.getByRole('group', { name: 'Delivery' });
+
+    await expect(group.getByRole('button', { name: 'Email' })).toHaveAttribute('aria-pressed', 'true');
+    await group.getByRole('button', { name: 'Both' }).click();
+    await expect(group.getByRole('button', { name: 'Both' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(group.getByRole('button', { name: 'Email' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('keeps the upload trigger reachable from the keyboard', async ({ page }) => {
+    await openCreator(page);
+    await expect(page.getByText('Upload a PDF first')).toBeVisible();
+
+    const choose = page.getByRole('button', { name: 'Choose File' });
+    await choose.focus();
+    await expect(choose).toBeFocused();
+  });
+
+  test('does not overflow the document at desktop/tablet/mobile', async ({ page }, testInfo) => {
+    const widths = testInfo.project.name.startsWith('mobile') ? [412] : [1440, 1024];
+    await page.setViewportSize({ width: widths[0], height: widths[0] === 412 ? 915 : 900 });
+    await openCreator(page);
+
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: width === 412 ? 915 : 900 });
+      const geometry = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+      }));
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewport);
+      await expect(page.getByRole('button', { name: 'Choose File' })).toBeVisible();
+    }
+  });
+
+  test('has no serious/critical or contrast violations in the sidebar', async ({ page }) => {
+    await openCreator(page);
+
+    const { violations } = await new AxeBuilder({ page })
+      .include('aside[aria-label="Envelope setup"]')
+      .analyze();
+    const serious = violations
+      .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+      .map((v) => `${v.id} [${v.impact}] x${v.nodes.length}`);
+    expect(serious).toEqual([]);
+    expect(violations.filter((v) => v.id === 'color-contrast')).toEqual([]);
+  });
+});
