@@ -33,6 +33,85 @@ async function placeField(page, paletteField = 'Text') {
   await expect(page.locator('.resize-handle').first()).toBeVisible({ timeout: 20_000 });
 }
 
+function sameBox(a, b) {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+/** Read the field's box once it has stopped changing between consecutive reads. */
+async function settledBox(field, page) {
+  let previous = await field.boundingBox();
+  for (let i = 0; i < 40; i += 1) {
+    await page.waitForTimeout(50);
+    const current = await field.boundingBox();
+    if (sameBox(current, previous)) return current;
+    previous = current;
+  }
+  return previous;
+}
+
+/**
+ * Press a key, wait for the field's geometry to actually change, then return the
+ * settled box.
+ *
+ * Reading `boundingBox()` straight after `keyboard.press` is a race: the handler
+ * updates state, React re-renders and react-draggable applies the transform, all
+ * asynchronously. A single read can land before any of that and report the old
+ * position — which is how this test reported "Expected: > 386, Received: 386",
+ * a zero-pixel move, on 1 of 4 local repeats even after the clamp fix.
+ *
+ * Waiting for a change also makes "the field did not move" a clear timeout
+ * against a stated expectation rather than an arithmetic surprise.
+ */
+async function pressAndMeasure(field, page, key, previousBox) {
+  await page.keyboard.press(key);
+  await expect(async () => {
+    expect(sameBox(await field.boundingBox(), previousBox)).toBe(false);
+  }).toPass({ timeout: 10_000 });
+  return settledBox(field, page);
+}
+
+/**
+ * Select a placed field and pin it to the page's top-left corner.
+ *
+ * Both keyboard-geometry assertions need a starting position with room to grow.
+ * The move handler clamps to `Math.max(0, …)` on the way up and left, and to
+ * `Math.min(100 - width, …)` on the way down and right — so a field the palette
+ * happened to drop against the bottom or right edge moves by *zero* when pressed
+ * that way. That is exactly how the move test failed in CI: three attempts
+ * measured deltas of 1.51 px, 1.49 px and finally 0 px, against a "baseline" that
+ * itself drifted from 5.86 px to 1.22 px between attempts.
+ *
+ * Pressing up/left more times than the page has percentage steps lands the field
+ * at exactly x=0, y=0 regardless of where it started, which makes every
+ * subsequent down/right press unclamped and the measurement meaningful.
+ */
+async function selectAndPinToOrigin(page) {
+  const field = page.getByRole('group', { name: /text field on page 1$/ });
+  await field.focus();
+  await expect(field).toBeFocused();
+  // Focusing selects the field, which opens the properties rail and re-centres
+  // the workbench. Measure only after that relayout, or the screen position
+  // moves for a reason that has nothing to do with a key press.
+  await expect(page.getByRole('group', { name: 'Field properties' })).toBeVisible();
+
+  for (let i = 0; i < 101; i += 1) {
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowLeft');
+  }
+
+  // Wait for the pinned position to stop changing rather than sleeping a fixed
+  // interval — react-draggable applies the transform asynchronously.
+  await settledBox(field, page);
+
+  // A page rendered too small makes a 1% step sub-pixel and the comparison
+  // meaningless, so assert the canvas is a usable size before measuring.
+  const pageBox = await page.locator('[data-page-num="1"]').first().boundingBox();
+  expect(pageBox.width).toBeGreaterThan(200);
+  expect(pageBox.height).toBeGreaterThan(200);
+
+  return field;
+}
+
 test.describe('E-Doc workbench close-out', () => {
   test.describe.configure({ timeout: 90_000 });
 
@@ -70,41 +149,36 @@ test.describe('E-Doc workbench close-out', () => {
   test('moves a placed field with the keyboard alone', async ({ page }) => {
     await openWorkbench(page);
     await placeField(page);
+    const field = await selectAndPinToOrigin(page);
 
-    const field = page.getByRole('group', { name: /text field on page 1$/ });
-    await field.focus();
-    await expect(field).toBeFocused();
-    // Focusing selects the field, which opens the properties rail and re-centres
-    // the workbench. Measure only after that relayout, or the screen x moves for
-    // a reason that has nothing to do with the key press.
-    await expect(page.getByRole('group', { name: 'Field properties' })).toBeVisible();
-    await page.waitForTimeout(400);
+    const origin = await settledBox(field, page);
+    const afterRight = await pressAndMeasure(field, page, 'ArrowRight', origin);
+    expect(afterRight.x).toBeGreaterThan(origin.x);
 
-    const before = await field.boundingBox();
-    await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('ArrowRight');
-    const after = await field.boundingBox();
-    expect(after.x).toBeGreaterThan(before.x);
+    // Shift moves further per press than a bare arrow (5% versus 1%). Both
+    // measurements are one press on the *same* axis: the earlier revision
+    // compared a single Shift+ArrowDown against two ArrowRight presses, so it
+    // was weighing a y-delta against an unrelated x-delta and calling the
+    // difference a step size.
+    const afterBareDown = await pressAndMeasure(field, page, 'ArrowDown', afterRight);
+    const bareStep = afterBareDown.y - afterRight.y;
+    expect(bareStep).toBeGreaterThan(0);
 
-    // Shift moves further per press than a bare arrow.
-    const beforeShift = await field.boundingBox();
-    await page.keyboard.press('Shift+ArrowDown');
-    const afterShift = await field.boundingBox();
-    expect(afterShift.y - beforeShift.y).toBeGreaterThan(after.x - before.x);
+    const afterShiftDown = await pressAndMeasure(field, page, 'Shift+ArrowDown', afterBareDown);
+    expect(afterShiftDown.y - afterBareDown.y).toBeGreaterThan(bareStep);
   });
 
   test('resizes a placed field with Alt and an arrow key', async ({ page }) => {
     await openWorkbench(page);
     await placeField(page);
 
-    const field = page.getByRole('group', { name: /text field on page 1$/ });
-    await field.focus();
-    await expect(page.getByRole('group', { name: 'Field properties' })).toBeVisible();
-    await page.waitForTimeout(400);
-    const before = await field.boundingBox();
-    await page.keyboard.press('Alt+ArrowRight');
-    await page.keyboard.press('Alt+ArrowRight');
-    const after = await field.boundingBox();
+    // Pinned for the same reason as the move test: Alt+ArrowRight grows width
+    // through `Math.min(100 - field.x, …)`, so a field sitting near the right
+    // edge cannot grow and the assertion would compare a width to itself.
+    const field = await selectAndPinToOrigin(page);
+
+    const before = await settledBox(field, page);
+    const after = await pressAndMeasure(field, page, 'Alt+ArrowRight', before);
     expect(after.width).toBeGreaterThan(before.width);
   });
 
