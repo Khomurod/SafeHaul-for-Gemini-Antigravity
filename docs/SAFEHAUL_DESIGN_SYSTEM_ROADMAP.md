@@ -1777,7 +1777,7 @@ The reverse directions are prohibited.
     exception, and the `CompanyCampaignsPage` fallback is tokenized. No Campaigns
     file remains on legacy interface styling.
 
-- [~] In progress — E-docs, driver dossier, and verification workflows.
+- [~] In progress — E-docs (**complete**), driver dossier, and verification workflows.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
     employment verification, uploads, previews, and audit behavior pass.
   - [x] Migrate the E-Docs envelope history table (`EnvelopeHistory`) — the
@@ -4303,6 +4303,57 @@ all of them; sub-slices A–D must not touch any of that logic at all.
 
 ---
 
+### E-Docs final audit — area complete (2026-07-25)
+
+- Baseline: `main` at `954976b` (Merge PR #111 — PDF workbench close-out), all
+  eight lanes green, clean tree.
+- **Debt 3 closed — signing-surface axe findings.** The non-blocking `@a11y`
+  public signing room journey reported `color-contrast x1` and `label x3`. Both
+  were reproduced directly against the running app and fixed:
+  - *Contrast.* The "Finish & Submit" CTA used `bg-green-600` with white 14 px
+    bold text, measured at **3.29:1** against a 4.5:1 requirement. Both the
+    desktop and mobile instances now use `bg-ds-status-success-fg`
+    (green-800, ≈6.5:1), which fixes the ratio while keeping the button's green
+    identity rather than restyling the signer's primary action.
+  - *Missing names.* The signer's date input and both checkbox overlays had **no
+    accessible name at all** — they are absolutely positioned over the PDF, so
+    there is nowhere to put a visible label, and a signer using assistive
+    technology could not tell which box they were ticking. All three (plus the
+    text input, for consistency) now take `aria-label` from the field's own
+    label, with a `<type> field` fallback so the name is never empty.
+  - Re-measured against the running signing room: **zero serious or critical
+    violations**, down from four.
+- **Repository-wide E-Docs sweep.** Across all eleven E-Docs surfaces —
+  `DocumentsManager`, `TemplatesPanel`, `SendTemplateModal`, `EnvelopeCreator`,
+  `EnvelopeHistory`, `EnvelopeSidebar`, `FieldPropertiesPanel`,
+  `PdfFieldWorkbench`, `ResizableDraggableField`, `fieldDefinitions` and the
+  shared `DateTripletField`: **no 9/10/11 px interface text, no raw hexadecimal
+  colours, and no legacy Tailwind palette classes remain** (verified by grep, not
+  by inspection).
+- **Control audit.** Exactly three raw `<button>` groups remain in E-Docs, each
+  now carrying a precise in-code exception *and* a tracked design-system gap:
+  1. the Documents Center tablist (no approved Tabs primitive);
+  2. the envelope creator's eight field-palette buttons (no toned `Button`
+     variant, and the tone is the legend for the PDF overlay colours);
+  3. the overlay's ~14 px corner remove badge (no compact icon-button size; the
+     approved primitive's min-height would overflow a field whose minimum size is
+     8 px).
+  Four native checkboxes remain under the previously recorded Checkbox gap. A
+  test asserts the palette exception covers exactly eight controls and nothing
+  else, so a new raw button cannot appear unnoticed.
+- **E-Docs is complete.** Every interactive surface consumes approved primitives
+  and semantic tokens; every remaining exception is documented in code, recorded
+  as a design-system gap, and retires when the missing primitive lands.
+- Verification: full frontend suite green, signing suites 255 tests passing, the
+  E-Doc Chromium/Mobile Chrome specs green, lint, typecheck, production build and
+  `git diff --check` clean.
+- Not claimed: the signing room's wider presentation is still legacy — this audit
+  fixed its accessibility defects, not its styling. `SigningRoom` remains an
+  unmigrated surface tracked under Phase 13's signing item, and no part of this
+  entry claims otherwise.
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
@@ -4686,7 +4737,12 @@ feature-owned WAI-ARIA composition), and a **toned/status `Button` variant**
 envelope creator's eight field-palette buttons stay a documented feature-owned
 composition — their status tone is the legend for the field-type colours
 `ResizableDraggableField` paints on the PDF, and flattening them to `secondary`
-would break that pairing) stay independently tracked. All public token
+would break that pairing), and a **compact icon-button size** (currently missing:
+the approved `IconButton`'s smallest size carries a min-height and padding that
+would overflow the envelope creator's ~14 px corner remove badge, which sits on a
+field whose minimum size is 8 px, so that one control stays a documented
+feature-owned composition with an accessible name, focus ring and `--ds-*`
+tokens) stay independently tracked. All public token
 screens (`/verify/:token`, `/review-change/:token`, `/sandbox/transfer-success`)
 are migrated. The SMS number-assignment NO-GO and the new Integrations
 tenant-binding NO-GO are unchanged.
