@@ -70,6 +70,23 @@
   background: var(--ds-color-action-danger-hover);
 }
 
+/*
+ * Tone overlays the variant's colours while the variant keeps owning shape,
+ * size, focus and loading. The `[data-variant]` attribute is matched as well as
+ * `[data-tone]` so these rules outrank `.ds-button[data-variant='primary']`;
+ * a single-class utility such as `bg-ds-status-success-fg` cannot, which is why
+ * feature-side background overrides on a Button were silently dead CSS.
+ */
+.ds-button[data-tone='success'][data-variant] {
+  border-color: transparent;
+  background: var(--ds-color-action-success);
+  color: var(--ds-color-content-inverse);
+}
+
+.ds-button[data-tone='success'][data-variant]:hover:not(:disabled) {
+  background: var(--ds-color-action-success-hover);
+}
+
 .ds-button[data-full-width='true'] {
   width: 100%;
 }

@@ -1,8 +1,27 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { describe, expect, it } from 'vitest';
 import { Button, IconButton } from './Button';
+
+const BUTTON_CSS = readFileSync(path.join(__dirname, 'Button.css'), 'utf8');
+
+/**
+ * Counts the class and attribute selectors in a rule, which is the middle
+ * (`b`) component of CSS specificity. That is the only component in play here:
+ * these rules use no ids and no element selectors.
+ */
+function classAndAttributeCount(selector) {
+  return (selector.match(/\.[\w-]+|\[[^\]]+\]/g) || []).length;
+}
+
+function selectorFor(declaration) {
+  const match = BUTTON_CSS.match(new RegExp(`([^{}]+)\\{[^}]*${declaration}`));
+  if (!match) throw new Error(`No rule found declaring ${declaration}`);
+  return match[1].trim();
+}
 
 describe('Button', () => {
   it('uses native button behavior and exposes loading state', () => {
@@ -26,5 +45,58 @@ describe('Button', () => {
       </div>,
     );
     expect((await axe(container)).violations).toEqual([]);
+  });
+});
+
+describe('Button tone', () => {
+  it('carries no tone attribute by default', () => {
+    render(<Button variant="primary">Continue</Button>);
+    expect(screen.getByRole('button')).not.toHaveAttribute('data-tone');
+  });
+
+  it('marks a success-toned button without disturbing its variant or size', () => {
+    render(<Button variant="primary" tone="success" size="lg">Finish</Button>);
+    const button = screen.getByRole('button', { name: 'Finish' });
+    expect(button).toHaveAttribute('data-tone', 'success');
+    expect(button).toHaveAttribute('data-variant', 'primary');
+    expect(button).toHaveAttribute('data-size', 'lg');
+  });
+
+  it('rejects an unsupported tone rather than rendering an unstyled button', () => {
+    expect(() => render(<Button tone="chartreuse">Finish</Button>))
+      .toThrow(/Unsupported Button tone: chartreuse/);
+  });
+
+  it('still exposes loading state when toned', () => {
+    render(<Button variant="primary" tone="success" loading>Finish</Button>);
+    const button = screen.getByRole('button', { name: 'Finish' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('has no accessibility violations when toned', async () => {
+    const { container } = render(<Button variant="primary" tone="success">Finish</Button>);
+    expect((await axe(container)).violations).toEqual([]);
+  });
+
+  /*
+   * Regression guard for the P2 raised in review on PR #114. The green submit
+   * treatment was previously applied with a `bg-ds-status-success-fg` utility,
+   * which has one class and therefore loses to Button's own two-selector
+   * variant rule: the built CSS kept the blue background and blue hover, so a
+   * documented "visual exception" was in fact dead code. The tone rule must
+   * outrank the variant rule for the capability to mean anything.
+   */
+  it('defines the success tone at higher specificity than the primary variant', () => {
+    const tone = selectorFor('background: var\\(--ds-color-action-success\\)');
+    const variant = selectorFor('background: var\\(--ds-color-action-primary\\)');
+    expect(classAndAttributeCount(tone)).toBeGreaterThan(classAndAttributeCount(variant));
+  });
+
+  it('overrides the variant hover colour too', () => {
+    const toneHover = selectorFor('background: var\\(--ds-color-action-success-hover\\)');
+    const variantHover = selectorFor('background: var\\(--ds-color-action-primary-hover\\)');
+    expect(toneHover).toContain(':hover');
+    expect(classAndAttributeCount(toneHover)).toBeGreaterThan(classAndAttributeCount(variantHover));
   });
 });

@@ -29,6 +29,11 @@
   --ds-color-action-secondary-hover: var(--ds-color-slate-100);
   --ds-color-action-danger: var(--ds-color-red-600);
   --ds-color-action-danger-hover: var(--ds-color-red-700);
+  /* Solid success action. Green 700 measures ~5.0:1 against inverse content,
+     so it is safe for the button label; the lighter status-success-fg pairing
+     is for text/borders on a tinted surface, not a solid fill. */
+  --ds-color-action-success: var(--ds-color-green-700);
+  --ds-color-action-success-hover: var(--ds-color-green-800);
 
   /* Generic semantic states; features provide the domain label. */
   --ds-color-status-info-bg: var(--ds-color-blue-100);
