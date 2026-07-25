@@ -3769,6 +3769,90 @@ Apply checks proportionally, but never claim an unrun check:
 
 ---
 
+### Envelope creator sidebar completion log (GO)
+
+- Date: 2026-07-25. Slice C of the owner-sequenced E-Docs close-out (C
+  `EnvelopeSidebar` → D `DateTripletField` → E `ResizableDraggableField` → F
+  `PdfFieldWorkbench` + final `EnvelopeCreator` close-out).
+- Starting baseline: `main` at `4e0375c` (Merge PR #101 — Documents Center tabs
+  and TemplatesPanel), all eight lanes green, local equal to `origin/main`, clean
+  tree.
+- Scope: `src/features/signing/components/envelope-creator/EnvelopeSidebar.jsx`,
+  plus the `color` strings in the sibling `fieldDefinitions.jsx` — those strings
+  are consumed **only** by this sidebar (verified by grep), so they are part of
+  its presentation.
+- Go/no-go decision: **GO.** The sidebar is a pure props-only component: it owns
+  no state, no effect, no Firestore call and no upload logic. Every callback has
+  a fixed argument shape — `setRecipientName/Email/Phone(e.target.value)`,
+  `setDeliveryMethod(opt.key)`, `handleFileChange(event)`,
+  `addField(item.templateId)`, `setSelectedFieldId(f.id)`, `removeField(f.id)`,
+  `getIcon(f.type)` — and no external module references any of its internals
+  (`#pdf-upload`, "Choose File", "Placed (" all had zero references outside the
+  file). Upload validation, the 20 MB ceiling that must match `storage.rules`,
+  and all field geometry stay in `EnvelopeCreator`.
+- Preserved contracts: the recipient block still renders only when
+  `creatorMode === 'request' && !isEditingTemplate`; the three inputs keep their
+  `text`/`email`/`tel` types and report the raw input value; the four delivery
+  options keep their exact keys and order (`email`, `sms`, `both`, `copy`) and
+  labels (Email, SMS, Both, Link); the palette heading is still `Fields` in
+  request mode and `Setup Fields` otherwise; the shortcut hint still appears only
+  once a file exists; the file input keeps `accept="application/pdf"` and its
+  `onChange`; the palette still renders `FIELD_CATEGORIES` in order and calls
+  `addField` with the exact `templateId`; the placed list still appears only when
+  `fields.length > 0`, keeps the `Placed (n)` count, the `P{page}` marker and the
+  array order, and removal still stops propagation so it never also selects.
+- Accessibility fixes: every 9 px and 10 px class is gone; the three recipient
+  inputs have real programmatic labels instead of placeholder-only names; the
+  delivery group is a labelled `role="group"` whose selection is carried by
+  `aria-pressed` plus a check icon rather than colour; the placed rows were
+  clickable `div`s containing a nested button — they are now a real row button
+  plus a sibling named `IconButton` (`Remove <label> on page <n>`), so nothing
+  nests interactive controls and both actions are keyboard reachable; palette
+  buttons gained `Add <label> field` names and a 44 px activation height; and the
+  file input moved from `display:none` (unreachable) to the approved
+  visually-hidden input + `Button` trigger already used by the branding upload.
+- Palette tones: the hard-coded Tailwind palette moved to semantic tokens. Only
+  adjacent hues were merged (yellow+orange → warning, indigo+purple → accent), so
+  the four visual groups — signature-style, date, signer info and data fields —
+  stay distinct.
+- Focused tests: 38 in `EnvelopeSidebar.test.jsx` (mode-dependent visibility,
+  input types/values/required marking and the exact change payloads, all four
+  delivery keys and the pressed state, the pre-upload state with a reachable
+  input and a button that opens it, `handleFileChange` forwarding, the hint
+  gating, the mode-specific palette heading, every category/item in order with
+  exact `templateId`s, no legacy palette classes, the placed-list count/label/
+  page/selection/removal contracts, no nested interactive controls, no 9–10 px
+  text, no raw hex, the retained `w-64` and scroll behaviour, and `vitest-axe`
+  across the pre-upload, populated and template-mode states).
+- E2E: `e2e/edoc-envelope-sidebar.spec.cjs`, 10 passed on Chromium + Mobile
+  Chrome (labelled complementary region, labelled inputs accepting typed text,
+  delivery `aria-pressed` switching, a keyboard-focusable upload trigger, no
+  document overflow at 1440/1024/412, scoped real-browser axe with no
+  serious/critical or contrast violations). The creator is reached through the
+  Documents Center "Send One-off" action under the e2eEdoc mock and the spec
+  stops before any upload or send.
+- Existing regressions: 42 E-Doc checks passed on Chromium + Mobile Chrome
+  (`edoc-recruiter-send-and-sign`, `edoc-recruiter-send-flow`,
+  `edoc-documents-tabs-and-templates`, `edoc-envelope-history`,
+  `guest-post-application-edoc`).
+- Full frontend suite: 110 files / 1086 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their environment guard. Coverage
+  gate passed at 35.75% statements / 33.01% branches / 35.71% functions / 36.52%
+  lines. Frontend lint 0 errors, typecheck, production build and
+  `git diff --check` passed, and every new token utility was confirmed emitted in
+  `dist/assets/main-*.css`.
+- Measured responsive check: the creator's document width equalled the viewport
+  at 1440×900, 1024×768 and 412×915, with the 256 px sidebar and its upload
+  trigger visible at every width.
+- Privacy: all fixtures are artificial — `pat@example.test`, `alex@example.test`
+  and fictional `555-0142`/`555-0175` numbers. No real recipient, document or
+  signing information appears, and nothing is snapshotted.
+- Backend/rules: untouched. No Cloud Function, callable, Firestore rule or
+  Storage rule changed, and the 20 MB upload ceiling that must stay in lock-step
+  with `isValidFile` in `storage.rules` was not moved.
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
@@ -4072,11 +4156,22 @@ argument shape are unchanged — and a test proves switching tabs performs no
 Firestore write, callable or navigation. The design system still has no approved
 Tabs or Checkbox primitive, so both remain documented feature-owned compositions.
 
-The remaining E-Docs slices are **`SendTemplateModal`** (the send/driver-picker
-dialog, delivery-method controls and prefill inputs) and **`EnvelopeCreator` with
-its PDF workbench components** (field placement, coordinates, zoom and gestures —
-high risk; the pre-existing non-blocking signing-room axe findings belong with
-it). Each needs its own audit and must not share a diff with the other.
+The **envelope creator sidebar** (`EnvelopeSidebar`) was then migrated and
+verified on 2026-07-25 (GO; completion log in section 6) as slice C of the
+owner-sequenced close-out: the recipient inputs gained real labels, the delivery
+options became a labelled `aria-pressed` group with a check icon, the placed-field
+rows stopped being clickable `div`s wrapping a nested button, the palette buttons
+gained `Add <label> field` names and semantic tone tokens, the file input moved
+from `display:none` to the approved visually-hidden input + `Button` trigger, and
+every 9–10 px class is gone — while the request-mode gating, the four delivery
+keys, the palette `templateId`s, the `Placed (n)` list contracts and every
+callback argument shape are unchanged.
+
+The remaining E-Docs slices are **`DateTripletField`** (D), **
+`ResizableDraggableField`** (E), **`PdfFieldWorkbench` and the final
+`EnvelopeCreator` close-out** (F), and **`SendTemplateModal`**. Each needs its own
+audit and must not share a diff with another. The pre-existing non-blocking
+signing-room axe findings belong with the workbench/creator work.
 
 The **sandbox application** screen remains tied to the
 public-application migration. The Phase 3 link-style Button variant (Login
