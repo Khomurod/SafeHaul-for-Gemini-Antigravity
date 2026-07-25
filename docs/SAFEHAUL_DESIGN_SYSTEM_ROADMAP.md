@@ -3772,9 +3772,9 @@ getBoundingClientRect|xPercent|yPercent|zoom|scale|Document|Page`) per file:
 | --- | --- | --- |
 | `EnvelopeCreator.jsx` shell (top bar, hydrating screen, layout wrapper) | 0 in the shell region | **A — done 2026-07-25** |
 | `FieldPropertiesPanel.jsx` | 0 | **B — done 2026-07-25** |
-| `fieldDefinitions.jsx` | 0 | folded into B (definitions/icons only) |
-| `EnvelopeSidebar.jsx` | 3 | C |
-| `DateTripletField.jsx` (shared) | 0 geometry, but legacy selects + raw palette | D — closes the gap recorded on PR #102 |
+| `fieldDefinitions.jsx` | 0 | definitions/icons only; its palette-`color` strings are consumed solely by the sidebar and moved with **C — done 2026-07-25** |
+| `EnvelopeSidebar.jsx` | 3 | **C — done 2026-07-25** |
+| `DateTripletField.jsx` (shared) | 0 geometry, but legacy selects + raw palette | **D — done 2026-07-25**; closes the gap recorded on PR #102 |
 | `ResizableDraggableField.jsx` | 7 (drag/resize) | E — high risk |
 | `PdfFieldWorkbench.jsx` | 12 (PDF render, zoom, page refs, coordinates) | F — highest risk |
 
@@ -3951,6 +3951,10 @@ all of them; sub-slices A–D must not touch any of that logic at all.
   blanket "SendTemplateModal is migrated" claim. Migrating `DateTripletField` to
   the approved `Select`/token contract is tracked here as its own small slice and
   should be scheduled alongside or before the remaining `EnvelopeCreator` work.
+  **Closed 2026-07-25 by sub-slice D** (completion log below): `DateTripletField`
+  now consumes the approved `Select` and `FieldMessage` with `--ds-*` tokens, so
+  the nested control inside `SendTemplateModal` is no longer an exception and the
+  dialog is migrated without qualification.
 - **Review follow-up — quick-select rows now use the approved `Button`.** The
   first published revision composed each lead row as a local `<button>` owning
   its own sizing, focus and hover styling. Review flagged that as a competing
@@ -4067,6 +4071,69 @@ all of them; sub-slices A–D must not touch any of that logic at all.
 - Backend/rules: untouched. No Cloud Function, callable, Firestore rule or
   Storage rule changed, and the 20 MB upload ceiling that must stay in lock-step
   with `isValidFile` in `storage.rules` was not moved.
+
+---
+
+### Shared date-triplet field completion log (GO)
+
+- Date: 2026-07-25. Sub-slice D of the E-Docs close-out.
+- Starting baseline: `main` at `f9bfcf4` (Merge PR #105 — envelope creator
+  sidebar), local equal to `origin/main`, clean tree.
+- Scope: `src/shared/components/form/DateTripletField.jsx` only. The sibling
+  `MonthYearField.jsx` shares the same legacy pattern but was **not** in this
+  slice and stays open — it is not an E-Docs surface.
+- Go/no-go decision: **GO**, after auditing all seven consumers (six
+  driver-application steps — `Step1_Contact`, `Step3_License`, `Step4_Violations`,
+  `Step5_Accidents`, `Step6_Employment`, `DynamicQuestionsStep` — plus
+  `SendTemplateModal`) and every prop. The component's public surface is
+  `label`, `idPrefix`, `name`, `value`, `onChange(name, isoOrEmpty)`, `required`,
+  `helpText`, `minYear`, `maxYear`, `maxToday`; the date logic is
+  self-contained and fully testable, and no consumer reaches inside it. One hard
+  constraint was found and honoured: `e2e/public-application.spec.cjs` selects
+  `#${idPrefix}-month`, `#${idPrefix}-day` and `#${idPrefix}-year` directly, so
+  those element ids are a frozen contract rather than incidental markup.
+- Preserved contracts (logic untouched, line for line): partial selections stay
+  local so parts can be chosen in any order; the parent is emitted only once all
+  three parts exist; walking a complete date back to incomplete clears the parent;
+  the all-empty branch reports `''`; `buildIsoDate` zero-pads; day values clamp to
+  the month length (including leap February); `maxToday` caps the year list, hides
+  later months in the current year, limits days to today in the current month, and
+  pulls a stored later date back to the cap when the year becomes the current year;
+  the default year range is `minYear` through fifteen years ahead; `required` still
+  reaches all three selects.
+- Presentation and accessibility: the three `<select>`s became approved `Select`
+  controls (`ds-form-control`), `helpText` became a `FieldMessage` associated to
+  the group through `aria-describedby`, and every legacy class
+  (`border-gray-300`, `text-gray-700`, `text-gray-500`, `focus:ring-blue-500`,
+  `text-red-500`) is gone. The three dropdowns are now wrapped in a
+  `role="group"` labelled by the field name, so the name is announced once
+  instead of three times, and each control's own name is composed from it
+  ("Date of Birth month") rather than a bare "Month". The required marker pairs
+  its asterisk with an sr-only "required" instead of relying on red text, and the
+  label-less variant keeps its "Required date" group name.
+- Focused tests: 31 in `DateTripletField.test.jsx` — the frozen element ids, the
+  group and composed control names, the label-less fallback, the required marker,
+  help-text association, all six emit rules, hydration from and clearing by the
+  parent, day clamping for 30-day and leap/non-leap February months, the day
+  option count, the three year-range variants, all five `maxToday` behaviours,
+  the approved control class with no legacy palette or raw hex, no 9–10 px text,
+  and `vitest-axe` in three states. Time is frozen with fake timers so the
+  `maxToday` assertions are deterministic.
+- Consumer regressions: `public-application` (both guest submission paths),
+  `guest-application-intake` and `edoc-send-template-modal` — 23 passed on
+  Chromium + Mobile Chrome with 3 intentional viewport-specific skips. The
+  public-application spec exercises the frozen ids directly, so it is the
+  strongest evidence the id contract held.
+- Full frontend suite: 114 files / 1219 tests passed; 2 files / 48
+  emulator-dependent rules tests skipped by their guard. Coverage gate passed at
+  37.38% statements / 38.18% lines. Frontend lint 0 errors, typecheck, production
+  build and `git diff --check` passed.
+- No E2E spec was added for this slice: the component has no route of its own, and
+  its browser behaviour is already covered end-to-end by the public-application
+  wizard specs that drive the real selects. Recorded rather than papered over.
+- Privacy: all fixtures are artificial dates; no applicant, recipient or document
+  data appears and nothing is snapshotted.
+- Backend/rules: untouched.
 
 ---
 
@@ -4397,8 +4464,18 @@ input + `Button` trigger, and every 9–10 px class is gone — while the
 request-mode gating, the four delivery keys, the palette `templateId`s, the
 `Placed (n)` list contracts and every callback argument shape are unchanged.
 
-Sub-slices **D (`DateTripletField`, which also closes the exception recorded on
-PR #102)**, **E (`ResizableDraggableField`)** and **F (`PdfFieldWorkbench`)**
+**Sub-slice D (`DateTripletField`)** is also complete, migrated and verified on
+2026-07-25 (GO; completion log in section 6): the shared month/day/year control
+now consumes the approved `Select` and `FieldMessage` with `--ds-*` tokens, the
+three dropdowns are wrapped in a `role="group"` named by the field so the name is
+heard once, each control's own name is composed from it ("Date of Birth month")
+instead of a bare "Month", and the required marker pairs its asterisk with an
+sr-only "required" — while every emit, clamp and `maxToday` rule and the frozen
+`${idPrefix}-month|day|year` element ids are unchanged. This closes the nested
+control exception recorded on PR #102, so `SendTemplateModal` is now migrated
+without qualification.
+
+Sub-slices **E (`ResizableDraggableField`)** and **F (`PdfFieldWorkbench`)**
 remain open. A responsive gap is recorded against F: the creator's fixed
 three-column layout clips the properties rail below roughly 600 px, which
 predates the migration and is not owned by sub-slice B or C (the sidebar's own
