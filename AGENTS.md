@@ -99,4 +99,25 @@ real time. None were code defects; all were tooling mistakes.
 
 Also avoid editing files that are in the module graph while a Playwright suite is
 running: the dev server hot-reloads and the in-flight tests can fail spuriously.
+
+### CI Playwright concurrency: `workers: 1` is deliberate — do not raise it casually
+
+`playwright.config.cjs` pins `workers: process.env.CI ? 1 : undefined` with
+`retries: 2`. That is the main reason the `frontend-quality` lane takes ~9
+minutes, and raising it to 2 is a tempting way to halve that. It was evaluated on
+2026-07-25 and **skipped**, because the available evidence points the other way:
+
+- Two Playwright suites sharing the port-5000 dev server produced **14 spurious
+  failures** (170–320 ms each). That is the `reuseExistingServer` hazard in rule 1
+  above, and it is the same shared-server class of problem more workers invite.
+- At the local default (more than one worker), `guest-post-application-edoc`
+  **timed out at 120 s** waiting for a driver-wizard label, then passed in **31 s**
+  when re-run alone on the same commit. A contention-induced flake, not a code
+  defect — but indistinguishable from one in a CI log.
+
+Honest limitation: this is suggestive, not conclusive. Proving `workers: 2` safe
+needs repeated full ~27-minute runs demonstrating no shared-server, ordering or
+flake problems, plus a check of the runner's actual CPU allocation. Until someone
+does that work, the slower-but-trustworthy setting stands. **A green single run
+is not sufficient evidence** — the failure mode is intermittent by nature.
 <!-- /safehaul-design-system -->
