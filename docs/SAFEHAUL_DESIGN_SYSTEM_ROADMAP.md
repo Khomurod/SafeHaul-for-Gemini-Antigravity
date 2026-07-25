@@ -4362,7 +4362,7 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
 | Surface | Lines | Slice |
 | --- | --- | --- |
 | `StatusScreens.jsx` — loading, error, voided, success, ESIGN consent | 144 | **1 — done 2026-07-25** |
-| `SigningRoom.jsx` — shell, header, progress, zoom, PDF surface, navigation, submission | 632 | 2 |
+| `SigningRoom.jsx` — shell, header, progress, zoom, PDF surface, navigation, submission | 632 | **2 — done 2026-07-25** |
 | `SignerField.jsx`, `SignerFieldOverlay.jsx`, `SignatureSheet.jsx` — the five field types | 317 | 3 |
 | Final audit, roadmap, grep sweep | — | 4 |
 
@@ -4440,6 +4440,55 @@ full at `main` `991966e` and divided into the fewest reviewable slices:
   still read "In progress" and claimed `ResizableDraggableField` and
   `PdfFieldWorkbench` were legacy. Raised as P2 in review on #112 and reconciled
   here so the permanent record states one status.
+
+---
+
+### Signing room shell completion log (GO) — slice 2
+
+- Date: 2026-07-25. Baseline `main` `2d32aa9` (Merge PR #113 — status screens),
+  all eight lanes green, clean tree.
+- Scope: the presentation of `src/features/signing/SigningRoom.jsx`. The field
+  overlays and the signature sheet remain legacy and are slice 3.
+- Go/no-go: **GO.** The risky behaviour is concentrated in helpers and hooks that
+  this slice does not touch, so the migration is confined to classes, control
+  primitives and announcements.
+- Frozen and verified unchanged: the fit-width computation and its
+  `MAX_FIT_WIDTH`/`MIN_FIT_WIDTH` caps; `renderedWidth`; the pinch-zoom hook and
+  `clampSignerZoom`; the `pageAspects` map and the explicit per-page
+  width/height that keep overlay anchors stable while canvases re-render after a
+  zoom commit; the `renderedPages` gate that keeps overlays inert until a page has
+  painted; `ensureFieldVisible` and `scrollToField`; the auto-zoom bump for small
+  focused fields (`MIN_COMFORTABLE_FIELD_PX`, `AUTO_ZOOM_MAX`); the `docReloadKey`
+  retry that clears `numPages`/`renderedPages`; `100dvh` with the `h-screen`
+  fallback and both safe-area insets; the draft write/clear helpers; and the
+  submission path with `markRequestSigned`/`readSigningReturnPath`.
+- Migrated: shell, header and scroller to `--ds-*` tokens; the progress chip to a
+  `role="status"` so the remaining-field count is **announced** rather than only
+  colour-coded; the zoom controls to a labelled `role="group"` of approved
+  `IconButton`s; both submit CTAs, the desktop jump pill, the mobile "Next field"
+  action and the document-error retry to approved `Button`s; the document-error
+  card to `Card` + `StatusMedallion` + `role="alert"`; and the page-render and
+  document-loading placeholders to announced `role="status"` regions. The bouncing
+  jump pill is now `motion-safe:` gated.
+- **Documented exception (tied to an existing gap).** Both submit CTAs keep
+  `className="bg-ds-status-success-fg"` over `variant="primary"`. Green is this
+  action's meaning, and the approved `Button` has no success variant — the
+  toned-`Button` gap already recorded in the gap list. The primitive still carries
+  shape, size, focus and loading; only the background is overridden, and the
+  override retires when that variant lands. Noted in code at both call sites.
+- Focused tests: 7 added to `SigningRoom.test.jsx` (header naming, the announced
+  progress status, the labelled zoom group with named buttons, approved submit
+  primitives, keyboard-reachable zoom, no legacy palette/hex/small text **scoped
+  to the shell**, and the reduced-motion gate). The scope matters: the first
+  revision asserted against the whole rendered tree and failed correctly, because
+  the field overlays and signature sheet are still legacy — that is slice 3's
+  work, so the assertion was scoped rather than weakened.
+- Verification: 285 signing tests; full suite, lint, typecheck, production build
+  and `git diff --check` green; `a11y.spec.cjs`,
+  `edoc-recruiter-send-and-sign` and `guest-post-application-edoc` — 22 passed on
+  Chromium + Mobile Chrome.
+- Remaining: slice 3 (field layer, including the generic signer-name defect
+  raised as P1 in review on PR #112) and slice 4 (final audit).
 
 ---
 

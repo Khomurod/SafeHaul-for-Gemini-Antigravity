@@ -30,6 +30,7 @@ import { usePdfZoomGestures } from '@features/signing/hooks/usePdfZoomGestures';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { useIsMobile } from '@shared/hooks';
 import { useToast } from '@shared/components/feedback';
+import { Button, Card, IconButton, StatusMedallion } from '@/design-system/components';
 import { Document, Page, pdfjs } from 'react-pdf';
 import {
     Loader2, CheckCircle, ChevronDown, AlertTriangle, ZoomIn, ZoomOut, RefreshCw,
@@ -399,7 +400,7 @@ export default function SigningRoom() {
                     key={pageNumber}
                     ref={(node) => { pageRefs.current[pageNumber] = node; }}
                     data-signing-page={pageNumber}
-                    className="relative shadow-xl border border-gray-300 bg-white"
+                    className="relative border border-ds-border bg-ds-surface shadow-ds-lg"
                     // Explicit dimensions from the known aspect ratio keep layout
                     // (and overlay anchors) stable while canvases re-render after
                     // a zoom commit or rotation.
@@ -435,8 +436,8 @@ export default function SigningRoom() {
                     )}
 
                     {!isPageReady && (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm gap-2">
-                            <Loader2 className="animate-spin" size={18} /> Rendering page {pageNumber}…
+                        <div role="status" className="absolute inset-0 flex items-center justify-center gap-ds-2 text-ds-sm text-ds-content-secondary">
+                            <Loader2 className="animate-spin" size={18} aria-hidden="true" /> Rendering page {pageNumber}…
                         </div>
                     )}
 
@@ -452,66 +453,71 @@ export default function SigningRoom() {
             );
         });
 
+    // Progress is stated by text and an icon, never the chip colour alone, and the
+    // remaining count is announced so a signer using a screen reader learns when
+    // the document becomes submittable.
     const progressChip = requiredFields.length > 0 && (
-        <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 whitespace-nowrap ${remainingCount === 0 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+        <p
+            role="status"
+            className={`flex items-center gap-ds-1 whitespace-nowrap rounded-ds-lg px-ds-3 py-ds-1 text-ds-xs font-bold ${
+                remainingCount === 0
+                    ? 'bg-ds-status-success-bg text-ds-status-success-fg'
+                    : 'bg-ds-status-warning-bg text-ds-status-warning-fg'
+            }`}
+        >
             {remainingCount === 0 ? (
-                <><CheckCircle size={14} /> <span className="hidden sm:inline">All fields complete</span><span className="sm:hidden">Done</span></>
+                <><CheckCircle size={14} aria-hidden="true" /> <span className="hidden sm:inline">All fields complete</span><span className="sm:hidden">Done</span></>
             ) : (
-                <><AlertTriangle size={14} /> {remainingCount} <span className="hidden sm:inline">field{remainingCount > 1 ? 's' : ''} remaining</span><span className="sm:hidden">left</span></>
+                <><AlertTriangle size={14} aria-hidden="true" /> {remainingCount} <span className="hidden sm:inline">field{remainingCount > 1 ? 's' : ''} remaining</span><span className="sm:hidden">left</span></>
             )}
-        </div>
+        </p>
     );
 
     const zoomControls = (
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            <button
-                type="button"
-                onClick={zoomOut}
-                aria-label="Zoom out"
-                className="p-2 rounded-md text-gray-600 hover:bg-white hover:shadow-sm active:scale-95 transition"
-            >
-                <ZoomOut size={18} />
-            </button>
-            <span className="text-xs font-bold text-gray-600 w-11 text-center tabular-nums" aria-live="polite">
+        <div role="group" aria-label="Document zoom" className="flex items-center gap-ds-1 rounded-ds-lg bg-ds-surface-subtle p-ds-1">
+            <IconButton label="Zoom out" variant="ghost" size="sm" onClick={zoomOut}>
+                <ZoomOut size={18} aria-hidden="true" />
+            </IconButton>
+            <span className="w-11 text-center text-ds-xs font-bold tabular-nums text-ds-content-secondary" aria-live="polite">
                 {zoomLabel}
             </span>
-            <button
-                type="button"
-                onClick={zoomIn}
-                aria-label="Zoom in"
-                className="p-2 rounded-md text-gray-600 hover:bg-white hover:shadow-sm active:scale-95 transition"
-            >
-                <ZoomIn size={18} />
-            </button>
+            <IconButton label="Zoom in" variant="ghost" size="sm" onClick={zoomIn}>
+                <ZoomIn size={18} aria-hidden="true" />
+            </IconButton>
         </div>
     );
 
     return (
         // 100dvh tracks the *dynamic* mobile viewport (URL bar collapse); the
         // h-screen class is the fallback where dvh is unsupported.
-        <div className="h-screen bg-gray-100 flex flex-col font-sans" style={{ height: '100dvh' }}>
+        <div className="flex h-screen flex-col bg-ds-canvas" style={{ height: '100dvh' }}>
             <header
-                className="bg-white px-3 py-2 md:px-4 md:py-3 shadow-sm flex justify-between items-center gap-2 z-30 shrink-0"
+                className="z-30 flex shrink-0 items-center justify-between gap-ds-2 bg-ds-surface px-ds-3 py-ds-2 shadow-ds-xs md:px-ds-4 md:py-ds-3"
                 style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
             >
                 <div className="min-w-0">
-                    <h1 className="font-bold text-gray-800 truncate text-sm md:text-base">{request?.title || 'Document'}</h1>
-                    <p className="text-xs text-gray-500 truncate">Signing as: {request?.recipientName || 'Signer'}</p>
+                    <h1 className="truncate text-ds-sm font-bold text-ds-content md:text-ds-body">{request?.title || 'Document'}</h1>
+                    <p className="truncate text-ds-xs text-ds-content-secondary">Signing as: {request?.recipientName || 'Signer'}</p>
                 </div>
 
-                <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                <div className="flex shrink-0 items-center gap-ds-2 md:gap-ds-3">
                     {progressChip}
                     <div className="hidden md:block">{zoomControls}</div>
-                    <button
+                    {/* The signer's primary action keeps its green identity: the success
+                        foreground token measures ~6.5:1 against white, where the previous
+                        green-600 was 3.29:1. Approved Button carries shape, size, focus and
+                        loading; only the background is overridden, because Button has no
+                        success variant — the toned-Button gap already recorded in the
+                        roadmap. This override retires when that variant lands. */}
+                    <Button
+                        variant="primary"
+                        className="hidden bg-ds-status-success-fg md:inline-flex"
+                        loading={submitting}
                         onClick={handleFinishSigning}
-                        disabled={submitting}
-                        /* green-600 on white measured 3.29:1 — below the 4.5:1 minimum for 14px bold.
-                           The success foreground token (green-800) keeps the green identity at ~6.5:1. */
-                        className="hidden md:flex px-6 py-2 bg-ds-status-success-fg text-ds-content-inverse font-bold rounded shadow hover:opacity-90 transition items-center gap-2 disabled:opacity-50"
                     >
-                        {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                        Finish & Submit
-                    </button>
+                        {!submitting && <CheckCircle size={16} aria-hidden="true" />}
+                        Finish &amp; Submit
+                    </Button>
                 </div>
             </header>
 
@@ -521,30 +527,31 @@ export default function SigningRoom() {
             <div
                 ref={setScrollerEl}
                 data-signing-scroller
-                className="flex-1 overflow-auto overscroll-contain bg-gray-200/50 relative"
+                className="relative flex-1 overflow-auto overscroll-contain bg-ds-canvas"
                 style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
             >
                 {docError ? (
-                    <div className="h-full flex items-center justify-center p-6">
-                        <div className="bg-white rounded-xl border border-red-100 shadow p-6 text-center max-w-sm">
-                            <AlertTriangle size={32} className="text-red-500 mx-auto mb-3" />
-                            <h3 className="font-bold text-gray-900 mb-1">Couldn't load the document</h3>
-                            <p className="text-sm text-gray-600 mb-4">
+                    <div className="flex h-full items-center justify-center p-ds-6">
+                        <Card padding="lg" className="max-w-sm text-center" role="alert">
+                            <StatusMedallion tone="danger" className="mx-auto mb-ds-3">
+                                <AlertTriangle size={32} />
+                            </StatusMedallion>
+                            <h2 className="mb-ds-1 font-bold text-ds-content">Couldn&apos;t load the document</h2>
+                            <p className="mb-ds-4 text-ds-sm text-ds-content-secondary">
                                 Check your connection and try again. Your entered values are saved on this device.
                             </p>
-                            <button
-                                type="button"
+                            <Button
+                                variant="primary"
                                 onClick={() => {
                                     setDocError(null);
                                     setNumPages(null);
                                     setRenderedPages(new Set());
                                     setDocReloadKey((k) => k + 1);
                                 }}
-                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-bold rounded-lg"
                             >
-                                <RefreshCw size={16} /> Try again
-                            </button>
-                        </div>
+                                <RefreshCw size={16} aria-hidden="true" /> Try again
+                            </Button>
+                        </Card>
                     </div>
                 ) : (
                     <div className="px-2 py-4 md:px-5 md:py-8 pb-28 md:pb-8">
@@ -565,8 +572,8 @@ export default function SigningRoom() {
                                         setDocError(err?.message || 'load_failed');
                                     }}
                                     loading={(
-                                        <div className="flex items-center gap-2 text-gray-500 py-16">
-                                            <Loader2 className="animate-spin" size={20} /> Loading document…
+                                        <div role="status" className="flex items-center gap-ds-2 py-16 text-ds-content-secondary">
+                                            <Loader2 className="animate-spin" size={20} aria-hidden="true" /> Loading document…
                                         </div>
                                     )}
                                     className="flex flex-col items-center gap-4 md:gap-6"
@@ -583,40 +590,40 @@ export default function SigningRoom() {
                 bar with zoom + next/finish (thumb-reachable, above safe area). */}
             {firstIncompleteField && (
                 <div className="hidden md:block fixed bottom-6 right-6 z-40">
-                    <button
+                    <Button
+                        variant="primary"
+                        className="shadow-ds-lg motion-safe:animate-bounce"
                         onClick={() => scrollToField(firstIncompleteField)}
-                        className="bg-blue-600 text-white px-4 py-3 rounded-xl shadow-2xl font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition-all animate-bounce"
                     >
-                        <ChevronDown size={18} />
+                        <ChevronDown size={18} aria-hidden="true" />
                         Jump to next field (Page {Number(firstIncompleteField.pageNumber) || 1})
-                    </button>
+                    </Button>
                 </div>
             )}
 
             <div
-                className="md:hidden bg-white border-t border-gray-200 px-3 py-2 flex items-center gap-2 z-40 shrink-0"
+                className="z-40 flex shrink-0 items-center gap-ds-2 border-t border-ds-border bg-ds-surface px-ds-3 py-ds-2 md:hidden"
                 style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
             >
                 {zoomControls}
                 <div className="flex-1" />
                 {remainingCount > 0 && firstIncompleteField ? (
-                    <button
-                        type="button"
-                        onClick={() => scrollToField(firstIncompleteField)}
-                        className="px-4 py-3 bg-blue-600 text-white font-bold rounded-xl shadow text-sm flex items-center gap-1.5 active:scale-[0.98] transition"
-                    >
-                        <ChevronDown size={16} /> Next field
-                    </button>
+                    <Button variant="primary" onClick={() => scrollToField(firstIncompleteField)}>
+                        <ChevronDown size={16} aria-hidden="true" /> Next field
+                    </Button>
                 ) : (
-                    <button
-                        type="button"
+                    /* Same documented tone override as the desktop CTA: the approved
+                       Button has no success variant (the toned-Button gap already
+                       recorded in the roadmap), and green is this action's meaning. */
+                    <Button
+                        variant="primary"
+                        className="bg-ds-status-success-fg"
+                        loading={submitting}
                         onClick={handleFinishSigning}
-                        disabled={submitting}
-                        className="px-5 py-3 bg-ds-status-success-fg text-ds-content-inverse font-bold rounded-xl shadow text-sm flex items-center gap-1.5 disabled:opacity-50 active:scale-[0.98] transition"
                     >
-                        {submitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                        Finish & Submit
-                    </button>
+                        {!submitting && <CheckCircle size={16} aria-hidden="true" />}
+                        Finish &amp; Submit
+                    </Button>
                 )}
             </div>
 
