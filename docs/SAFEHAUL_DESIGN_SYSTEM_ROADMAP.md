@@ -2027,6 +2027,21 @@ The reverse directions are prohibited.
 
 Status `Not started` means audited but not migrated.
 
+**Progress, counted from the Status column (2026-07-27): 15 of 19 rows complete
+— 78.9%.** The verification-portal closeout moved the last PEV/VOE row to
+complete. The four rows still open are **Import leads**, **Quick add lead**,
+**Company settings** and **Super Admin**.
+
+> **Reconciliation flag, raised 2026-07-27 and deliberately not silently
+> resolved.** The **Company settings** row reads `Not started`, but section 8's
+> narrative records that Company info, branding, Team & Users, Billing, Automated
+> SMS, Email Settings, account security and application questions are all
+> **migrated (GO)**, with only *SMS number assignment* and *Integrations*
+> remaining NO-GO. The row and the narrative disagree. This campaign did not
+> touch Company Settings and has no evidence either way, so the row is left as it
+> stands and the discrepancy is recorded here for whoever owns that area. If the
+> narrative is right, the true figure is higher than 78.9%.
+
 | Screen / area | Current implementation | Target component or pattern | Priority | Risk | Dependencies | Status | Verification needed |
 |---|---|---|---|---|---|---|---|
 | Login `/login` | `features/auth/components/LoginScreen.jsx` now consumes `FormField`, `Input`, `Button`, `IconButton`, `Card`, and the shared accessible `Modal`; branded marketing panel preserved | Field, Button, Card, shared Modal | Medium | Medium | Tokens, controls, forms, cards | Compatibility slice completed 2026-07-23 | Verified: 16 focused + 5 existing auth tests, login/requested-route/super-admin/company/root redirects, password visibility, loading/errors, reset open/submit/success/failure/close, focus, autofill, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
@@ -2042,12 +2057,12 @@ Status `Not started` means audited but not migrated.
 | Super Admin `/super-admin/*` | feature-local view router, tables, forms, modals, analytics | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | Not started | Permissions, maintenance actions, integrations, analytics, desktop/mobile |
 | Public application `/apply/:slug` | `PublicApplyHandler` shell, the shared `Stepper` frame, all nine steps, the custom-questions step, the four status screens, the intake chooser, the post-application `RequiredDocumentsChecklist`, `UploadField`, and the shared `InputField` / `RadioGroup` / `MonthYearField` / `DynamicRow` / `AgreementBox` adapters now consume `Card`, `Button`, `IconButton`, `Badge`, `FormSection`, `FormField`, `Input`, `Textarea`, `Select`, `Checkbox`, `Radio`, `ChoiceGroup`, `FieldDisplay`, `FieldMessage`, `Label`, `StatusMedallion` and the new `ProgressBar` | Feature-owned wizard on approved Progress/Field/Button/Card/status primitives | Critical | Very high | Forms, feedback, layout, compatibility plan | **Migrated (GO)** 2026-07-27 | Verified: 89 new focused unit tests (submission contract, wizard frame, choice/date/upload/agreement controls, checklist, status screens, custom questions, review) + full suite/coverage, lint, typecheck, production build, callable-contract, 6 guest E2E specs serially and at 4× under worker contention, new responsive spec at 1440/1024/412 px, extended real-browser axe across every step and both status screens on Chromium and Mobile Chrome, keyboard walkthrough, `git diff --check`, grep audit |
 | Signing room `/sign/...` | Status screens, room shell, signer field layer and signature capture sheet all consume approved `Card`/`Button`/`StatusMedallion` and `--ds-*` tokens; the PDF canvas, coordinates and zoom stay feature-owned | Approved controls/states around feature-owned document canvas | Medium | Very high | Controls, dialog, feedback; signing QA | **Complete** 2026-07-25 (slices 1–4 + final audit) | Verified: per-slice completion logs in section 6, the 2026-07-25 final audit (zero serious/critical axe in the room, no legacy palette classes, documented `SIGNATURE_INK` and three raw-button exceptions), existing signing unit/E2E, coordinates, zoom/touch/signature, mobile |
-| Verification portal `/verify/:token` | `VerificationPortal` + status screens + 4 sections now consume `Card`, `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `FieldDisplay`, `FieldMessage`, `Badge`, `Button`, `Stack`; feature-local `RadioGroup` accessibility-hardened; `SignaturePad`/hook untouched | Card, form primitives, Badge, Button, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 24 focused tests (hook token-load/submit contract + portal integration + status screens), full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, single h1 per state, radio grouping + keyboard, associated labels, validation focus, axe, overflow |
+| Verification portal `/verify/:token` | `VerificationPortal` + status screens + 4 sections consume `Card`, `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `FieldDisplay`, `FieldMessage`, `Badge`, `Button`, `Stack`; feature-local `RadioGroup` accessibility-hardened; **closed out 2026-07-27** — the page header is tokenised, the validation summary names fields by their on-page label, submission is guarded against implicit re-submit, and the shared `SignaturePad` is migrated (tokens, named `role="img"` surface, associated instructions/error, design-system Clear button, pointer/pen support, corrected coordinate scaling) with the **resize/orientation divergence defect fixed** | Card, form primitives, Badge, Button, layout | Medium | High | Forms, cards, feedback | **Complete (GO)** 2026-07-27 | Verified: 73 focused tests (24 `SignaturePad` contract freeze + 20 portal closeout + 10 hook + 14 portal + 5 pre-existing pad), 29 new Chromium / 28 Mobile Chrome E2E (pixel-level signing, resize/orientation invariant, full employed walkthrough, duplicate submit, axe on all six states, 1440/1024/412 px), existing PEV portal E2E, full suite/coverage, lint, typecheck, production build, callable-contract, `git diff --check` |
 | Change review `/review-change/:token` | `ReviewChangePortal` now consumes `Card`, `Button`, `Input`, and `Stack`/tokens with one `<h1>`, `role="status"`/`role="alert"` states, and a tokenized feature-owned approve/reject/edit toggle group; load/validation/payload/callables unchanged | Card, Button, Input, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 16 focused tests (token load/cancellation/errors, scalar/array/object/empty previews, no-pending/completed, action default/reject/edit/exclusivity/edit-hidden-for-nonscalar, exact approve/reject/edit payloads + order, submitting/disabled, success/error fallbacks, single h1, applicant-name non-disclosure, axe) + existing 3, full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Sandbox application | `SandboxApplyHandler` renders `PublicApplyHandler sandbox` verbatim, so it inherited the whole migration; `SandboxActionPanel` now consumes `Card`, `Button`, `FormField`, `Select` and `StatusMedallion` with a `<main>`/single-`<h1>`; the Magic Fill control stays a documented raw-button exception so the sandbox reads as a test surface | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | **Migrated (GO)** 2026-07-27 | Verified: the sandbox banner/Magic Fill render only when `sandbox` is true (unit-asserted), `listSandboxTenantCompanies` / `deleteSandboxApplication` / `transferSandboxApplication` payloads and the `/sandbox/transfer-success` navigation state unchanged, Super Admin gate unchanged, error announced, transfer select labelled |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Driver dossier modal | `DriverProfileModal` shell, `DossierHeader`, `DossierSidebar`, `DossierContent`, the read-only `ApplicationTab` summary and `DocumentsTab` now consume the shared accessible `Modal`, `Button`, `IconButton`, `Select`, `Badge`, `Card` and `--ds-*` tokens; the section navigation is a feature-owned WAI-ARIA tablist; `useCompactViewport` keeps `aria-orientation` in step with the layout | Dialog family, feature-owned Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | **Foundation migrated (GO)** 2026-07-27 — shell, header, navigation, read-only application summary and documents complete; DQ, PEV/VOE, Activity and Notes bodies deliberately **not** migrated and remain reachable and unchanged inside the shell | Verified: 136 focused unit tests, 19 new Chromium + Mobile Chrome E2E checks (focus containment/restoration, Arrow/Home/End walkthrough, nested delete + preview dialogs, page states, 1440/1024/412 px clipping, real-browser axe), existing candidate-table/a11y/access-control E2E, full suite/coverage, lint, typecheck, production build, `git diff --check` |
-| PEV/VOE workflows | **Initiation and tracking migrated**: `PEVTab` (summary `MetricCard`s, employer list, status `Badge`s, Initiate/View Result/Copy Link/Upload Result/History/Resend actions, paywall and no-employer states, verification-history dialog on the shared accessible `Modal`), `PEVRequestModal` (shared `Modal`, native `ChoiceGroup`/`Radio` delivery choice, `FormField`/`Input` contact fields, `Button`/`IconButton`), `FmcsaCarrierPicker` and the shared `PaywallMessage`. `VOEPreviewModal`'s **chrome** is migrated too (shared accessible `Modal`, header, recipient/applicant summary, Print/Download PDF/Edit Request/Transmit actions, and the loading, export-failure and missing-data states); its **generated legal document is deliberately left untokenised** and guarded by an export-parity test. Its **Print pipeline was repaired 2026-07-27** — it no longer routes trusted document structure through the user-content sanitiser, so printing preserves the layout, borders and applicant signature; covered by a real-browser E2E gate. **Not migrated**: the external employer response portal | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | **Initiation, tracking and VOE preview chrome migrated (GO)** 2026-07-27 — respondent portal remains | Verified: 107 focused unit tests (34 new PEVTab contract freezes covering the callable payload, activity log, Firestore write, Storage path, signed-URL and clipboard behaviour; 13 PEVTab a11y/structure; 22 request-modal dialog/radio/validation; 38 pre-existing FMCSA/lookup/modal), real-axe checks on every PEV surface and state, real-browser measurement at 1440/1024/412 px, dossier + candidate-table + campaigns E2E regressions, full suite/coverage, lint, typecheck, production build, `git diff --check`. **Limitation:** the PEV tab is unreachable in Playwright under `VITE_E2E_TEST_MODE=1` — see the completion log |
+| PEV/VOE workflows | **Initiation and tracking migrated**: `PEVTab` (summary `MetricCard`s, employer list, status `Badge`s, Initiate/View Result/Copy Link/Upload Result/History/Resend actions, paywall and no-employer states, verification-history dialog on the shared accessible `Modal`), `PEVRequestModal` (shared `Modal`, native `ChoiceGroup`/`Radio` delivery choice, `FormField`/`Input` contact fields, `Button`/`IconButton`), `FmcsaCarrierPicker` and the shared `PaywallMessage`. `VOEPreviewModal`'s **chrome** is migrated too (shared accessible `Modal`, header, recipient/applicant summary, Print/Download PDF/Edit Request/Transmit actions, and the loading, export-failure and missing-data states); its **generated legal document is deliberately left untokenised** and guarded by an export-parity test. Its **Print pipeline was repaired 2026-07-27** — it no longer routes trusted document structure through the user-content sanitiser, so printing preserves the layout, borders and applicant signature; covered by a real-browser E2E gate. The **external employer response portal** (`/verify/:token`) was **closed out 2026-07-27** — see the verification-portal closeout log. With it, every PEV/VOE surface is migrated. | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | **Complete (GO)** 2026-07-27 — initiation, tracking, VOE preview chrome, VOE Print repair and the respondent portal | Verified: 107 focused unit tests (34 new PEVTab contract freezes covering the callable payload, activity log, Firestore write, Storage path, signed-URL and clipboard behaviour; 13 PEVTab a11y/structure; 22 request-modal dialog/radio/validation; 38 pre-existing FMCSA/lookup/modal), real-axe checks on every PEV surface and state, real-browser measurement at 1440/1024/412 px, dossier + candidate-table + campaigns E2E regressions, full suite/coverage, lint, typecheck, production build, `git diff --check`. **Limitation:** the PEV tab is unreachable in Playwright under `VITE_E2E_TEST_MODE=1` — see the completion log |
 
 ### 5.2 Shared component-family inventory
 
@@ -5227,7 +5242,7 @@ user-facing string.
 - `VOEPreviewModal` — **chrome completed 2026-07-27** (see the next log); the
   generated document is deliberately untokenised and guarded. Its **Print export
   was repaired 2026-07-27** — see the print-pipeline repair log.
-- The external employer response portal (`/verify/:token` respondent side).
+- ~~The external employer response portal (`/verify/:token` respondent side)~~ — **closed out 2026-07-27**, see the verification-portal closeout log.
 - The in-place mutation of `appData.employers` noted above.
 - E2E reachability for the PEV tab, which depends on dossier E2E fixture data.
 
@@ -5403,8 +5418,8 @@ callables, routes and data contracts are untouched.
 
 #### Remaining respondent-portal work
 
-- The external employer response portal (`/verify/:token` respondent side) —
-  untouched, and the only remaining PEV/VOE surface.
+- ~~The external employer response portal (`/verify/:token` respondent side)~~ —
+  **closed out 2026-07-27**, see the verification-portal closeout log.
 - ~~The print-sanitisation escalation above~~ — **resolved**, see the next log.
 - The 4 in-document contrast nodes, pending an owner decision.
 
@@ -5581,8 +5596,8 @@ described above and covered by the tests listed above.
 
 #### Still outstanding
 
-- The external employer response portal (`/verify/:token` respondent side) — the
-  only remaining PEV/VOE surface, untouched.
+- ~~The external employer response portal (`/verify/:token` respondent side)~~ —
+  **closed out 2026-07-27**, see the verification-portal closeout log below.
 - **Reaching `VOEPreviewModal` through the driver dossier in Playwright.** Still
   blocked on dossier E2E fixture data; the harness route is a workaround for
   export coverage, not a fix for reachability.
@@ -5596,8 +5611,176 @@ described above and covered by the tests listed above.
 
 ---
 
+### Verification portal closeout — PEV/VOE campaign complete (GO) — 2026-07-27
+
+Scope: the public respondent portal at `/verify/:token`, the last unmigrated
+PEV/VOE surface. Base `origin/main` at `0fd3a0b` (merged PR #120, all 10 required
+checks green on the latest head) with a clean tree.
+
+#### Audit: what was already right
+
+The 2026-07-23 slice migrated more than this campaign needed to touch, and it was
+**left alone**: `PortalStatusScreens` (five states, each a `Card as="main"` with
+one `<h1>` and an inner live region), `ApplicantDetailsCard`, all four form
+sections on `FormSection`/`FormField`/`Input`/`Select`/`Textarea`, the
+`role="alert"` error summary and its focus move, and the token-load/validate/
+submit contracts in `useVerificationPortal`. Those were re-verified, not rewritten.
+
+That slice explicitly recorded `SignaturePad` and the hook as **not changed** —
+which is exactly where the remaining defects were.
+
+#### Defects found and fixed
+
+1. **The visible signature could diverge from the submitted data.** This is the
+   serious one. Assigning `canvas.width` resets the bitmap; `SignaturePad`
+   rebuilt the canvas on **every** window `resize` and never told its parent, so
+   the drawing went blank while `formData.signatureData` still held the PNG
+   captured beforehand. The respondent then submitted, under penalty of perjury,
+   a signature they could no longer see. On a phone, rotating the device did it.
+   Now: a resize that does not change the rendered size is ignored outright (an
+   on-screen keyboard or a collapsing URL bar is a no-op); a real resize copies
+   the bitmap out, rebuilds, draws it back 1:1 and **re-emits** so the stored PNG
+   matches the pixels; and if the bitmap cannot be carried over the pad clears
+   itself and emits `null`. Measured in Chromium: 3,716 inked pixels before a
+   690→416 px change, 3,716 after.
+2. **A stroke could be dropped entirely.** `isDrawing` was React state, so a
+   `pointermove` arriving in the same task as its `pointerdown` — a fast flick, a
+   high-frequency stylus — read the stale `false`. It is now a ref.
+3. **`setPointerCapture` could abandon the stroke.** It ran before
+   `beginStroke` and throws `NotFoundError` for a pointer id the browser does not
+   consider active, so the exception escaped and nothing was drawn. Reordered and
+   guarded.
+4. **Strokes drifted from the cursor.** `canvas.width` was set from the
+   *parent's* `offsetWidth`, which includes the container's 2 px border, so the
+   backing store was 4 px wider than the rendered canvas. Positions are now
+   measured against the canvas's own rect and scaled by the backing-store ratio.
+   Confirmed in a real browser: 690×150 backing store for a 690×150 canvas
+   (previously 694).
+5. **Pen and stylus did not work at all** — only `mouse` and `touch` were
+   handled. Pointer events are handled first now, with the mouse/touch handlers
+   kept as a fallback and de-duplicated so one gesture is never drawn twice.
+6. **The signing surface had no accessible name, and its instructions and error
+   were associated with nothing.** A screen reader reaching it was told only
+   "canvas". It is now a named `role="img"` with `aria-describedby` covering both,
+   plus `aria-invalid` and a `role="status"` region announcing capture/clearing.
+7. **Clear was a bare `<button>`** with raw palette classes that only existed
+   once something had been drawn, so it appeared and vanished under the keyboard.
+   It is an always-present design-system `Button`, disabled when there is nothing
+   to clear.
+8. **A real WCAG failure, found by this campaign's axe pass.** `RadioGroup`'s
+   description used `content-muted` (slate-500); two of those groups render
+   inside the drug-and-alcohol block on `--ds-color-status-warning-bg`, where it
+   measured **4.27:1** against the required 4.5:1. Moved to `content-secondary`,
+   the remedy the existing `content-muted` token blocker already prescribes.
+9. **The validation summary named nothing a respondent could act on.** Entries
+   were built by splitting the camelCase state key — "was Employed: Required",
+   "signature Data: Please provide your electronic signature". They now use the
+   field's real on-page label. **The messages themselves are unchanged.**
+10. **Duplicate submission was possible.** The only guard was the submit
+    Button's `loading` → `disabled`, and a disabled submit button does not stop
+    *implicit* submission: pressing Enter in any text field while the first
+    request was in flight fired a second `submitVerificationResponse` for the
+    same token. Closed with synchronous `submitting`/`completed` refs (React
+    batches state, so a ref is what actually closes the window).
+11. **The page header was an untokenised `bg-slate-900` inverse bar** with
+    `text-blue-400`/`text-blue-300` accents.
+
+#### Contracts preserved
+
+`/verify/:token` token access; `getVerificationRequest({ token })` and its
+`result.data` handling; every load mapping (`completed` → already-completed,
+`functions/deadline-exceeded` → expired, `functions/not-found` → "This
+verification link is invalid or has been removed.", otherwise `err.message ||
+'Failed to load verification request.'`, no token → "No verification token
+provided."); all 19 `formData` keys and their initial values; every conditional
+rule (`wasEmployed`, `subjectToDotTesting`, `hadDrugAlcoholViolations`,
+`hadAccidents`); every `validate()` rule and message string;
+`updateField(field, value)`; `submitVerificationResponse({ token, response:
+formData })`; `SignaturePad`'s `onSignatureChange(data:image/png…)` / `null`
+contract; the 150 px canvas height; the `?e2eVerify=mock` fixture path
+bit-for-bit; and all regulatory and certification wording. Firebase, functions,
+schemas and routes are untouched — `check:function-exports` still reports
+`OK | mapped 101 | raw 101`.
+
+**Additive, not a change:** `?e2eVerify=expired|invalid|completed|failure` join
+the existing `mock` mode so the remaining page states can be reached in a real
+browser. The failure modes **throw the same coded errors the callable throws**,
+so they exercise the real mapping rather than bypassing it. `mock` and the real
+callable path are unchanged.
+
+#### Verification — exact results
+
+- **Focused tests, 73 passing across 5 files.** 24 new in
+  `SignaturePad.contract.test.jsx` — written **before** the presentation work;
+  11 passed immediately (the frozen emission and height contracts) and **13
+  failed**, which is the defect list above. 20 new in
+  `VerificationPortal.closeout.test.jsx` (summary wording, duplicate submit with
+  the callable held open, the real pad end-to-end, the resize invariant reaching
+  the submit payload, conditional sections, axe with errors shown and with every
+  section expanded). The 5 pre-existing `SignaturePad` tests and the 24
+  pre-existing portal/hook tests pass **unchanged**.
+- **New E2E:** `e2e/verification-portal-closeout.spec.cjs` — **29/29 Chromium**,
+  **28 passed / 1 skipped Mobile Chrome** (the skip is the desktop-only keyboard
+  test), each lane run on its own, serially. It reads canvas pixels back, so
+  signing is measured rather than inferred: >100 inked pixels after a mouse drag
+  and after a touch-typed pointer sequence, ink preserved exactly across
+  1440→800 px and across a 412×915 → 915×412 orientation swap, ink untouched by a
+  height-only change, and the pad's height still 150 px throughout.
+- **Regressions:** `pev-request-and-portal-response` 4 passed/1 skipped
+  (Chromium) and 3 passed/2 skipped (Mobile Chrome); `voe-print-export` 20/20.
+- **Full frontend suite:** 1901 passed, 48 skipped, 146 files. Coverage
+  statements 45.40% / branches 45.25% / functions 45.64% / lines 46.34% — up from
+  44.86 / 44.92 / 45.25 / 45.89.
+- **Lint** 0 errors (pre-existing warnings only) · **typecheck** clean ·
+  **production build** succeeds with the pre-existing chunk-size warning ·
+  **callable-contract** `OK | mapped 101 | raw 101` · **`git diff --check`** clean.
+- **Axe, real browser:** zero serious/critical on all six states — pending form,
+  expired, invalid, already-completed, load-failure and success — plus the
+  validation-summary state and the all-conditionals-expanded state, on both lanes.
+
+#### Documented exceptions
+
+- **The header is not an inverse banner.** It was `bg-slate-900`; there is no
+  `--ds-color-surface-inverse` in the token contract (blocker already recorded by
+  the PEV campaign), so it follows the `PEVRequestModal` / `VOEPreviewModal`
+  precedent and sits on the app surface with a bottom rule. Wording unchanged.
+- **`SignaturePad` has no keyboard path to producing a signature.** A canvas
+  cannot be drawn on with a keyboard. Everything *around* it is keyboard- and
+  screen-reader-accessible — named surface, associated instructions and error,
+  operable Clear, announced state — but signing itself is not. Escalated below
+  rather than papered over.
+- **The feature-local `RadioGroup` stays feature-owned.** The design-system
+  Radio/Checkbox phase is still not started; no competing primitive was created.
+- **The real radio `<input>` is `sr-only`** inside its `<label>`, the standard
+  custom-radio pattern. Keyboard and screen-reader operation are unaffected, but
+  automation must click the label, not the input — the E2E spec documents this.
+
+#### Still outstanding
+
+- **Keyboard/AT signing** — the escalation below.
+- The 4 in-document `color-contrast` nodes in the VOE generated document — a
+  pre-existing, separately recorded owner decision, untouched here.
+- **Firefox and WebKit were not run for this spec**; the evidence is Chromium and
+  Mobile Chrome, matching the lanes the brief named. Nothing in the pad uses a
+  Chromium-specific API, but that is reasoning, not measurement.
+- **No test asserts what a submitted signature *looks* like** — the pad's PNG is
+  compared by identity and by inked-pixel count, not by image content.
+
+---
+
 ## 7. Decisions and blockers
 
+- `[!]` **Decide how an employer signs the verification portal without a
+  mouse.** Recorded 2026-07-27 by the verification-portal closeout. A canvas
+  cannot be drawn on with a keyboard, so `SignaturePad` — the legally operative
+  mark on a 49 CFR §391.23 response — has **no keyboard or assistive-technology
+  path to producing a signature**. Everything around it is now accessible (named
+  `role="img"` surface, associated instructions and error, operable and announced
+  Clear), and axe reports zero serious/critical violations, because axe cannot
+  detect a missing input modality. A typed fallback is the obvious remedy and the
+  product already has the concept (`TEXT_SIGNATURE:` on the VOE side), but a
+  typed mark that is **indistinguishable in the stored PNG from a drawn one** is
+  a legal-semantics decision, not a styling one. Deliberately not invented here.
 - `[!]` **Approve a `content-muted` value that is safe on `surface-subtle`.**
   Recorded 2026-07-27. `--ds-color-content-muted` (slate-500) on
   `--ds-color-surface-subtle` (slate-100) measures **4.34:1** — below WCAG AA for
@@ -5605,9 +5788,15 @@ described above and covered by the tests listed above.
   `surface`, so the pairing looked approved and a real-browser axe scan of the
   public application's success screen found three failing nodes. Those call sites
   moved to `content-secondary` (6.85:1) and `src/design-system/tests/tokens.test.js`
-  now pins the gap in both directions. Darkening `content-muted` would change
-  every muted label in the product, so it needs owner approval; until then,
-  **`content-muted` is approved on `surface` only.**
+  now pins the gap in both directions. **Second, independent confirmation
+  2026-07-27:** the verification-portal closeout measured the same token on
+  `--ds-color-status-warning-bg` at **4.27:1** in the drug-and-alcohol block, and
+  real-browser axe reported it as a serious violation; that call site also moved
+  to `content-secondary`. Two unrelated surfaces have now failed this pairing,
+  which strengthens the case that the **token value**, not each call site, is what
+  needs the decision. Darkening `content-muted` would change every muted label in
+  the product, so it needs owner approval; until then, **`content-muted` is
+  approved on `surface` only.**
 - `[!]` **Align control heights across the primitives.** Recorded 2026-07-27.
   `.ds-form-control` is 44 px but `.ds-button[data-size='md']` is 40 px and `sm`
   is 36 px, so an input and its adjacent button in the same row are different
@@ -5736,6 +5925,21 @@ screens, and the four FMCSA form sections now consume `Card`, `FormSection`,
 in place (fieldset/legend, visible focus, error/description association) and the
 `useVerificationPortal` hook and shared `SignaturePad` were left untouched, so
 the token-load/validate/submit contracts are unchanged.
+
+It was **closed out on 2026-07-27** (completion log in section 6), which finishes
+the PEV/VOE campaign: the header is tokenised, the validation summary names
+fields by their on-page label, submission is guarded against implicit
+re-submission, and the shared `SignaturePad` is migrated — tokens, a named
+`role="img"` surface with associated instructions and error, a design-system
+Clear button, pointer/pen support and corrected coordinate scaling. The
+load-bearing fix is that **the visible signature can no longer diverge from the
+submitted data**: resizing used to blank the canvas while the form kept the PNG
+captured beforehand, so a respondent could submit a §391.23 signature they could
+no longer see. Every frozen contract — token access, both callables, all load
+mappings, all form keys, all validation rules and messages, the
+`data:image/png…`/`null` emission contract, the 150 px canvas height and the
+`?e2eVerify=mock` path — is unchanged. **Keyboard/AT signing remains an open
+owner decision** (section 7): a canvas cannot be signed without a pointer.
 
 The **public Change Review Portal** (`/review-change/:token`) was migrated and
 verified on 2026-07-23 (completion log in section 6): `ReviewChangePortal` now
