@@ -243,11 +243,19 @@ describe('ApplicationTab view toggle', () => {
     expect(screen.queryByText('Clean Record')).toBeNull();
   });
 
-  it('renders nothing at all without application data', () => {
-    const { container } = render(
-      <ApplicationTab appData={null} companyId="co-1" applicationId="app-1" />,
-    );
-    expect(container).toBeEmptyDOMElement();
+  // DEFECT-FIX assertion (deliberate change, not a frozen contract): this tab
+  // used to `return null` without application data, so the dossier's tab panel
+  // was simply blank. A blank panel is not a page state — the user cannot tell
+  // an empty record from a broken one.
+  it('shows an announced empty state instead of a blank panel without application data', () => {
+    render(<ApplicationTab appData={null} companyId="co-1" applicationId="app-1" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Application details are not available.');
+  });
+
+  it('renders no summary cards when there is no application data', () => {
+    render(<ApplicationTab appData={null} companyId="co-1" applicationId="app-1" />);
+    expect(screen.queryByText('Personal Information')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Application view' })).toBeNull();
   });
 });
 

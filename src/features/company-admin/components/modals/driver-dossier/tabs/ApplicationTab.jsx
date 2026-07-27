@@ -53,6 +53,11 @@ import { Badge, Button, Card, IconButton } from '@/design-system/components';
  *   assistive technology could not tell which view was active — selection was
  *   carried by background colour alone.
  * - Card titles were `<h3>`; they now sit at `<h4>` beneath the header's `<h3>`.
+ * - With no application data the tab rendered **nothing at all**, leaving the
+ *   dossier's tab panel blank with no explanation. It now renders an announced
+ *   empty state.
+ * - Summary rows applied `truncate` to the value, so long addresses and names
+ *   were clipped with no tooltip and no way to read them. Values now wrap.
  */
 
 /** Compact value preview for the pending-changes before/after list. */
@@ -88,7 +93,21 @@ export function ApplicationTab({ appData, fileUrls = {}, canEdit = false, compan
     const { pendingChanges, proposing, linking, proposeChanges, createReviewLink } =
         useApplicationChanges(companyId, applicationId, collectionName);
 
-    if (!appData) return null;
+    // DEFECT FIX: this used to `return null`, so an application that resolved to
+    // nothing left the dossier's tab panel completely blank — no explanation and
+    // no indication that anything had happened. The panel now says so.
+    if (!appData) {
+        return (
+            <div
+                role="status"
+                className="flex flex-col items-center justify-center py-ds-12 text-center text-ds-content-secondary"
+            >
+                <FileText size={48} className="mb-ds-4 text-ds-content-muted" aria-hidden="true" />
+                <p className="font-medium text-ds-content">Application details are not available.</p>
+                <p className="mt-ds-1 text-ds-sm">This record may have been removed, or you may not have access to it.</p>
+            </div>
+        );
+    }
 
     const startEdit = () => {
         setEditedData({ ...appData });
@@ -590,7 +609,13 @@ function InfoRow({ label, value }) {
             <span className="text-ds-xs font-semibold uppercase text-ds-content-secondary">
                 {label}
             </span>
-            <span className="max-w-[60%] truncate text-right text-ds-sm font-medium text-ds-content">
+            {/*
+              DEFECT FIX: this was `truncate`, so a full address or a long name
+              was silently clipped to 60% of the row with no tooltip and no way
+              to read the rest — worst at 412 px, where the value is the whole
+              point of the row. It now wraps instead of hiding.
+            */}
+            <span className="max-w-[60%] text-right text-ds-sm font-medium text-ds-content [overflow-wrap:anywhere]">
                 {value}
             </span>
         </div>

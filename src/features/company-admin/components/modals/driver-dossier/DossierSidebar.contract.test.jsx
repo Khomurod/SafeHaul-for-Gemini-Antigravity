@@ -61,6 +61,79 @@ describe('DossierSidebar navigation contract', () => {
   });
 });
 
+describe('DossierSidebar tab semantics', () => {
+  it('exposes a named tablist wiring every tab to the shared panel', () => {
+    renderSidebar({ tabPanelId: 'panel-1', tabIdFor: (t) => `tab-${t}` });
+
+    expect(screen.getByRole('tablist', { name: 'Driver dossier sections' })).toBeInTheDocument();
+    screen.getAllByRole('tab').forEach((tab) => {
+      expect(tab).toHaveAttribute('aria-controls', 'panel-1');
+    });
+    expect(screen.getByRole('tab', { name: /^Application/ })).toHaveAttribute('id', 'tab-application');
+  });
+
+  it('keeps only the selected tab in the tab order (roving tabindex)', () => {
+    renderSidebar({ activeTab: 'documents' });
+    const tabs = screen.getAllByRole('tab');
+    const tabbable = tabs.filter((t) => t.getAttribute('tabindex') === '0');
+
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]).toHaveAccessibleName(/^Documents/);
+  });
+});
+
+describe('DossierSidebar tab keyboard model', () => {
+  // Automatic activation: Arrow/Home/End move focus AND select, so the panel
+  // always matches the focused tab.
+  const press = (key, activeTab = 'application') => {
+    const props = renderSidebar({ activeTab });
+    fireEvent.keyDown(screen.getByRole('tab', { name: new RegExp(`^${
+      TAB_ORDER.find(([id]) => id === activeTab)[1]
+    }`) }), { key });
+    return props;
+  };
+
+  it.each([
+    ['ArrowDown', 'application', 'documents'],
+    ['ArrowRight', 'application', 'documents'],
+    ['ArrowUp', 'documents', 'application'],
+    ['ArrowLeft', 'documents', 'application'],
+  ])('%s from %s selects %s', (key, from, expected) => {
+    const props = press(key, from);
+    expect(props.setActiveTab).toHaveBeenCalledWith(expected);
+  });
+
+  it('wraps forward from the last tab to the first', () => {
+    const props = press('ArrowDown', 'notes');
+    expect(props.setActiveTab).toHaveBeenCalledWith('application');
+  });
+
+  it('wraps backward from the first tab to the last', () => {
+    const props = press('ArrowUp', 'application');
+    expect(props.setActiveTab).toHaveBeenCalledWith('notes');
+  });
+
+  it('Home selects the first tab and End the last', () => {
+    expect(press('Home', 'dq').setActiveTab).toHaveBeenCalledWith('application');
+    cleanup();
+    expect(press('End', 'dq').setActiveTab).toHaveBeenCalledWith('notes');
+  });
+
+  it('moves DOM focus onto the newly selected tab', () => {
+    renderSidebar({ activeTab: 'application' });
+    fireEvent.keyDown(screen.getByRole('tab', { name: /^Application/ }), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: /^Documents/ }));
+  });
+
+  it('leaves other keys to the browser', () => {
+    const props = renderSidebar();
+    const tab = screen.getByRole('tab', { name: /^Application/ });
+    fireEvent.keyDown(tab, { key: 'Tab' });
+    fireEvent.keyDown(tab, { key: 'a' });
+    expect(props.setActiveTab).not.toHaveBeenCalled();
+  });
+});
+
 describe('DossierSidebar identity presentation', () => {
   it('shows the driver name and their status', () => {
     renderSidebar();

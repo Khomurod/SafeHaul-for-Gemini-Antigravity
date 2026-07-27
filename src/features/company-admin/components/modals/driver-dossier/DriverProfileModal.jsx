@@ -58,6 +58,7 @@ export function DriverProfileModal({
     const [activeTab, setActiveTab] = useState('application');
     const [confirmingDelete, setConfirmingDelete] = useState(false);
     const cancelDeleteRef = useRef(null);
+    const tabPanelRef = useRef(null);
     const rawId = useId().replace(/:/g, '');
     const tabPanelId = `dossier-panel-${rawId}`;
     const tabIdFor = (tab) => `dossier-tab-${tab}-${rawId}`;
@@ -106,6 +107,13 @@ export function DriverProfileModal({
             <Modal
                 label="Driver dossier"
                 onClose={onClose}
+                // `Modal` otherwise focuses the first focusable child, which in
+                // DOM order is the sidebar's `tel:` link — so opening a dossier
+                // put focus on a control that dials the driver the moment the
+                // user pressed Enter. The dossier is a reading surface, so focus
+                // goes to the tab panel: it is the scroll container, it is named
+                // by the selected tab, and nothing happens if it is activated.
+                initialFocusRef={tabPanelRef}
                 // Backdrop dismissal is kept from the previous implementation.
                 // z-[60] preserves the dossier's stacking above the candidate
                 // table's own overlays; the document preview sits above it again.
@@ -133,7 +141,16 @@ export function DriverProfileModal({
                 {/* Right Side Container */}
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-ds-surface sm:h-full">
 
-                    <div className="z-10 flex shrink-0 flex-wrap items-center justify-between gap-ds-2 border-b border-ds-border-subtle bg-ds-surface px-ds-4 py-ds-3 sm:h-16 sm:flex-nowrap sm:px-ds-6 sm:py-0">
+                    {/*
+                      The header wraps at every width and has a minimum height
+                      rather than a fixed one. With `sm:flex-nowrap` + `sm:h-16`
+                      the section title was squeezed to zero width at 1024 px —
+                      it is `truncate`, so it did not ellipsise, it simply
+                      vanished while the status/assign controls kept their full
+                      width. Wrapping lets the actions drop to a second line
+                      instead of eating the title.
+                    */}
+                    <div className="z-10 flex shrink-0 flex-wrap items-center justify-between gap-ds-2 border-b border-ds-border-subtle bg-ds-surface px-ds-4 py-ds-3 sm:min-h-16 sm:px-ds-6">
                         <DossierHeader
                             activeTab={activeTab}
                             appData={appData}
@@ -156,6 +173,7 @@ export function DriverProfileModal({
                       content without tabbing through every control inside it.
                     */}
                     <div
+                        ref={tabPanelRef}
                         id={tabPanelId}
                         role="tabpanel"
                         aria-labelledby={tabIdFor(activeTab)}
