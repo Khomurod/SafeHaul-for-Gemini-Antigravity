@@ -2047,7 +2047,7 @@ Status `Not started` means audited but not migrated.
 | Sandbox application | `SandboxApplyHandler` renders `PublicApplyHandler sandbox` verbatim, so it inherited the whole migration; `SandboxActionPanel` now consumes `Card`, `Button`, `FormField`, `Select` and `StatusMedallion` with a `<main>`/single-`<h1>`; the Magic Fill control stays a documented raw-button exception so the sandbox reads as a test surface | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | **Migrated (GO)** 2026-07-27 | Verified: the sandbox banner/Magic Fill render only when `sandbox` is true (unit-asserted), `listSandboxTenantCompanies` / `deleteSandboxApplication` / `transferSandboxApplication` payloads and the `/sandbox/transfer-success` navigation state unchanged, Super Admin gate unchanged, error announced, transfer select labelled |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Driver dossier modal | `DriverProfileModal` shell, `DossierHeader`, `DossierSidebar`, `DossierContent`, the read-only `ApplicationTab` summary and `DocumentsTab` now consume the shared accessible `Modal`, `Button`, `IconButton`, `Select`, `Badge`, `Card` and `--ds-*` tokens; the section navigation is a feature-owned WAI-ARIA tablist; `useCompactViewport` keeps `aria-orientation` in step with the layout | Dialog family, feature-owned Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | **Foundation migrated (GO)** 2026-07-27 — shell, header, navigation, read-only application summary and documents complete; DQ, PEV/VOE, Activity and Notes bodies deliberately **not** migrated and remain reachable and unchanged inside the shell | Verified: 136 focused unit tests, 19 new Chromium + Mobile Chrome E2E checks (focus containment/restoration, Arrow/Home/End walkthrough, nested delete + preview dialogs, page states, 1440/1024/412 px clipping, real-browser axe), existing candidate-table/a11y/access-control E2E, full suite/coverage, lint, typecheck, production build, `git diff --check` |
-| PEV/VOE workflows | **Initiation and tracking migrated**: `PEVTab` (summary `MetricCard`s, employer list, status `Badge`s, Initiate/View Result/Copy Link/Upload Result/History/Resend actions, paywall and no-employer states, verification-history dialog on the shared accessible `Modal`), `PEVRequestModal` (shared `Modal`, native `ChoiceGroup`/`Radio` delivery choice, `FormField`/`Input` contact fields, `Button`/`IconButton`), `FmcsaCarrierPicker` and the shared `PaywallMessage`. `VOEPreviewModal`'s **chrome** is migrated too (shared accessible `Modal`, header, recipient/applicant summary, Print/Download PDF/Edit Request/Transmit actions, and the loading, export-failure and missing-data states); its **generated legal document is deliberately left untokenised** and guarded by an export-parity test. **Not migrated**: the external employer response portal | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | **Initiation, tracking and VOE preview chrome migrated (GO)** 2026-07-27 — respondent portal remains | Verified: 107 focused unit tests (34 new PEVTab contract freezes covering the callable payload, activity log, Firestore write, Storage path, signed-URL and clipboard behaviour; 13 PEVTab a11y/structure; 22 request-modal dialog/radio/validation; 38 pre-existing FMCSA/lookup/modal), real-axe checks on every PEV surface and state, real-browser measurement at 1440/1024/412 px, dossier + candidate-table + campaigns E2E regressions, full suite/coverage, lint, typecheck, production build, `git diff --check`. **Limitation:** the PEV tab is unreachable in Playwright under `VITE_E2E_TEST_MODE=1` — see the completion log |
+| PEV/VOE workflows | **Initiation and tracking migrated**: `PEVTab` (summary `MetricCard`s, employer list, status `Badge`s, Initiate/View Result/Copy Link/Upload Result/History/Resend actions, paywall and no-employer states, verification-history dialog on the shared accessible `Modal`), `PEVRequestModal` (shared `Modal`, native `ChoiceGroup`/`Radio` delivery choice, `FormField`/`Input` contact fields, `Button`/`IconButton`), `FmcsaCarrierPicker` and the shared `PaywallMessage`. `VOEPreviewModal`'s **chrome** is migrated too (shared accessible `Modal`, header, recipient/applicant summary, Print/Download PDF/Edit Request/Transmit actions, and the loading, export-failure and missing-data states); its **generated legal document is deliberately left untokenised** and guarded by an export-parity test. Its **Print pipeline was repaired 2026-07-27** — it no longer routes trusted document structure through the user-content sanitiser, so printing preserves the layout, borders and applicant signature; covered by a real-browser E2E gate. **Not migrated**: the external employer response portal | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | **Initiation, tracking and VOE preview chrome migrated (GO)** 2026-07-27 — respondent portal remains | Verified: 107 focused unit tests (34 new PEVTab contract freezes covering the callable payload, activity log, Firestore write, Storage path, signed-URL and clipboard behaviour; 13 PEVTab a11y/structure; 22 request-modal dialog/radio/validation; 38 pre-existing FMCSA/lookup/modal), real-axe checks on every PEV surface and state, real-browser measurement at 1440/1024/412 px, dossier + candidate-table + campaigns E2E regressions, full suite/coverage, lint, typecheck, production build, `git diff --check`. **Limitation:** the PEV tab is unreachable in Playwright under `VITE_E2E_TEST_MODE=1` — see the completion log |
 
 ### 5.2 Shared component-family inventory
 
@@ -5225,7 +5225,8 @@ user-facing string.
 #### Remaining PEV/VOE work
 
 - `VOEPreviewModal` — **chrome completed 2026-07-27** (see the next log); the
-  generated document is deliberately untokenised and guarded.
+  generated document is deliberately untokenised and guarded. Its **Print export
+  was repaired 2026-07-27** — see the print-pipeline repair log.
 - The external employer response portal (`/verify/:token` respondent side).
 - The in-place mutation of `appData.employers` noted above.
 - E2E reachability for the PEV tab, which depends on dossier E2E fixture data.
@@ -5291,6 +5292,10 @@ defects below.
 9. `text-[10px]` chrome text below the 12 px floor.
 
 #### ESCALATION — printing produces an unsigned, unstyled document
+
+> **RESOLVED 2026-07-27** by the *VOE print pipeline repair* log below. The
+> measurements in this section are the **pre-fix** state and are kept as the
+> record of the defect. Print now carries the full document.
 
 **This is pre-existing, was not introduced here, and was deliberately NOT
 changed because the brief froze print sanitisation. It needs an owner decision.**
@@ -5400,8 +5405,194 @@ callables, routes and data contracts are untouched.
 
 - The external employer response portal (`/verify/:token` respondent side) —
   untouched, and the only remaining PEV/VOE surface.
-- The print-sanitisation escalation above, pending an owner decision.
+- ~~The print-sanitisation escalation above~~ — **resolved**, see the next log.
 - The 4 in-document contrast nodes, pending an owner decision.
+
+---
+
+### VOE print pipeline repair (GO) — 2026-07-27
+
+Scope: the Print export path of `VOEPreviewModal`, and only that. No visual,
+token, layout, wording, routing, Firebase, permission or workflow change. This
+resolves the escalation raised by the log above.
+
+#### Root cause
+
+`handlePrint` serialised the rendered document to an HTML string and passed it
+through `sanitizeUserContent` — the **user-content** policy. That policy exists
+for `NotesTab` and the global question editor, where the input genuinely is
+user-authored rich text, and its DOMPurify allowlist is `b/strong/i/em/u/br/p/
+ul/ol/li/span/a/code/pre` with the attributes `href/target/rel`. Applied to a
+rendered legal document it did exactly what it is built to do:
+
+| | rendered | after `sanitizeUserContent` |
+|---|---|---|
+| `<div>` | 95 | **0** (DOMPurify keeps text, drops the element) |
+| `class` attributes | 157 | **0** (`class` is not in `ALLOWED_ATTR`) |
+| `<img>` — the signature | 1 | **0** (`img` is in `FORBID_TAGS`) |
+| `<svg>` | 2 | **0** |
+| `<h1>` | 1 | **0** |
+
+With every `class` gone, the Tailwind CDN script the print window loaded was
+inert, so the output was also unstyled. The result was an **unsigned, unstyled
+text dump of a §391.23 release**. `Download PDF` was never affected — it
+rasterises the live DOM.
+
+**Why CI was green.** `createDOMPurify(window)` is inert under happy-dom, so the
+sanitiser was a no-op in every unit test. A test asserting print fidelity would
+have passed while a real browser stripped everything. That is the reason this
+fix ships with a real-browser gate.
+
+#### The fix
+
+The insight the previous log already recorded: **the print markup contains no
+user-authored HTML.** Every dynamic value in the document is a React text node,
+so React escapes it during render. The structure around those values is authored
+in JSX. It is trusted structure, and it needed its own policy — not a loosening
+of the shared one.
+
+New `src/shared/utils/printDocument.js`:
+
+- `scrubTrustedPrintTree(root)` — walks a **clone** of the document as a DOM
+  tree (never a string, so there is no serialise/re-parse round trip) and
+  enforces an explicit policy: forbidden elements deleted outright, every `on*`
+  handler attribute deleted, every URL-bearing attribute checked against a
+  scheme allowlist (`img src` must be a base64 raster data URL or `http(s)`;
+  `data:text/html` and `data:image/svg+xml` are rejected), and `style` values
+  containing `javascript:` or `expression(` dropped. Structure, `class`, `<img>`
+  and `<svg>` survive. It returns what it removed, and for a SafeHaul-generated
+  document that is the empty set — which is itself asserted.
+- `collectPrintStyles(document)` — inlines the application's own compiled CSS
+  from `document.styleSheets`, falling back to a `<link>` for any stylesheet
+  whose rules are unreadable. **The Tailwind CDN script is gone**: no network
+  dependency, no JIT race, and the CSS is the build the app actually ships.
+- `waitForPrintDocumentReady(printWindow)` — resolves once the print document's
+  linked stylesheets, images and fonts have settled. **The flat 1 s timer is
+  gone.** A timeout remains only as a backstop against a resource that never
+  settles, and the return value says which path was taken.
+
+`handlePrint` now writes a bare skeleton, appends the collected styles plus a
+small print-only sheet (`@page` margins and `print-color-adjust: exact`, without
+which Chrome and Safari drop the background fills and lighten the borders when
+printing), clones and scrubs the document, appends it inside the same 20 px
+padding wrapper, marks the body ready, waits, then prints.
+
+Because this DOM walk is our own code rather than DOMPurify, it behaves
+identically in happy-dom and in Chromium — so unlike the code it replaces, it is
+genuinely unit-testable.
+
+#### The shared sanitiser is untouched
+
+`src/shared/utils/sanitizeUserContent.js` is **byte-identical**. `NotesTab`,
+`GlobalQuestionsManager` and `companyService` keep the strict policy, and
+`src/tests/sanitizeUserContent.test.js` still passes unchanged. A contract test
+now asserts the *negative*: the VOE print path must never call it again.
+
+#### Also fixed, and honestly noted as new behaviour
+
+- **Print failures are now visible.** A blocked pop-up already was; a
+  preparation failure now raises the same in-dialog `role="alert"`, closes the
+  half-built window and re-enables the control, and a document with no
+  collectable stylesheet says so rather than silently printing unstyled.
+- **Print announces progress** in the existing `role="status"` region and
+  disables its own control while preparing, so a double click cannot open two
+  print windows. This is new; it did not exist before.
+
+#### E2E reachability — a real gap, partially closed
+
+The previous log recorded that `VOEPreviewModal` cannot be reached in Playwright:
+under `VITE_E2E_TEST_MODE=1` Firestore is unreachable, the dossier settles into
+its error state and never mounts `DossierContent`. **That is still true and is
+not fixed here.**
+
+What is new is `/e2e/voe-preview`, a lazy, `isE2ETestMode`-gated harness route
+(`src/app/e2e/VOEPreviewHarness.jsx`) that mounts the real component with the
+real export pipeline against fixture props. It proves the *document and the
+exports* in a real browser. It does **not** prove the route a user takes to get
+there, and it is not a substitute for dossier E2E fixture data. Verified absent
+from the production build: no bundle in `dist/assets` contains the harness.
+
+#### Verification — exact results
+
+- **New unit tests:** 53 in `src/tests/printDocument.test.js` (preservation,
+  removal, URL-scheme policy, stylesheet collection, readiness waiting).
+- **`VOEPreviewModal.contract.test.jsx`:** 51 pass. The print block was
+  **rewritten**: the previous 2 tests froze the broken pipeline by value (five
+  `document.write` payloads, the `sanitizeUserContent` step, the 1 s timer) and
+  are replaced by 16 that assert the structure, classes, signature, inlined CSS,
+  readiness ordering, non-mutation of the live node, the blocked-pop-up and
+  preparation-failure paths, the no-stylesheet warning, and that the user-content
+  sanitiser is never called. Everything else in the file is unchanged and still
+  passes.
+- **`VOEPreviewModal.export.test.jsx`** (9) and **`.a11y.test.jsx`** (19): pass
+  unchanged. **`sanitizeUserContent.test.js`** (2): passes unchanged.
+- **New E2E:** `e2e/voe-print-export.spec.cjs`, 20 tests. **20/20 on each of
+  Chromium, Mobile Chrome, Firefox and WebKit** — 80 runs, each lane run on its
+  own, serially, per the concurrency rule. In the real print pop-up: 95 divs
+  and 157 classed elements (identical to the source), the signature `<img>`
+  present with `naturalWidth > 0`, computed background `rgb(255, 255, 255)`,
+  serif family, non-zero border widths, `font-weight: 900` on the `<h1>`; zero
+  `<script>` elements; no request to `cdn.tailwindcss.com`; the readiness marker
+  set and zero unloaded stylesheets at the moment `print()` was called.
+- **Hostile input, in a real browser:** applicant/employer values containing
+  `<img src=x onerror=…><script>…</script>` appear as visible text, produce zero
+  script elements, zero `on*` attributes and zero injected images, and the
+  sentinel `window.__voePwned` is undefined in both the pop-up and the opener.
+  `javascript:`, `data:text/html` and `data:image/svg+xml` signatures each lose
+  their `src` and execute nothing.
+- **PDF export:** unchanged and re-proven in a real browser — downloads
+  `VOE_Acme_Freight_Maria_Garcia.pdf`, including immediately after a print, so
+  the capture surface is provably undisturbed.
+- **Axe:** zero serious/critical violations on the dialog chrome in a real
+  browser. The generated document is excluded from that scan for the reason
+  already recorded — its 4 grey small-print contrast nodes are an open owner
+  decision, not something this change silently fixed.
+- **Keyboard and responsive:** Print is focusable and operable with Enter,
+  Escape closes and reports back to the opener, and there is no horizontal
+  overflow at 1440 / 1024 / 412 px. Printing from a 412 px viewport still yields
+  the full 157-class document.
+- **Regressions:** `driver-dossier`, `pev-request-and-portal-response`,
+  `company-candidate-table` and `a11y` E2E — 24 passed, 3 skipped, serially.
+- **Full frontend suite:** 1857 passed, 48 skipped, 146 files. Coverage
+  statements 44.86% / branches 44.92% / functions 45.25% / lines 45.89%.
+- **Lint** (`eslint .`): 0 errors, 134 pre-existing warnings. **Typecheck**
+  (`tsc --noEmit`): clean. **Build** (`vite build`): succeeds, with the
+  pre-existing >500 kB chunk warning. **`git diff --check`**: clean.
+
+#### Contracts preserved
+
+Every word of the regulatory text and its ordering; all applicant/employer values
+and their `getFieldValue` / `NOT DISCLOSED` / `REDACTED (ON FILE)` /
+`[PROSPECTIVE COMPANY]` / `Verified` fallbacks; SSN last-four masking; the
+`TEXT_SIGNATURE:` prefix rule and all three signature branches; the audit-ID
+derivation; the generated date/time; `{ scale: 2, useCORS: true }`; the jsPDF
+`portrait` / `px` / `[canvas.width, canvas.height]` construction and `addImage`
+placement; the `VOE_<employer>_<first>_<last>.pdf` filename with whitespace
+underscored and the `Employer` fallback; the print window's feature string, its
+`Print VOE` title and its 20 px body padding; and `onClose` / `onSend()`,
+including that `onClose` returns to `PEVRequestModal`. Firebase rules, database
+structures, callables, integrations, permissions, routes, feature flags and
+business workflows are untouched.
+
+**Deliberately changed, because the defect was in them:** the five
+`document.write` payloads, the `sanitizeUserContent` step, the Tailwind CDN
+script and the 1 s print-then-close delay. Each is replaced by the mechanism
+described above and covered by the tests listed above.
+
+#### Still outstanding
+
+- The external employer response portal (`/verify/:token` respondent side) — the
+  only remaining PEV/VOE surface, untouched.
+- **Reaching `VOEPreviewModal` through the driver dossier in Playwright.** Still
+  blocked on dossier E2E fixture data; the harness route is a workaround for
+  export coverage, not a fix for reachability.
+- The 4 in-document `color-contrast` nodes — still an open owner decision.
+- **No test exercises an actual printed page.** `window.print()` is stubbed in
+  every lane, so what is proven is the *document handed to the print engine* —
+  its structure, styling, signature and readiness — not the paper output. The
+  `print-color-adjust: exact` rule is included on the standard grounds that
+  Chrome and Safari drop background fills without it; that specific claim is
+  reasoning, not something these tests measure.
 
 ---
 
@@ -5433,16 +5624,14 @@ callables, routes and data contracts are untouched.
   `bg-slate-900` panel; rather than invent a colour it moved to
   `surface-subtle`, following the dossier document-preview precedent. Any surface
   that genuinely needs an inverse treatment is blocked on this.
-- `[!]` **Decide how the VOE form should print.** Recorded 2026-07-27 by the VOE
-  campaign, with real-browser measurements in its completion log. `handlePrint`
-  runs the generated document through the shared `sanitizeUserContent`, which
-  strips all 95 `<div>`s, the signature `<img>`, both `<svg>`s, the `<h1>` and
-  all 157 `class` attributes — printing an unsigned, unstyled text dump of a
-  legal §391.23 release. The shared sanitiser must **not** be loosened (it also
-  guards `NotesTab`, where the input really is user-authored); the fix belongs in
-  `VOEPreviewModal`, whose print markup contains no user-authored HTML to begin
-  with. Download PDF is unaffected and correct. Left unchanged because the brief
-  froze print sanitisation.
+- `[x]` **Decide how the VOE form should print. RESOLVED 2026-07-27** — see the
+  *VOE print pipeline repair* log. Raised by the VOE campaign: `handlePrint` ran
+  the generated document through the shared `sanitizeUserContent`, stripping all
+  95 `<div>`s, the signature `<img>`, both `<svg>`s, the `<h1>` and all 157
+  `class` attributes, and printing an unsigned, unstyled text dump of a legal
+  §391.23 release. Resolved by giving *trusted application structure* its own
+  policy (`@shared/utils/printDocument`) rather than loosening the shared
+  sanitiser, which still guards `NotesTab` unchanged.
 - `[!]` **Decide whether the VOE document's small print may be recoloured.**
   Recorded 2026-07-27. Real-browser axe reports 4 serious `color-contrast` nodes
   inside the generated document (2.56:1, 1.95:1 and two at 2.45:1). They are

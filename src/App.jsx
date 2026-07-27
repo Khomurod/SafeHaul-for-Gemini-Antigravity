@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { Suspense } from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { DataProvider, useData } from '@/context/DataContext';
 import {
@@ -18,8 +18,21 @@ import {
   PUBLIC_FEATURE_ROUTE_MANIFEST,
 } from '@app/routes/appRouteManifest';
 
+import { isE2ETestMode } from '@lib/runtime/e2eMode';
+
 // Keep Auth screens eager-loaded as they are the entry point
 import { LoginScreen } from '@features/auth';
+
+/**
+ * E2E-only mount point for `VOEPreviewModal`, whose Print pipeline can only be
+ * proven in a real browser and which is unreachable through the driver dossier
+ * under `VITE_E2E_TEST_MODE=1`. See `src/app/e2e/VOEPreviewHarness.jsx`.
+ *
+ * Lazy, and only routed in test mode: a production build has no route to it.
+ */
+const VOEPreviewHarness = isE2ETestMode
+  ? lazy(() => import('@app/e2e/VOEPreviewHarness'))
+  : null;
 
 function withFeatureBoundary(featureName, element) {
   return (
@@ -86,6 +99,11 @@ function AppRoutes() {
             />
           );
         })}
+
+        {/* E2E-only harness route. Absent from production builds entirely. */}
+        {VOEPreviewHarness && (
+          <Route path="/e2e/voe-preview" element={<VOEPreviewHarness />} />
+        )}
 
         {/* --- PROTECTED ROUTES (Login Required) --- */}
         {PROTECTED_FEATURE_ROUTE_MANIFEST.map((routeDef) => {
