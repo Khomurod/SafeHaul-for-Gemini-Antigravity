@@ -43,8 +43,21 @@ export const RadioGroup = ({
                     )}
                 </legend>
             )}
+            {/*
+              DEFECT FIX (2026-07-27): this was `text-ds-content-muted`. That is
+              slate-500, and the roadmap already records `content-muted` as
+              **approved on `surface` only** — it fails AA on tinted surfaces.
+              Two of these groups render inside the drug-and-alcohol block, whose
+              background is `--ds-color-status-warning-bg`, where it measured
+              4.27:1 in Chromium against the required 4.5:1. Real-browser axe
+              reported it as a serious `color-contrast` violation.
+
+              `content-secondary` is the remedy the token blocker already
+              prescribes for exactly this pairing, and it is darker on every
+              surface, so the untinted groups improve too.
+            */}
             {description && (
-                <p id={descriptionId} className="mb-2 text-ds-xs text-ds-content-muted">
+                <p id={descriptionId} className="mb-2 text-ds-xs text-ds-content-secondary">
                     {description}
                 </p>
             )}

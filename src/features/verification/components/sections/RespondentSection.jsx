@@ -1,6 +1,6 @@
 import React from 'react';
 import { SignaturePad } from '@shared/components/signature/SignaturePad';
-import { Button, FieldMessage, FormField, FormSection, Input } from '@/design-system/components';
+import { Button, FormField, FormSection, Input } from '@/design-system/components';
 
 /** Section 4: Respondent Verification & Signature. Presentation migrated; field
  *  names, placeholders, the SignaturePad wiring, and the E2E test-signature
@@ -70,15 +70,20 @@ export function RespondentSection({ formData, formErrors, updateField, isE2EVeri
                 </FormField>
             </div>
 
+            {/*
+              DEFECT FIX: the instruction line and the validation message sat
+              beside the pad as loose text, associated with nothing. A screen
+              reader reaching the canvas was told only "canvas". Both are now
+              passed into `SignaturePad`, which owns their ids and wires them to
+              the drawing surface with `aria-describedby` / `aria-invalid`. The
+              wording of the label, the instructions and the error is unchanged.
+            */}
             <div className="grid gap-ds-2">
                 <span className="text-ds-sm font-semibold text-ds-content">
                     Electronic Signature
                     <span className="text-ds-status-danger-fg" aria-hidden="true"> *</span>
                     <span className="ds-visually-hidden"> required</span>
                 </span>
-                <p className="text-ds-xs text-ds-content-muted">
-                    Draw your signature below. By signing, you certify that the information provided is true and accurate.
-                </p>
                 {isE2EVerifyMock && (
                     <Button
                         type="button"
@@ -90,10 +95,12 @@ export function RespondentSection({ formData, formErrors, updateField, isE2EVeri
                         Use Test Signature
                     </Button>
                 )}
-                <SignaturePad onSignatureChange={(data) => updateField('signatureData', data)} />
-                {formErrors.signatureData && (
-                    <FieldMessage tone="error">{formErrors.signatureData}</FieldMessage>
-                )}
+                <SignaturePad
+                    label="Electronic signature drawing area"
+                    instructions="Draw your signature below. By signing, you certify that the information provided is true and accurate."
+                    error={formErrors.signatureData}
+                    onSignatureChange={(data) => updateField('signatureData', data)}
+                />
             </div>
 
             <div className="rounded-ds-lg border border-ds-border bg-ds-surface-subtle p-ds-4">
