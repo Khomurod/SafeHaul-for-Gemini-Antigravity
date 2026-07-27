@@ -1,6 +1,24 @@
 import { useState } from 'react';
 
-export function useBulkImport() {
+/**
+ * Shared spreadsheet/Google-Sheet import state machine.
+ *
+ * @param {object} [options]
+ * @param {(message: string) => void} [options.onError] Where import failures are
+ *   reported. Defaults to a blocking `window.alert`, which is what every caller
+ *   used before the lead-intake design-system migration.
+ *
+ *   The default is kept deliberately: `AudienceBuilder` (campaigns) also consumes
+ *   this hook and was not part of that migration, so omitting the option must
+ *   behave exactly as before. `CompanyBulkUpload` passes a sink that renders the
+ *   same message as a non-blocking in-page alert instead — a blocking modal
+ *   dialog steals focus, cannot be reached by assistive technology as page
+ *   content, and halts the JS event loop.
+ *
+ *   Messages are unchanged in both paths.
+ */
+export function useBulkImport(options = {}) {
+    const notifyError = options.onError || ((message) => alert(message));
     const [csvData, setCsvData] = useState([]);
     const [processingSheet, setProcessingSheet] = useState(false);
     const [step, setStep] = useState('upload');
@@ -21,7 +39,7 @@ export function useBulkImport() {
                         resolve();
                     } else {
                         console.error("Worker Parse Error:", error);
-                        alert("Error reading file: " + error);
+                        notifyError("Error reading file: " + error);
                         reject(new Error(error));
                     }
                     worker.terminate();
@@ -29,7 +47,7 @@ export function useBulkImport() {
 
                 worker.onerror = (err) => {
                     console.error("Worker Error:", err);
-                    alert("Worker failed to process file.");
+                    notifyError("Worker failed to process file.");
                     worker.terminate();
                     reject(err);
                 };
@@ -38,7 +56,7 @@ export function useBulkImport() {
 
             } catch (err) {
                 console.error("Main Thread Error:", err);
-                alert("Failed to start import worker.");
+                notifyError("Failed to start import worker.");
                 reject(err);
             }
         });
@@ -55,9 +73,9 @@ export function useBulkImport() {
     };
 
     const handleSheetImport = async () => {
-        if (!sheetUrl) return alert("Please enter a Google Sheet URL.");
+        if (!sheetUrl) return notifyError("Please enter a Google Sheet URL.");
         const matches = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
-        if (!matches || !matches[1]) return alert("Invalid Google Sheet URL.");
+        if (!matches || !matches[1]) return notifyError("Invalid Google Sheet URL.");
 
         const sheetId = matches[1];
         const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
@@ -70,7 +88,7 @@ export function useBulkImport() {
             await parseBuffer(arrayBuffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'GoogleSheet.xlsx');
         } catch (error) {
             console.error("Sheet Error:", error);
-            alert("Error importing sheet: " + error.message);
+            notifyError("Error importing sheet: " + error.message);
         } finally {
             setProcessingSheet(false);
         }

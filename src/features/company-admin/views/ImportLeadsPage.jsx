@@ -2,10 +2,36 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
 import { CompanyBulkUpload } from '@features/company-admin/components/CompanyBulkUpload';
-import { Upload, ShieldAlert } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
+import { Button, Card, StatusMedallion } from '@/design-system/components';
+import { PageContainer, PageHeader, Stack } from '@/design-system/layouts';
 
 import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
 
+/**
+ * Company "Import Leads" page.
+ *
+ * Feature-owned: the permission rule, the `importLeads` feature flag, the
+ * destination after a completed import, and every string on this page. All
+ * layout and controls come from the design system.
+ *
+ * Migrated 2026-07-27. Defects fixed, presentation only:
+ *
+ *  1. This page has always passed `isEmbedded` to `CompanyBulkUpload`, but the
+ *     prop was never consumed, so a full-screen modal overlay rendered on top of
+ *     the page's own "Import Leads" header — the header was unreachable and the
+ *     page behind the overlay was still in the tab order. The prop is honoured
+ *     now, and the import surface renders in place.
+ *  2. The access-denied state had no `<h1>` (only an `<h2>`), so a keyboard or
+ *     screen-reader user landing on it heard an unnamed page, and its action was
+ *     a raw `<button>`.
+ *  3. Both states used hard-coded palette classes instead of `--ds-*` tokens.
+ *
+ * Frozen: the "Import Leads" heading and its description, the access-denied
+ * copy, the "Return to Dashboard" label, the feature-flag rule (locked only when
+ * explicitly `false`, and checked before the permission rule), and both
+ * navigation destinations.
+ */
 export const ImportLeadsPage = () => {
     const { currentCompanyProfile, currentUserClaims } = useData();
     const navigate = useNavigate();
@@ -24,48 +50,50 @@ export const ImportLeadsPage = () => {
 
     if (!isCompanyAdmin) {
         return (
-            <div className="h-full flex flex-col items-center justify-center bg-gray-50 p-8">
-                <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md text-center border border-gray-200">
-                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <ShieldAlert size={32} className="text-red-600" />
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
-                    <p className="text-gray-600 mb-6">
-                        You do not have permission to import leads. Please contact your Company Admin to request access.
-                    </p>
-                    <button
-                        onClick={() => navigate('/company/dashboard')}
-                        className="w-full py-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition"
-                    >
-                        Return to Dashboard
-                    </button>
-                </div>
+            <div className="min-h-full bg-ds-canvas">
+                <PageContainer width="standard">
+                    <Card padding="lg" className="mx-auto max-w-md text-center">
+                        <StatusMedallion tone="danger" className="mx-auto mb-ds-4">
+                            <ShieldAlert size={32} />
+                        </StatusMedallion>
+                        <h1 className="mb-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                            Access Denied
+                        </h1>
+                        <p className="mb-ds-6 text-ds-content-secondary">
+                            You do not have permission to import leads. Please contact your Company Admin to request access.
+                        </p>
+                        <Button
+                            variant="secondary"
+                            fullWidth
+                            onClick={() => navigate('/company/dashboard')}
+                        >
+                            Return to Dashboard
+                        </Button>
+                    </Card>
+                </PageContainer>
             </div>
         );
     }
 
     return (
-        <div className="h-full flex flex-col bg-gray-50">
-            {/* Page Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0">
-                <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    <Upload size={24} className="text-green-600" />
-                    Import Leads
-                </h1>
-                <p className="text-sm text-gray-500">Bulk upload leads from a CSV file.</p>
-            </div>
-
-            {/* Upload Content */}
-            <div className="flex-1 overflow-auto p-6">
-                <div className="max-w-3xl mx-auto">
-                    <CompanyBulkUpload
-                        companyId={companyId}
-                        onClose={() => navigate('/company/dashboard')}
-                        onUploadComplete={handleUploadComplete}
-                        isEmbedded={true}
+        <div className="min-h-full bg-ds-canvas">
+            <PageContainer width="standard">
+                <Stack gap="lg">
+                    <PageHeader
+                        title="Import Leads"
+                        description="Bulk upload leads from a CSV file."
                     />
-                </div>
-            </div>
+
+                    <div className="mx-auto w-full max-w-3xl">
+                        <CompanyBulkUpload
+                            companyId={companyId}
+                            onClose={() => navigate('/company/dashboard')}
+                            onUploadComplete={handleUploadComplete}
+                            isEmbedded={true}
+                        />
+                    </div>
+                </Stack>
+            </PageContainer>
         </div>
     );
 };

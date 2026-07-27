@@ -2027,10 +2027,9 @@ The reverse directions are prohibited.
 
 Status `Not started` means audited but not migrated.
 
-**Progress, counted from the Status column (2026-07-27): 15 of 19 rows complete
-— 78.9%.** The verification-portal closeout moved the last PEV/VOE row to
-complete. The four rows still open are **Import leads**, **Quick add lead**,
-**Company settings** and **Super Admin**.
+**Progress, counted from the Status column (2026-07-27): 17 of 19 rows complete
+— 89.5%.** The lead-intake campaign closed out **Import leads** and **Quick add
+lead**. The two rows still open are **Company settings** and **Super Admin**.
 
 > **Reconciliation flag, raised 2026-07-27 and deliberately not silently
 > resolved.** The **Company settings** row reads `Not started`, but section 8's
@@ -2050,8 +2049,8 @@ complete. The four rows still open are **Import leads**, **Quick add lead**,
 | Applications / company leads / my leads | `CompanyCandidatesListPage` now consumes the approved DataTable; feature owns toolbar, filters, actions, and status mapping | Approved DataTable pilot, toolbar, filters, page states | Critical | High | Table spec/primitives, controls, badge | Completed 2026-07-23 | Verified: measured alignment, keyboard row/selection, filters/sorting, pagination contract, bulk actions, calls, dossier, desktop/mobile, scoped axe |
 | Campaigns | All interactive components migrated — `CampaignCard`, `CampaignsDashboard` shell, `CampaignResultsTable`, `DetailedReportModal`, `CampaignDetails`, `CampaignEditor` shell, `ContentComposer`, `AudienceBuilder`, `VirtualLeadList`, and `LaunchPad`; only the decorative `DeviceMockup` illustration and the `CompanyCampaignsPage` fallback string remain unmigrated | Presentation-only throughout; the dashboard keeps both listeners + cleanup, stats, new-draft write, `cancelBulkSession`, confirmations, delete logic, and wiring; `CampaignDetails` keeps `effectiveCompanyId`, guards, and the pause/resume/cancel/retry payloads; the `CampaignEditor` shell keeps the draft listener, deep merge + `rawData` preservation, 2s autosave debounce, and all lazy child props; `ContentComposer` keeps the `messageConfig` spread and variable insertion; `AudienceBuilder` keeps the targeting/import hooks, exclusion resets and `finalCount`; `VirtualLeadList` keeps the `getFilteredLeadsPage` callable, mapping, pagination and exclusion rules; `LaunchPad` keeps the `initBulkSession` payload, launch guards, toasts, error mapping, estimate and preview truncation | Status presentation, action-visibility rules, exact callables, autosave/merge/guards, variable insertion targeting, targeting/counting/import parsing, pagination and exclusion behavior, launch payload and guards | Medium | High | **Complete** 2026-07-24 — all ten interactive components migrated; `CompanyCampaignsPage` fallback tokenized; decorative `DeviceMockup` status-bar text carries an approved documented exception | 22 card + 16 dashboard + 11 results + 18 report-modal + 25 details + 12 editor + 18 composer + 22 audience + 20 preview + 33 launch unit tests, full suite/coverage, Chromium/Mobile Chrome, 1440/1024/412 px, scoped axe, overflow, git diff --check passed |
 | E-Docs | `EnvelopeHistory` (approved `DataTable`), the `DocumentsManager` page header/canvas, its History/Templates tab navigation (feature-owned WAI-ARIA tab interface), and the whole `TemplatesPanel` are migrated; `SendTemplateModal`'s own surface (shared accessible Modal, labelled fields, pressed delivery group, approved Button rows) is migrated — with a recorded exception for the nested legacy `DateTripletField` it renders for date-triplet prefill groups; the `EnvelopeCreator` shell (sub-slice A), its `FieldPropertiesPanel` rail (sub-slice B), the `EnvelopeSidebar` (sub-slice C) and the shared `DateTripletField` (sub-slice D — which closed the nested-control exception, so the send dialog is migrated without qualification) are migrated; every E-Docs component is migrated | Presentation-only throughout: the history table keeps the `signing_requests` `onSnapshot` subscription and ordering, the `voided` + `serverTimestamp` write, the `getSigningLink`/`getSignedDocumentUrl` callables, `gs://` path cleaning, `window.confirm` and every toast; the header keeps back navigation and both creator transitions; the tabs keep the exact `'list'`/`'templates'` values with `'list'` initial; `TemplatesPanel` keeps every prop, the `postSubmitRequiredById = {}` default, the `!== false` required rule, `templates.find` lookup with null for missing ids, the id order, the move directions and first/last disabling, and all callback argument shapes | Real-time status updates, per-status action visibility, signing-link confidentiality, tab state values, post-application ordering/required persistence, template use/edit/delete argument shapes | High | High | **Complete** 2026-07-25 — `EnvelopeHistory`, the header, the tab navigation, `TemplatesPanel` and `SendTemplateModal` (GO 2026-07-24); `EnvelopeCreator` sub-slices A–F (GO 2026-07-25); final audit closed the signing-surface axe findings | 46 history + 22 DocumentsManager + 35 TemplatesPanel + 51 SendTemplateModal + 21 creator-shell + 30 field-properties + 42 sidebar + 31 date-triplet unit tests, 52 new Chromium/Mobile Chrome E2E checks, existing E-Doc send/sign regressions, full suite/coverage, 1440/1024/412 px, scoped axe, overflow, built-CSS token emission, git diff --check passed |
-| Import leads | `ImportLeadsPage`, `CompanyBulkUpload`, `BulkUploadLayout` | Upload pattern, DataTable preview, Dialog, PageState | Medium | High | Forms, table, dialog, feedback | Not started | Parse/mapping/upload/error/progress behavior, large files, mobile |
-| Quick add lead | `QuickAddLeadPage`, `QuickLeadModal` | Form layout, Field controls, Button, Dialog | Medium | Medium | Controls, forms, dialog | Not started | Validation, save, duplicate/error behavior, keyboard/mobile |
+| Import leads | `ImportLeadsPage` (shell, header, access-denied, feature-locked), `CompanyBulkUpload` (assignment mode, team-member selection, repair action) and the shared `BulkUploadLayout` (step meter, upload methods, preview table, progress, success) now consume the shared accessible `Modal`, `Button`/`IconButton`, `ChoiceGroup`/`Radio`/`Checkbox`, `FormField`/`Input`, the approved `DataTable` for the preview, `ProgressBar`, `StatusMedallion`, `FieldMessage` and `PageHeader`/`PageContainer`/`Stack` | Upload pattern, DataTable preview, shared Modal, PageState | Medium | High | Forms, table, dialog, feedback | **Complete (GO)** 2026-07-27 | Verified: 91 focused unit tests (26 `BulkUploadLayout` contract freeze + 31 `BulkUploadLayout` a11y/defect + 20 `CompanyBulkUpload` contract freeze + 16 `CompanyBulkUpload` a11y/defect + 10 `ImportLeadsPage` contract freeze + 5 `ImportLeadsPage` a11y, plus 11 `useBulkImport` + 19 `useCompanyLeadUpload` hook contract freezes), full suite/coverage, lint, typecheck, production build, callable-contract, 25 new Chromium + 19 Mobile Chrome E2E (real Web Worker CSV parse, Google Sheet error path, assignment/recipient selection, data-repair dialog, large-preview row cap and bounded scroll, keyboard walkthrough, axe on every state), regression E2E on the other `BulkUploadLayout`/`useBulkImport` consumers (`AudienceBuilder`, company dashboard shell), 1440/1024/412 px, `git diff --check` |
+| Quick add lead | `QuickAddLeadPage` now consumes `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `Button`, `Card`, `PageHeader`/`PageContainer`/`Stack`/`ResponsiveGrid`. `QuickLeadModal` (a separate dashboard-launched modal with its own phone-or-email rule and `LEAD_DEFAULT_STATUS`) was out of this campaign's scope and remains unmigrated | Form layout, Field controls, Button | Medium | Medium | Controls, forms | **Complete (GO)** 2026-07-27 — `QuickAddLeadPage` only; `QuickLeadModal` open | Verified: 36 focused unit tests (14 contract freeze + 22 a11y/defect), full suite/coverage, lint, typecheck, production build, 12 new Chromium + 2 Mobile Chrome E2E (labelling, app-level validation with focus management, duplicate-submit lock, CDL options, keyboard completion, axe), 1440/1024/412 px, `git diff --check` |
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
 | Company settings | `CompanySettings` tabs and settings components | Tabs, PageHeader, Field family, Table, Dialog, PageState | High | High | Controls, forms, table, dialog, status | Not started | All save/integration/number/team/question tests and mobile |
 | Super Admin `/super-admin/*` | feature-local view router, tables, forms, modals, analytics | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | Not started | Permissions, maintenance actions, integrations, analytics, desktop/mobile |
@@ -5765,6 +5764,111 @@ callable path are unchanged.
   Chromium-specific API, but that is reasoning, not measurement.
 - **No test asserts what a submitted signature *looks* like** — the pad's PNG is
   compared by identity and by inked-pixel count, not by image content.
+
+---
+
+### Lead-intake completion log (GO) — 2026-07-27
+
+Scope: **Import Leads** (`ImportLeadsPage`, `CompanyBulkUpload`, the shared
+`BulkUploadLayout`, `useBulkImport`, `useCompanyLeadUpload`) and **Quick Add
+Lead** (`QuickAddLeadPage`). Base `origin/main` at `e581998` (merged PR #121,
+all 10 required checks green) with a clean tree.
+
+#### Contract freeze first
+
+Before any presentation change, six freeze suites (99 tests) pinned every
+behaviour the brief said must not move: the `companies/{companyId}/leads` path
+and exact Quick Add payload keys/values; `BulkUploadLayout`'s step ids, accepted
+formats, `'file'`/`'gsheet'` values, internal-field preview filter and 8-column/
+10-row caps; `CompanyBulkUpload`'s CSV template contents, `uploadLeads(csvData,
+importMethod)` signature and reset composition; `useBulkImport`'s parse/sheet
+behaviour (also exercising its other consumer, `AudienceBuilder`, implicitly by
+freezing the no-options default); and `useCompanyLeadUpload`'s team-member load,
+assignment guards, created/updated payloads, `activity_logs` entries,
+round-robin order, batch limits and the data-repair scan rule. All 99 passed
+against the pre-migration code, then again after migration — the frozen half of
+this task.
+
+#### Defects found and fixed (presentation only, each proven by a companion test)
+
+1. `BulkUploadLayout`'s overlay was a bare `fixed inset-0` div: no
+   `role="dialog"`, no focus move/trap/restore, no Escape. Now the shared
+   accessible `Modal`.
+2. `ImportLeadsPage` always passed `isEmbedded` to `CompanyBulkUpload`, but the
+   prop was never read, so the full-screen modal rendered on top of the page's
+   own header — unreachable and covering live content. Now honoured: embedded
+   renders in place; only the dashboard's own overlay usage gets a dialog.
+3. The header close control, the file input's drop zone had an accessible
+   label but the two import-method tiles and the two assignment tiles were
+   colour-only toggle `<button>`s with no group semantics — now real
+   `ChoiceGroup`/`Radio` groups.
+4. The file input was `display: none`, removing it from the tab order
+   entirely. Now visually hidden but focusable, with a per-instance `id`
+   (previously a hard-coded global, which broke with two instances mounted).
+5. Each team member was a `<div onClick>` with a decorative check icon: no
+   role, no accessible name, no checked state, unreachable by keyboard. Now
+   real `Checkbox` controls in a named group.
+6. The preview table had no accessible name, no header `scope`, and its scroll
+   region was neither focusable nor labelled — replaced with the approved
+   `DataTable`. Fixing this also surfaced a **real overflow bug**: the bounding
+   wrapper used `max-h-64`, which does nothing for `DataTable`'s `height: 100%`
+   root (percentage heights need an ancestor with an explicit height), so a
+   300-row import stretched to ~608 px instead of scrolling in the labelled
+   region — caught by the Chromium E2E run, fixed by using `h-64`.
+7. Upload progress was silent — the string was the disabled button's own
+   label, never announced, with no `progressbar` role. Now a `role="status"`
+   live region plus a determinate `ProgressBar` (additive `progressCount` on
+   `useCompanyLeadUpload`) when a countable total exists.
+8. The data-repair action used a blocking `window.confirm`; upload, sheet-parse
+   and repair failures used blocking `alert()`. All replaced with in-page
+   `role="alert"`/`role="status"` feedback and an accessible confirmation
+   dialog, all keeping the exact frozen wording.
+9. `QuickAddLeadPage` had no field-to-label association at all (bare
+   `<label>`s, no `htmlFor`/`id`), so nine controls announced as unlabelled edit
+   boxes. Now `FormField`-owned associations.
+10. The frozen required-field message ("Please fill in required fields (First
+    Name, Last Name, Phone).") was **unreachable in a real browser**: the
+    inputs also carried the native `required` attribute, so the browser's own
+    validation bubble blocked submission before `handleSubmit` ever ran. The
+    form is now `noValidate`; the app owns validation, shows the same message,
+    marks the offending fields `aria-invalid` with an associated error, and
+    moves focus to the first invalid field.
+11. Quick Add's `isSaving` guard was React state, so two activations dispatched
+    before a re-render could both pass it. A `useRef` guard closes that window.
+12. Neither form had `autoComplete` tokens.
+
+#### Preserved contracts (see the freeze suites for the full list)
+
+`companies/{companyId}/leads`; the nine Quick Add form keys and initial values
+(`cdlClass: 'A'`); First Name/Last Name/Phone required; `ATS_STATUS_NEW`;
+`source: 'manual_entry'`; `createdBy`/`createdAt`/`updatedAt`; every toast and
+in-page message; import-method and assignment-mode values; team-member ids and
+round-robin order; the CSV template headers/sample row/filename; accepted file
+formats; Google Sheet behaviour; preview field filtering; upload/repair
+callback arguments; `LEAD_DEFAULT_STATUS` and the bulk-import source strings.
+
+#### Documented exceptions
+
+- `CompanyBulkUpload`'s "Select Recipients" group uses `role="group"` with an
+  adjacent Select-All action rather than the approved `ChoiceGroup`, because
+  `ChoiceGroup` renders a bare `<legend>` with no slot for a sibling action.
+- `QuickLeadModal` (a separate dashboard-launched quick-add modal, with its own
+  phone-or-email rule and `LEAD_DEFAULT_STATUS`) was out of this campaign's
+  scope, named in the brief as `QuickAddLeadPage` only, and remains unmigrated.
+
+#### Verification
+
+91 new focused unit tests beyond the 99 freezes (contract + a11y/defect,
+per-file counts in the inventory row above), full suite/coverage (2075 passed,
+0 regressions), lint (0 errors), typecheck (clean), production build, the
+callable-contract check (unaffected — this surface writes via the Firestore SDK
+directly, not callables), 25 new Chromium + 19 Mobile Chrome E2E covering the
+real import Web Worker parse, the Google Sheet error path, assignment/recipient
+selection, the data-repair dialog, the large-preview row cap and bounded
+scroll (the defect above), a keyboard walkthrough, axe on every major state,
+1440/1024/412 px overflow checks, regression E2E on the other
+`BulkUploadLayout`/`useBulkImport` consumers (`AudienceBuilder`, the company
+dashboard shell — both pass unchanged), and `git diff --check`.
 
 ---
 

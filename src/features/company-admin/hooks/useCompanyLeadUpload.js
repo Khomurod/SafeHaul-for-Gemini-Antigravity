@@ -5,9 +5,34 @@ import { formatPhoneNumber, normalizePhone } from '@shared/utils/helpers';
 import { PLACEHOLDER_DOMAIN } from '@/config/placeholderDomains';
 import { LEAD_DEFAULT_STATUS } from '@shared/constants/atsStatus';
 
-export function useCompanyLeadUpload(companyId, onUploadComplete) {
+/**
+ * Firestore-backed bulk lead import for a company.
+ *
+ * @param {string} companyId
+ * @param {() => void} [onUploadComplete]
+ * @param {object} [options]
+ * @param {(message: string) => void} [options.onError] Where repair failures are
+ *   reported. Defaults to a blocking `window.alert`.
+ * @param {(message: string) => void} [options.onInfo] Where the "nothing to
+ *   repair" outcome is reported. Defaults to a blocking `window.alert`.
+ *
+ *   Both defaults are preserved so an existing caller that passes no options
+ *   behaves exactly as before; `CompanyBulkUpload` supplies non-blocking sinks
+ *   that render the same messages in the page. The message strings are unchanged.
+ *
+ * `progressCount` is additive and purely for presentation: `progress` remains
+ * the authoritative formatted string, and `progressCount` exposes the same
+ * position numerically so an accessible determinate progress bar can report
+ * `aria-valuenow` instead of communicating by width alone. It stays at
+ * `{ current: 0, total: 0 }` for operations that have no countable unit of work.
+ */
+export function useCompanyLeadUpload(companyId, onUploadComplete, options = {}) {
+    const notifyError = options.onError || ((message) => alert(message));
+    const notifyInfo = options.onInfo || ((message) => alert(message));
+
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState('');
+    const [progressCount, setProgressCount] = useState({ current: 0, total: 0 });
     const [stats, setStats] = useState({ created: 0, updated: 0 });
     const [step, setStep] = useState('upload');
 
@@ -39,6 +64,7 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
         if (!companyId) return;
         setUploading(true);
         setProgress("Scanning for misformatted data...");
+        setProgressCount({ current: 0, total: 0 });
 
         try {
             const leadsRef = collection(db, "companies", companyId, "leads");
@@ -98,14 +124,14 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
                     if (onUploadComplete) onUploadComplete();
                 }, 1500);
             } else {
-                alert("Scan complete. No misformatted records found.");
+                notifyInfo("Scan complete. No misformatted records found.");
                 setUploading(false);
                 setStep('upload');
             }
 
         } catch (error) {
             console.error("Repair Failed:", error);
-            alert("Repair failed: " + error.message);
+            notifyError("Repair failed: " + error.message);
             setUploading(false);
         }
     };
@@ -123,6 +149,7 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
 
         setUploading(true);
         setProgress('Syncing leads to database...');
+        setProgressCount({ current: 0, total: csvData.length });
 
         let distributionPool = [];
         if (assignmentMode !== 'unassigned') {
@@ -141,6 +168,7 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
             for (let i = 0; i < csvData.length; i++) {
                 const data = csvData[i];
                 setProgress(`Processing ${i + 1} / ${csvData.length}...`);
+                setProgressCount({ current: i + 1, total: csvData.length });
 
                 let assignedTo = null;
                 let assignedToName = null;
@@ -256,6 +284,7 @@ export function useCompanyLeadUpload(companyId, onUploadComplete) {
     return {
         uploading,
         progress,
+        progressCount,
         stats,
         step, setStep,
         assignmentMode, setAssignmentMode,
