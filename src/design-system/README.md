@@ -114,6 +114,16 @@ verified.
   `VOEPreviewModal`'s document layout, its PDF/print rendering and the employer
   response portal are deliberately not migrated.
 
+- The VOE preview (`VOEPreviewModal`) consumes the shared accessible `Modal`,
+  `Button` and `IconButton` for its **chrome only**. The generated 49 CFR
+  §391.23 document inside it is deliberately **not** tokenised: it is rasterised
+  by html2canvas and written into a bare print window that has no `--ds-*`
+  custom properties, so a tokenised colour would resolve to nothing on export.
+  `VOEPreviewModal.export.test.jsx` enforces the boundary in both directions —
+  no `ds-*` class inside the document, and tokens required outside it. Treat any
+  exported document as immutable content, not themeable chrome, and prove export
+  parity before changing that.
+
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
 durable visual baselines are owner-approved.

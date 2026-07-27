@@ -1,11 +1,66 @@
-import React, { useRef, useState, useMemo } from 'react';
-import { X, CheckCircle, Save, Mail, Printer, ShieldCheck, Download, Loader2, AlertCircle } from 'lucide-react';
+import React, { useRef, useState, useMemo, useId } from 'react';
+import { X, Mail, Printer, ShieldCheck, Download, AlertCircle } from 'lucide-react';
 import { getFieldValue } from '@shared/utils/helpers';
 import { useData } from '@/context/DataContext';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { sanitizeUserContent } from '@shared/utils/sanitizeUserContent';
+import { Modal } from '@shared/components/modals/Modal';
+import { Button, IconButton } from '@/design-system/components';
 
+/**
+ * VOE preview: the generated 49 CFR §391.23 verification request, with print,
+ * PDF export and transmission.
+ *
+ * ── SCOPE OF THE 2026-07-27 MIGRATION ────────────────────────────────────────
+ * Only the **app chrome** is migrated — the dialog shell, header,
+ * recipient/applicant summary, the Print / Download PDF / Edit Request /
+ * Transmit actions, and the loading, export-failure and missing-data states.
+ *
+ * The **generated document itself is deliberately NOT tokenised.** It is
+ * immutable document content, not themeable app chrome, and two export paths
+ * depend on its literal styling:
+ *   1. `handleDownloadPDF` rasterises it with html2canvas, so every colour is
+ *      resolved from computed style at capture time.
+ *   2. `handlePrint` writes its `innerHTML` into a bare `window.open` document
+ *      that loads Tailwind from a CDN. That window has **no SafeHaul stylesheet
+ *      and therefore no `--ds-*` custom properties at all** — a tokenised
+ *      colour would resolve to nothing there and the printed form would lose
+ *      its rules, borders and emphasis.
+ * `VOEPreviewModal.export.test.jsx` enforces this: the document subtree must
+ * contain no `ds-*` class and no `var(--ds-…)` value. Do not "finish the
+ * migration" by tokenising it without first proving export parity.
+ *
+ * Frozen contracts: every word of the regulatory text and its ordering; all
+ * applicant/employer values and their `getFieldValue` / `NOT DISCLOSED` /
+ * `REDACTED (ON FILE)` / `[PROSPECTIVE COMPANY]` / `Verified` fallbacks; the SSN
+ * last-four masking; the `TEXT_SIGNATURE:` prefix rule and the image/typed/
+ * missing signature branches; the audit-ID derivation; the generated
+ * date/time; the `{ scale: 2, useCORS: true }` html2canvas options; the jsPDF
+ * `portrait` / `px` / `[canvas.width, canvas.height]` construction and
+ * `addImage` placement; the `VOE_<employer>_<first>_<last>.pdf` filename with
+ * whitespace underscored; the print window's feature string, its five
+ * `document.write` payloads, the `sanitizeUserContent` step and the 1 s
+ * print-then-close delay; and the `onClose` / `onSend()` callbacks, including
+ * that `onClose` returns to `PEVRequestModal`.
+ *
+ * DEFECTS FIXED (2026-07-27):
+ * - **The dialog was hand-rolled**: no `role="dialog"`, no `aria-modal`, no
+ *   focus containment, no focus restoration and no Escape — layered on top of
+ *   `PEVRequestModal`, which is itself a dialog inside the driver dossier, which
+ *   is a third. Tab walked straight out of all three.
+ * - **The close control had no accessible name.**
+ * - **Export failure used `window.alert`**, which blocks the thread and is not
+ *   announced as part of the dialog. It is now an in-dialog `role="alert"`.
+ * - **A blocked pop-up crashed the print action** with a TypeError on
+ *   `windowPrint.document`, with nothing shown to the user.
+ * - **PDF generation was silent** — an icon swap with no live region.
+ * - **Missing data rendered `null`**, so choosing "Continue to Preview" opened
+ *   nothing at all with no explanation and no way back.
+ * - **The disabled Transmit action never said why** it was disabled; the reason
+ *   was only visible inside the document image.
+ * - `text-[10px]` chrome text below the 12 px floor.
+ */
 export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
     const hasRequiredData = Boolean(employer && applicant);
 
@@ -18,7 +73,12 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
         : null;
 
     const documentRef = useRef(null);
+    const closeRef = useRef(null);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [exportError, setExportError] = useState('');
+    const rawId = useId().replace(/:/g, '');
+    const titleId = `voe-preview-title-${rawId}`;
+    const transmitHintId = `voe-transmit-hint-${rawId}`;
     const { currentCompanyProfile } = useData();
     const companyName = currentCompanyProfile?.name || currentCompanyProfile?.companyName || '[PROSPECTIVE COMPANY]';
 
@@ -29,12 +89,49 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
     }, [applicant?.id, applicant?.uid]);
 
     if (!hasRequiredData) {
-        return null;
+        // DEFECT FIX: this returned `null`, so "Continue to Preview" opened
+        // nothing — no document, no explanation and no way back to the request.
+        return (
+            <Modal
+                labelledBy={titleId}
+                onClose={onClose}
+                initialFocusRef={closeRef}
+                overlayClassName="fixed inset-0 z-[80] flex items-center justify-center bg-ds-overlay p-ds-4 backdrop-blur-md"
+                className="w-full max-w-md overflow-hidden rounded-ds-xl bg-ds-surface shadow-ds-lg"
+            >
+                <div className="p-ds-6" role="alert">
+                    <div className="mb-ds-3 flex items-center gap-ds-3">
+                        <span aria-hidden="true" className="rounded-ds-md bg-ds-status-danger-bg p-ds-2 text-ds-status-danger-fg">
+                            <AlertCircle size={22} />
+                        </span>
+                        <h4 id={titleId} className="text-ds-body-lg font-bold text-ds-content">
+                            Verification document unavailable
+                        </h4>
+                    </div>
+                    <p className="mb-ds-6 text-ds-sm text-ds-content-secondary">
+                        This verification request cannot be generated because the employer or applicant
+                        details are missing. Go back and reopen the request.
+                    </p>
+                    <div className="flex justify-end">
+                        <Button ref={closeRef} variant="secondary" onClick={onClose}>
+                            Edit Request
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+        );
     }
 
     const handlePrint = () => {
         const printContent = documentRef.current;
         const windowPrint = window.open('', '', 'left=0,top=0,width=800,height=900,toolbar=0,scrollbars=0,status=0');
+        // DEFECT FIX: a blocked pop-up returned null and the next line threw a
+        // TypeError, with nothing shown to the user.
+        if (!windowPrint) {
+            setExportError('Could not open the print window. Please allow pop-ups for this site and try again.');
+            return;
+        }
+        setExportError('');
         windowPrint.document.write('<html><head><title>Print VOE</title>');
         // Load tailwind via CDN for printing styles
         windowPrint.document.write('<script src="https://cdn.tailwindcss.com"></script>');
@@ -52,6 +149,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
     const handleDownloadPDF = async () => {
         if (!documentRef.current) return;
         setIsDownloading(true);
+        setExportError('');
         try {
             const canvas = await html2canvas(documentRef.current, { scale: 2, useCORS: true });
             const imgData = canvas.toDataURL('image/png');
@@ -64,60 +162,113 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
             pdf.save(`VOE_${employer.companyName || 'Employer'}_${applicant.firstName}_${applicant.lastName}.pdf`.replace(/\s+/g, '_'));
         } catch (error) {
             console.error('Error generating PDF:', error);
-            alert('Failed to generate PDF. Please try again.');
+            // DEFECT FIX: this was `alert()`, which blocks the thread and is not
+            // part of the dialog. Same wording, now announced in place.
+            setExportError('Failed to generate PDF. Please try again.');
         } finally {
             setIsDownloading(false);
         }
     };
 
+    const canTransmit = Boolean(signatureUrl || signatureText);
+
     return (
-        <div className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="bg-slate-100 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+        <Modal
+            labelledBy={titleId}
+            onClose={onClose}
+            initialFocusRef={closeRef}
+            overlayClassName="fixed inset-0 z-[80] flex items-stretch justify-center bg-ds-overlay p-0 backdrop-blur-md sm:items-center sm:p-ds-4"
+            className="flex h-full w-full flex-col overflow-hidden bg-ds-surface-subtle shadow-ds-lg sm:h-auto sm:max-h-[95vh] sm:max-w-4xl sm:rounded-ds-xl"
+        >
+            {/*
+              Header.
 
-                {/* Header (App style) */}
-                <div className="p-4 bg-slate-900 text-white flex justify-between items-center px-8 border-b border-slate-700">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-600 rounded-lg">
-                            <ShieldCheck size={20} />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-bold tracking-tight">Employment Verification Preview</h3>
-                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Document Generated by SafeHaul HR Services</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
-                            <X size={20} />
-                        </button>
+              This was a `bg-slate-900` inverse bar. The token contract has
+              `--ds-color-content-inverse` but no inverse *surface*, so an
+              inverse header is not expressible in approved tokens and inventing
+              one is not a feature's call (gap already recorded in the roadmap by
+              the PEV campaign). It follows the same precedent as
+              `PEVRequestModal`: the header sits on the panel's own surface,
+              which also keeps the ghost `IconButton` legible.
+            */}
+            <div className="flex shrink-0 items-center justify-between gap-ds-3 border-b border-ds-border-subtle bg-ds-surface px-ds-6 py-ds-4">
+                <div className="flex min-w-0 items-center gap-ds-3">
+                    <span aria-hidden="true" className="shrink-0 rounded-ds-md bg-ds-status-info-bg p-ds-2 text-ds-status-info-fg">
+                        <ShieldCheck size={20} />
+                    </span>
+                    <div className="min-w-0">
+                        {/* `<h4>` under the dossier header's `<h3>` section title. */}
+                        <h4 id={titleId} className="text-ds-sm font-bold tracking-tight text-ds-content">Employment Verification Preview</h4>
+                        <p className="text-ds-xs font-medium uppercase tracking-widest text-ds-content-secondary">Document Generated by SafeHaul HR Services</p>
                     </div>
                 </div>
+                <IconButton
+                    ref={closeRef}
+                    variant="ghost"
+                    label="Close verification preview"
+                    onClick={onClose}
+                >
+                    <X size={20} aria-hidden="true" />
+                </IconButton>
+            </div>
 
-                {/* Sub-Header Actions */}
-                <div className="bg-white border-b border-gray-200 px-8 py-3 flex justify-between items-center shrink-0">
-                    <div className="flex gap-4">
-                        <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
-                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                            RECIPIENT: {getFieldValue(employer.companyName || employer.name)}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
-                            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                            APPLICANT: {getFieldValue(applicant.firstName)} {getFieldValue(applicant.lastName)}
-                        </div>
+            {/* Sub-Header Actions */}
+            <div className="shrink-0 border-b border-ds-border-subtle bg-ds-surface px-ds-6 py-ds-3">
+                <div className="flex flex-wrap items-center justify-between gap-ds-3">
+                    <div className="flex min-w-0 flex-wrap gap-ds-4">
+                        <p className="flex items-center gap-ds-2 text-ds-xs font-bold text-ds-content-secondary">
+                            <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-ds-status-success-fg" />
+                            <span className="[overflow-wrap:anywhere]">RECIPIENT: {getFieldValue(employer.companyName || employer.name)}</span>
+                        </p>
+                        <p className="flex items-center gap-ds-2 text-ds-xs font-bold text-ds-content-secondary">
+                            <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-ds-action-primary" />
+                            <span className="[overflow-wrap:anywhere]">APPLICANT: {getFieldValue(applicant.firstName)} {getFieldValue(applicant.lastName)}</span>
+                        </p>
                     </div>
-                    <div className="flex gap-2">
-                        <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200">
-                            <Printer size={14} /> Print
-                        </button>
-                        <button onClick={handleDownloadPDF} disabled={isDownloading} className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 disabled:opacity-50">
-                            {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    <div className="flex flex-wrap gap-ds-2">
+                        <Button variant="secondary" size="sm" onClick={handlePrint}>
+                            <Printer size={14} aria-hidden="true" /> Print
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleDownloadPDF}
+                            disabled={isDownloading}
+                            loading={isDownloading}
+                        >
+                            {isDownloading ? null : <Download size={14} aria-hidden="true" />}
                             {isDownloading ? 'Generating...' : 'Download PDF'}
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
-                {/* Scrollable Form Content */}
-                <div className="flex-1 overflow-y-auto p-12 bg-slate-200/50 scrollbar-thin scrollbar-thumb-slate-300">
-                    <div ref={documentRef} className="bg-white border border-gray-300 shadow-xl p-12 max-w-3xl mx-auto min-h-[1000px] font-serif text-slate-900 leading-relaxed">
+                {/* Export progress and failure were both silent before. */}
+                <p role="status" className="ds-visually-hidden">
+                    {isDownloading ? 'Generating the verification PDF…' : ''}
+                </p>
+                {exportError && (
+                    <p role="alert" className="mt-ds-2 text-ds-xs font-medium text-ds-status-danger-fg">
+                        {exportError}
+                    </p>
+                )}
+            </div>
+
+            {/*
+              Scrollable Form Content.
+
+              DEFECT FIX: this scroll container was not keyboard-focusable
+              (axe `scrollable-region-focusable`, serious). The VOE document is
+              far taller than the viewport, so a keyboard user had no way to
+              scroll it at all — the only focusable things in the dialog are the
+              five chrome actions, none of which are inside the scroller.
+            */}
+            <div
+                role="region"
+                aria-label="Verification document preview"
+                tabIndex={0}
+                className="min-h-0 flex-1 overflow-y-auto bg-ds-surface-subtle p-ds-4 focus-visible:outline-none focus-visible:shadow-ds-focus sm:p-ds-12"
+            >
+                    <div ref={documentRef} data-testid="voe-document" className="bg-white border border-gray-300 shadow-xl p-12 max-w-3xl mx-auto min-h-[1000px] font-serif text-slate-900 leading-relaxed">
 
                         {/* Official Document Header */}
                         <div className="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
@@ -368,27 +519,38 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                     </div>
                 </div>
 
-                {/* Footer Actions */}
-                <div className="p-6 bg-white border-t border-gray-200 flex justify-end gap-3 px-12">
-                    <button onClick={onClose} className="px-8 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-all">
-                        Edit Request
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (!signatureUrl && !signatureText) {
-                                return alert("DOCUMENT REJECTED: This form cannot be transmitted without a valid applicant signature. Please ensure the driver has signed the application.");
-                            }
-                            onSend();
-                        }}
-                        className={`px-10 py-3 text-white font-black rounded-xl shadow-xl flex items-center gap-3 transition-all transform hover:scale-[1.02] active:scale-[0.98] ${(!signatureUrl && !signatureText) ? 'bg-slate-400 cursor-not-allowed grayscale' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
-                            }`}
-                        disabled={!signatureUrl && !signatureText}
-                    >
-                        <Mail size={20} /> Transmit Request Now
-                    </button>
-                </div>
+            {/* Footer Actions */}
+            <div className="flex shrink-0 flex-col items-stretch gap-ds-3 border-t border-ds-border-subtle bg-ds-surface px-ds-6 py-ds-4 sm:flex-row sm:items-center sm:justify-end sm:px-ds-12">
+                {/*
+                  DEFECT FIX: the Transmit action was disabled with no stated
+                  reason — the explanation existed only inside the rendered
+                  document. It is now announced with the button itself.
+                */}
+                {!canTransmit && (
+                    <p id={transmitHintId} className="text-ds-xs font-medium text-ds-status-danger-fg sm:mr-auto">
+                        This form cannot be transmitted without a valid applicant signature.
+                    </p>
+                )}
+                <Button variant="secondary" size="lg" onClick={onClose}>
+                    Edit Request
+                </Button>
+                <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() => {
+                        // Kept as a safety net: the control is disabled without a
+                        // signature, so this guard is not reachable from the UI,
+                        // but it still refuses to call onSend().
+                        if (!canTransmit) return;
+                        onSend();
+                    }}
+                    disabled={!canTransmit}
+                    aria-describedby={canTransmit ? undefined : transmitHintId}
+                >
+                    <Mail size={20} aria-hidden="true" /> Transmit Request Now
+                </Button>
             </div>
-        </div>
+        </Modal>
     );
 }
 

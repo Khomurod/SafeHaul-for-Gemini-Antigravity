@@ -2047,7 +2047,7 @@ Status `Not started` means audited but not migrated.
 | Sandbox application | `SandboxApplyHandler` renders `PublicApplyHandler sandbox` verbatim, so it inherited the whole migration; `SandboxActionPanel` now consumes `Card`, `Button`, `FormField`, `Select` and `StatusMedallion` with a `<main>`/single-`<h1>`; the Magic Fill control stays a documented raw-button exception so the sandbox reads as a test surface | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | **Migrated (GO)** 2026-07-27 | Verified: the sandbox banner/Magic Fill render only when `sandbox` is true (unit-asserted), `listSandboxTenantCompanies` / `deleteSandboxApplication` / `transferSandboxApplication` payloads and the `/sandbox/transfer-success` navigation state unchanged, Super Admin gate unchanged, error announced, transfer select labelled |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Driver dossier modal | `DriverProfileModal` shell, `DossierHeader`, `DossierSidebar`, `DossierContent`, the read-only `ApplicationTab` summary and `DocumentsTab` now consume the shared accessible `Modal`, `Button`, `IconButton`, `Select`, `Badge`, `Card` and `--ds-*` tokens; the section navigation is a feature-owned WAI-ARIA tablist; `useCompactViewport` keeps `aria-orientation` in step with the layout | Dialog family, feature-owned Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | **Foundation migrated (GO)** 2026-07-27 — shell, header, navigation, read-only application summary and documents complete; DQ, PEV/VOE, Activity and Notes bodies deliberately **not** migrated and remain reachable and unchanged inside the shell | Verified: 136 focused unit tests, 19 new Chromium + Mobile Chrome E2E checks (focus containment/restoration, Arrow/Home/End walkthrough, nested delete + preview dialogs, page states, 1440/1024/412 px clipping, real-browser axe), existing candidate-table/a11y/access-control E2E, full suite/coverage, lint, typecheck, production build, `git diff --check` |
-| PEV/VOE workflows | **Initiation and tracking migrated**: `PEVTab` (summary `MetricCard`s, employer list, status `Badge`s, Initiate/View Result/Copy Link/Upload Result/History/Resend actions, paywall and no-employer states, verification-history dialog on the shared accessible `Modal`), `PEVRequestModal` (shared `Modal`, native `ChoiceGroup`/`Radio` delivery choice, `FormField`/`Input` contact fields, `Button`/`IconButton`), `FmcsaCarrierPicker` and the shared `PaywallMessage`. **Not migrated**: `VOEPreviewModal`'s generated document layout and PDF/print rendering, and the external employer response portal | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | **Initiation/tracking migrated (GO)** 2026-07-27 — VOE preview document and respondent portal remain | Verified: 107 focused unit tests (34 new PEVTab contract freezes covering the callable payload, activity log, Firestore write, Storage path, signed-URL and clipboard behaviour; 13 PEVTab a11y/structure; 22 request-modal dialog/radio/validation; 38 pre-existing FMCSA/lookup/modal), real-axe checks on every PEV surface and state, real-browser measurement at 1440/1024/412 px, dossier + candidate-table + campaigns E2E regressions, full suite/coverage, lint, typecheck, production build, `git diff --check`. **Limitation:** the PEV tab is unreachable in Playwright under `VITE_E2E_TEST_MODE=1` — see the completion log |
+| PEV/VOE workflows | **Initiation and tracking migrated**: `PEVTab` (summary `MetricCard`s, employer list, status `Badge`s, Initiate/View Result/Copy Link/Upload Result/History/Resend actions, paywall and no-employer states, verification-history dialog on the shared accessible `Modal`), `PEVRequestModal` (shared `Modal`, native `ChoiceGroup`/`Radio` delivery choice, `FormField`/`Input` contact fields, `Button`/`IconButton`), `FmcsaCarrierPicker` and the shared `PaywallMessage`. `VOEPreviewModal`'s **chrome** is migrated too (shared accessible `Modal`, header, recipient/applicant summary, Print/Download PDF/Edit Request/Transmit actions, and the loading, export-failure and missing-data states); its **generated legal document is deliberately left untokenised** and guarded by an export-parity test. **Not migrated**: the external employer response portal | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | **Initiation, tracking and VOE preview chrome migrated (GO)** 2026-07-27 — respondent portal remains | Verified: 107 focused unit tests (34 new PEVTab contract freezes covering the callable payload, activity log, Firestore write, Storage path, signed-URL and clipboard behaviour; 13 PEVTab a11y/structure; 22 request-modal dialog/radio/validation; 38 pre-existing FMCSA/lookup/modal), real-axe checks on every PEV surface and state, real-browser measurement at 1440/1024/412 px, dossier + candidate-table + campaigns E2E regressions, full suite/coverage, lint, typecheck, production build, `git diff --check`. **Limitation:** the PEV tab is unreachable in Playwright under `VITE_E2E_TEST_MODE=1` — see the completion log |
 
 ### 5.2 Shared component-family inventory
 
@@ -5224,10 +5224,184 @@ user-facing string.
 
 #### Remaining PEV/VOE work
 
-- `VOEPreviewModal` — the generated document layout and the PDF/print rendering.
+- `VOEPreviewModal` — **chrome completed 2026-07-27** (see the next log); the
+  generated document is deliberately untokenised and guarded.
 - The external employer response portal (`/verify/:token` respondent side).
 - The in-place mutation of `appData.employers` noted above.
 - E2E reachability for the PEV tab, which depends on dossier E2E fixture data.
+
+---
+
+### VOE preview and export completion log (GO, with one escalation) — 2026-07-27
+
+Scope: `VOEPreviewModal` — the dialog shell, header, recipient/applicant
+summary, the Print / Download PDF / Edit Request / Transmit Request Now actions,
+and the loading, export-failure and missing-data states. The external employer
+response portal is **not** in scope and is untouched.
+
+#### The central decision: the document is not themeable chrome
+
+The generated 49 CFR §391.23 form leaves the application through two paths and
+**neither carries the SafeHaul stylesheet**:
+
+1. `handleDownloadPDF` rasterises the node with html2canvas — colours come from
+   computed style at capture time.
+2. `handlePrint` writes the node's `innerHTML` into a bare `window.open`
+   document whose only stylesheet is Tailwind from a CDN. That window has no
+   `:root` custom properties at all, so any `--ds-*` colour would resolve to
+   nothing and the printed form would lose its rules, borders and emphasis.
+
+So the chrome was migrated and **the document subtree was left byte-identical**.
+This is enforced, not just documented: `VOEPreviewModal.export.test.jsx` fails if
+any `ds-*` class or `var(--…)` value appears inside the document, pins the
+document root's class list (the html2canvas capture surface), and asserts the
+mirror image — that the chrome *is* tokenised — so the guard cannot be satisfied
+by simply migrating nothing.
+
+#### Contract freeze first
+
+`VOEPreviewModal` had **no test coverage at all** while owning a generated legal
+document, an html2canvas → jsPDF pipeline, a print-window pipeline, SSN masking,
+signature rules and an audit identifier. 37 contract tests were written first;
+35 passed against the unmigrated component and the 2 that failed are the two
+defects below.
+
+#### Defects found and fixed
+
+1. **The dialog was hand-rolled** — no `role="dialog"`, no `aria-modal`, no focus
+   containment, no focus restoration, no Escape. It opened on top of
+   `PEVRequestModal`, itself a dialog inside the driver dossier, a third: Tab
+   walked out of all three.
+2. **The close control had no accessible name.**
+3. **Export failure used `window.alert`**, which blocks the thread and is not
+   part of the dialog. Now an in-dialog `role="alert"` with the same wording.
+4. **A blocked pop-up crashed Print** with a TypeError on `windowPrint.document`
+   and showed the user nothing. Now guarded and announced.
+5. **PDF generation was silent** — an icon swap with no live region.
+6. **Missing data rendered `null`**, so "Continue to Preview" opened nothing at
+   all: no document, no explanation, no way back. Now an announced state with an
+   Edit Request action.
+7. **The disabled Transmit action never said why.** The reason existed only
+   inside the rendered document image. It is now announced via
+   `aria-describedby`.
+8. **The document scroll region was not keyboard-focusable** (real-browser axe
+   `scrollable-region-focusable`, serious). The document is far taller than the
+   viewport and none of the dialog's focusable controls sit inside the scroller,
+   so a keyboard user could not scroll the form at all.
+9. `text-[10px]` chrome text below the 12 px floor.
+
+#### ESCALATION — printing produces an unsigned, unstyled document
+
+**This is pre-existing, was not introduced here, and was deliberately NOT
+changed because the brief froze print sanitisation. It needs an owner decision.**
+
+`handlePrint` passes the document's `innerHTML` through the shared
+`sanitizeUserContent`, whose DOMPurify allowlist permits only
+`b/strong/i/em/u/br/p/ul/ol/li/span/a/code/pre` and the attributes
+`href/target/rel`. Measured in a real browser on the actual rendered document:
+
+| | before sanitise | after |
+|---|---|---|
+| characters | 12,555 | 2,732 |
+| `<div>` | 95 | **0** |
+| `<img>` (the signature) | 1 | **0** |
+| `<svg>` | 2 | **0** |
+| `<h1>` | 1 | **0** |
+| `class` attributes | 157 | **0** |
+
+So **Print emits a flat, unstyled text dump with the applicant's signature
+removed** — and the signature is the legally operative part of a §391.23
+release. The Tailwind CDN script the print window loads is inert, because every
+`class` attribute has already been stripped.
+
+Two further points the owner needs:
+
+- **The existing test suite does not catch this.** `createDOMPurify(window)` is
+  effectively a no-op under happy-dom, so `src/tests/sanitizeUserContent.test.js`
+  only ever exercises the regex pre-strip, and any unit test asserting print
+  fidelity would pass while the real browser strips everything. The contract test
+  added here therefore pins the *pipeline* (the document's `innerHTML` is passed
+  to `sanitizeUserContent` and its return value is what gets written) rather than
+  DOMPurify's environment-dependent output.
+- **The sanitiser cannot simply be loosened.** It is shared with `NotesTab`,
+  where the input is genuine user-authored content and the strict allowlist is
+  exactly right. A fix belongs in `VOEPreviewModal`, not in the shared utility —
+  and the document's dynamic values are all React text nodes, so the print
+  markup has no user-authored HTML in it to sanitise in the first place.
+
+**Download PDF is unaffected** — html2canvas captures the live DOM, so the PDF
+export is correct and complete today. Users have one working export path and one
+broken one.
+
+#### Verification
+
+- **Focused tests:** 64 new across 3 files — 37 contract (legal text and its
+  ordering, fallbacks, SSN masking, signature branches, audit ID, html2canvas
+  options, jsPDF dimensions, PDF filename, the five print `document.write`
+  payloads and the 1 s delay, callbacks), 9 export-parity, 18 dialog/keyboard/axe.
+- **Regressions:** 284 passed across the 15 VOE + PEV + driver-dossier files.
+- **Axe:** the chrome has **zero** violations at 1440 / 1024 / 412 px, in the
+  signed, typed-signature, missing-signature, missing-data and export-failure
+  states, run both through `vitest-axe` in CI and through real-browser axe.
+- **Known accepted deviation:** real-browser axe reports **4 serious
+  `color-contrast` nodes, every one of them inside the immutable document** —
+  "Generated on …" at 2.56:1, "Verified Business Entity" at 1.95:1, and two
+  `text-[10px]` field labels at 2.45:1. Fixing them means changing document
+  colours, which changes every exported PDF, so it needs owner approval and a
+  re-proof of export parity. Recorded rather than silently changed.
+- **Responsive, measured in a real browser:** at 1440×900 / 1024×768 / 412×915 —
+  no document overflow, no dialog clipping, no off-screen control, and no chrome
+  text below 12 px. At 412 px the dialog is a full-screen sheet (412 px) and the
+  document still fits its region without horizontal scroll.
+- **Keyboard:** focus moves into the dialog on open, Escape closes and returns to
+  `PEVRequestModal`, focus is restored to the control that opened it, and the
+  document region is now focusable and named.
+- Full frontend suite, coverage, lint, typecheck, production build and
+  `git diff --check` — see the summary below.
+
+#### Honest limitation of the E2E evidence
+
+`VOEPreviewModal` **cannot be reached in a Playwright run**, for the same reason
+the PEV tab cannot: under `VITE_E2E_TEST_MODE=1` Firestore is unreachable, the
+driver dossier settles into its error state and never mounts `DossierContent`.
+There is therefore no VOE E2E spec. The axe and structural coverage runs the real
+axe engine in CI; the responsive and sanitiser measurements above were taken in
+an actual browser through a temporary harness page that was **deleted after
+measurement** and is not part of this change. Those figures are a point-in-time
+measurement, not a regression gate.
+
+#### Preserved contracts
+
+Every word of the regulatory text and its ordering; all applicant/employer values
+and their `getFieldValue` / `NOT DISCLOSED` / `REDACTED (ON FILE)` /
+`[PROSPECTIVE COMPANY]` / `Verified` fallbacks; SSN last-four masking; the
+`TEXT_SIGNATURE:` prefix rule and all three signature branches; the audit-ID
+derivation; the generated date/time; `{ scale: 2, useCORS: true }`; the jsPDF
+`portrait` / `px` / `[canvas.width, canvas.height]` construction and `addImage`
+placement; the `VOE_<employer>_<first>_<last>.pdf` filename with whitespace
+underscored and the `Employer` fallback; the print window's feature string, its
+five `document.write` payloads, the `sanitizeUserContent` step and the 1 s
+print-then-close delay; and `onClose` / `onSend()`, including that `onClose`
+returns to `PEVRequestModal` rather than to the employer list. Firebase,
+callables, routes and data contracts are untouched.
+
+#### Documented exceptions
+
+- **The generated document is not tokenised**, by design and under test. See the
+  decision above.
+- **The dialog header is not an inverse panel.** It was `bg-slate-900`; there is
+  no inverse surface token (blocker already recorded by the PEV campaign), so it
+  follows the same precedent as `PEVRequestModal` and sits on the panel surface.
+- **The document keeps its own `<h1>`.** It is a facsimile of a paper form, and
+  the chrome heading above it is an `<h4>`; a *decrease* in heading level is not
+  a heading-order defect and axe confirms it.
+
+#### Remaining respondent-portal work
+
+- The external employer response portal (`/verify/:token` respondent side) —
+  untouched, and the only remaining PEV/VOE surface.
+- The print-sanitisation escalation above, pending an owner decision.
+- The 4 in-document contrast nodes, pending an owner decision.
 
 ---
 
@@ -5259,6 +5433,22 @@ user-facing string.
   `bg-slate-900` panel; rather than invent a colour it moved to
   `surface-subtle`, following the dossier document-preview precedent. Any surface
   that genuinely needs an inverse treatment is blocked on this.
+- `[!]` **Decide how the VOE form should print.** Recorded 2026-07-27 by the VOE
+  campaign, with real-browser measurements in its completion log. `handlePrint`
+  runs the generated document through the shared `sanitizeUserContent`, which
+  strips all 95 `<div>`s, the signature `<img>`, both `<svg>`s, the `<h1>` and
+  all 157 `class` attributes — printing an unsigned, unstyled text dump of a
+  legal §391.23 release. The shared sanitiser must **not** be loosened (it also
+  guards `NotesTab`, where the input really is user-authored); the fix belongs in
+  `VOEPreviewModal`, whose print markup contains no user-authored HTML to begin
+  with. Download PDF is unaffected and correct. Left unchanged because the brief
+  froze print sanitisation.
+- `[!]` **Decide whether the VOE document's small print may be recoloured.**
+  Recorded 2026-07-27. Real-browser axe reports 4 serious `color-contrast` nodes
+  inside the generated document (2.56:1, 1.95:1 and two at 2.45:1). They are
+  conventional grey legal small print on a printed-form facsimile, and changing
+  them changes every exported PDF, so it needs approval plus a re-proof of
+  export parity.
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
 - `[!]` Select component catalog and visual baseline hosting/review ownership.
 - `[!]` Decide whether Inter remains externally hosted.
