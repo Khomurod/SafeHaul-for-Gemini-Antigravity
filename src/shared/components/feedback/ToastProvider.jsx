@@ -58,19 +58,40 @@ export function ToastProvider({ children }) {
               ${toast.type === 'info' ? 'text-blue-600 bg-blue-50' : ''}
               ${toast.type === 'warning' ? 'text-yellow-600 bg-yellow-50' : ''}
             `}>
-              {toast.type === 'success' && <CheckCircle size={18} />}
-              {toast.type === 'error' && <AlertCircle size={18} />}
-              {toast.type === 'info' && <Info size={18} />}
-              {toast.type === 'warning' && <AlertTriangle size={18} />}
+              {/* Decorative: the message text and role="alert" carry the meaning. */}
+              {toast.type === 'success' && <CheckCircle size={18} aria-hidden="true" />}
+              {toast.type === 'error' && <AlertCircle size={18} aria-hidden="true" />}
+              {toast.type === 'info' && <Info size={18} aria-hidden="true" />}
+              {toast.type === 'warning' && <AlertTriangle size={18} aria-hidden="true" />}
             </div>
 
             <p className="text-sm font-medium pr-4">{toast.message}</p>
 
+            {/*
+              DEFECT FIXED (2026-07-27): this dismiss control had no accessible
+              name at all — an icon-only button whose only child was a decorative
+              `<X>`. The real-browser axe scan of the public driver application
+              reported it as `button-name [critical]`, once per visible toast (the
+              guest wizard shows one per upload plus one per submission message).
+              It also had no explicit `type`, so inside a form it would submit.
+
+              The hit area was also 16×16 px — the icon's own box — which fails
+              WCAG 2.2 AA SC 2.5.8 Target Size (Minimum, 24×24). It is now a
+              centred 28 px square.
+
+              Only the accessible name, the decorative icon marking, the button
+              type and the hit area changed. This component's visual migration to
+              `--ds-*` tokens is its own roadmap row ("Toast/notification") and is
+              deliberately NOT bundled here: it is a global surface and an
+              app-wide restyle needs its own review.
+            */}
             <button
+              type="button"
+              aria-label={`Dismiss notification: ${toast.message}`}
               onClick={() => removeToast(toast.id)}
-              className="ml-auto text-gray-400 hover:text-gray-600 transition-colors"
+              className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-600 transition-colors"
             >
-              <X size={16} />
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         ))}

@@ -3,7 +3,8 @@ const {
   fillStep1,
   fillStep2,
   fillStep3RequiredFields,
-  pdfFile,
+  uploadStandardDocuments,
+  continueToStep,
   completeRemainingSteps,
   applySignature,
   submitApplication,
@@ -21,10 +22,11 @@ test.describe('guest offline queue submit', () => {
     await fillStep1(page, 'queue');
     await fillStep2(page);
     await fillStep3RequiredFields(page);
-    await page.setInputFiles('input[name="cdl-front"]', pdfFile('cdl-front.pdf'));
-    await page.setInputFiles('input[name="cdl-back"]', pdfFile('cdl-back.pdf'));
-    await page.setInputFiles('input[name="medical-card-upload"]', pdfFile('med-card.pdf'));
-    await page.getByRole('button', { name: 'Continue' }).click();
+    // State-based: wait for all three uploads to commit before advancing.
+    // Clicking Continue mid-upload silently blocked the step (see the
+    // determinism contract in helpers/wizardHelpers.cjs).
+    await uploadStandardDocuments(page);
+    await continueToStep(page, 'Motor Vehicle Record');
     await completeRemainingSteps(page);
     await applySignature(page);
 

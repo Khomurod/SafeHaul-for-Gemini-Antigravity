@@ -10,9 +10,28 @@ import { YES_NO_OPTIONS, MILITARY_BRANCH_OPTIONS } from '@/config/form-options';
 import { useToast } from '@shared/components/feedback';
 import { employerRowHasVerifierContact } from '@shared/utils/employmentApplicationHelpers';
 import EmployerNameAutocomplete from './components/EmployerNameAutocomplete';
+import { FormField, FormSection, Textarea } from '@/design-system/components';
+import { StepNavigation } from './components/StepNavigation';
+import { StateSelectField } from './components/StateSelectField';
 
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Presentation migrated to the approved `FormSection` / `FormField` / `Textarea`
+ * primitives (2026-07-27).
+ *
+ * Unchanged: the `employers` / `unemployment` / `schools` / `military` row
+ * shapes, the `employmentHistory` config resolution, the per-employer email
+ * format checks and their exact "Employer N: …" toast strings, the
+ * `employerRowHasVerifierContact` requirement, the frozen 49 CFR 391.21 /
+ * 391.23 explanatory copy, and the `form.checkValidity()` gate.
+ *
+ * DEFECT FIXED (2026-07-27): the per-row radio groups (`mayContact`, `branch`,
+ * `heavyEq`, `honorable`) used the bare field name, so every row emitted the same
+ * element ids and shared one browser radio group — clicking row 2's option
+ * toggled row 1's input through the duplicated `label[for]`. Each row now scopes
+ * its ids and grouping name by index while `name` (the saved key) is unchanged.
+ */
 const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
     const { showError } = useToast();
     const ty = new Date().getFullYear();
@@ -88,7 +107,7 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
     };
 
     const renderEmployerRow = (index, item, handleChange) => (
-        <div key={index} className="space-y-3">
+        <div className="space-y-ds-3">
             <EmployerNameAutocomplete
                 id={'emp-name-' + index}
                 label="Company Name"
@@ -106,26 +125,27 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                 placeholder="Optional — filled when you pick a carrier from search"
             />
             <InputField label="Street Address" id={'emp-street-' + index} name="address" value={item.address} onChange={handleChange} required={empHistoryConfig.required} />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-3">
                 <InputField label="City" id={'emp-city-' + index} name="city" value={item.city} onChange={handleChange} required={empHistoryConfig.required} />
-                <div>
-                    <label htmlFor={'emp-state-' + index} className="block text-sm font-medium text-gray-700 mb-1">State {empHistoryConfig.required && <span className="text-red-500">*</span>}</label>
-                    <select id={'emp-state-' + index} name="state" required={empHistoryConfig.required} value={item.state || ""} onChange={(e) => handleChange(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                        <option value="" disabled>Select State</option>
-                        {states.map(state => <option key={state} value={state}>{state}</option>)}
-                    </select>
-                </div>
+                <StateSelectField
+                    id={'emp-state-' + index}
+                    name="state"
+                    states={states}
+                    required={empHistoryConfig.required}
+                    value={item.state}
+                    onChange={(e) => handleChange(e.target.name, e.target.value)}
+                />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
                 <InputField label="Company Phone" id={'emp-phone-' + index} name="phone" type="tel" value={item.phone} onChange={handleChange} placeholder="(555) 555-5555" />
                 <InputField label="Company Email" id={'emp-co-email-' + index} name="companyEmail" type="email" value={item.companyEmail} onChange={handleChange} placeholder="hr@company.com" />
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-ds-xs text-ds-content-muted">
                 Provide at least one way to reach someone who can verify this job: company phone (10 digits), company email, or supervisor phone/email below.
-                {empHistoryConfig.required && <span className="text-amber-700 font-medium"> Required when employment history is on.</span>}
+                {empHistoryConfig.required && <span className="font-medium text-ds-status-warning-fg"> Required when employment history is on.</span>}
             </p>
             <InputField label="Position Held" id={'emp-position-' + index} name="position" value={item.position} onChange={handleChange} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
                 <DateTripletField
                     label="Start Date"
                     idPrefix={'emp-start-' + index}
@@ -151,13 +171,15 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
             </div>
             <InputField label="Reason for Leaving" id={'emp-reason-' + index} name="reasonForLeaving" value={item.reasonForLeaving} onChange={handleChange} />
             <InputField label="Supervisor Name" id={'emp-supervisor-' + index} name="supervisorName" value={item.supervisorName} onChange={handleChange} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
                 <InputField label="Supervisor Phone" id={'emp-sup-phone-' + index} name="supervisorPhone" type="tel" value={item.supervisorPhone} onChange={handleChange} placeholder="Direct line or mobile" />
                 <InputField label="Supervisor Email" id={'emp-sup-email-' + index} name="supervisorEmail" type="email" value={item.supervisorEmail} onChange={handleChange} placeholder="supervisor@company.com" />
             </div>
             <RadioGroup
                 label="May we contact this employer?"
                 name="mayContact"
+                idPrefix={'emp-may-contact-' + index}
+                groupName={'emp-may-contact-' + index}
                 options={yesNoOptions}
                 value={item.mayContact}
                 onChange={(name, value) => handleChange(name, value)}
@@ -166,9 +188,9 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
     );
 
     const renderSchoolRow = (index, item, handleChange) => (
-        <div key={index} className="space-y-3">
+        <div className="space-y-ds-3">
             <InputField label="School Name" id={'school-name-' + index} name="name" value={item.name} onChange={handleChange} required={true} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
                 <DateTripletField
                     label="Start Date"
                     idPrefix={'school-start-' + index}
@@ -197,8 +219,8 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
     );
 
     const renderUnemploymentRow = (index, item, handleChange) => (
-        <div key={index} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-ds-3">
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
                 <MonthYearField
                     label="Gap Start (month / year)"
                     idPrefix={'unemp-start-' + index}
@@ -221,25 +243,31 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                     minYear={ty - 40}
                 />
             </div>
-            <div className="space-y-2">
-                <label htmlFor={'unemp-details-' + index} className="block text-sm font-medium text-gray-700 mb-1">Details related to unemployment period</label>
-                <textarea id={'unemp-details-' + index} name="details" rows="3" value={item.details || ""} onChange={(e) => handleChange(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-            </div>
+            <FormField id={'unemp-details-' + index} label="Details related to unemployment period">
+                <Textarea
+                    name="details"
+                    rows="3"
+                    value={item.details || ""}
+                    onChange={(e) => handleChange(e.target.name, e.target.value)}
+                />
+            </FormField>
         </div>
     );
 
     const renderMilitaryRow = (index, item, handleChange) => (
-        <div key={index} className="space-y-3">
+        <div className="space-y-ds-3">
             <RadioGroup
                 label="Branch of Service"
                 name="branch"
+                idPrefix={'mil-branch-' + index}
+                groupName={'mil-branch-' + index}
                 options={MILITARY_BRANCH_OPTIONS}
                 value={item.branch}
                 onChange={(name, value) => handleChange(name, value)}
                 required={true}
                 horizontal={false}
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
                 <MonthYearField
                     label="Service Start (month / year)"
                     idPrefix={'mil-start-' + index}
@@ -265,6 +293,8 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
             <RadioGroup
                 label="Did you operate heavy equipment/machinery?"
                 name="heavyEq"
+                idPrefix={'mil-heavy-eq-' + index}
+                groupName={'mil-heavy-eq-' + index}
                 options={yesNoOptions}
                 value={item.heavyEq}
                 onChange={(name, value) => handleChange(name, value)}
@@ -272,35 +302,39 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
             <RadioGroup
                 label="Did you receive an honorable discharge?"
                 name="honorable"
+                idPrefix={'mil-honorable-' + index}
+                groupName={'mil-honorable-' + index}
                 options={yesNoOptions}
                 value={item.honorable}
                 onChange={(name, value) => handleChange(name, value)}
             />
-            <div className="space-y-2">
-                <label htmlFor={'mil-explain-' + index} className="block text-sm font-medium text-gray-700 mb-1">Please explain</label>
-                <textarea id={'mil-explain-' + index} name="explanation" rows="3" value={item.explanation || ""} onChange={(e) => handleChange(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-            </div>
+            <FormField id={'mil-explain-' + index} label="Please explain">
+                <Textarea
+                    name="explanation"
+                    rows="3"
+                    value={item.explanation || ""}
+                    onChange={(e) => handleChange(e.target.name, e.target.value)}
+                />
+            </FormField>
         </div>
     );
 
     return (
-        <div id="page-6" className="form-step space-y-6">
-            <h3 className="text-xl font-semibold text-gray-800">Step 6 of 9: Employment History</h3>
-            <div className="text-sm text-gray-600 space-y-2">
+        <div id="page-6" className="form-step space-y-ds-6">
+            <div className="space-y-ds-2 text-ds-sm text-ds-content-secondary">
                 <p>
-                    <strong>Application (49 CFR 391.21):</strong> provide a complete employment history for the <strong>past 10 years</strong> — all employers (driving and non-driving),
+                    <strong className="text-ds-content">Application (49 CFR 391.21):</strong> provide a complete employment history for the <strong className="text-ds-content">past 10 years</strong> — all employers (driving and non-driving),
                     unemployment gaps of 30+ days, military service, and driving schools. Incomplete history may delay hiring.
                 </p>
                 <p>
-                    <strong>Verification (49 CFR 391.23):</strong> carriers typically contact prior employers for the <strong>previous 3 years</strong> for safety verification.
+                    <strong className="text-ds-content">Verification (49 CFR 391.23):</strong> carriers typically contact prior employers for the <strong className="text-ds-content">previous 3 years</strong> for safety verification.
                     That is separate from this longer application timeline — list the full 10 years here either way.
                 </p>
             </div>
 
             {/* Previous Employers - Configurable */}
             {!empHistoryConfig.hidden && (
-                <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                    <legend className="text-lg font-semibold text-gray-800 px-2">Previous Employers</legend>
+                <FormSection title="Previous Employers">
                     <DynamicRow
                         listKey="employers"
                         formData={formData}
@@ -309,12 +343,11 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                         initialItemState={initialEmployer}
                         addButtonLabel="+ Add Employer"
                     />
-                </fieldset>
+                </FormSection>
             )}
 
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Employment Gaps</legend>
-                <p className="text-sm text-gray-600">Please explain any gaps in employment of 30 days or more.</p>
+            <FormSection title="Employment Gaps">
+                <p className="text-ds-sm text-ds-content-secondary">Please explain any gaps in employment of 30 days or more.</p>
                 <DynamicRow
                     listKey="unemployment"
                     formData={formData}
@@ -323,10 +356,9 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                     initialItemState={initialUnemployment}
                     addButtonLabel="+ Add Employment Gap"
                 />
-            </fieldset>
+            </FormSection>
 
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Driving Schools</legend>
+            <FormSection title="Driving Schools">
                 <DynamicRow
                     listKey="schools"
                     formData={formData}
@@ -335,10 +367,9 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                     initialItemState={initialSchool}
                     addButtonLabel="+ Add Driving School"
                 />
-            </fieldset>
+            </FormSection>
 
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Military Service</legend>
+            <FormSection title="Military Service">
                 <DynamicRow
                     listKey="military"
                     formData={formData}
@@ -347,24 +378,12 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                     initialItemState={initialMilitary}
                     addButtonLabel="+ Add Military Service"
                 />
-            </fieldset>
+            </FormSection>
 
-            <div className="flex justify-between pt-6">
-                <button
-                    type="button"
-                    onClick={() => onNavigate('back')}
-                    className="w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Back
-                </button>
-                <button
-                    type="button"
-                    onClick={handleContinue}
-                    className="w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Continue
-                </button>
-            </div>
+            <StepNavigation
+                onBack={() => onNavigate('back')}
+                onContinue={handleContinue}
+            />
         </div>
     );
 };

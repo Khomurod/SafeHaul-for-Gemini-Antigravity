@@ -516,9 +516,21 @@ The reverse directions are prohibited.
   - Progress: the native-event `FormField`, `Label`, `FieldMessage`, `Input`,
     `Textarea`, `Select`, `FieldDisplay`, and `FormSection` contract is
     implemented and proven by the Company Settings Personal Profile and
-    Company Profile information compatibility slices. Checkbox, Radio, Switch,
-    file input, autofill policy, component-catalog examples, and durable visual
-    baselines remain open, so the family is not complete.
+    Company Profile information compatibility slices. **Checkbox, Radio and
+    `ChoiceGroup` were implemented on 2026-07-27** for the public driver
+    application — native-first controls with mandatory per-option labels, real
+    `<fieldset>`/`<legend>` group naming, a `requiredMark` split so a group's
+    legend carries the marker instead of every option, and the row-scoping
+    pattern that repeating rows need (12 unit tests). Switch, file input,
+    autofill policy, component-catalog examples, and durable visual baselines
+    remain open, so the family is not complete.
+  - Known gap recorded 2026-07-27: `.ds-form-control` is 44 px tall while
+    `.ds-button[data-size='md']` is 40 px (`--ds-control-height-md`) and `sm` is
+    36 px. 40 px clears WCAG 2.2 AA SC 2.5.8 (Target Size Minimum, 24 px) but not
+    the 44 px the form controls promise, so a form row mixes two heights. The
+    public application works around it by using the approved `size="lg"` for the
+    controls a driver taps repeatedly; aligning the primitives is a global visual
+    change that needs owner approval.
   - [x] Establish the native-event form foundation required by the first
     compatibility slice.
     - Completed: 2026-07-23.
@@ -558,11 +570,22 @@ The reverse directions are prohibited.
   - Files: `src/design-system/components/badge/*`,
     `src/features/company-admin/components/InlineLeaderboard.jsx`.
 
-- [ ] Standardize LoadingState, EmptyState, ErrorState, InlineAlert, Skeleton,
-  and Progress.
+- [~] In progress — standardize LoadingState, EmptyState, ErrorState, InlineAlert,
+  Skeleton, and Progress.
   - Complete when: supported sizes/layouts and live-region behavior are
     documented; shared feedback implementations are reused; async transitions
     have unit/axe/visual/mobile coverage; no workflow messaging changes.
+  - Progress: **`ProgressBar` was implemented on 2026-07-27** (determinate only)
+    for the public driver application's step meter, which previously communicated
+    progress with a styled `<div>`'s width and was invisible to assistive
+    technology. It owns the track/fill/tone and the `progressbar` semantics,
+    requires an accessible name, clamps `value` into `[0, max]`, accepts a
+    non-percentage `max` so `aria-valuenow` can read "4 of 9", and disables its
+    transition under `prefers-reduced-motion`. 6 unit tests plus real-browser
+    assertions in `e2e/public-application.spec.cjs`.
+  - Files: `src/design-system/components/progress/*`.
+  - Remaining: indeterminate/buffered/circular progress, and the LoadingState,
+    EmptyState, ErrorState, InlineAlert and Skeleton members.
 
 ### Phase 6 — dialogs and overlays
 
@@ -1844,24 +1867,83 @@ The reverse directions are prohibited.
       `EnvelopeCreator`, the prefill utilities, backend functions and rules were
       untouched.
 
-- [ ] Public application and change-review portals.
+- [x] Public application and change-review portals.
   - Complete when: field/progress/state primitives migrate stepwise with draft,
     submission, validation, upload, offline, consent, and mobile behavior
     preserved.
+  - Completed: change review 2026-07-23; public application 2026-07-27.
+  - Files (public application slice): `src/design-system/components/form/ChoiceControls.jsx`,
+    `src/design-system/components/form/ChoiceControls.css`,
+    `src/design-system/components/form/ChoiceControls.test.jsx`,
+    `src/design-system/components/form/index.js`,
+    `src/design-system/components/form/README.md`,
+    `src/design-system/components/progress/*`,
+    `src/design-system/components/index.js`,
+    `src/design-system/components/README.md`,
+    `src/design-system/README.md`,
+    `src/design-system/tests/tokens.test.js`,
+    `src/features/driver-app/components/application/PublicApplyHandler.jsx`,
+    `src/features/driver-app/components/application/PublicApplyHandler.contract.test.jsx`,
+    `src/features/driver-app/components/application/PublicApplyScreens.jsx` (+ test),
+    `src/features/driver-app/components/application/IntakeChooser.jsx`,
+    `src/features/driver-app/components/application/RequiredDocumentsChecklist.jsx` (+ test),
+    `src/features/driver-app/components/application/UploadField.jsx` (+ test),
+    `src/features/driver-app/components/application/steps/Step1_Contact.jsx` … `Step9_Consent.jsx`,
+    `src/features/driver-app/components/application/steps/DynamicQuestionsStep.jsx` (+ test),
+    `src/features/driver-app/components/application/steps/Step8_Review.test.jsx`,
+    `src/features/driver-app/components/application/steps/components/{StepNavigation,StateSelectField,BusinessInfoSection,VehicleExperienceSection,EmergencyContactsSection,EmployerNameAutocomplete}.jsx`,
+    `src/shared/components/layout/Stepper.jsx` (+ new `Stepper.test.jsx`),
+    `src/shared/components/form/{InputField,RadioGroup,MonthYearField,DynamicRow,AgreementBox}.jsx`
+    (+ new `RadioGroup.test.jsx`, `MonthYearField.test.jsx`, `AgreementBox.test.jsx`),
+    `src/shared/components/feedback/ToastProvider.jsx`,
+    `src/features/sandbox/SandboxActionPanel.jsx`, `src/index.css`,
+    `e2e/helpers/wizardHelpers.cjs`, `e2e/public-application.spec.cjs`,
+    `e2e/public-application-responsive.spec.cjs`, `e2e/a11y.spec.cjs`,
+    `e2e/guest-application-intake.spec.cjs`, `e2e/guest-offline-queue.spec.cjs`,
+    `e2e/guest-post-application-edoc.spec.cjs`, `e2e/wizard-double-submit.spec.cjs`,
+    this roadmap.
+  - Verification: full evidence in the completion log in section 6.
+  - Notes: the design system gained the `Checkbox` / `Radio` / `ChoiceGroup` and
+    `ProgressBar` primitives this surface needed, closing two recorded Phase 4/5
+    gaps. Firebase, rules, indexes, routes, permissions, feature flags,
+    application field keys, saved payload shapes, validation meaning, draft /
+    offline-queue / retry semantics, upload paths and limits, step ordering and
+    conditional-step logic, consent wording, and the post-application
+    template/signing contracts are all unchanged.
 
-- [ ] Signing and envelope creation.
+- [x] Signing and envelope creation.
   - Complete when: specialized document-first behavior, coordinates, zoom,
     gestures, signatures, and send/sign workflows pass all existing and added
     desktop/mobile tests. This is high risk and must not be an early pilot.
+  - Completed: envelope creation and E-Docs 2026-07-25 (see the E-Docs final
+    audit); the public signing room 2026-07-25 (slices 1–4 plus the final audit
+    in section 6).
+  - Verification: recorded in the E-Docs and signing completion logs and their
+    two final audits in section 6 — 46 history + 22 DocumentsManager + 35
+    TemplatesPanel + 51 SendTemplateModal + 21 creator-shell + 30
+    field-properties + 42 sidebar + 31 date-triplet unit tests, the signing
+    slice suites, 52 Chromium/Mobile Chrome E2E checks, existing send/sign
+    regressions, 1440/1024/412 px, scoped real-browser axe (zero serious or
+    critical in the signing room), built-CSS token emission, `git diff --check`.
+  - Notes: this item was still `[ ]` on 2026-07-27 even though every sub-slice
+    had shipped — corrected then, together with the stale "Not started" signing
+    row in section 5.1. Coordinates, zoom, gesture handling, the PDF canvas and
+    `SIGNATURE_INK` remain feature-owned with recorded exceptions.
+    `src/shared/components/signature/SignaturePad.jsx` is a *different* legacy
+    control used only by the verification respondent flow and stays open under
+    its own item.
 
 - [ ] Super Admin.
   - Complete when: tables, cards, controls, modals, integrations, analytics,
     and system states migrate without changing elevated permissions or
     maintenance actions.
 
-- [~] In progress — Auth, sandbox, and remaining edge screens.
+- [x] Auth, sandbox, and remaining edge screens.
   - Complete when: visual primitives migrate and login/redirect/test-only
     behavior remains unchanged.
+  - Completed: Login and Sandbox Transfer Success 2026-07-23; the verification and
+    change-review token screens 2026-07-23; the sandbox application and its
+    post-submit action panel 2026-07-27.
   - [x] Migrate the Login `/login` screen to approved form/button/card
     primitives and the shared accessible dialog.
     - Complete when: email/password login, password visibility, authentication
@@ -1898,8 +1980,24 @@ The reverse directions are prohibited.
       Detailed evidence is in the completion log.
     - Notes: route paths, navigation, status wording, and the state fallback are
       unchanged; the route-manifest entry was untouched.
-  - Remaining: the sandbox application screen and the verification and
-    change-review token screens are still unmigrated.
+  - [x] Migrate the sandbox application screen (`/sandbox/apply`) and its
+    post-submit `SandboxActionPanel`.
+    - Complete when: the sandbox wizard keeps reusing `PublicApplyHandler`
+      verbatim, the sandbox-only banner and Magic Fill control stay
+      sandbox-gated, and the delete/transfer callables, Super Admin gate and
+      `/sandbox/transfer-success` navigation state are unchanged.
+    - Completed: 2026-07-27, as part of the public-application campaign.
+    - Files: `src/features/sandbox/SandboxActionPanel.jsx`,
+      `src/shared/components/layout/Stepper.jsx` (Magic Fill exception), and
+      everything the shared wizard slice touched.
+    - Verification: recorded in the public driver application completion log in
+      section 6.
+    - Notes: the Magic Fill control remains a documented raw-button exception —
+      it must stay visually distinct from every production action, and the
+      approved `Button` has no warning tone yet.
+  - Remaining: nothing in this group. The verification and change-review token
+    screens were completed on 2026-07-23; the sandbox application and its action
+    panel on 2026-07-27.
 
 ### Phase 14 — cleanup and durable documentation
 
@@ -1940,11 +2038,11 @@ Status `Not started` means audited but not migrated.
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
 | Company settings | `CompanySettings` tabs and settings components | Tabs, PageHeader, Field family, Table, Dialog, PageState | High | High | Controls, forms, table, dialog, status | Not started | All save/integration/number/team/question tests and mobile |
 | Super Admin `/super-admin/*` | feature-local view router, tables, forms, modals, analytics | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | Not started | Permissions, maintenance actions, integrations, analytics, desktop/mobile |
-| Public application `/apply/:slug` | `PublicApplyHandler`, shared feature-coupled `Stepper`, step forms | Feature-owned wizard using Progress, Field, Button, Card, PageState | Critical | Very high | Forms, feedback, layout, compatibility plan | Not started | Draft/offline/upload/validation/submission/consent, full mobile E2E |
-| Signing room `/sign/...` | specialized PDF/document-first workflow | Approved controls/states around feature-owned document canvas | Medium | Very high | Controls, dialog, feedback; signing QA | Not started | Existing signing unit/E2E, coordinates, zoom/touch/signature, mobile |
+| Public application `/apply/:slug` | `PublicApplyHandler` shell, the shared `Stepper` frame, all nine steps, the custom-questions step, the four status screens, the intake chooser, the post-application `RequiredDocumentsChecklist`, `UploadField`, and the shared `InputField` / `RadioGroup` / `MonthYearField` / `DynamicRow` / `AgreementBox` adapters now consume `Card`, `Button`, `IconButton`, `Badge`, `FormSection`, `FormField`, `Input`, `Textarea`, `Select`, `Checkbox`, `Radio`, `ChoiceGroup`, `FieldDisplay`, `FieldMessage`, `Label`, `StatusMedallion` and the new `ProgressBar` | Feature-owned wizard on approved Progress/Field/Button/Card/status primitives | Critical | Very high | Forms, feedback, layout, compatibility plan | **Migrated (GO)** 2026-07-27 | Verified: 89 new focused unit tests (submission contract, wizard frame, choice/date/upload/agreement controls, checklist, status screens, custom questions, review) + full suite/coverage, lint, typecheck, production build, callable-contract, 6 guest E2E specs serially and at 4× under worker contention, new responsive spec at 1440/1024/412 px, extended real-browser axe across every step and both status screens on Chromium and Mobile Chrome, keyboard walkthrough, `git diff --check`, grep audit |
+| Signing room `/sign/...` | Status screens, room shell, signer field layer and signature capture sheet all consume approved `Card`/`Button`/`StatusMedallion` and `--ds-*` tokens; the PDF canvas, coordinates and zoom stay feature-owned | Approved controls/states around feature-owned document canvas | Medium | Very high | Controls, dialog, feedback; signing QA | **Complete** 2026-07-25 (slices 1–4 + final audit) | Verified: per-slice completion logs in section 6, the 2026-07-25 final audit (zero serious/critical axe in the room, no legacy palette classes, documented `SIGNATURE_INK` and three raw-button exceptions), existing signing unit/E2E, coordinates, zoom/touch/signature, mobile |
 | Verification portal `/verify/:token` | `VerificationPortal` + status screens + 4 sections now consume `Card`, `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `FieldDisplay`, `FieldMessage`, `Badge`, `Button`, `Stack`; feature-local `RadioGroup` accessibility-hardened; `SignaturePad`/hook untouched | Card, form primitives, Badge, Button, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 24 focused tests (hook token-load/submit contract + portal integration + status screens), full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, single h1 per state, radio grouping + keyboard, associated labels, validation focus, axe, overflow |
 | Change review `/review-change/:token` | `ReviewChangePortal` now consumes `Card`, `Button`, `Input`, and `Stack`/tokens with one `<h1>`, `role="status"`/`role="alert"` states, and a tokenized feature-owned approve/reject/edit toggle group; load/validation/payload/callables unchanged | Card, Button, Input, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 16 focused tests (token load/cancellation/errors, scalar/array/object/empty previews, no-pending/completed, action default/reject/edit/exclusivity/edit-hidden-for-nonscalar, exact approve/reject/edit payloads + order, submitting/disabled, success/error fallbacks, single h1, applicant-name non-disclosure, axe) + existing 3, full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
-| Sandbox application | production-like application plus test controls | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | Not started | E2E fixtures, no production leakage, mobile |
+| Sandbox application | `SandboxApplyHandler` renders `PublicApplyHandler sandbox` verbatim, so it inherited the whole migration; `SandboxActionPanel` now consumes `Card`, `Button`, `FormField`, `Select` and `StatusMedallion` with a `<main>`/single-`<h1>`; the Magic Fill control stays a documented raw-button exception so the sandbox reads as a test surface | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | **Migrated (GO)** 2026-07-27 | Verified: the sandbox banner/Magic Fill render only when `sandbox` is true (unit-asserted), `listSandboxTenantCompanies` / `deleteSandboxApplication` / `transferSandboxApplication` payloads and the `/sandbox/transfer-success` navigation state unchanged, Super Admin gate unchanged, error announced, transfer select labelled |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Driver dossier modal | feature-local shell/tabs/application/documents | Dialog family, Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | Not started | Focus, tabs, edits/uploads/actions, large content, mobile |
 | PEV/VOE workflows | local modals/tabs/forms/previews | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | Not started | Lookup/request/save/send/preview/audit, keyboard/mobile |
@@ -1957,14 +2055,14 @@ Status `Not started` means audited but not migrated.
 | Buttons | Button/IconButton primitives adopted by the Company shell; legacy raw buttons remain elsewhere | Button + IconButton | Critical | Medium | Tokens | In progress — primitive and Company consumer verified; catalog/ratchet remain | Variants/states, names, focus, touch, remaining consumers, approved visual baselines |
 | Inputs | Shared InputField plus 155 raw inputs | Field/Input and compatibility adapter | Critical | High | Tokens, controls | Not started | Existing callbacks/files/errors/autofill/mobile keyboard |
 | Select/textarea | 60 selects, 23 textareas, local styling | Select/Textarea under Field | High | Medium | Forms | Not started | Labels/errors/disabled/long content/mobile |
-| Radio/checkbox | Shared/local radio and icon-based selection | Native-first Radio/Checkbox groups | High | High | Forms, table | Not started (DS primitive) — the application-questions slice uses a documented feature-level accessible `ToggleSwitch` (ARIA switch) and native compliance checkboxes as an interim until this primitive exists | Keyboard model, group naming, indeterminate selection |
+| Radio/checkbox | Approved native-first `Checkbox`, `Radio` and `ChoiceGroup` primitives (2026-07-27); the shared `RadioGroup` is now a thin compatibility adapter over them and the public application, agreements and custom questions all consume them | Native-first Radio/Checkbox groups | High | High | Forms, table | In progress — primitive implemented and proven by the public driver application; `ToggleSwitch` (ARIA switch) and indeterminate selection remain feature-owned/open | Verified: 12 primitive tests (label/description/error association, native change events, label-click, group legend naming, `requiredMark` split, orientation, input validation), 8 adapter tests including the duplicate-id regression, real-browser axe on every application step, native arrow-key selection asserted in `e2e/public-application-responsive.spec.cjs`. Still needed: indeterminate state, Switch, catalog examples, durable baselines |
 | Cards | Card/MetricCard primitives adopted by Company dashboard; compatibility StatCard retained | Card/Section/Metric | High | Low | Tokens, layouts | In progress — Company dashboard verified; catalog and remaining consumers open | Spacing/elevation/heading/actions/mobile/approved visual baselines |
 | Dialogs | Accessible shared Modal plus local overlays | Dialog/AlertDialog family | Critical | High | Controls, layouts | Not started | Focus/inert/scroll/Escape/return/naming/mobile |
 | Status badges | Generic Badge adopted by Company leaderboard; StatusBadge/statusStyles/local maps remain | Generic Badge/StatusIndicator + feature adapters | High | Medium | Tokens | In progress — generic Badge verified; StatusIndicator and remaining adapters open | Vocabulary, contrast, icons, non-color communication |
-| Loading | SafeHaulLoader, GlobalLoadingState, skeletons, local spinners | Spinner/Skeleton/LoadingState | Medium | Medium | Tokens, feedback | Not started | Live regions, reduced motion, async transition visuals |
+| Loading | SafeHaulLoader, GlobalLoadingState, skeletons, local spinners; approved determinate `ProgressBar` added 2026-07-27 | Spinner/Skeleton/LoadingState/Progress | Medium | Medium | Tokens, feedback | In progress — `ProgressBar` implemented and consumed by the public application wizard and its upload fields; Spinner/Skeleton/LoadingState not started | ProgressBar verified (6 unit tests, real-browser `aria-valuenow`, reduced-motion transition). Still needed for the rest: live regions, reduced motion, async transition visuals |
 | Empty/error | Error boundaries and many table-local messages | EmptyState/ErrorState/InlineAlert/PageState | High | Medium | Controls, cards | Not started | Recovery actions, announcements, long text, mobile |
-| Toast/notification | ToastProvider and notification components | Retain behavior; normalize visuals through tokens/components | Medium | High | Feedback, controls | Not started | Timers, focus, announcements, stacking, mobile |
-| Layout | WorkspaceFrame and page primitives adopted by the feature-owned Company shell/dashboard; remaining shells and Stepper unchanged | Business-neutral layouts/progress; feature owns orchestration | High | Very high | Controls, forms, feedback | In progress — Company shell/dashboard completed 2026-07-23 | Remaining route/workflow parity, Super Admin shell, public Stepper, scroll, focus, mobile |
+| Toast/notification | ToastProvider and notification components — **visuals still legacy palette** | Retain behavior; normalize visuals through tokens/components | Medium | High | Feedback, controls | Not started (visuals). Two accessibility defects were fixed in place on 2026-07-27 because the public application depends on toasts for upload, validation and draft feedback: the dismiss control had no accessible name (axe `button-name` **critical**, one node per visible toast) and a 16×16 px hit area (WCAG 2.2 AA SC 2.5.8 failure). The palette migration was deliberately **not** bundled — it is a global surface and an app-wide restyle needs its own review. | Timers, focus, announcements, stacking, mobile; plus the token migration of the nine remaining legacy palette classes |
+| Layout | WorkspaceFrame and page primitives adopted by the feature-owned Company shell/dashboard; the public `Stepper` wizard frame migrated 2026-07-27 (approved `ProgressBar`, `--ds-*` tokens, single `<h1>` step title, focus moved to the new step heading, one deterministic scroll owner) | Business-neutral layouts/progress; feature owns orchestration | High | Very high | Controls, forms, feedback | In progress — Company shell/dashboard 2026-07-23; public application Stepper 2026-07-27 | Remaining: route/workflow parity for the Super Admin shell and the driver-dossier/PEV surfaces |
 | Icons | Lucide + branded SVGs + icon-only buttons | Icon contract and accessible IconButton | Medium | Medium | Controls | Not started | Sizes/strokes/names, branded exceptions |
 
 ### 5.3 Raw table migration inventory
@@ -4624,12 +4722,204 @@ Not part of this campaign, and still open under their own items:
   signature control (`text-gray-400`); grep confirms its consumer is the
   verification respondent flow, not any signing route.
 - `MonthYearField` remains untouched — its only consumers are `Step1_Contact`
-  and `Step6_Employment` in the driver application.
+  and `Step6_Employment` in the driver application. *(Closed 2026-07-27 by the
+  public driver application campaign.)*
+
+---
+
+### Public driver application completion log (GO) — 2026-07-27
+
+Scope: the whole production `/apply/:slug` experience plus the sandbox
+application that reuses it verbatim — route status/error/loading screens, the
+application shell, the shared `Stepper` frame and its progress/step navigation,
+all nine active steps, the custom-questions step, the shared legacy form controls
+this workflow uses, dynamic rows, radios, agreements and consent controls,
+document uploads and upload feedback, validation and error focus, draft
+restoration and persistence feedback, offline-queue behaviour, duplicate-submit
+protection, final submission and success states, the post-application
+required-document / E-Doc flow, and the sandbox controls that wrap the same
+production wizard.
+
+#### Enabling design-system work
+
+Two recorded gaps blocked a clean migration, so both primitives were built first
+rather than scattering local alternatives across ten files:
+
+- `Checkbox`, `Radio`, `ChoiceGroup` (Phase 4 "Checkbox, Radio" gap). Native-first
+  so the browser keeps owning the radio roving-focus model, required-group
+  validation and autofill. Per-option `label` is mandatory. `requiredMark` splits
+  the native `required` attribute from the visible/announced marker so a group's
+  legend carries it once instead of every option announcing "Yes required".
+- `ProgressBar` (Phase 5 "Progress"). Determinate only; mandatory accessible
+  name; clamps `value`; accepts a non-percentage `max`; `prefers-reduced-motion`
+  aware.
+
+#### Defects found and fixed
+
+1. **Repeated-row radio groups shared one id and one grouping name.** Inside
+   `DynamicRow`, `Step5_Accidents` (`commercial`, `preventable`) and
+   `Step6_Employment` (`mayContact`, `branch`, `heavyEq`, `honorable`) passed the
+   bare field name, so every row rendered `id="commercial-yes"`. Ids must be
+   unique: `label[for="commercial-yes"]` resolved to **row 1**, so clicking row
+   2's "Yes" toggled row 1, and the browser treated all rows as a single radio
+   group. Fixed with `idPrefix` / `groupName` row scoping while the saved field
+   key is unchanged. Frozen by 4 regression tests.
+2. **Every custom-question control was unlabelled.** In `DynamicQuestionsStep`
+   the question text lived in a `<label>` that closed *before* the control was
+   rendered, so no input, textarea, select, radio group, scale or file control
+   had an accessible name — the step was unusable with a screen reader. Each type
+   now gets a real label or a `ChoiceGroup` legend (13 labelling tests).
+3. **The upload drop zone was a `<div onClick>`** — no role, no name, not
+   reachable by keyboard. Now an approved `Button` that names its field.
+4. **Upload progress, success and failure were silent.** Now `role="status"` /
+   `role="alert"` live regions, plus a real `ProgressBar`.
+5. **`Step3_License`'s missing-document message was a silent `<div>`.** Pressing
+   Continue with a document missing announced nothing and focused nothing, and an
+   unrelated upload completing then cleared the message — leaving a page that
+   looked valid but would not advance. Now a focused `role="alert"`.
+6. **Every step re-rendered a hard-coded "Step N of 9" heading** below the
+   Stepper's own title: duplicated text, and *wrong* whenever custom questions
+   made it ten steps. Removed; the Stepper title is now the page's single `<h1>`.
+7. **Focus was dropped on every step change** (the Continue button that caused it
+   unmounts), so keyboard and screen-reader users were never told the step
+   changed. Focus now moves to the new step heading.
+8. **Two competing scrolls per transition** — `PublicApplyHandler` scrolled
+   instantly and `Stepper` smoothly. Now one owner, no animation to race.
+9. **Progress was communicated by a `<div>`'s width alone.** Now `ProgressBar`.
+10. **10 px / 11 px interface text** in the post-application checklist status
+    pills and progress line, below the 12 px floor. Removed.
+11. **The checklist row action wrapped its own status pill**, so its accessible
+    name was "<title> Not started" and the retry control sat *inside* another
+    control's hit area. Now a named `Button` beside the status.
+12. **Eight review-step Edit controls were all named just "Edit".** Each now
+    names its section.
+13. **`Step9_Consent` injected a Google Fonts `@import`** for "Dancing Script" on
+    every render of the most sensitive page in the product. Nothing used that
+    family — a third-party request for no visual effect. Removed.
+14. **The submit button was `type="submit"` inside `#driver-form`**, so Enter
+    anywhere on the consent step could fire it. Now an explicit action button.
+15. **`DynamicQuestionsStep`'s Back button had no `type`**, defaulting to
+    `submit` inside the form and triggering native validation instead of
+    navigating back.
+16. **The legal disclosure boxes were mouse-wheel-only scroll regions** — a
+    keyboard user could not read past the fold of text they must agree to. Now
+    focusable, named regions.
+17. **`Step4_Violations` had a `<label>` with no control** ("Motor Vehicle Record
+    (MVR) Check"); same copy, now a real sub-heading. Its
+    `className="sm:col-span-2"` also sat on the `<input>` rather than the grid
+    item, so it did nothing.
+18. **`--ds-color-content-muted` on `--ds-color-surface-subtle` measures
+    4.34:1**, below WCAG AA. The real-browser axe scan found three nodes on the
+    success screen. Call sites moved to `content-secondary`; the pairing is now
+    pinned by a tokens test and recorded as a blocker.
+19. **The shared toast's dismiss control had no accessible name** (axe
+    `button-name`, **critical**, one node per visible toast) **and a 16×16 px hit
+    area** (WCAG 2.2 AA SC 2.5.8 failure). The public application depends on
+    toasts for upload, validation and draft feedback, so this was fixed in place;
+    its palette migration was not bundled (see section 5.2).
+20. **A shared-helper E2E determinism defect.** `wizardHelpers.cjs` clicked
+    Continue immediately after three `setInputFiles` calls, and chained three
+    unguarded Continue clicks. Details and the fix are in the determinism
+    contract at the top of that file. This was the cause of the intermittent
+    `consent-mvr-yes` timeout — the symptom appeared three steps away from the
+    cause.
+
+#### Verification
+
+- **New focused unit tests: 171 across 12 new files** (measured, all passing):
+  13 submission-contract (callable name and exact payload keys, the frozen
+  `formData` envelope, queue→submit→dequeue ordering, 3-attempt retry then queued
+  fallback, error when the queue is unsupported, draft/recruiter clearing,
+  server-id preference, single-submit guard, the required-upload and signature
+  gates with their step returns, email validation, the failed-draft-save message,
+  recruiter query parameters), 21 Stepper frame, 12 Checkbox/Radio/ChoiceGroup,
+  6 ProgressBar, 8 RadioGroup adapter (including 4 duplicate-id regressions),
+  10 MonthYearField, 8 AgreementBox, 16 UploadField, 13 checklist, 17 status
+  screens, 25 custom questions, 22 review. `tokens.test.js` also grew from 13 to
+  19 cases. Existing driver-app, InputField, DateTripletField, primitives-axe and
+  field-validation suites still pass unchanged.
+- **Full frontend suite:** 1521 passed / 48 skipped (1569) across 131 passed / 2
+  skipped (133) files — up from a 1344-passed / 119-file baseline on
+  `9325398`. The two skipped files are the Firestore/Storage rules suites, which
+  need emulators.
+- **Coverage gate (`npm run test:coverage`):** passed — statements 41.57 %,
+  branches 40.68 %, functions 42.03 %, lines 42.51 %.
+- **Lint:** 0 errors. **Typecheck:** clean. **Production build:** succeeded.
+- **Callable-contract verification:** `submitGuestApplication`,
+  `createPostApplicationSigningRequest`, `listSandboxTenantCompanies`,
+  `deleteSandboxApplication` and `transferSandboxApplication` are byte-identical
+  in `git diff`, and the submission payload shape is asserted key-by-key.
+- **E2E:** the six guest wizard specs pass serially at `workers: 1`, and 96/96
+  across two high-contention rounds (Chromium + Mobile Chrome, `--repeat-each=4`,
+  10 workers) — the configuration that reproduced the `consent-mvr-yes` flake
+  before the fix. The full CI-equivalent Chromium suite was run serially.
+- **Accessibility:** the `@a11y` lane now walks the *whole* application (chooser,
+  every step, both dynamic-row types, all conditional explanations, review,
+  consent, the success screen with its blocking checklist, and the queued screen)
+  and reports **zero serious or critical axe violations on Chromium and Mobile
+  Chrome**.
+- **Responsive:** a new spec asserts, at 1440×900 / 1024×768 / 412×915 and at
+  eleven checkpoints per width, no horizontal document overflow, no control below
+  WCAG 2.2 AA SC 2.5.8 (24 px), wizard navigation at or above 44 px, and no
+  rendered interface text below 12 px.
+- **Keyboard:** Tab order from the step heading into the first field, native
+  arrow-key radio selection, Space checkbox toggling, and focusable disclosure
+  regions are all asserted in the responsive spec.
+- **`git diff --check`:** clean.
+- **Grep audit of every changed source file:** no raw hex, no 9/10/11 px
+  interface text, and no legacy palette classes outside `ToastProvider.jsx`
+  (documented above and in section 5.2).
+
+#### Preserved contracts
+
+Firebase, Firestore, Storage and Cloud Functions; rules, indexes, schemas and
+collection paths; routes, permissions, role checks and feature flags; every
+application field key and saved payload shape; validation meaning and every
+required/optional rule; draft, offline-queue and retry semantics; upload paths,
+limits and accepted formats; application ordering and conditional-step logic;
+consent wording and legal submission behaviour; post-application
+template/signing contracts; navigation destinations and callable payloads. The
+`#step-title` / `#driver-form` / `#progress-bar` / `#page-N` element ids, the
+`${name}-${value}` radio ids, the `${idPrefix}-month|day|year` date ids, and the
+`data-testid` checklist contracts are all unchanged.
+
+#### Documented exceptions
+
+- **Sandbox Magic Fill** — raw `<button>`. It must stay visually distinct from
+  every production action, and the approved `Button` has no warning tone; a
+  feature-side background utility cannot override the variant's own `background`
+  rule. Renders only when `isSandboxMode` is true.
+- **FMCSA employer combobox options** — raw `<button role="option">`. An ARIA
+  combobox option cannot be the approved `Button` (`role="button"` would break
+  the listbox contract) and there is no Combobox/Listbox primitive yet.
+- **Two file-input compositions** (`UploadField`, the custom-questions upload) —
+  no approved file-input contract exists yet (Phase 4). Both are
+  keyboard-reachable and correctly named.
+- **`ToastProvider` visuals** — nine legacy palette classes remain; migration is
+  its own roadmap row.
 
 ---
 
 ## 7. Decisions and blockers
 
+- `[!]` **Approve a `content-muted` value that is safe on `surface-subtle`.**
+  Recorded 2026-07-27. `--ds-color-content-muted` (slate-500) on
+  `--ds-color-surface-subtle` (slate-100) measures **4.34:1** — below WCAG AA for
+  normal text. The token contract only ever verified `content-muted` against
+  `surface`, so the pairing looked approved and a real-browser axe scan of the
+  public application's success screen found three failing nodes. Those call sites
+  moved to `content-secondary` (6.85:1) and `src/design-system/tests/tokens.test.js`
+  now pins the gap in both directions. Darkening `content-muted` would change
+  every muted label in the product, so it needs owner approval; until then,
+  **`content-muted` is approved on `surface` only.**
+- `[!]` **Align control heights across the primitives.** Recorded 2026-07-27.
+  `.ds-form-control` is 44 px but `.ds-button[data-size='md']` is 40 px and `sm`
+  is 36 px, so an input and its adjacent button in the same row are different
+  heights. 40 px still satisfies WCAG 2.2 AA SC 2.5.8 (24 px minimum) — 44 px is
+  SC 2.5.5, level AAA — so this is a consistency and ergonomics decision, not a
+  conformance failure. The public application uses the approved `size="lg"`
+  (44 px) for the controls a driver taps repeatedly rather than overriding the
+  primitive.
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
 - `[!]` Select component catalog and visual baseline hosting/review ownership.
 - `[!]` Decide whether Inter remains externally hosted.
@@ -5022,6 +5312,44 @@ tokens) stay independently tracked. All public token
 screens (`/verify/:token`, `/review-change/:token`, `/sandbox/transfer-success`)
 are migrated. The SMS number-assignment NO-GO and the new Integrations
 tenant-binding NO-GO are unchanged.
+
+### Update — 2026-07-27
+
+The **public driver application** (`/apply/:slug`) and the **sandbox application**
+that reuses it were migrated and verified (GO; completion log in section 6). This
+was the last `Critical`-priority screen in section 5.1 and the largest form
+surface in the product: the shell, the shared `Stepper` frame, all nine steps, the
+custom-questions step, the four status screens, the intake chooser, the
+post-application required-document checklist, `UploadField`, and the shared
+`InputField` / `RadioGroup` / `MonthYearField` / `DynamicRow` / `AgreementBox`
+adapters. Twenty defects were found and fixed, including a genuine functional bug
+(repeated-row radio groups sharing one element id, so clicking row 2 toggled row
+1), a completely unlabelled custom-questions step, and a shared-helper E2E
+determinism defect that had been surfacing as an intermittent `consent-mvr-yes`
+timeout three steps away from its cause.
+
+Two recorded primitive gaps were closed to make it possible without local
+alternatives: the design system now has native-first **`Checkbox` / `Radio` /
+`ChoiceGroup`** (Phase 4) and a determinate **`ProgressBar`** (Phase 5). The
+Radio/Checkbox item above is therefore partly resolved — the primitive exists and
+is proven, but `ToggleSwitch`, indeterminate state and the catalog examples remain
+open, so the family is still `In progress`.
+
+Two new `[!]` blockers were recorded from real measurements rather than
+assumptions: `content-muted` on `surface-subtle` is 4.34:1 (below AA), and the
+approved `Button` (40 px) does not match `.ds-form-control` (44 px). Both are
+global changes needing owner approval; the campaign worked within the approved
+API instead of overriding it.
+
+The `ToastProvider` accessibility defects (unnamed dismiss control, 16 px hit
+area) were fixed in place because the application depends on toasts for upload,
+validation and draft feedback — but its **nine remaining legacy palette classes
+were deliberately left alone**, because it is a global surface and an app-wide
+restyle needs its own review. That is now the clearest small next slice.
+
+With this, Phase 13 has three groups left: **Super Admin**, the **driver
+dossier / PEV-VOE** workflows, and **Import leads / Quick add lead**. The SMS
+number-assignment and Integrations NO-GOs are unchanged.
 
 Sequence (whichever slice the owner selects):
 

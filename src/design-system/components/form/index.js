@@ -8,3 +8,4 @@ export {
   Select,
   Textarea,
 } from './FormControls';
+export { Checkbox, ChoiceGroup, Radio } from './ChoiceControls';

@@ -5,6 +5,7 @@ import {
   mapFmcsaRowToEmployerFields,
 } from '@shared/services/fmcsaEmployerSocrata';
 import InputField from '@shared/components/form/InputField';
+import { FieldMessage, Input, Label } from '@/design-system/components';
 
 const DEBOUNCE_MS = 400;
 
@@ -166,35 +167,41 @@ export default function EmployerNameAutocomplete({
   return (
     <div ref={wrapRef} className="relative">
       <div onKeyDown={onKeyDown}>
-        <div className="flex flex-wrap items-baseline justify-between gap-x-2 mb-1">
-          <label htmlFor={id} className="block text-sm font-medium text-gray-700">
-            {label} {required && <span className="text-red-500">*</span>}
-          </label>
-          <span className="text-xs text-gray-500">FMCSA carrier lookup</span>
-          {loading && <span className="text-xs text-gray-400">Searching…</span>}
+        <div className="mb-ds-1 flex flex-wrap items-baseline justify-between gap-x-ds-2">
+          <Label htmlFor={id} required={required}>{label}</Label>
+          <span className="text-ds-xs text-ds-content-muted">FMCSA carrier lookup</span>
+          {/* Announced so a screen-reader user knows the lookup is running
+              rather than that nothing happened. */}
+          {loading && <span role="status" className="text-ds-xs text-ds-content-muted">Searching…</span>}
         </div>
-        <input
+        <Input
           type="text"
           id={id}
           name="companyName"
           autoComplete="organization"
           required={required}
+          aria-required={required || undefined}
           aria-expanded={open}
           aria-controls={open ? listboxId : undefined}
+          aria-activedescendant={open && highlightIndex >= 0 ? `${listboxId}-option-${highlightIndex}` : undefined}
           aria-autocomplete="list"
+          aria-describedby={fetchError ? `${id}-lookup-error` : undefined}
           role="combobox"
           value={value || ''}
           placeholder="Start typing employer legal name…"
-          className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
           onChange={(e) => handleInputChange(e.target.name, e.target.value)}
         />
       </div>
-      {fetchError && <p className="text-xs text-amber-700 mt-1">{fetchError}</p>}
+      {fetchError && (
+        <FieldMessage id={`${id}-lookup-error`} tone="help" className="mt-ds-1 text-ds-status-warning-fg">
+          {fetchError}
+        </FieldMessage>
+      )}
       {open && items.length > 0 && (
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute z-[100] mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg"
+          className="absolute z-[100] mt-ds-1 max-h-60 w-full overflow-auto rounded-ds-md border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
         >
           {items.map((row, idx) => {
             const name = row?.legal_name ?? 'Unknown';
@@ -204,17 +211,24 @@ export default function EmployerNameAutocomplete({
             const sub = [city, st].filter(Boolean).join(', ');
             return (
               <li key={`${dot}-${name}-${idx}`} role="presentation">
+                {/* DOCUMENTED EXCEPTION — raw button.
+                    An ARIA combobox option must carry `role="option"` inside the
+                    listbox. The approved `Button` renders `role="button"`, which
+                    would break the combobox's accessibility contract, and the
+                    design system has no Combobox/Listbox primitive yet (recorded
+                    as an open family in the roadmap). Presentation uses `--ds-*`
+                    tokens only; the focus/selection model is unchanged. */}
                 <button
                   type="button"
+                  id={`${listboxId}-option-${idx}`}
                   role="option"
                   aria-selected={idx === highlightIndex}
-                  className={`w-full text-left px-3 py-2 text-sm border-b border-gray-50 last:border-b-0 hover:bg-blue-50 ${idx === highlightIndex ? 'bg-blue-50' : ''
-                    }`}
+                  className={`w-full border-b border-ds-border-subtle px-ds-3 py-ds-2 text-left text-ds-sm last:border-b-0 hover:bg-ds-surface-subtle ${idx === highlightIndex ? 'bg-ds-surface-subtle' : ''}`}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applyRow(row)}
                 >
-                  <span className="font-medium text-gray-900 block truncate">{name}</span>
-                  <span className="text-xs text-gray-500">
+                  <span className="block truncate font-medium text-ds-content">{name}</span>
+                  <span className="text-ds-xs text-ds-content-muted">
                     USDOT {dot}
                     {sub ? ` · ${sub}` : ''}
                   </span>

@@ -1,17 +1,55 @@
 /**
  * DynamicQuestionsStep
- * 
+ *
  * Renders custom questions from the merged schema.
  * Inserted as Step 8 (between General and Review) when company has custom questions.
- * 
- * Now uses DynamicQuestionRenderer for consistent field type support across all 9 types:
- * shortAnswer, paragraph, multipleChoice, checkboxes, dropdown, date, time, fileUpload, linearScale
+ *
+ * Supports all 9 configured field types: shortAnswer, paragraph, multipleChoice,
+ * checkboxes, dropdown, date, time, fileUpload, linearScale.
+ *
+ * Presentation migrated to the approved `Card` / `FormField` / `Input` /
+ * `Textarea` / `Select` / `Checkbox` / `Radio` / `ChoiceGroup` / `Badge`
+ * primitives (2026-07-27).
+ *
+ * Unchanged: the `questionKey(field, index)` resolution order
+ * (`field.id || field.key || custom-question-<i>`), the
+ * `formData.customAnswers[key]` read with the flat `formData[key]` fallback, the
+ * `customAnswers` object write, the checkbox array toggle, the per-type
+ * `isEmptyAnswer` rule, the required-question gate and its exact
+ * "Please answer required question: …" toast, the `linearScale` numeric coercion,
+ * the `handleFileUpload(key, file)` call plus the `file?.name || ''` answer, and
+ * the `dotRequired` DOT marker.
+ *
+ * DEFECTS FIXED (2026-07-27):
+ * - Every control was unlabelled. The question text sat in a `<label>` that
+ *   closed *before* the control was rendered, so no input, textarea, select,
+ *   radio group or scale had an accessible name at all — the whole step was
+ *   unusable with a screen reader. Each control now gets its question as a real
+ *   label (or a `ChoiceGroup` legend for multi-option types).
+ * - "Back" had no `type`, so inside `#driver-form` it defaulted to `submit` and
+ *   triggered native validation instead of navigating back.
+ * - The linear scale's endpoint captions and value numbers were the only cue for
+ *   what each radio meant; each option now carries a real label naming its value
+ *   and, at the ends, the endpoint wording.
  */
 
 import React from 'react';
-import { Shield, UploadCloud, Clock } from 'lucide-react';
+import { Shield, UploadCloud } from 'lucide-react';
 import DateTripletField from '@shared/components/form/DateTripletField';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { StepNavigation } from './components/StepNavigation';
+import {
+    Badge,
+    Card,
+    Checkbox,
+    ChoiceGroup,
+    FieldMessage,
+    FormField,
+    Input,
+    Radio,
+    Select,
+    Textarea,
+} from '@/design-system/components';
 
 export function DynamicQuestionsStep({
     questions = [],
@@ -58,9 +96,9 @@ export function DynamicQuestionsStep({
     };
     if (!questions || questions.length === 0) {
         return (
-            <div className="text-center py-12 text-gray-500">
+            <p className="py-ds-12 text-center text-ds-content-muted">
                 No additional questions for this company.
-            </div>
+            </p>
         );
     }
 
@@ -80,95 +118,99 @@ export function DynamicQuestionsStep({
         handleChange(key, newValues);
     };
 
+    const optionParts = (opt) => ({
+        value: typeof opt === 'string' ? opt : opt.value,
+        label: typeof opt === 'string' ? opt : opt.label,
+    });
+
+    /**
+     * Multi-option and single-control types need different labelling: a group
+     * needs one legend and per-option labels, a single control needs one label
+     * bound to it. `renderField` therefore returns the whole labelled field.
+     */
     const renderField = (field, index) => {
         const key = questionKey(field, index);
         const value = getAnswer(field, index) || '';
-        const baseInputClass = "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all";
+        const controlId = `custom-q-${key}`;
+        const label = field.label || 'Additional question';
 
         switch (field.type) {
             case 'paragraph':
             case 'textarea':
                 return (
-                    <textarea
-                        className={baseInputClass}
-                        rows={4}
-                        value={value}
-                        onChange={(e) => handleChange(key, e.target.value)}
-                        placeholder={field.placeholder || 'Enter your response...'}
-                        required={field.required}
-                    />
+                    <FormField id={controlId} label={label} description={field.helpText} required={field.required}>
+                        <Textarea
+                            rows={4}
+                            value={value}
+                            onChange={(e) => handleChange(key, e.target.value)}
+                            placeholder={field.placeholder || 'Enter your response...'}
+                        />
+                    </FormField>
                 );
 
             case 'multipleChoice':
             case 'radio':
                 return (
-                    <div className="space-y-2">
+                    <ChoiceGroup legend={label} description={field.helpText} required={field.required}>
                         {(field.options || []).map((opt, i) => {
-                            const optValue = typeof opt === 'string' ? opt : opt.value;
-                            const optLabel = typeof opt === 'string' ? opt : opt.label;
+                            const { value: optValue, label: optLabel } = optionParts(opt);
                             return (
-                                <label key={i} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                                    <input
-                                        type="radio"
-                                        name={key}
-                                        checked={value === optValue}
-                                        onChange={() => handleChange(key, optValue)}
-                                        className="w-4 h-4 text-blue-600"
-                                        required={field.required}
-                                    />
-                                    <span className="text-gray-700">{optLabel}</span>
-                                </label>
+                                <Radio
+                                    key={i}
+                                    id={`${controlId}-option-${i}`}
+                                    name={key}
+                                    value={optValue}
+                                    label={optLabel}
+                                    checked={value === optValue}
+                                    onChange={() => handleChange(key, optValue)}
+                                    required={field.required}
+                                    requiredMark={false}
+                                />
                             );
                         })}
-                    </div>
+                    </ChoiceGroup>
                 );
 
-            case 'checkboxes':
+            case 'checkboxes': {
                 const checkedValues = Array.isArray(value) ? value : [];
                 return (
-                    <div className="space-y-2">
+                    <ChoiceGroup legend={label} description={field.helpText} required={field.required}>
                         {(field.options || []).map((opt, i) => {
-                            const optValue = typeof opt === 'string' ? opt : opt.value;
-                            const optLabel = typeof opt === 'string' ? opt : opt.label;
-                            const isChecked = checkedValues.includes(optValue);
+                            const { value: optValue, label: optLabel } = optionParts(opt);
                             return (
-                                <label key={i} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                                    <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => handleCheckboxChange(key, optValue)}
-                                        className="w-4 h-4 text-blue-600 rounded"
-                                    />
-                                    <span className="text-gray-700">{optLabel}</span>
-                                </label>
+                                <Checkbox
+                                    key={i}
+                                    id={`${controlId}-option-${i}`}
+                                    value={optValue}
+                                    label={optLabel}
+                                    checked={checkedValues.includes(optValue)}
+                                    onChange={() => handleCheckboxChange(key, optValue)}
+                                />
                             );
                         })}
-                    </div>
+                    </ChoiceGroup>
                 );
+            }
 
             case 'dropdown':
             case 'select':
                 return (
-                    <select
-                        className={baseInputClass}
-                        value={value}
-                        onChange={(e) => handleChange(key, e.target.value)}
-                        required={field.required}
-                    >
-                        <option value="">Select an option...</option>
-                        {(field.options || []).map((opt, i) => {
-                            const optValue = typeof opt === 'string' ? opt : opt.value;
-                            const optLabel = typeof opt === 'string' ? opt : opt.label;
-                            return <option key={i} value={optValue}>{optLabel}</option>;
-                        })}
-                    </select>
+                    <FormField id={controlId} label={label} description={field.helpText} required={field.required}>
+                        <Select value={value} onChange={(e) => handleChange(key, e.target.value)}>
+                            <option value="">Select an option...</option>
+                            {(field.options || []).map((opt, i) => {
+                                const { value: optValue, label: optLabel } = optionParts(opt);
+                                return <option key={i} value={optValue}>{optLabel}</option>;
+                            })}
+                        </Select>
+                    </FormField>
                 );
 
             case 'date':
                 return (
                     <DateTripletField
-                        label=""
-                        idPrefix={`custom-q-${key}`}
+                        label={label}
+                        idPrefix={controlId}
                         name={key}
                         value={value}
                         onChange={(_, v) => handleChange(key, v)}
@@ -176,43 +218,55 @@ export function DynamicQuestionsStep({
                         maxToday={false}
                         minYear={ty - 100}
                         maxYear={ty + 25}
-                        helpText="Month / Day / Year."
+                        helpText={field.helpText || 'Month / Day / Year.'}
                     />
                 );
 
             case 'time':
                 return (
-                    <div className="relative">
-                        <Clock size={18} className="absolute left-3 top-3.5 text-gray-400 pointer-events-none" />
-                        <input
+                    <FormField id={controlId} label={label} description={field.helpText} required={field.required}>
+                        <Input
                             type="time"
-                            className={`${baseInputClass} pl-10`}
                             value={value}
                             onChange={(e) => handleChange(key, e.target.value)}
-                            required={field.required}
                         />
-                    </div>
+                    </FormField>
                 );
 
             case 'number':
                 return (
-                    <input
-                        type="number"
-                        className={baseInputClass}
-                        value={value}
-                        onChange={(e) => handleChange(key, e.target.value)}
-                        placeholder={field.placeholder}
-                        required={field.required}
-                    />
+                    <FormField id={controlId} label={label} description={field.helpText} required={field.required}>
+                        <Input
+                            type="number"
+                            value={value}
+                            onChange={(e) => handleChange(key, e.target.value)}
+                            placeholder={field.placeholder}
+                        />
+                    </FormField>
                 );
 
             case 'fileUpload':
                 return (
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50 text-center hover:bg-gray-100 hover:border-blue-400 transition-all cursor-pointer">
+                    <div className="grid gap-ds-2">
+                        <label htmlFor={`file-${key}`} className="ds-label">
+                            <span>{label}</span>
+                            {field.required && (
+                                <>
+                                    <span className="ds-label__required-mark" aria-hidden="true">*</span>
+                                    <span className="ds-visually-hidden"> required</span>
+                                </>
+                            )}
+                        </label>
+                        {field.helpText && <FieldMessage tone="help">{field.helpText}</FieldMessage>}
+                        {/* DOCUMENTED EXCEPTION — label-wrapped file input.
+                            The design system has no approved file-input contract yet
+                            (Phase 4 records it as open). A native `<input type=file>`
+                            triggered by its own `<label>` is keyboard-reachable and
+                            correctly named, so no local button is introduced. */}
                         <input
                             type="file"
                             id={`file-${key}`}
-                            className="hidden"
+                            className="ds-visually-hidden"
                             required={field.required && !value}
                             accept={field.accept || "image/*,application/pdf"}
                             onChange={(e) => {
@@ -223,12 +277,15 @@ export function DynamicQuestionsStep({
                                 handleChange(key, file?.name || '');
                             }}
                         />
-                        <label htmlFor={`file-${key}`} className="cursor-pointer flex flex-col items-center">
-                            <UploadCloud size={28} className="text-blue-500 mb-2" />
-                            <span className="text-sm text-blue-600 font-medium">Click to upload file</span>
-                            <span className="text-xs text-gray-400 mt-1">PDF, PNG, JPG accepted</span>
+                        <label
+                            htmlFor={`file-${key}`}
+                            className="flex cursor-pointer flex-col items-center rounded-ds-md border-2 border-dashed border-ds-border bg-ds-surface-subtle p-ds-6 text-center hover:border-ds-focus"
+                        >
+                            <UploadCloud size={28} className="mb-ds-2 text-ds-action-primary" aria-hidden="true" />
+                            <span className="text-ds-sm font-medium text-ds-content-link">Click to upload file</span>
+                            <span className="mt-ds-1 text-ds-xs text-ds-content-secondary">PDF, PNG, JPG accepted</span>
                             {value && (
-                                <span className="text-xs text-green-600 mt-2 font-medium">
+                                <span role="status" className="mt-ds-2 text-ds-xs font-medium text-ds-status-success-fg">
                                     ✓ Selected: {typeof value === 'string' ? value : value.name}
                                 </span>
                             )}
@@ -236,98 +293,75 @@ export function DynamicQuestionsStep({
                     </div>
                 );
 
-            case 'linearScale':
+            case 'linearScale': {
                 const min = field.min || 1;
                 const max = field.max || 5;
+                const minLabel = field.minLabel || 'Poor';
+                const maxLabel = field.maxLabel || 'Excellent';
                 const scaleValues = Array.from({ length: max - min + 1 }, (_, i) => min + i);
                 return (
-                    <div className="bg-gray-50 rounded-lg p-4">
-                        <div className="flex items-center justify-between gap-4 max-w-md mx-auto">
-                            <span className="text-xs text-gray-500 font-medium min-w-[60px] text-right">
-                                {field.minLabel || 'Poor'}
-                            </span>
-                            <div className="flex gap-3 flex-1 justify-center">
-                                {scaleValues.map(val => (
-                                    <label key={val} className="flex flex-col items-center gap-1.5 cursor-pointer group">
-                                        <input
-                                            type="radio"
-                                            name={key}
-                                            value={val}
-                                            checked={Number(value) === val}
-                                            onChange={(e) => handleChange(key, Number(e.target.value))}
-                                            required={field.required}
-                                            className="w-5 h-5 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                        />
-                                        <span className={`text-xs font-medium ${Number(value) === val ? 'text-blue-600' : 'text-gray-500'}`}>
-                                            {val}
-                                        </span>
-                                    </label>
-                                ))}
-                            </div>
-                            <span className="text-xs text-gray-500 font-medium min-w-[60px]">
-                                {field.maxLabel || 'Excellent'}
-                            </span>
-                        </div>
-                    </div>
+                    <ChoiceGroup
+                        legend={label}
+                        description={field.helpText || `${min} = ${minLabel}, ${max} = ${maxLabel}`}
+                        required={field.required}
+                        orientation="horizontal"
+                    >
+                        {scaleValues.map((val) => (
+                            <Radio
+                                key={val}
+                                id={`${controlId}-scale-${val}`}
+                                name={key}
+                                value={val}
+                                label={
+                                    val === min ? `${val} — ${minLabel}`
+                                        : val === max ? `${val} — ${maxLabel}`
+                                            : String(val)
+                                }
+                                checked={Number(value) === val}
+                                onChange={(e) => handleChange(key, Number(e.target.value))}
+                                required={field.required}
+                                requiredMark={false}
+                            />
+                        ))}
+                    </ChoiceGroup>
                 );
+            }
 
             default: // shortAnswer, text
                 return (
-                    <input
-                        type="text"
-                        className={baseInputClass}
-                        value={value}
-                        onChange={(e) => handleChange(key, e.target.value)}
-                        placeholder={field.placeholder || 'Enter your response...'}
-                        required={field.required}
-                    />
+                    <FormField id={controlId} label={label} description={field.helpText} required={field.required}>
+                        <Input
+                            type="text"
+                            value={value}
+                            onChange={(e) => handleChange(key, e.target.value)}
+                            placeholder={field.placeholder || 'Enter your response...'}
+                        />
+                    </FormField>
                 );
         }
     };
 
     return (
-        <div className="space-y-6">
-            <div className="mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Additional Questions</h2>
-                <p className="text-sm text-gray-500">Please answer the following questions from the employer.</p>
+        <div className="space-y-ds-6">
+            <div>
+                <h2 className="text-ds-heading-sm font-bold text-ds-content">Additional Questions</h2>
+                <p className="text-ds-sm text-ds-content-muted">Please answer the following questions from the employer.</p>
             </div>
 
             {questions.map((field, index) => (
-                <div key={questionKey(field, index)} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-                    <label className="block mb-3">
-                        <span className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                            {field.label}
-                            {field.required && <span className="text-red-500">*</span>}
-                            {field.dotRequired && (
-                                <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
-                                    <Shield size={10} /> DOT
-                                </span>
-                            )}
-                        </span>
-                        {field.helpText && (
-                            <span className="block text-xs text-gray-500 mt-1">{field.helpText}</span>
-                        )}
-                    </label>
+                <Card key={questionKey(field, index)} padding="md" className="space-y-ds-3">
+                    {field.dotRequired && (
+                        <Badge tone="warning" icon={Shield}>DOT</Badge>
+                    )}
                     {renderField(field, index)}
-                </div>
+                </Card>
             ))}
 
             {/* Navigation */}
-            <div className="flex justify-between pt-6">
-                <button
-                    onClick={() => onNavigate('back')}
-                    className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
-                >
-                    Back
-                </button>
-                <button
-                    type="button"
-                    onClick={handleContinue}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-md transition-all"
-                >
-                    Continue
-                </button>
-            </div>
+            <StepNavigation
+                onBack={() => onNavigate('back')}
+                onContinue={handleContinue}
+            />
         </div>
     );
 }

@@ -1,48 +1,51 @@
 import React from 'react';
+import { FormField, FormSection, Select } from '@/design-system/components';
+
+/**
+ * Six paired miles/experience dropdowns. Presentation migrated to the approved
+ * `FormSection` / `FormField` / `Select` primitives (2026-07-27).
+ *
+ * Unchanged: every field key, every element id, and the defaults each select
+ * falls back to when the applicant has not answered (`'0'` for miles,
+ * `'<6 months'` for experience) — these defaults are what gets saved, so they
+ * must keep being the rendered value.
+ */
+const VEHICLE_TYPES = [
+    { label: 'Straight Truck', milesId: 'exp-straight-truck-miles', milesName: 'expStraightTruckMiles', expId: 'exp-straight-truck-exp', expName: 'expStraightTruckExp', milesLabel: 'Miles Driven in Straight Truck', expLabel: 'Experience in Straight Truck' },
+    { label: 'Tractor + Semi Trailer', milesId: 'exp-semi-trailer-miles', milesName: 'expSemiTrailerMiles', expId: 'exp-semi-trailer-exp', expName: 'expSemiTrailerExp', milesLabel: 'Miles Driven in Tractor + Semi Trailer', expLabel: 'Experience in Tractor + Semi Trailer' },
+    { label: 'Tractor + Two Trailers', milesId: 'exp-two-trailers-miles', milesName: 'expTwoTrailersMiles', expId: 'exp-two-trailers-exp', expName: 'expTwoTrailersExp', milesLabel: 'Miles Driven in Tractor + Two Trailers', expLabel: 'Experience in Tractor + Two Trailers' },
+];
 
 const VehicleExperienceSection = ({ formData, updateFormData, milesOptions, expOptions }) => {
+    const handleChange = (e) => updateFormData(e.target.name, e.target.value);
+
     return (
-        <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-            <legend className="text-lg font-semibold text-gray-800 px-2">Experience by Vehicle Type</legend>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                    <label htmlFor="exp-straight-truck-miles" className="block text-sm font-medium text-gray-700 mb-1">Miles Driven in Straight Truck</label>
-                    <select id="exp-straight-truck-miles" name="expStraightTruckMiles" value={formData.expStraightTruckMiles || '0'} onChange={(e) => updateFormData(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                        {milesOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="exp-straight-truck-exp" className="block text-sm font-medium text-gray-700 mb-1">Experience in Straight Truck</label>
-                    <select id="exp-straight-truck-exp" name="expStraightTruckExp" value={formData.expStraightTruckExp || '<6 months'} onChange={(e) => updateFormData(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                        {expOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="exp-semi-trailer-miles" className="block text-sm font-medium text-gray-700 mb-1">Miles Driven in Tractor + Semi Trailer</label>
-                    <select id="exp-semi-trailer-miles" name="expSemiTrailerMiles" value={formData.expSemiTrailerMiles || '0'} onChange={(e) => updateFormData(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                        {milesOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="exp-semi-trailer-exp" className="block text-sm font-medium text-gray-700 mb-1">Experience in Tractor + Semi Trailer</label>
-                    <select id="exp-semi-trailer-exp" name="expSemiTrailerExp" value={formData.expSemiTrailerExp || '<6 months'} onChange={(e) => updateFormData(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                        {expOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="exp-two-trailers-miles" className="block text-sm font-medium text-gray-700 mb-1">Miles Driven in Tractor + Two Trailers</label>
-                    <select id="exp-two-trailers-miles" name="expTwoTrailersMiles" value={formData.expTwoTrailersMiles || '0'} onChange={(e) => updateFormData(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                        {milesOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="exp-two-trailers-exp" className="block text-sm font-medium text-gray-700 mb-1">Experience in Tractor + Two Trailers</label>
-                    <select id="exp-two-trailers-exp" name="expTwoTrailersExp" value={formData.expTwoTrailersExp || '<6 months'} onChange={(e) => updateFormData(e.target.name, e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700">
-                        {expOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                </div>
+        <FormSection title="Experience by Vehicle Type">
+            <div className="grid grid-cols-1 gap-ds-6 sm:grid-cols-2">
+                {VEHICLE_TYPES.map((type) => (
+                    <React.Fragment key={type.label}>
+                        <FormField id={type.milesId} label={type.milesLabel}>
+                            <Select
+                                name={type.milesName}
+                                value={formData[type.milesName] || '0'}
+                                onChange={handleChange}
+                            >
+                                {milesOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </Select>
+                        </FormField>
+                        <FormField id={type.expId} label={type.expLabel}>
+                            <Select
+                                name={type.expName}
+                                value={formData[type.expName] || '<6 months'}
+                                onChange={handleChange}
+                            >
+                                {expOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </Select>
+                        </FormField>
+                    </React.Fragment>
+                ))}
             </div>
-        </fieldset>
+        </FormSection>
     );
 };
 

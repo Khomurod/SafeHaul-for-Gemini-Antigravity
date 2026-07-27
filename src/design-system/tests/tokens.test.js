@@ -62,12 +62,42 @@ describe('design tokens', () => {
     ['status-warning-fg', 'status-warning-bg'],
     ['status-danger-fg', 'status-danger-bg'],
     ['status-neutral-fg', 'status-neutral-bg'],
+    // `surface-subtle` is a real background in the product (card headers,
+    // confirmation panels, review rows), so the content colours used on it need
+    // the same guarantee as the ones used on `surface`.
+    ['content', 'surface-subtle'],
+    ['content-secondary', 'surface-subtle'],
+    ['content-link', 'surface-subtle'],
+    ['content', 'canvas'],
+    ['content-secondary', 'canvas'],
   ])('%s on %s meets WCAG AA normal-text contrast', (foreground, background) => {
     const ratio = contrast(
       resolveToken(`ds-color-${foreground}`),
       resolveToken(`ds-color-${background}`),
     );
     expect(ratio).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /**
+   * `content-muted` is approved against `surface` only. On `surface-subtle` it
+   * measures 4.34:1, below WCAG AA for normal text — a real-browser axe scan of
+   * the public driver application's success screen found three such nodes on
+   * 2026-07-27, and they were changed to `content-secondary`.
+   *
+   * This test pins the gap so it cannot be forgotten. Raising `content-muted`
+   * until it clears 4.5:1 on `surface-subtle` is a global visual change that
+   * needs owner approval (recorded in the roadmap's decisions section); when that
+   * happens, delete this test and move the pairing into the approved list above.
+   */
+  it('records that content-muted is not approved on surface-subtle', () => {
+    const ratio = contrast(
+      resolveToken('ds-color-content-muted'),
+      resolveToken('ds-color-surface-subtle'),
+    );
+    expect(ratio).toBeLessThan(4.5);
+    // Still legible enough for large text / non-text use, so the token is not broken —
+    // it simply must not carry normal-size interface text on a subtle surface.
+    expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
   it('exposes the semantic contract through namespaced Tailwind utilities', () => {

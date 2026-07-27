@@ -76,6 +76,18 @@ verified.
   migrates its password-reset overlay to the shared accessible Modal, while
   authentication, redirects, password visibility, and the reset workflow remain
   feature-owned.
+- The public driver application (`/apply/:slug`) and the sandbox application that
+  reuses it consume Card, Button, IconButton, Badge, FormSection, FormField,
+  Input, Textarea, Select, Checkbox, Radio, ChoiceGroup, FieldDisplay,
+  FieldMessage, Label, StatusMedallion, and the new ProgressBar. The wizard's
+  step order, conditional steps, every field key and saved payload shape, the
+  `submitGuestApplication` contract, draft/offline-queue/retry semantics, upload
+  paths and limits, consent wording, and the post-application signing contracts
+  all remain feature-owned and unchanged. Documented feature-owned exceptions:
+  the sandbox Magic Fill control (missing Button tones), the FMCSA employer
+  combobox options (`role="option"` cannot be an approved Button; no
+  Combobox/Listbox primitive yet), and two file-input compositions (no approved
+  file-input contract yet).
 
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and

@@ -1,6 +1,20 @@
 import React, { useCallback, useMemo } from 'react';
 import { MinusCircle, PlusCircle } from 'lucide-react';
+import { Button, IconButton } from '@/design-system/components';
 
+/**
+ * Repeating row list for the driver application (violations, accidents,
+ * employers, addresses, schools, military service, employment gaps).
+ *
+ * Presentation is migrated to the approved `Button` / `IconButton` primitives
+ * and `--ds-*` tokens. Every data contract is unchanged: the functional
+ * `updateFormData(listKey, updater)` writes, the `Date.now()` row `id`, the
+ * `${listKey}-container` element id, the `renderRow(index, item, handleChange)`
+ * signature, and the "Remove <label> #<n>" accessible action name.
+ *
+ * The heading is `<h3>` because the wizard's step title is the page `<h1>` and
+ * each step's `FormSection` heading is `<h2>`.
+ */
 const DynamicRow = ({ listKey, formData, updateFormData, renderRow, initialItemState, addButtonLabel, title }) => {
     const list = useMemo(() => {
         const data = formData[listKey];
@@ -36,32 +50,34 @@ const DynamicRow = ({ listKey, formData, updateFormData, renderRow, initialItemS
         });
     }, [updateFormData, listKey, initialItemState]);
 
+    const itemNoun = (addButtonLabel || 'Item').replace('Add', '').replace('+', '').trim() || 'Item';
+
     return (
-        <div className="space-y-4">
-            {title && <h3 className="text-lg font-semibold text-gray-800 px-2">{title}</h3>}
-            <div id={listKey + '-container'} className="space-y-4">
+        <div className="space-y-ds-4">
+            {title && <h3 className="text-ds-body-lg font-semibold text-ds-content">{title}</h3>}
+            <div id={listKey + '-container'} className="space-y-ds-4">
                 {list.map((item, index) => (
-                    <div key={item.id || index} className="dynamic-row border border-gray-200 rounded-lg p-4 space-y-3 relative shadow-sm">
+                    <div
+                        key={item.id || index}
+                        className="dynamic-row relative space-y-ds-3 rounded-ds-lg border border-ds-border-subtle bg-ds-surface p-ds-4 pr-ds-12 shadow-ds-xs"
+                    >
                         {renderRow(index, item, (fieldName, value) => handleChange(index, fieldName, value))}
-                        <button
-                            type="button"
+                        <IconButton
+                            variant="ghost"
+                            size="md"
+                            className="absolute right-ds-2 top-ds-2"
+                            label={'Remove ' + itemNoun + ' #' + (index + 1)}
                             onClick={() => handleDelete(index)}
-                            className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1 rounded-full bg-white transition duration-150"
-                            aria-label={'Remove ' + (addButtonLabel || 'Item').replace('Add', '').trim() + ' #' + (index + 1)}
                         >
-                            <MinusCircle size={20} />
-                        </button>
+                            <MinusCircle size={20} aria-hidden="true" />
+                        </IconButton>
                     </div>
                 ))}
             </div>
-            <button
-                type="button"
-                onClick={handleAdd}
-                className="flex items-center space-x-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition duration-150"
-            >
-                <PlusCircle size={16} />
+            <Button variant="ghost" size="md" onClick={handleAdd}>
+                <PlusCircle size={16} aria-hidden="true" />
                 <span>{addButtonLabel}</span>
-            </button>
+            </Button>
         </div>
     );
 };

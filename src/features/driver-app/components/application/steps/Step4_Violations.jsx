@@ -3,23 +3,24 @@ import InputField from '@shared/components/form/InputField';
 import DateTripletField from '@shared/components/form/DateTripletField';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
-import { useData } from '@/context/DataContext';
 import { YES_NO_OPTIONS } from '@/config/form-options';
+import { FormField, FormSection, Textarea } from '@/design-system/components';
+import { StepNavigation } from './components/StepNavigation';
 
-const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNavigate }) => {
-    const { currentCompanyProfile } = useData();
-    const currentCompany = currentCompanyProfile;
-
-    // --- Configuration ---
-    // We keep this helper in case you need to re-enable other config fields later
-    const getConfig = (fieldId, defaultReq = true) => {
-        const config = currentCompany?.applicationConfig?.[fieldId];
-        return {
-            hidden: config?.hidden || false,
-            required: config !== undefined ? config.required : defaultReq
-        };
-    };
-
+/**
+ * Presentation migrated to the approved `FormSection` / `FormField` / `Textarea`
+ * primitives (2026-07-27).
+ *
+ * Unchanged: the `consent-mvr` / `revoked-licenses` / `driving-convictions` /
+ * `drug-alcohol-convictions` field keys and their frozen FMCSA question wording,
+ * the exact MVR consent copy, the three conditional required explanations, the
+ * `violations` row shape, and the `form.checkValidity()` gate.
+ *
+ * `consent-mvr-yes`, `revoked-licenses-no`, `driving-convictions-no` and
+ * `drug-alcohol-convictions-no` are element ids the guest E2E specs click via
+ * `label[for=…]`; the shared `RadioGroup` adapter keeps generating them.
+ */
+const Step4_Violations = ({ formData, updateFormData, onNavigate }) => {
     const yesNoOptions = YES_NO_OPTIONS;
     const ty = new Date().getFullYear();
     const initialViolation = { date: '', charge: '', location: '', penalty: '' };
@@ -36,7 +37,7 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
     };
 
     const renderViolationRow = (index, item, handleChange) => (
-        <div key={index} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
             <DateTripletField
                 label="Date of Conviction"
                 idPrefix={'violation-date-' + index}
@@ -56,35 +57,56 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
                 onChange={handleChange}
                 required={true}
             />
-            <InputField
-                label="Location (City, State)"
-                id={'violation-location-' + index}
-                name="location"
-                value={item.location}
-                onChange={handleChange}
-                className="sm:col-span-2"
-            />
-            <InputField
-                label="Penalty"
-                id={'violation-penalty-' + index}
-                name="penalty"
-                value={item.penalty}
-                onChange={handleChange}
-                className="sm:col-span-2"
-            />
+            {/* The full-width span belongs on the grid item, not on the <input>
+                inside it — the previous `className="sm:col-span-2"` landed on the
+                input and therefore did nothing. */}
+            <div className="sm:col-span-2">
+                <InputField
+                    label="Location (City, State)"
+                    id={'violation-location-' + index}
+                    name="location"
+                    value={item.location}
+                    onChange={handleChange}
+                />
+            </div>
+            <div className="sm:col-span-2">
+                <InputField
+                    label="Penalty"
+                    id={'violation-penalty-' + index}
+                    name="penalty"
+                    value={item.penalty}
+                    onChange={handleChange}
+                />
+            </div>
         </div>
     );
 
+    /** Required free-text explanation shown when a disclosure question is "yes". */
+    const ConditionalExplanation = ({ id, name, value }) => (
+        <FormField
+            id={id}
+            label="Please provide details (date, location, circumstances):"
+            required
+        >
+            <Textarea
+                name={name}
+                rows="3"
+                value={value || ""}
+                onChange={(e) => updateFormData(e.target.name, e.target.value)}
+                placeholder="Provide details here..."
+            />
+        </FormField>
+    );
+
     return (
-        <div id="page-4" className="form-step space-y-6">
-            <h3 className="text-xl font-semibold text-gray-800">Step 4 of 9: Motor Vehicle Record</h3>
-
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Consent & Revocations</legend>
-
-                <div className="space-y-2 pt-4 border-t border-gray-200">
-                    <label className="block text-sm font-medium text-gray-900">Motor Vehicle Record (MVR) Check</label>
-                    <p className="text-sm text-gray-600">This is required for employment. We will pull your driving record from all states where you have held a license in the past 3 years.</p>
+        <div id="page-4" className="form-step space-y-ds-6">
+            <FormSection title="Consent & Revocations">
+                <div className="space-y-ds-2">
+                    {/* Was a bare `<label>` with no control, so assistive tech
+                        announced a label pointing at nothing. Same copy, now a
+                        real sub-heading under the section's `<h2>`. */}
+                    <h3 className="text-ds-sm font-semibold text-ds-content">Motor Vehicle Record (MVR) Check</h3>
+                    <p className="text-ds-sm text-ds-content-secondary">This is required for employment. We will pull your driving record from all states where you have held a license in the past 3 years.</p>
                     <RadioGroup
                         label="I Consent to MVR Check"
                         name="consent-mvr"
@@ -104,19 +126,11 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
                     required={true}
                 />
                 {formData['revoked-licenses'] === 'yes' && (
-                    <div className="pt-2 animate-in fade-in slide-in-from-top-1">
-                        <label htmlFor="revocation-explanation" className="block text-sm font-medium text-gray-700 mb-1">Please provide details (date, location, circumstances): <span className="text-red-500">*</span></label>
-                        <textarea
-                            id="revocation-explanation"
-                            name="revocationExplanation"
-                            rows="3"
-                            required
-                            value={formData.revocationExplanation || ""}
-                            onChange={(e) => updateFormData(e.target.name, e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Provide details here..."
-                        ></textarea>
-                    </div>
+                    <ConditionalExplanation
+                        id="revocation-explanation"
+                        name="revocationExplanation"
+                        value={formData.revocationExplanation}
+                    />
                 )}
 
                 <RadioGroup
@@ -128,19 +142,11 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
                     required={true}
                 />
                 {formData['driving-convictions'] === 'yes' && (
-                    <div className="pt-2 animate-in fade-in slide-in-from-top-1">
-                        <label htmlFor="conviction-explanation" className="block text-sm font-medium text-gray-700 mb-1">Please provide details (date, location, circumstances): <span className="text-red-500">*</span></label>
-                        <textarea
-                            id="conviction-explanation"
-                            name="convictionExplanation"
-                            rows="3"
-                            required
-                            value={formData.convictionExplanation || ""}
-                            onChange={(e) => updateFormData(e.target.name, e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Provide details here..."
-                        ></textarea>
-                    </div>
+                    <ConditionalExplanation
+                        id="conviction-explanation"
+                        name="convictionExplanation"
+                        value={formData.convictionExplanation}
+                    />
                 )}
 
                 <RadioGroup
@@ -152,27 +158,18 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
                     required={true}
                 />
                 {formData['drug-alcohol-convictions'] === 'yes' && (
-                    <div className="pt-2 animate-in fade-in slide-in-from-top-1">
-                        <label htmlFor="drug-conviction-explanation" className="block text-sm font-medium text-gray-700 mb-1">Please provide details (date, location, circumstances): <span className="text-red-500">*</span></label>
-                        <textarea
-                            id="drug-conviction-explanation"
-                            name="drugConvictionExplanation"
-                            rows="3"
-                            required
-                            value={formData.drugConvictionExplanation || ""}
-                            onChange={(e) => updateFormData(e.target.name, e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Provide details here..."
-                        ></textarea>
-                    </div>
+                    <ConditionalExplanation
+                        id="drug-conviction-explanation"
+                        name="drugConvictionExplanation"
+                        value={formData.drugConvictionExplanation}
+                    />
                 )}
 
                 {/* REMOVED: Upload Signed MVR Consent Form section */}
-            </fieldset>
+            </FormSection>
 
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Moving Violations (Past 3 Years)</legend>
-                <p className="text-sm text-gray-600">Please list all moving violations or traffic convictions within the past 3 years (whether in a personal or commercial vehicle).</p>
+            <FormSection title="Moving Violations (Past 3 Years)">
+                <p className="text-ds-sm text-ds-content-secondary">Please list all moving violations or traffic convictions within the past 3 years (whether in a personal or commercial vehicle).</p>
                 <DynamicRow
                     listKey="violations"
                     formData={formData}
@@ -181,24 +178,12 @@ const Step4_Violations = ({ formData, updateFormData, handleFileUpload, onNaviga
                     initialItemState={initialViolation}
                     addButtonLabel="+ Add Violation"
                 />
-            </fieldset>
+            </FormSection>
 
-            <div className="flex justify-between pt-6">
-                <button
-                    type="button"
-                    onClick={() => onNavigate('back')}
-                    className="w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Back
-                </button>
-                <button
-                    type="button"
-                    onClick={handleContinue}
-                    className="w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Continue
-                </button>
-            </div>
+            <StepNavigation
+                onBack={() => onNavigate('back')}
+                onContinue={handleContinue}
+            />
         </div>
     );
 };

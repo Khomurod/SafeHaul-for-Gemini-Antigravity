@@ -54,6 +54,7 @@ import {
   generateApplicationId,
   generateConfirmationNumber
 } from '@lib/applicationId';
+import { Card } from '@/design-system/components';
 import { getMagicFillPatchForStep } from '@features/sandbox/utils/dummyDataGenerator';
 import { SandboxActionPanel } from '@features/sandbox/SandboxActionPanel';
 import {
@@ -274,7 +275,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     if (isE2ETestMode) {
       persistLocalDraft(nextStep);
     }
-    window.scrollTo(0, 0);
+    // Scrolling is owned by `Stepper`, which focuses the new step's heading.
+    // A second scroll here raced that one and made step transitions
+    // non-deterministic (see the Stepper header comment).
   };
 
   const handleMagicFillStep = useCallback(() => {
@@ -726,18 +729,20 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   if (submissionStatus === 'queued') return <SubmissionQueuedScreen onGoHome={() => navigate('/')} />;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-20 px-4 py-3 shadow-sm">
-        <div className="max-w-4xl mx-auto flex flex-col gap-2">
-          <div className="flex items-center justify-between font-bold">{company.companyName}</div>
+    <div className="min-h-screen bg-ds-canvas pb-ds-12">
+      {/* The company banner is a `<header>` landmark so a screen-reader user can
+          reach "whose application is this?" without walking the whole form. */}
+      <header className="sticky top-0 z-20 border-b border-ds-border-subtle bg-ds-surface px-ds-4 py-ds-3 shadow-ds-xs">
+        <div className="mx-auto flex max-w-4xl flex-col gap-ds-2">
+          <p className="font-bold text-ds-content">{company.companyName}</p>
           {sandbox && (
-            <p className="text-xs font-medium text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-center">
+            <p className="rounded-ds-lg border border-ds-status-warning-border bg-ds-status-warning-bg px-ds-3 py-ds-2 text-center text-ds-xs font-medium text-ds-status-warning-fg">
               Testing mode — applications are stored under tenant <strong>SANDBOX</strong>. Use Super Admin actions after submit to delete or transfer.
             </p>
           )}
         </div>
-      </div>
-      <div className="max-w-4xl mx-auto mt-6 bg-white rounded-xl shadow-sm border border-gray-200">
+      </header>
+      <Card as="main" padding="none" className="mx-auto mt-ds-6 max-w-4xl overflow-hidden">
         <Stepper
           step={currentStep}
           formData={formData}
@@ -752,7 +757,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
           isSandboxMode={sandbox}
           onMagicFillStep={sandbox ? handleMagicFillStep : undefined}
         />
-      </div>
+      </Card>
 
     </div>
   );

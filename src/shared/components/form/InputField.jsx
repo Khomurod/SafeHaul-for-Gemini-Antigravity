@@ -1,5 +1,25 @@
 import React from 'react';
+import { FieldMessage, Input, Label } from '@/design-system/components';
 
+/**
+ * Compatibility adapter over the approved `Label` / `Input` / `FieldMessage`
+ * primitives.
+ *
+ * It is not built on `FormField` because two behaviours here are outside that
+ * primitive's string-label contract and must be preserved exactly:
+ *
+ * 1. `label` may carry the inline file-status suffix ("(Uploaded: cdl.pdf)")
+ *    for `type="file"` call sites.
+ * 2. `type="file"` must never receive a `value` prop, so re-uploading the same
+ *    file keeps working.
+ *
+ * Frozen contracts: the `(name, value)` `onChange`/`onBlur` shape (the File
+ * object or `null` for file inputs), the `${id || name}-error` error id, the
+ * `role="alert"` error announcement, and `aria-required` / `aria-invalid` /
+ * `aria-describedby` wiring — all covered by `src/tests/InputField.test.jsx`,
+ * `src/tests/a11y/primitives.a11y.test.jsx` and the field-validation
+ * integration tests.
+ */
 const InputField = ({ label, id, name, type = 'text', value, onChange, onBlur, required = false, placeholder, className = "", error }) => {
     const isFile = type === 'file';
     // C2: associate the error message with the input for assistive tech.
@@ -36,7 +56,9 @@ const InputField = ({ label, id, name, type = 'text', value, onChange, onBlur, r
         }
     }
 
-    const fileClasses = 'file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100';
+    // The design system has no approved file-input contract yet (Phase 4 records
+    // it as open), so the native file-picker button styling stays local here.
+    const fileClasses = 'file:mr-ds-4 file:py-ds-2 file:px-ds-4 file:rounded-ds-md file:border-0 file:text-ds-sm file:font-semibold file:bg-ds-status-info-bg file:text-ds-status-info-fg';
 
     // For file inputs, we don't pass the 'value' prop to prevent React issues and allow re-uploads.
     const fileInputProps = isFile ? {
@@ -45,22 +67,17 @@ const InputField = ({ label, id, name, type = 'text', value, onChange, onBlur, r
         value: value || ""
     };
 
-    // C2: red border + red focus ring when invalid; default blue otherwise.
-    const stateClasses = error
-        ? 'border-red-400 focus:ring-red-500'
-        : 'border-gray-300 focus:ring-blue-500';
-
     return (
-        <div>
-            <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
-                {label} {required && <span className="text-red-500">*</span>}
+        <div className="grid gap-ds-2 min-w-0">
+            <Label htmlFor={id} required={required}>
+                {label}
                 {isFile && fileStatusText && (
-                    <span className={`ml-2 text-xs font-normal ${isFileUploaded ? 'text-green-600' : 'text-blue-500'}`}>
+                    <span className={`font-normal text-ds-xs ${isFileUploaded ? 'text-ds-status-success-fg' : 'text-ds-status-info-fg'}`}>
                         ({fileStatusText})
                     </span>
                 )}
-            </label>
-            <input
+            </Label>
+            <Input
                 type={type}
                 id={id}
                 name={name}
@@ -73,13 +90,13 @@ const InputField = ({ label, id, name, type = 'text', value, onChange, onBlur, r
                 aria-required={required || undefined}
                 aria-invalid={error ? true : undefined}
                 aria-describedby={errorId}
-                className={'w-full p-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 text-gray-700 ' + stateClasses + ' ' + className + ' ' + (isFile ? fileClasses : '')}
+                className={`${className} ${isFile ? fileClasses : ''}`.trim()}
                 {...fileInputProps}
             />
             {error && (
-                <p id={errorId} role="alert" className="mt-1 text-sm text-red-600">
+                <FieldMessage id={errorId} tone="error">
                     {error}
-                </p>
+                </FieldMessage>
             )}
         </div>
     );

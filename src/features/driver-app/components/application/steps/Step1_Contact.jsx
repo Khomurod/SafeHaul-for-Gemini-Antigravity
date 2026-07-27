@@ -11,6 +11,9 @@ import { useUtils } from '@shared/hooks/useUtils';
 import { useData } from '@/context/DataContext';
 import { AlertCircle } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
+import { Checkbox, FormSection } from '@/design-system/components';
+import { StepNavigation } from './components/StepNavigation';
+import { StateSelectField } from './components/StateSelectField';
 
 // Map validator field names to their input element ids (for focus-on-error).
 const FIELD_ID_BY_NAME = {
@@ -23,6 +26,20 @@ const FIELD_ID_BY_NAME = {
     zip: 'zip',
 };
 
+/**
+ * Presentation migrated to the approved `FormSection` / `FormField` / `Select` /
+ * `Checkbox` primitives and the shared field adapters (2026-07-27).
+ *
+ * Unchanged: every field key, the `applicationConfig` hidden/required resolution,
+ * the `known-by-other-name` default-to-'no' effect, the on-blur/revalidate
+ * behaviour, the soft-format warnings, the authoritative `validateStep()` order
+ * and its exact toast strings, the age-21 rules, the focus-first-error behaviour,
+ * and the `previousAddresses` row shape.
+ *
+ * The per-step "Step 1 of 9" legend was removed: `Stepper` renders the
+ * authoritative step title as the page `<h1>`, and this copy also said "of 9"
+ * even when custom questions made it ten steps.
+ */
 const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }) => {
     const ty = new Date().getFullYear();
     const { states } = useUtils();
@@ -175,46 +192,44 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
     const hasSSNWarning = (val) => val && val.length > 7 && !/^\d{3}-?\d{2}-?\d{4}$/.test(val);
     const hasZipWarning = (val) => val && val.length > 0 && !/^\d{5}(-\d{4})?$/.test(val);
 
+    // Advisory-only formatting hints. They are not blocking errors, so they use
+    // `role="status"` rather than the `role="alert"` an invalid field gets.
     const ValidationWarning = ({ message }) => (
-        <div className="flex items-center gap-1.5 mt-1 text-amber-600 text-xs font-medium animate-in fade-in slide-in-from-top-1">
-            <AlertCircle size={12} />
+        <p role="status" className="mt-ds-1 flex items-center gap-ds-1 text-ds-xs font-medium text-ds-status-warning-fg">
+            <AlertCircle size={12} aria-hidden="true" />
             <span>{message}</span>
-        </div>
+        </p>
     );
 
     return (
-        <div id="page-1" className="form-step space-y-6">
+        <div id="page-1" className="form-step space-y-ds-6">
 
             {/* --- Personal Details --- */}
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Step 1 of 9: Personal Information</legend>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <FormSection title="Personal Information">
+                <div className="grid grid-cols-1 gap-ds-6 sm:grid-cols-2">
                     <InputField label="First Name" id="first-name" name="firstName" required={true} value={formData.firstName} onChange={handleChange} onBlur={handleFieldBlur} error={errors.firstName} placeholder="John" />
                     <InputField label="Middle Name" id="middle-name" name="middleName" value={formData.middleName} onChange={updateFormData} placeholder="M" />
                     <InputField label="Last Name" id="last-name" name="lastName" required={true} value={formData.lastName} onChange={handleChange} onBlur={handleFieldBlur} error={errors.lastName} placeholder="Doe" />
                     <InputField label="Suffix" id="suffix" name="suffix" value={formData.suffix} onChange={updateFormData} placeholder="Jr." />
                 </div>
 
-                <div className="flex items-center pt-2 border-t border-gray-200">
-                    <input
+                <div className="border-t border-ds-border-subtle pt-ds-4">
+                    <Checkbox
                         id="known-by-other-name"
                         name="known-by-other-name"
-                        type="checkbox"
+                        label="Known by other name(s)?"
                         checked={knownByOtherName}
                         onChange={handleOtherNameToggle}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
-                    <label htmlFor="known-by-other-name" className="ml-2 block text-sm font-medium text-gray-800">Known by other name(s)?</label>
                 </div>
 
                 {knownByOtherName && (
-                    <div id="other-name-field" className="pt-2">
+                    <div id="other-name-field">
                         <InputField label="Other Name(s)" id="other-name" name="otherName" value={formData.otherName} onChange={updateFormData} placeholder="e.g., Johnny" />
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-ds-6 sm:grid-cols-2">
                     {/* SSN Field - Configurable */}
                     {!ssnConfig.hidden && (
                         <div>
@@ -249,7 +264,7 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
                     )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
+                <div className="grid grid-cols-1 gap-ds-6 border-t border-ds-border-subtle pt-ds-4 sm:grid-cols-2">
                     <div>
                         <InputField label="Phone" id="phone" name="phone" type="tel" required={true} value={formData.phone} onChange={handleChange} onBlur={handleFieldBlur} error={errors.phone} placeholder="(555) 555-5555" />
                         {!errors.phone && hasPhoneWarning(formData.phone) && <ValidationWarning message="Please double-check phone format." />}
@@ -271,7 +286,7 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
 
                 {/* Referral Source - Configurable */}
                 {!referralConfig.hidden && (
-                    <div className="pt-4 border-t border-gray-200">
+                    <div className="border-t border-ds-border-subtle pt-ds-4">
                         <InputField
                             label="How did you hear about us?"
                             id="referral-source"
@@ -283,30 +298,22 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
                         />
                     </div>
                 )}
-            </fieldset>
+            </FormSection>
 
             {/* --- Current Address --- */}
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Current Address</legend>
+            <FormSection title="Current Address">
                 <div>
                     <InputField label="Address 1" id="street" name="street" required={true} value={formData.street} onChange={handleChange} onBlur={handleFieldBlur} error={errors.street} placeholder="123 Main St" />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 gap-ds-6 sm:grid-cols-3">
                     <InputField label="City" id="city" name="city" required={true} value={formData.city} onChange={handleChange} onBlur={handleFieldBlur} error={errors.city} placeholder="Anytown" />
-                    <div>
-                        <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">State <span className="text-red-500">*</span></label>
-                        <select
-                            id="state"
-                            name="state"
-                            required
-                            value={formData.state || ""}
-                            onChange={(e) => handleStateChange(e.target.name, e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
-                        >
-                            <option value="" disabled>Select State</option>
-                            {states.map(state => <option key={state} value={state}>{state}</option>)}
-                        </select>
-                    </div>
+                    <StateSelectField
+                        id="state"
+                        name="state"
+                        states={states}
+                        value={formData.state}
+                        onChange={(e) => handleStateChange(e.target.name, e.target.value)}
+                    />
                     <div>
                         <InputField label="ZIP Code" id="zip" name="zip" required={true} value={formData.zip} onChange={handleChange} onBlur={handleFieldBlur} error={errors.zip} placeholder="12345" />
                         {!errors.zip && hasZipWarning(formData.zip) && <ValidationWarning message="Standard ZIP is 5 digits." />}
@@ -325,108 +332,86 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
                         required={historyConfig.required}
                     />
                 )}
-            </fieldset>
+            </FormSection>
 
             {/* --- Previous Address History (Past 3 Years) --- */}
-            <div className="mt-6 animate-in fade-in">
-                <DynamicRow
-                    listKey="previousAddresses"
-                    title="Previous Addresses (Past 3 Years)"
-                    formData={formData}
-                    updateFormData={updateFormData}
-                    initialItemState={{ street: '', city: '', state: '', zip: '', startDate: '', endDate: '' }}
-                    addButtonLabel="Add Previous Address"
-                    renderRow={(index, item, handleChange) => (
-                        <div className="space-y-4">
+            <DynamicRow
+                listKey="previousAddresses"
+                title="Previous Addresses (Past 3 Years)"
+                formData={formData}
+                updateFormData={updateFormData}
+                initialItemState={{ street: '', city: '', state: '', zip: '', startDate: '', endDate: '' }}
+                addButtonLabel="Add Previous Address"
+                renderRow={(index, item, handleRowChange) => (
+                    <div className="space-y-ds-4">
+                        <InputField
+                            label="Address"
+                            id={`prev-street-${index}`}
+                            name="street"
+                            value={item.street}
+                            onChange={(n, v) => handleRowChange('street', v)}
+                            placeholder="123 Old St"
+                            required={true}
+                        />
+                        <div className="grid grid-cols-1 gap-ds-6 sm:grid-cols-3">
                             <InputField
-                                label="Address"
-                                id={`prev-street-${index}`}
-                                name="street"
-                                value={item.street}
-                                onChange={(n, v) => handleChange('street', v)}
-                                placeholder="123 Old St"
+                                label="City"
+                                id={`prev-city-${index}`}
+                                name="city"
+                                value={item.city}
+                                onChange={(n, v) => handleRowChange('city', v)}
+                                placeholder="City"
                                 required={true}
                             />
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                                <InputField
-                                    label="City"
-                                    id={`prev-city-${index}`}
-                                    name="city"
-                                    value={item.city}
-                                    onChange={(n, v) => handleChange('city', v)}
-                                    placeholder="City"
-                                    required={true}
-                                />
-                                <div>
-                                    <label htmlFor={`prev-state-${index}`} className="block text-sm font-medium text-gray-700 mb-1">State <span className="text-red-500">*</span></label>
-                                    <select
-                                        id={`prev-state-${index}`}
-                                        name="state"
-                                        value={item.state || ""}
-                                        onChange={(e) => handleChange('state', e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
-                                        required
-                                    >
-                                        <option value="" disabled>Select State</option>
-                                        {states.map(state => <option key={state} value={state}>{state}</option>)}
-                                    </select>
-                                </div>
-                                <InputField
-                                    label="ZIP Code"
-                                    id={`prev-zip-${index}`}
-                                    name="zip"
-                                    value={item.zip}
-                                    onChange={(n, v) => handleChange('zip', v)}
-                                    placeholder="Zip"
-                                    required={true}
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                <MonthYearField
-                                    label="From (month / year)"
-                                    idPrefix={`prev-start-${index}`}
-                                    name="startDate"
-                                    value={item.startDate}
-                                    onChange={(n, v) => handleChange('startDate', v)}
-                                    required={true}
-                                    maxToday={true}
-                                    minYear={ty - 80}
-                                    helpText="Same easy dropdowns as employment gaps — no calendar picker."
-                                />
-                                <MonthYearField
-                                    label="To (month / year)"
-                                    idPrefix={`prev-end-${index}`}
-                                    name="endDate"
-                                    value={item.endDate}
-                                    onChange={(n, v) => handleChange('endDate', v)}
-                                    required={true}
-                                    maxToday={true}
-                                    minYear={ty - 80}
-                                />
-                            </div>
+                            <StateSelectField
+                                id={`prev-state-${index}`}
+                                name="state"
+                                states={states}
+                                value={item.state}
+                                onChange={(e) => handleRowChange('state', e.target.value)}
+                            />
+                            <InputField
+                                label="ZIP Code"
+                                id={`prev-zip-${index}`}
+                                name="zip"
+                                value={item.zip}
+                                onChange={(n, v) => handleRowChange('zip', v)}
+                                placeholder="Zip"
+                                required={true}
+                            />
                         </div>
-                    )}
-                />
-            </div>
+                        <div className="grid grid-cols-1 gap-ds-6 sm:grid-cols-2">
+                            <MonthYearField
+                                label="From (month / year)"
+                                idPrefix={`prev-start-${index}`}
+                                name="startDate"
+                                value={item.startDate}
+                                onChange={(n, v) => handleRowChange('startDate', v)}
+                                required={true}
+                                maxToday={true}
+                                minYear={ty - 80}
+                                helpText="Same easy dropdowns as employment gaps — no calendar picker."
+                            />
+                            <MonthYearField
+                                label="To (month / year)"
+                                idPrefix={`prev-end-${index}`}
+                                name="endDate"
+                                value={item.endDate}
+                                onChange={(n, v) => handleRowChange('endDate', v)}
+                                required={true}
+                                maxToday={true}
+                                minYear={ty - 80}
+                            />
+                        </div>
+                    </div>
+                )}
+            />
 
             {/* --- Buttons --- */}
-            <div className="flex flex-col sm:flex-row sm:justify-end pt-6 space-y-3 sm:space-y-0 sm:space-x-4">
-                <button
-                    type="button"
-                    name="submit-partial"
-                    onClick={onPartialSubmit}
-                    className="w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Save as Draft
-                </button>
-                <button
-                    type="button"
-                    onClick={handleContinue}
-                    className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Continue
-                </button>
-            </div>
+            <StepNavigation
+                onContinue={handleContinue}
+                onSaveDraft={onPartialSubmit}
+            />
         </div>
     );
 };

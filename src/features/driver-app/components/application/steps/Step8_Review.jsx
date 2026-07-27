@@ -3,29 +3,48 @@ import { formatIsoDateUs, formatMonthYearUs } from '@shared/utils/dateFormHelper
 import {
     User, MapPin, Truck, Briefcase, FileCheck,
     AlertCircle, IdCard, ShieldCheck, Beaker, Edit2,
-    Calendar, CheckCircle2
+    CheckCircle2
 } from 'lucide-react';
+import { Badge, Button, Card, FieldDisplay } from '@/design-system/components';
+import { StepNavigation } from './components/StepNavigation';
+
+/**
+ * Review & confirm step. Presentation migrated to the approved `Card` /
+ * `Button` / `Badge` / `FieldDisplay` primitives (2026-07-27).
+ *
+ * Unchanged: the SSN masking (`***-**-` + last four), the yes/no → wording
+ * mapping for every disclosure, the `residence-3-years === 'no'` previous-address
+ * branch with its legacy `prevStreet` fallback, the date display helpers, the
+ * uploaded-document key list, the `emptyText` strings, the per-section Edit
+ * target indices (0,0,1,2,3,4,5,6 — deliberately 0-based wizard steps, not the
+ * displayed step numbers), and the "Confirm & Proceed" label the guest specs
+ * click.
+ *
+ * DEFECTS FIXED (2026-07-27):
+ * - Each Edit control's accessible name was the bare word "Edit", so a screen
+ *   reader heard eight identical controls. Each now names its section.
+ * - Section titles were `<h4>` with an `<h3>` page heading elsewhere; they are
+ *   now `<h2>` under the wizard's `<h1>`. The nested "Almost Done!" callout was
+ *   also an `<h3>` outranking them.
+ * - Felony history signalled "YES" with red text alone; it now carries a
+ *   `danger` `Badge` so the emphasis survives greyscale and colour blindness.
+ */
 
 const ReviewSection = ({ title, icon: Icon, onEdit, children }) => (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 mb-6">
-        <div className="bg-gray-50 px-5 py-3 border-b border-gray-200 flex justify-between items-center">
-            <h4 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                {Icon && <Icon size={18} className="text-blue-600" />}
+    <Card padding="none" className="mb-ds-6 overflow-hidden">
+        <div className="flex items-center justify-between gap-ds-3 border-b border-ds-border-subtle bg-ds-surface-subtle px-ds-5 py-ds-3">
+            <h2 className="flex items-center gap-ds-2 text-ds-body font-bold text-ds-content">
+                {Icon && <Icon size={18} className="shrink-0 text-ds-action-primary" aria-hidden="true" />}
                 {title}
-            </h4>
-            <button
-                type="button"
-                onClick={onEdit}
-                className="flex items-center gap-1 text-gray-500 hover:text-blue-600 hover:bg-white px-3 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-all text-xs font-bold uppercase tracking-wide"
-                title={`Edit ${title}`}
-            >
-                <Edit2 size={14} /> Edit
-            </button>
+            </h2>
+            <Button variant="ghost" size="md" onClick={onEdit} aria-label={`Edit ${title}`}>
+                <Edit2 size={14} aria-hidden="true" /> Edit
+            </Button>
         </div>
-        <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
+        <div className="grid grid-cols-1 gap-x-ds-8 gap-y-ds-4 p-ds-5 md:grid-cols-2">
             {children}
         </div>
-    </div>
+    </Card>
 );
 
 function displayAnyDate(raw) {
@@ -36,29 +55,36 @@ function displayAnyDate(raw) {
     return s;
 }
 
-const ReviewItem = ({ label, value, className = "", fullWidth = false }) => {
+const ReviewItem = ({ label, value, badge = null, fullWidth = false }) => {
     if (value === null || value === undefined || value === "") return null;
 
     return (
-        <div className={`flex flex-col ${fullWidth ? 'col-span-1 md:col-span-2' : ''} ${className}`}>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">{label}</span>
-            <span className="text-sm text-gray-900 font-medium break-words whitespace-pre-wrap">{value}</span>
-        </div>
+        <FieldDisplay
+            label={label}
+            className={`min-w-0 ${fullWidth ? 'col-span-1 md:col-span-2' : ''}`}
+        >
+            <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{value}</span>
+            {badge && <span className="ml-ds-2 inline-block align-middle">{badge}</span>}
+        </FieldDisplay>
     );
 };
 
+const ReviewGroupLabel = ({ children }) => (
+    <h3 className="mb-ds-2 block text-ds-xs font-bold uppercase tracking-wider text-ds-content-muted">{children}</h3>
+);
+
 const ReviewList = ({ items, renderItem, emptyText = "None recorded" }) => {
     if (!items || items.length === 0) {
-        return <p className="text-sm text-gray-400 italic col-span-2">{emptyText}</p>;
+        return <p className="col-span-2 text-ds-sm italic text-ds-content-muted">{emptyText}</p>;
     }
     return (
-        <div className="col-span-2 space-y-2">
+        <ul className="col-span-2 space-y-ds-2">
             {items.map((item, index) => (
-                <div key={index} className="bg-gray-50 p-3 rounded border border-gray-100 text-sm text-gray-700">
+                <li key={index} className="rounded-ds-sm border border-ds-border-subtle p-ds-3 text-ds-sm text-ds-content-secondary">
                     {renderItem(item, index)}
-                </div>
+                </li>
             ))}
-        </div>
+        </ul>
     );
 };
 
@@ -83,22 +109,24 @@ const Step8_Review = ({ formData, onNavigate }) => {
         return null;
     };
 
+    const hasFelony = formData['has-felony'] === 'yes';
+
     return (
-        <div id="page-8" className="form-step space-y-8 animate-in fade-in duration-500">
+        <div id="page-8" className="form-step space-y-ds-8">
             <div>
-                <h3 className="text-2xl font-bold text-gray-900">Review & Confirm</h3>
-                <p className="text-gray-500 mt-1">Please ensure all details are accurate before signing.</p>
+                <h2 className="text-ds-heading-md font-bold text-ds-content">Review &amp; Confirm</h2>
+                <p className="mt-ds-1 text-ds-content-muted">Please ensure all details are accurate before signing.</p>
             </div>
 
-            <div className="bg-green-50 border border-green-200 p-4 rounded-xl flex items-start gap-3">
-                <CheckCircle2 className="text-green-600 mt-0.5" size={24} />
-                <div>
-                    <h3 className="text-green-800 font-bold">Almost Done!</h3>
-                    <p className="text-green-700 text-sm mt-1">
+            <Card padding="md" className="flex items-start gap-ds-3 border-ds-status-success-border bg-ds-status-success-bg">
+                <CheckCircle2 className="mt-ds-1 shrink-0 text-ds-status-success-fg" size={24} aria-hidden="true" />
+                <div className="min-w-0">
+                    <p className="font-bold text-ds-status-success-fg">Almost Done!</p>
+                    <p className="mt-ds-1 text-ds-sm text-ds-status-success-fg">
                         Review your application below. If you need to make changes, tap the <strong>Edit</strong> button on any section.
                     </p>
                 </div>
-            </div>
+            </Card>
 
             <ReviewSection title="Personal Information" icon={User} onEdit={() => navigateToStep(0)}>
                 <ReviewItem label="Full Name" value={`${formData.firstName} ${formData.middleName || ''} ${formData.lastName} ${formData.suffix || ''}`} />
@@ -117,8 +145,8 @@ const Step8_Review = ({ formData, onNavigate }) => {
                 <ReviewItem label="3+ Years at Current?" value={formData['residence-3-years'] === 'yes' ? 'Yes' : 'No'} />
 
                 {formData['residence-3-years'] === 'no' && (
-                    <div className="col-span-2 mt-2 pt-2 border-t border-gray-100">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Previous Address(es)</span>
+                    <div className="col-span-2 mt-ds-2 border-t border-ds-border-subtle pt-ds-2">
+                        <ReviewGroupLabel>Previous Address(es)</ReviewGroupLabel>
                         {Array.isArray(formData.previousAddresses) && formData.previousAddresses.length > 0 ? (
                             formData.previousAddresses.map((addr, i) => {
                                 const period =
@@ -159,13 +187,13 @@ const Step8_Review = ({ formData, onNavigate }) => {
                 <ReviewItem label="Expiration Date" value={displayAnyDate(formData.cdlExpiration)} />
                 <ReviewItem label="Endorsements" value={formData.endorsements || 'None'} fullWidth />
 
-                <div className="col-span-2 border-t border-gray-100 mt-2 pt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="col-span-2 mt-ds-2 grid grid-cols-1 gap-ds-4 border-t border-ds-border-subtle pt-ds-2 md:grid-cols-2">
                     <ReviewItem label="TWIC Card" value={formData['has-twic'] === 'yes' ? `Yes (Exp: ${displayAnyDate(formData.twicExpiration) || formData.twicExpiration || '—'})` : 'No'} />
                 </div>
 
-                <div className="col-span-2 border-t border-gray-100 mt-2 pt-2">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Uploaded Documents</span>
-                    <div className="flex flex-wrap gap-2">
+                <div className="col-span-2 mt-ds-2 border-t border-ds-border-subtle pt-ds-2">
+                    <ReviewGroupLabel>Uploaded Documents</ReviewGroupLabel>
+                    <div className="flex flex-wrap gap-ds-2">
                         {[
                             getFileName('cdl-front'),
                             getFileName('cdl-back'),
@@ -176,30 +204,28 @@ const Step8_Review = ({ formData, onNavigate }) => {
                             getFileName('mvr-consent-upload'),
                             getFileName('drug-test-consent-upload')
                         ].map((file, i) => file && (
-                            <span key={i} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium border border-blue-100">
-                                {file}
-                            </span>
+                            <Badge key={i} tone="info">{file}</Badge>
                         ))}
                     </div>
                 </div>
             </ReviewSection>
 
             <ReviewSection title="Driving History" icon={AlertCircle} onEdit={() => navigateToStep(3)}>
-                <div className="col-span-2 grid grid-cols-2 gap-4 mb-4">
+                <div className="col-span-2 mb-ds-4 grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
                     <ReviewItem label="License Revoked?" value={formData['revoked-licenses'] === 'yes' ? 'YES' : 'No'} />
                     <ReviewItem label="Suspended Convictions?" value={formData['driving-convictions'] === 'yes' ? 'YES' : 'No'} />
                     <ReviewItem label="Drug/Alcohol Issues?" value={formData['drug-alcohol-convictions'] === 'yes' ? 'YES' : 'No'} />
                 </div>
 
                 <div className="col-span-2">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Moving Violations (3 Years)</span>
+                    <ReviewGroupLabel>Moving Violations (3 Years)</ReviewGroupLabel>
                     <ReviewList
                         items={formData.violations}
                         renderItem={(v) => (
-                            <div className="flex justify-between">
+                            <span className="flex flex-wrap justify-between gap-ds-2">
                                 <span className="font-bold">{v.charge}</span>
-                                <span className="text-gray-500">{displayAnyDate(v.date) || v.date} ({v.location})</span>
-                            </div>
+                                <span className="text-ds-content-muted">{displayAnyDate(v.date) || v.date} ({v.location})</span>
+                            </span>
                         )}
                     />
                 </div>
@@ -210,16 +236,16 @@ const Step8_Review = ({ formData, onNavigate }) => {
                     <ReviewList
                         items={formData.accidents}
                         renderItem={(a) => (
-                            <div>
-                                <div className="flex justify-between font-bold">
+                            <>
+                                <span className="flex flex-wrap justify-between gap-ds-2 font-bold">
                                     <span>{a.city}, {a.state}</span>
                                     <span>{displayAnyDate(a.date) || a.date}</span>
-                                </div>
-                                <p className="text-gray-600 mt-1">{a.details}</p>
-                                <div className="mt-1 text-xs text-gray-500">
+                                </span>
+                                <span className="mt-ds-1 block text-ds-content-secondary">{a.details}</span>
+                                <span className="mt-ds-1 block text-ds-xs text-ds-content-muted">
                                     Preventable: {a.preventable} | Commercial: {a.commercial}
-                                </div>
-                            </div>
+                                </span>
+                            </>
                         )}
                         emptyText="No accidents listed in the past 3 years."
                     />
@@ -227,41 +253,41 @@ const Step8_Review = ({ formData, onNavigate }) => {
             </ReviewSection>
 
             <ReviewSection title="Work History" icon={Briefcase} onEdit={() => navigateToStep(5)}>
-                <div className="col-span-2 space-y-4">
+                <div className="col-span-2 space-y-ds-4">
                     <div>
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Employers</span>
+                        <ReviewGroupLabel>Employers</ReviewGroupLabel>
                         <ReviewList
                             items={formData.employers}
                             renderItem={(e) => (
-                                <div>
-                                    <div className="flex justify-between font-bold text-gray-900">
+                                <>
+                                    <span className="flex flex-wrap justify-between gap-ds-2 font-bold text-ds-content">
                                         <span>{e.companyName || e.name || 'Unknown'}</span>
-                                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
+                                        <span className="rounded-ds-sm bg-ds-status-neutral-bg px-ds-2 text-ds-xs text-ds-status-neutral-fg">
                                             {displayAnyDate(e.startDate) || e.startDate || '??'} – {displayAnyDate(e.endDate) || e.endDate || 'Present'}
                                         </span>
-                                    </div>
-                                    <p className="text-gray-600">{e.position}</p>
+                                    </span>
+                                    <span className="block text-ds-content-secondary">{e.position}</span>
                                     {(e.address || e.city || e.state) && (
-                                        <p className="text-sm text-gray-600 mt-1">
+                                        <span className="mt-ds-1 block text-ds-sm text-ds-content-secondary">
                                             {[e.address, [e.city, e.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
-                                        </p>
+                                        </span>
                                     )}
-                                    <div className="mt-1 text-xs text-gray-500 space-y-0.5">
-                                        {e.dotNumber && <div>USDOT: {e.dotNumber}</div>}
-                                        {e.phone && <div>Company phone: {e.phone}</div>}
-                                        {e.companyEmail && <div>Company email: {e.companyEmail}</div>}
-                                        {e.supervisorName && <div>Supervisor: {e.supervisorName}</div>}
-                                        {e.supervisorPhone && <div>Supervisor phone: {e.supervisorPhone}</div>}
-                                        {e.supervisorEmail && <div>Supervisor email: {e.supervisorEmail}</div>}
-                                    </div>
-                                </div>
+                                    <span className="mt-ds-1 block space-y-0.5 text-ds-xs text-ds-content-muted">
+                                        {e.dotNumber && <span className="block">USDOT: {e.dotNumber}</span>}
+                                        {e.phone && <span className="block">Company phone: {e.phone}</span>}
+                                        {e.companyEmail && <span className="block">Company email: {e.companyEmail}</span>}
+                                        {e.supervisorName && <span className="block">Supervisor: {e.supervisorName}</span>}
+                                        {e.supervisorPhone && <span className="block">Supervisor phone: {e.supervisorPhone}</span>}
+                                        {e.supervisorEmail && <span className="block">Supervisor email: {e.supervisorEmail}</span>}
+                                    </span>
+                                </>
                             )}
                         />
                     </div>
 
                     {formData.unemployment && formData.unemployment.length > 0 && (
-                        <div className="pt-2 border-t border-gray-100">
-                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Unemployment Gaps</span>
+                        <div className="border-t border-ds-border-subtle pt-ds-2">
+                            <ReviewGroupLabel>Unemployment Gaps</ReviewGroupLabel>
                             <ReviewList
                                 items={formData.unemployment}
                                 renderItem={(u) => (
@@ -275,7 +301,7 @@ const Step8_Review = ({ formData, onNavigate }) => {
 
             <ReviewSection title="Operations & Compliance" icon={Beaker} onEdit={() => navigateToStep(6)}>
                 {formData.businessName && (
-                    <div className="col-span-2 bg-gray-50 p-3 rounded mb-2 border border-gray-200">
+                    <div className="col-span-2 mb-ds-2 rounded-ds-sm border border-ds-border-subtle p-ds-3">
                         <ReviewItem label="Owner Operator Info" value={`${formData.businessName} (EIN: ${formData.ein})`} fullWidth />
                     </div>
                 )}
@@ -287,32 +313,23 @@ const Step8_Review = ({ formData, onNavigate }) => {
 
                 {/* HOS Section Removed - No longer collected in driver application */}
 
-                <div className="col-span-2 pt-2 mt-2 border-t border-gray-100">
+                <div className="col-span-2 mt-ds-2 border-t border-ds-border-subtle pt-ds-2">
                     <ReviewItem
                         label="Felony History"
-                        value={formData['has-felony'] === 'yes' ? `YES - ${formData.felonyExplanation}` : 'No Felony Convictions'}
-                        className={formData['has-felony'] === 'yes' ? 'text-red-600 font-bold' : ''}
+                        value={hasFelony ? `YES - ${formData.felonyExplanation}` : 'No Felony Convictions'}
+                        badge={hasFelony ? <Badge tone="danger">Disclosed</Badge> : null}
                         fullWidth
                     />
                 </div>
             </ReviewSection>
 
-            <div className="flex justify-between pt-6 pb-12">
-                <button
-                    type="button"
-                    onClick={() => onNavigate('back')}
-                    className="w-auto px-6 py-3 bg-white text-gray-700 font-bold rounded-lg shadow-sm border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Back
-                </button>
-                <button
-                    type="button"
-                    onClick={() => onNavigate('next')}
-                    className="w-auto px-8 py-3 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-200 flex items-center gap-2"
-                >
-                    Confirm & Proceed <FileCheck size={18} />
-                </button>
-            </div>
+            <StepNavigation
+                onBack={() => onNavigate('back')}
+                onContinue={() => onNavigate('next')}
+                continueLabel="Confirm & Proceed"
+                continueIcon={<FileCheck size={18} aria-hidden="true" />}
+                continueTone="success"
+            />
         </div>
     );
 };

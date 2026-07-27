@@ -14,9 +14,15 @@ the families remain in-progress until the project selects a component catalog
 and approves durable visual baselines.
 
 `form/` contains the native-event FormField, Label, FieldMessage, Input,
-Textarea, Select, and FormSection foundation. Existing shared form components
-remain compatibility adapters for callback and file behavior; Checkbox, Radio,
-Switch, and file-input contracts remain open.
+Textarea, Select, and FormSection foundation, plus the native-first `Checkbox`,
+`Radio` and `ChoiceGroup` choice controls added for the public driver
+application. Existing shared form components remain compatibility adapters for
+callback and file behavior; Switch and file-input contracts remain open.
+
+`progress/` contains the determinate `ProgressBar`. It exists because the public
+application's step meter communicated progress by a styled `<div>`'s width alone,
+which assistive technology cannot read at all. Indeterminate, buffered and
+circular variants are not implemented.
 
 `section-navigation/` contains the grouped, current-item-aware navigation
 contract for feature-owned settings and sub-section shells. It centralizes

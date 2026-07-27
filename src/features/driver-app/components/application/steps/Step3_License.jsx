@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import InputField from '@shared/components/form/InputField';
 import DateTripletField from '@shared/components/form/DateTripletField';
 import UploadField from '../UploadField';
@@ -7,7 +7,27 @@ import DynamicRow from '@shared/components/form/DynamicRow';
 import { useUtils } from '@shared/hooks/useUtils';
 import { useData } from '@/context/DataContext';
 import { YES_NO_OPTIONS, LICENSE_CLASS_OPTIONS, ENDORSEMENT_OPTIONS } from '@/config/form-options';
+import { Checkbox, ChoiceGroup, FormField, FormSection, Select } from '@/design-system/components';
+import { StepNavigation } from './components/StepNavigation';
+import { StateSelectField } from './components/StateSelectField';
 
+/**
+ * Presentation migrated to the approved `FormSection` / `FormField` / `Select` /
+ * `Checkbox` / `ChoiceGroup` primitives (2026-07-27).
+ *
+ * Unchanged: every field key, the `applicationConfig` upload hidden/required
+ * resolution, the local `hasUploadedFile` rule, the exact "Please upload required
+ * documents: …" message, the clear-on-upload/clear-on-state-change behaviour, the
+ * `endorsements` comma-joined string, the `additionalLicenses` row shape, the
+ * TWIC conditional block, and the `isUploading` disabled/"Uploading..." Continue
+ * state.
+ *
+ * DEFECT FIXED (2026-07-27): the missing-upload message was a plain `<div>` — not
+ * announced, and not focused. An applicant who pressed Continue with a document
+ * missing got no feedback at all from a screen reader, and on a long step the
+ * message could be off-screen. It is now a `role="alert"` region that receives
+ * focus, so the reason Continue did nothing is always reachable.
+ */
 const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate, isUploading }) => {
     const ty = new Date().getFullYear();
     const expMaxYear = ty + 20;
@@ -29,6 +49,11 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
     // Keep default in sync with applicationSchema where medical card upload is required.
     const medCardConfig = getConfig('medCardUpload', true);
     const [validationError, setValidationError] = useState('');
+    const validationErrorRef = useRef(null);
+
+    useEffect(() => {
+        if (validationError) validationErrorRef.current?.focus();
+    }, [validationError]);
 
     const licenseClassOptions = LICENSE_CLASS_OPTIONS;
     const endorsementOptions = ENDORSEMENT_OPTIONS;
@@ -94,31 +119,27 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
     const hasTwic = formData['has-twic'] === 'yes';
 
     return (
-        <div id="page-3" className="form-step space-y-6">
-            <h3 className="text-xl font-semibold text-gray-800">Step 3 of 9: License Information</h3>
+        <div id="page-3" className="form-step space-y-ds-6">
             {validationError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <p
+                    ref={validationErrorRef}
+                    tabIndex={-1}
+                    role="alert"
+                    className="rounded-ds-md border border-ds-status-danger-border bg-ds-status-danger-bg px-ds-4 py-ds-3 text-ds-sm text-ds-status-danger-fg focus-visible:shadow-ds-focus"
+                >
                     {validationError}
-                </div>
+                </p>
             )}
 
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4">
-                <legend className="text-lg font-semibold text-gray-800 px-2">Current License Information</legend>
-
-                <div>
-                    <label htmlFor="cdl-state" className="block text-sm font-medium text-gray-700 mb-1">License State <span className="text-red-500">*</span></label>
-                    <select
-                        id="cdl-state"
-                        name="cdlState"
-                        required
-                        value={formData.cdlState || ""}
-                        onChange={(e) => handleStateChange(e.target.name, e.target.value)}
-                        className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
-                    >
-                        <option value="" disabled>Select State</option>
-                        {states.map(state => <option key={state} value={state}>{state}</option>)}
-                    </select>
-                </div>
+            <FormSection title="Current License Information">
+                <StateSelectField
+                    id="cdl-state"
+                    name="cdlState"
+                    label="License State"
+                    states={states}
+                    value={formData.cdlState}
+                    onChange={(e) => handleStateChange(e.target.name, e.target.value)}
+                />
 
                 <RadioGroup
                     label="License Class"
@@ -143,28 +164,26 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                     helpText="Use Month / Day / Year."
                 />
 
-                <div className="space-y-3 pt-4 border-t border-gray-200">
-                    <label className="block text-sm font-medium text-gray-900">Endorsements</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {endorsementOptions.map(option => (
-                            <div key={option.value} className="flex items-center">
-                                <input
+                <div className="border-t border-ds-border-subtle pt-ds-4">
+                    <ChoiceGroup legend="Endorsements">
+                        <div className="grid grid-cols-2 gap-ds-3 sm:grid-cols-3">
+                            {endorsementOptions.map(option => (
+                                <Checkbox
+                                    key={option.value}
                                     id={'endorse-' + option.value}
                                     name="endorsements"
                                     value={option.value}
-                                    type="checkbox"
+                                    label={option.label}
                                     checked={endorsements.includes(option.value)}
                                     onChange={handleEndorsementChange}
-                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                 />
-                                <label htmlFor={'endorse-' + option.value} className="ml-2 text-sm text-gray-700">{option.label}</label>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    </ChoiceGroup>
                 </div>
 
                 {/* --- Additional Licenses from Other States --- */}
-                <div className="pt-6 border-t border-gray-200">
+                <div className="space-y-ds-4 border-t border-ds-border-subtle pt-ds-6">
                     <RadioGroup
                         label="Have you held a license in any other state in the past 3 years?"
                         name="has-other-licenses"
@@ -175,78 +194,64 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                     />
 
                     {formData['has-other-licenses'] === 'yes' && (
-                        <div className="mt-4 animate-in fade-in">
-                            <h4 className="text-sm font-semibold text-gray-800 mb-2">Additional Licenses (Past 3 Years)</h4>
-
-                            <DynamicRow
-                                listKey="additionalLicenses"
-                                formData={formData}
-                                updateFormData={updateFormData}
-                                initialItemState={{ state: '', number: '', class: 'A', expiration: '' }}
-                                addButtonLabel="Add Another License"
-                                renderRow={(index, item, handleChange) => (
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label htmlFor={`add-lic-state-${index}`} className="block text-sm font-medium text-gray-700 mb-1">State <span className="text-red-500">*</span></label>
-                                                <select
-                                                    id={`add-lic-state-${index}`}
-                                                    name="state"
-                                                    value={item.state || ""}
-                                                    onChange={(e) => handleChange('state', e.target.value)}
-                                                    className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
-                                                    required
-                                                >
-                                                    <option value="" disabled>Select State</option>
-                                                    {states.map(state => <option key={state} value={state}>{state}</option>)}
-                                                </select>
-                                            </div>
-                                            <InputField
-                                                label="License Number"
-                                                id={`add-lic-number-${index}`}
-                                                name="number"
-                                                value={item.number}
-                                                onChange={(n, v) => handleChange('number', v)}
-                                                placeholder="License #"
-                                                required={true}
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label htmlFor={`add-lic-class-${index}`} className="block text-sm font-medium text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
-                                                <select
-                                                    id={`add-lic-class-${index}`}
-                                                    name="class"
-                                                    value={item.class || "A"}
-                                                    onChange={(e) => handleChange('class', e.target.value)}
-                                                    className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
-                                                    required
-                                                >
-                                                    {licenseClassOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                                                </select>
-                                            </div>
-                                            <DateTripletField
-                                                label="Expiration Date"
-                                                idPrefix={`add-lic-exp-${index}`}
-                                                name="expiration"
-                                                value={item.expiration}
-                                                onChange={(n, v) => handleChange('expiration', v)}
-                                                required={true}
-                                                minYear={expMinYear}
-                                                maxYear={expMaxYear}
-                                                helpText="Month / Day / Year."
-                                            />
-                                        </div>
+                        <DynamicRow
+                            listKey="additionalLicenses"
+                            title="Additional Licenses (Past 3 Years)"
+                            formData={formData}
+                            updateFormData={updateFormData}
+                            initialItemState={{ state: '', number: '', class: 'A', expiration: '' }}
+                            addButtonLabel="Add Another License"
+                            renderRow={(index, item, handleChange) => (
+                                <div className="space-y-ds-4">
+                                    <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
+                                        <StateSelectField
+                                            id={`add-lic-state-${index}`}
+                                            name="state"
+                                            states={states}
+                                            value={item.state}
+                                            onChange={(e) => handleChange('state', e.target.value)}
+                                        />
+                                        <InputField
+                                            label="License Number"
+                                            id={`add-lic-number-${index}`}
+                                            name="number"
+                                            value={item.number}
+                                            onChange={(n, v) => handleChange('number', v)}
+                                            placeholder="License #"
+                                            required={true}
+                                        />
                                     </div>
-                                )}
-                            />
-                        </div>
+                                    <div className="grid grid-cols-1 gap-ds-4 sm:grid-cols-2">
+                                        <FormField id={`add-lic-class-${index}`} label="Class" required>
+                                            <Select
+                                                name="class"
+                                                value={item.class || "A"}
+                                                onChange={(e) => handleChange('class', e.target.value)}
+                                            >
+                                                {licenseClassOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                            </Select>
+                                        </FormField>
+                                        <DateTripletField
+                                            label="Expiration Date"
+                                            idPrefix={`add-lic-exp-${index}`}
+                                            name="expiration"
+                                            value={item.expiration}
+                                            onChange={(n, v) => handleChange('expiration', v)}
+                                            required={true}
+                                            minYear={expMinYear}
+                                            maxYear={expMaxYear}
+                                            helpText="Month / Day / Year."
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        />
                     )}
                 </div>
 
                 {/* CDL UPLOADS */}
                 {!cdlUploadConfig.hidden && (
-                    <div className="space-y-4 pt-4 border-t border-gray-200">
+                    <div className="space-y-ds-4 border-t border-ds-border-subtle pt-ds-4">
                         <UploadField
                             label="Upload CDL (Front)"
                             name="cdl-front"
@@ -268,7 +273,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
 
                 {/* MEDICAL CARD UPLOAD */}
                 {!medCardConfig.hidden && (
-                    <div className="pt-4 border-t border-gray-200">
+                    <div className="space-y-ds-4 border-t border-ds-border-subtle pt-ds-4">
                         <UploadField
                             label="Upload Medical Card"
                             name="medical-card-upload"
@@ -290,10 +295,9 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                     </div>
                 )}
 
-            </fieldset>
+            </FormSection>
 
-            <fieldset className="border border-gray-300 rounded-lg p-4 space-y-4 mt-6">
-                <legend className="text-lg font-semibold text-gray-800 px-2">TWIC Card</legend>
+            <FormSection title="TWIC Card">
                 <RadioGroup
                     label="Do you have a TWIC (Transportation Worker Identification Credential) card?"
                     name="has-twic"
@@ -303,7 +307,7 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                     required={true}
                 />
                 {hasTwic && (
-                    <div id="twic-card-details" className="space-y-4 pt-4 border-t border-gray-200">
+                    <div id="twic-card-details" className="space-y-ds-4 border-t border-ds-border-subtle pt-ds-4">
                         <DateTripletField
                             label="Expiration Date"
                             idPrefix="twic-expiration"
@@ -323,25 +327,14 @@ const Step3_License = ({ formData, updateFormData, handleFileUpload, onNavigate,
                         />
                     </div>
                 )}
-            </fieldset>
+            </FormSection>
 
-            <div className="flex justify-between pt-6">
-                <button
-                    type="button"
-                    onClick={() => onNavigate('back')}
-                    className="w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-200"
-                >
-                    Back
-                </button>
-                <button
-                    type="button"
-                    onClick={handleContinue}
-                    disabled={isUploading}
-                    className="w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
-                >
-                    {isUploading ? 'Uploading...' : 'Continue'}
-                </button>
-            </div>
+            <StepNavigation
+                onBack={() => onNavigate('back')}
+                onContinue={handleContinue}
+                continueLabel={isUploading ? 'Uploading...' : 'Continue'}
+                continueLoading={isUploading}
+            />
         </div>
     );
 };

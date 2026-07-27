@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import Step1_Contact from '../../../features/driver-app/components/application/steps/Step1_Contact';
 import Step2_Qualifications from '../../../features/driver-app/components/application/steps/Step2_Qualifications';
 import Step3_License from '../../../features/driver-app/components/application/steps/Step3_License';
@@ -9,6 +9,7 @@ import Step7_General from '../../../features/driver-app/components/application/s
 import Step8_Review from '../../../features/driver-app/components/application/steps/Step8_Review';
 import Step9_Consent from '../../../features/driver-app/components/application/steps/Step9_Consent';
 import { DynamicQuestionsStep } from '../../../features/driver-app/components/application/steps/DynamicQuestionsStep';
+import { ProgressBar } from '@/design-system/components';
 import { initializeSignatureCanvas, clearCanvas } from '@/lib/signature';
 
 export function buildSemanticStepOrder(hasCustomQuestions) {
@@ -40,6 +41,37 @@ const basePageConfig = [
     { title: "Step 9: Agreements & Signature", component: Step9_Consent, semanticId: 'consent' },
 ];
 
+/**
+ * Public driver-application wizard frame.
+ *
+ * Presentation is migrated to the approved `Card` / `ProgressBar` primitives and
+ * `--ds-*` tokens. Frozen contracts: the `#step-title` element id and its exact
+ * `Step N of M: <Title>` text (asserted with `toHaveText` by
+ * `e2e/public-application.spec.cjs`, `e2e/guest-application-intake.spec.cjs` and
+ * `e2e/guest-offline-queue.spec.cjs`), the `#driver-form` id every step reads
+ * with `document.getElementById` for native validation, the custom-questions
+ * insertion position and titles, the `submissionStatus` → bar tone mapping, the
+ * "only 100% on success" rule, the signature-canvas initialisation on the last
+ * step, the `Error: Step N not found.` fallback, and the sandbox Magic Fill
+ * control.
+ *
+ * DEFECTS FIXED (2026-07-27):
+ * - The step title was an `<h2>` on a page with no `<h1>`, and every step then
+ *   rendered its own `<h3>` repeating the same "Step N of 9" text — which was
+ *   also *wrong* whenever custom questions made it 10 steps. The title is now
+ *   the page's single `<h1>` and the duplicated per-step headings are gone.
+ * - Progress was communicated by a bare `<div>`'s width, invisible to assistive
+ *   technology. It is now an approved `ProgressBar` labelled by the step title.
+ * - On every step change focus was silently dropped to `<body>` (the Continue
+ *   button that triggered the change unmounts), so keyboard and screen-reader
+ *   users were never told the step had changed and had to tab from the top of
+ *   the document. Focus now moves to the step heading.
+ * - Two competing scrolls ran per transition (`PublicApplyHandler` did an
+ *   instant `window.scrollTo(0, 0)` and this component a smooth one). The
+ *   smooth animation raced Playwright's scroll-into-view + hit-test on the next
+ *   step's controls. Focusing the heading now performs the scroll once, without
+ *   an animation to race.
+ */
 const Stepper = ({
     step, formData, updateFormData, onNavigate,
     onPartialSubmit, onFinalSubmit, submissionStatus,
@@ -48,6 +80,7 @@ const Stepper = ({
     isSandboxMode = false,
     onMagicFillStep,
 }) => {
+    const headingRef = useRef(null);
 
     // Build dynamic page config with custom questions inserted
     const pageConfig = useMemo(() => {
@@ -97,10 +130,6 @@ const Stepper = ({
         return config;
     }, [customQuestions]);
 
-    const progressPercent = useMemo(() => {
-        return ((step + 1) / pageConfig.length) * 100;
-    }, [step, pageConfig.length]);
-
     const currentConfig = pageConfig[step];
     const currentTitle = currentConfig?.title || "Application Step";
     const CurrentStepComponent = currentConfig?.component;
@@ -109,7 +138,10 @@ const Stepper = ({
     const isSignatureStep = step === pageConfig.length - 1;
 
     useEffect(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Moving focus to the heading both announces the new step and brings it
+        // into view — one deterministic, un-animated scroll instead of two
+        // competing ones.
+        headingRef.current?.focus({ preventScroll: false });
         // Initialize canvas only on the signature step
         if (isSignatureStep) {
             setTimeout(() => {
@@ -122,41 +154,60 @@ const Stepper = ({
         }
     }, [step, isSignatureStep]);
 
-    const barColor = submissionStatus === 'success' ? 'bg-green-600' :
-        submissionStatus === 'error' ? 'bg-red-600' :
-        submissionStatus === 'queued' ? 'bg-amber-500' : 'bg-blue-600';
+    const barTone = submissionStatus === 'success' ? 'success' :
+        submissionStatus === 'error' ? 'danger' :
+        submissionStatus === 'queued' ? 'warning' : 'info';
     // P3 FIX: Only show 100% on success, not on error/queued
-    const barWidth = submissionStatus === 'success' ? '100%' : `${progressPercent}%`;
+    const barValue = submissionStatus === 'success' ? pageConfig.length : step + 1;
 
     if (!CurrentStepComponent) {
-        return <div className="p-6 text-center text-red-500">Error: Step {step + 1} not found.</div>;
+        return <p className="p-ds-6 text-center text-ds-status-danger-fg">Error: Step {step + 1} not found.</p>;
     }
 
     return (
         <>
             {isSandboxMode && typeof onMagicFillStep === 'function' && (
-                <div className="fixed bottom-6 right-6 z-20">
+                <div className="fixed bottom-ds-6 right-ds-6 z-20">
+                    {/* DOCUMENTED EXCEPTION — raw button.
+                        The sandbox test control must stay visually distinct from
+                        every production action so nobody mistakes the sandbox
+                        wizard for the real one. The approved `Button` supports
+                        only `default` and `success` tones, and a feature-side
+                        background utility cannot override the variant's own
+                        `background` rule (see the note in `Button.css`). This
+                        composition is replaced as soon as the roadmap's
+                        remaining Button tones land; it renders only when
+                        `isSandboxMode` is true, never on `/apply/:slug`. */}
                     <button
                         type="button"
                         onClick={() => onMagicFillStep()}
-                        className="shadow-lg rounded-full px-4 py-2.5 text-sm font-semibold bg-amber-500 text-white border border-amber-600 hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+                        className="rounded-ds-lg border border-ds-status-warning-border bg-ds-status-warning-bg px-ds-4 py-ds-2 text-ds-sm font-semibold text-ds-status-warning-fg shadow-ds-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ds-focus"
                     >
                         🧪 Magic Fill Step
                     </button>
                 </div>
             )}
-            <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
-                <h2 id="step-title" className="text-lg font-semibold text-gray-700">{currentTitle}</h2>
-                <div className="w-full bg-gray-200 rounded-full h-2.5 mt-3">
-                    <div
-                        id="progress-bar"
-                        className={`h-2.5 rounded-full transition-all duration-300 ${barColor}`}
-                        style={{ width: barWidth }}
-                    ></div>
-                </div>
+            <div className="border-b border-ds-border-subtle bg-ds-surface-subtle px-ds-6 py-ds-4">
+                <h1
+                    id="step-title"
+                    ref={headingRef}
+                    tabIndex={-1}
+                    className="text-ds-heading-sm font-semibold text-ds-content focus-visible:shadow-ds-focus"
+                >
+                    {currentTitle}
+                </h1>
+                <ProgressBar
+                    id="progress-bar"
+                    className="mt-ds-3"
+                    value={barValue}
+                    max={pageConfig.length}
+                    tone={barTone}
+                    labelledBy="step-title"
+                    valueText={currentTitle}
+                />
             </div>
 
-            <div id="step-content-wrapper" className="p-6 sm:p-8">
+            <div id="step-content-wrapper" className="p-ds-6 sm:p-ds-8">
                 <form id="driver-form" onSubmit={(e) => e.preventDefault()}>
                     {currentConfig?.isCustomStep ? (
                         <CurrentStepComponent
