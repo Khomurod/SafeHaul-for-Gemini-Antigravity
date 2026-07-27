@@ -1,9 +1,7 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { Section } from '../application/ApplicationUI';
+import React, { useState, useMemo, useCallback, useId } from 'react';
 import {
-    Briefcase, ChevronRight, FileText, CheckCircle, AlertCircle,
-    Mail, ShieldCheck, Clock, CheckCircle2, AlertTriangle, Send,
-    ExternalLink, Printer, Plus, Info, RefreshCcw, Loader2
+    Briefcase, FileText, CheckCircle2, AlertTriangle, Clock, ShieldCheck,
+    Send, ExternalLink, Plus, Info, RefreshCcw, Loader2, X,
 } from 'lucide-react';
 import { getFieldValue } from '@shared/utils/helpers';
 import { logActivity } from '@shared/utils/activityLogger';
@@ -17,6 +15,86 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
+import { Modal } from '@shared/components/modals/Modal';
+import { Badge, Button, Card, IconButton, MetricCard } from '@/design-system/components';
+
+/**
+ * Previous Employment Verification — initiation and tracking.
+ *
+ * Presentation migrated to the approved `Card`, `MetricCard`, `Badge`, `Button`
+ * and `IconButton` primitives, the shared accessible `Modal`, and `--ds-*`
+ * tokens (2026-07-27).
+ *
+ * DELIBERATELY NOT MIGRATED in this campaign: `VOEPreviewModal`'s generated
+ * document layout and its PDF/print rendering, and the external employer
+ * response portal. The transition into `VOEPreviewModal` — including the fact
+ * that closing it returns to the request modal rather than the list — is
+ * unchanged.
+ *
+ * Frozen contracts: the `features.pev === false` paywall gate; the
+ * `sendVerificationRequest` payload; the
+ * `logActivity(companyId, collectionName, applicationId, 'PEV_REQUEST', entry, 'pev')`
+ * argument list and the exact log-entry string; the Firestore
+ * `updateDoc(companies/{companyId}/{collectionName}/{applicationId}, { employers })`
+ * write and the verification/history object shapes; the optimistic
+ * `localOverrides` merge; the `getSignedPevUrl({ storagePath })` payload and the
+ * `http(s)`-opens-directly rule; every `window.open(url, '_blank',
+ * 'noopener,noreferrer')` call; the clipboard write; the
+ * `companies/{companyId}/{collectionName}/{applicationId}/pev_results/{Date.now()}_{name}`
+ * Storage path and the `.pdf,image/*` accept list; the `'email' | 'fax' |
+ * 'manual'` delivery values and their `Email | Fax | Manual` labels; the
+ * `'Manual Download'` recipient fallback; and every toast string.
+ *
+ * DEFECTS FIXED (2026-07-27):
+ * - **The verification-history overlay was not a dialog.** A bare
+ *   `<div class="fixed inset-0">` with no `role="dialog"`, no `aria-modal`, no
+ *   focus containment, no focus restoration and no Escape — opened on top of the
+ *   driver dossier, which *is* a modal dialog. Keyboard users tabbed straight
+ *   through it into the page behind. It now uses the shared accessible `Modal`.
+ * - **Its close control had no accessible name** and was a `Plus` icon rotated
+ *   45° to fake an X, so assistive technology was offered an unlabelled button
+ *   whose icon claimed "add".
+ * - **The history dialog was titled "Not Specified" for legacy employers.** It
+ *   read `employer.companyName` only, while the list uses
+ *   `companyName || name`. The one place that tells you *whose* verification
+ *   trail you are reading got it wrong.
+ * - **The Resend action had no accessible name** — an icon-only `<button>` whose
+ *   only name source was a `title` attribute.
+ * - **Interface text at 10 px and 11 px** in the summary cards, the status
+ *   badges and the FMCSA notes, below the 12 px floor.
+ * - **The employer list was a bare `<div>` grid**, so assistive technology never
+ *   announced how many employers there were. It is now a real list.
+ * - **The in-flight upload and signed-URL fetches were silent.** Both now
+ *   announce through a `role="status"` live region.
+ * - **Status was carried by a coloured strip and a colour-only pill.** The pill
+ *   is now an approved `Badge` whose tone is layered over its own text.
+ */
+
+/** Status → approved Badge tone. Text always accompanies the tone. */
+const STATUS_TONES = {
+    'Completed': 'success',
+    'Sent': 'info',
+    'Requested': 'info',
+    'Discrepancy': 'danger',
+    'No Response (Good Faith Documented)': 'warning',
+};
+
+/** Status → the icon Badge renders beside the status text. */
+const STATUS_ICONS = {
+    'Completed': CheckCircle2,
+    'Sent': Clock,
+    'Requested': Clock,
+    'Discrepancy': AlertTriangle,
+    'No Response (Good Faith Documented)': AlertTriangle,
+};
+
+function statusTone(status) {
+    return STATUS_TONES[status] || 'neutral';
+}
+
+function statusIcon(status) {
+    return STATUS_ICONS[status] || Plus;
+}
 
 export function PEVTab({ companyId, applicationId, appData, collectionName = 'applications' }) {
     const { showSuccess, showError } = useToast();
@@ -24,6 +102,8 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
     const [selectedEmployer, setSelectedEmployer] = useState(null);
     const [showInitiateModal, setShowInitiateModal] = useState(false);
     const [showPreviewModal, setShowPreviewModal] = useState(false);
+    const historyTitleId = `pev-history-title-${useId().replace(/:/g, '')}`;
+    const closeHistoryRef = React.useRef(null);
 
     // Base statuses derived from Firestore data (reactive to parent appData refreshes)
     const baseStatuses = useMemo(() => {
@@ -228,32 +308,12 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
         }
     };
 
-    const getStatusStyles = (status) => {
-        switch (status) {
-            case 'Completed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-            case 'Sent':
-            case 'Requested': return 'bg-blue-100 text-blue-700 border-blue-200';
-            case 'Discrepancy': return 'bg-red-100 text-red-700 border-red-200';
-            case 'No Response (Good Faith Documented)': return 'bg-amber-100 text-amber-700 border-amber-200';
-            default: return 'bg-slate-100 text-slate-600 border-slate-200';
-        }
-    };
-
-    const StatusIcon = ({ status }) => {
-        switch (status) {
-            case 'Completed': return <CheckCircle2 size={14} />;
-            case 'Sent':
-            case 'Requested': return <Clock size={14} className="animate-pulse" />;
-            case 'Discrepancy': return <AlertTriangle size={14} />;
-            case 'No Response (Good Faith Documented)': return <AlertTriangle size={14} />;
-            default: return <Plus size={14} />;
-        }
-    };
-
     if (currentCompanyProfile?.features?.pev === false) {
         return (
-            <div className="p-8">
+            <div className="p-ds-8">
                 <PaywallMessage
+                    // `<h4>` under the dossier header's `<h3>` section title.
+                    headingLevel="h4"
                     title="PEV Module Unavailable"
                     message="The Previous Employment Verification module is currently turned off for your company. Please contact our Sales Team to enable automated VOE."
                 />
@@ -261,169 +321,192 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
         );
     }
 
+    const historyEmployer = historyTargetIndex === null ? null : employers[historyTargetIndex];
+    const historyEntries = historyTargetIndex === null
+        ? []
+        : (verificationStatuses[historyTargetIndex]?.history || []);
+
     return (
-        <div className="space-y-6 max-w-6xl mx-auto">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-                        <Briefcase size={24} />
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Employers</p>
-                        <p className="text-2xl font-black text-slate-900">{stats.total}</p>
-                    </div>
-                </div>
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
-                        <CheckCircle2 size={24} />
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Completed</p>
-                        <p className="text-2xl font-black text-slate-900">{stats.completed}</p>
-                    </div>
-                </div>
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center">
-                        <ShieldCheck size={24} />
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Compliance Status</p>
-                        <p className="text-sm font-bold text-amber-700">Audit in Progress</p>
-                    </div>
-                </div>
+        <div className="mx-auto max-w-6xl space-y-ds-6">
+            {/* Summary */}
+            <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
+                <MetricCard
+                    label="Total Employers"
+                    value={stats.total}
+                    tone="info"
+                    icon={<Briefcase size={24} />}
+                />
+                <MetricCard
+                    label="Completed"
+                    value={stats.completed}
+                    tone="success"
+                    icon={<CheckCircle2 size={24} />}
+                />
+                <MetricCard
+                    label="Compliance Status"
+                    value="Audit in Progress"
+                    tone="warning"
+                    icon={<ShieldCheck size={24} />}
+                />
             </div>
 
             {/* Verification Center */}
-            <Section title="Verification Center (DOT Compliance)">
-                <div className="space-y-4">
-                    <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-100 rounded-lg text-xs font-medium text-slate-500">
-                        <Info size={14} className="text-blue-500" />
+            <Card padding="lg">
+                {/* `<h4>` sits under the dossier header's `<h3>` section title. */}
+                <h4 className="mb-ds-4 border-b border-ds-border-subtle pb-ds-2 text-ds-body-lg font-bold text-ds-content">
+                    Verification Center (DOT Compliance)
+                </h4>
+
+                <div className="space-y-ds-4">
+                    <p className="flex items-start gap-ds-2 rounded-ds-md border border-ds-border-subtle bg-ds-surface-subtle p-ds-3 text-ds-xs font-medium text-ds-content-secondary">
+                        <Info size={14} className="mt-0.5 shrink-0 text-ds-action-primary" aria-hidden="true" />
                         FMCSA 391.23(a)(2) requires investigation of employment history for the previous 3 years from the date of the application.
-                    </div>
+                    </p>
+
+                    {/*
+                      One live region for both asynchronous actions in this tab.
+                      Previously the upload and the signed-URL fetch showed only a
+                      spinning icon, so neither was announced at all.
+                    */}
+                    <p role="status" className="ds-visually-hidden">
+                        {uploadingResult
+                            ? 'Uploading verification result…'
+                            : loadingResultUrl !== null
+                                ? 'Opening the verification result…'
+                                : ''}
+                    </p>
 
                     {employers.length === 0 ? (
-                        <div className="p-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
-                            <Briefcase size={40} className="mx-auto text-slate-200 mb-3" />
-                            <p className="text-slate-400 italic">No historical employers detected in this application.</p>
+                        <div className="rounded-ds-lg border-2 border-dashed border-ds-border p-ds-12 text-center">
+                            <Briefcase size={40} className="mx-auto mb-ds-3 text-ds-content-muted" aria-hidden="true" />
+                            <p className="italic text-ds-content-secondary">No historical employers detected in this application.</p>
                         </div>
                     ) : (
-                        <div className="grid gap-4">
+                        <ul className="grid gap-ds-4">
                             {employers.map((emp, index) => {
                                 const vStatus = verificationStatuses[index] || { status: 'Not Started' };
+                                const employerName = getFieldValue(emp.companyName || emp.name);
                                 return (
-                                    <div
-                                        key={index}
-                                        className="group bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-300 hover:shadow-md transition-all relative overflow-hidden"
-                                    >
-                                        {/* Status Sidebar Decor */}
-                                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${vStatus.status === 'Completed' ? 'bg-emerald-500' :
-                                            vStatus.status === 'Sent' ? 'bg-blue-500' : 'bg-slate-200'
-                                            }`} />
-
-                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                            <div className="flex items-start gap-4">
-                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-colors ${vStatus.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600'
-                                                    }`}>
-                                                    <Briefcase size={24} />
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <h4 className="font-bold text-slate-900 leading-tight">{getFieldValue(emp.companyName || emp.name)}</h4>
-                                                        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${getStatusStyles(vStatus.status)}`}>
-                                                            <StatusIcon status={vStatus.status} />
-                                                            {vStatus.status}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                                                        <span className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                                                            <Clock size={12} /> {getFieldValue(emp.startDate)} to {getFieldValue(emp.endDate)}
-                                                        </span>
-                                                        <span className="text-xs font-medium text-slate-500">
-                                                            {getFieldValue(emp.city)}, {getFieldValue(emp.state)}
-                                                        </span>
-                                                        {vStatus.method && (
-                                                            <span className="text-xs font-bold text-blue-600 flex items-center gap-1">
-                                                                <Send size={12} /> Sent via {vStatus.method}
-                                                            </span>
-                                                        )}
-                                                        {vStatus.respondentName && (
-                                                            <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                                                                <CheckCircle2 size={12} /> Responded by: {vStatus.respondentName}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-2">
-                                                {vStatus.status === 'Not Started' ? (
-                                                    <button
-                                                        onClick={() => handleInitiate(emp, index)}
-                                                        className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all flex items-center gap-2 active:scale-95"
+                                    <li key={index}>
+                                        <Card padding="md" className="h-full">
+                                            <div className="flex flex-col justify-between gap-ds-4 md:flex-row md:items-center">
+                                                <div className="flex min-w-0 items-start gap-ds-4">
+                                                    <span
+                                                        aria-hidden="true"
+                                                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-ds-md ${vStatus.status === 'Completed'
+                                                            ? 'bg-ds-status-success-bg text-ds-status-success-fg'
+                                                            : 'bg-ds-surface-subtle text-ds-content-secondary'
+                                                            }`}
                                                     >
-                                                        <ShieldCheck size={14} /> Initiate PEV
-                                                    </button>
-                                                ) : (
-                                                    <>
-                                                        {vStatus.resultUrl && (
-                                                            <button
-                                                                onClick={() => handleViewResult(vStatus.resultUrl, index)}
-                                                                disabled={loadingResultUrl === index}
-                                                                className="px-4 py-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2 disabled:opacity-50"
-                                                            >
-                                                                {loadingResultUrl === index ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} View Result
-                                                            </button>
-                                                        )}
-                                                        {vStatus.verificationUrl && vStatus.status !== 'Completed' && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    navigator.clipboard.writeText(vStatus.verificationUrl);
-                                                                    showSuccess('Verification link copied to clipboard!');
-                                                                }}
-                                                                className="px-4 py-2 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-xl hover:bg-indigo-100 transition-all flex items-center gap-2"
-                                                                title="Copy verification portal link"
-                                                            >
-                                                                <ExternalLink size={14} /> Copy Link
-                                                            </button>
-                                                        )}
-                                                        {vStatus.status === 'Sent' && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    setUploadTargetIndex(index);
-                                                                    if (fileRef.current) fileRef.current.click();
-                                                                }}
-                                                                disabled={uploadingResult}
-                                                                className="px-4 py-2 bg-purple-50 text-purple-700 text-xs font-bold rounded-xl hover:bg-purple-100 transition-all flex items-center gap-2 disabled:opacity-50"
-                                                            >
-                                                                {uploadingResult && uploadTargetIndex === index ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                                                Upload Result
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => setHistoryTargetIndex(index)}
-                                                            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2"
-                                                        >
-                                                            <FileText size={14} /> View History
-                                                        </button>
-                                                        <button
+                                                        <Briefcase size={24} />
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-ds-2">
+                                                            <h5 className="font-bold leading-tight text-ds-content [overflow-wrap:anywhere]">{employerName}</h5>
+                                                            <Badge tone={statusTone(vStatus.status)} icon={statusIcon(vStatus.status)}>
+                                                                {vStatus.status}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="mt-ds-1 flex flex-wrap items-center gap-x-ds-4 gap-y-ds-1">
+                                                            <span className="flex items-center gap-ds-1 text-ds-xs font-medium text-ds-content-secondary">
+                                                                <Clock size={12} aria-hidden="true" /> {getFieldValue(emp.startDate)} to {getFieldValue(emp.endDate)}
+                                                            </span>
+                                                            <span className="text-ds-xs font-medium text-ds-content-secondary">
+                                                                {getFieldValue(emp.city)}, {getFieldValue(emp.state)}
+                                                            </span>
+                                                            {vStatus.method && (
+                                                                <span className="flex items-center gap-ds-1 text-ds-xs font-semibold text-ds-content-link">
+                                                                    <Send size={12} aria-hidden="true" /> Sent via {vStatus.method}
+                                                                </span>
+                                                            )}
+                                                            {vStatus.respondentName && (
+                                                                <span className="flex items-center gap-ds-1 text-ds-xs font-semibold text-ds-status-success-fg">
+                                                                    <CheckCircle2 size={12} aria-hidden="true" /> Responded by: {vStatus.respondentName}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center gap-ds-2 md:justify-end">
+                                                    {vStatus.status === 'Not Started' ? (
+                                                        <Button
+                                                            variant="primary"
+                                                            size="sm"
                                                             onClick={() => handleInitiate(emp, index)}
-                                                            className="p-2 bg-slate-100 text-slate-400 rounded-xl hover:text-blue-600 hover:bg-blue-50 transition-all"
-                                                            title="Resend Request"
                                                         >
-                                                            <RefreshCcw size={16} />
-                                                        </button>
-                                                    </>
-                                                )}
+                                                            <ShieldCheck size={14} aria-hidden="true" /> Initiate PEV
+                                                        </Button>
+                                                    ) : (
+                                                        <>
+                                                            {vStatus.resultUrl && (
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    size="sm"
+                                                                    onClick={() => handleViewResult(vStatus.resultUrl, index)}
+                                                                    disabled={loadingResultUrl === index}
+                                                                    loading={loadingResultUrl === index}
+                                                                >
+                                                                    {loadingResultUrl === index ? null : <FileText size={14} aria-hidden="true" />}
+                                                                    View Result
+                                                                </Button>
+                                                            )}
+                                                            {vStatus.verificationUrl && vStatus.status !== 'Completed' && (
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        navigator.clipboard.writeText(vStatus.verificationUrl);
+                                                                        showSuccess('Verification link copied to clipboard!');
+                                                                    }}
+                                                                >
+                                                                    <ExternalLink size={14} aria-hidden="true" /> Copy Link
+                                                                </Button>
+                                                            )}
+                                                            {vStatus.status === 'Sent' && (
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        setUploadTargetIndex(index);
+                                                                        if (fileRef.current) fileRef.current.click();
+                                                                    }}
+                                                                    disabled={uploadingResult}
+                                                                    loading={uploadingResult && uploadTargetIndex === index}
+                                                                >
+                                                                    {uploadingResult && uploadTargetIndex === index ? null : <Plus size={14} aria-hidden="true" />}
+                                                                    Upload Result
+                                                                </Button>
+                                                            )}
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                onClick={() => setHistoryTargetIndex(index)}
+                                                            >
+                                                                <FileText size={14} aria-hidden="true" /> View History
+                                                            </Button>
+                                                            {/* Named, not `title`-only: this was an unlabelled
+                                                                icon-only button. */}
+                                                            <IconButton
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                label={`Resend verification request to ${employerName}`}
+                                                                onClick={() => handleInitiate(emp, index)}
+                                                            >
+                                                                <RefreshCcw size={16} aria-hidden="true" />
+                                                            </IconButton>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    </div>
+                                        </Card>
+                                    </li>
                                 );
                             })}
-                        </div>
+                        </ul>
                     )}
                 </div>
-            </Section>
+            </Card>
 
             {/* VOE Modals */}
             {showInitiateModal && selectedEmployer && (
@@ -450,51 +533,97 @@ export function PEVTab({ companyId, applicationId, appData, collectionName = 'ap
                 />
             )}
 
-            {/* Hidden File Input for Result Upload */}
+            {/*
+              Hidden file input, driven by the per-employer "Upload Result"
+              button.
+
+              DOCUMENTED EXCEPTION — feature-owned file input; the design system
+              has no approved file-input contract yet (Phase 4, recorded in the
+              roadmap), the same gap the public application's `UploadField`
+              documents.
+
+              DEFECT FIX: it carried no accessible name and was hidden by a CSS
+              class alone. Any environment that does not apply the stylesheet
+              exposed an unlabelled file control (axe `label`, critical). It now
+              names itself and is hidden by the native attribute as well, so it
+              leaves the accessibility tree without depending on CSS.
+            */}
             <input
                 type="file"
                 ref={fileRef}
+                hidden
                 className="hidden"
                 accept=".pdf,image/*"
+                aria-label="Upload verification result file"
                 onChange={(e) => handleUploadResult(e, uploadTargetIndex)}
             />
 
-            {/* History Modal */}
+            {/* History */}
             {historyTargetIndex !== null && (
-                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-                        <div className="p-4 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800">Verification History</h3>
-                            <button onClick={() => setHistoryTargetIndex(null)} className="text-slate-500 hover:text-slate-800">
-                                <Plus size={20} className="rotate-45" />
-                            </button>
-                        </div>
-                        <div className="p-6">
-                            <h4 className="font-bold text-lg mb-4">{getFieldValue(employers[historyTargetIndex]?.companyName)}</h4>
-                            <div className="space-y-4">
-                                {verificationStatuses[historyTargetIndex]?.history?.length > 0 ? (
-                                    verificationStatuses[historyTargetIndex].history.map((log, i) => (
-                                        <div key={i} className="flex gap-3 text-sm">
-                                            <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
-                                            <div>
-                                                <p className="font-bold text-slate-800">{log.action}</p>
-                                                <p className="text-slate-500 text-xs">
-                                                    {new Date(log.timestamp).toLocaleString()}
-                                                </p>
-                                                {log.recipient && <p className="text-slate-600 text-xs mt-1">Sent to: {log.recipient} ({log.method})</p>}
-                                                {log.url && <button onClick={() => handleViewResult(log.url, `history-${i}`)} disabled={loadingResultUrl === `history-${i}`} className="text-blue-600 text-xs mt-1 hover:underline flex items-center gap-1 bg-transparent border-none cursor-pointer p-0">{loadingResultUrl === `history-${i}` ? <Loader2 size={10} className="animate-spin" /> : null}View Uploaded Document</button>}
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <p className="text-slate-500 italic">No history available yet.</p>
-                                )}
-                            </div>
-                        </div>
+                <Modal
+                    labelledBy={historyTitleId}
+                    onClose={() => setHistoryTargetIndex(null)}
+                    initialFocusRef={closeHistoryRef}
+                    // z-[100] preserves this dialog's stacking above the dossier
+                    // and the request modal.
+                    overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-ds-overlay p-ds-4 backdrop-blur-sm"
+                    className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-ds-xl bg-ds-surface shadow-ds-lg"
+                >
+                    <div className="flex shrink-0 items-center justify-between gap-ds-3 border-b border-ds-border-subtle bg-ds-surface-subtle px-ds-4 py-ds-3">
+                        <h4 id={historyTitleId} className="font-bold text-ds-content">Verification History</h4>
+                        <IconButton
+                            ref={closeHistoryRef}
+                            variant="ghost"
+                            size="sm"
+                            label="Close verification history"
+                            onClick={() => setHistoryTargetIndex(null)}
+                        >
+                            <X size={20} aria-hidden="true" />
+                        </IconButton>
                     </div>
-                </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-ds-6">
+                        {/* Falls back to the legacy `name` exactly like the list does. */}
+                        <h5 className="mb-ds-4 text-ds-body-lg font-bold text-ds-content [overflow-wrap:anywhere]">
+                            {getFieldValue(historyEmployer?.companyName || historyEmployer?.name)}
+                        </h5>
+
+                        {historyEntries.length > 0 ? (
+                            <ol className="space-y-ds-4">
+                                {historyEntries.map((log, i) => (
+                                    <li key={i} className="flex gap-ds-3 text-ds-sm">
+                                        <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-ds-action-primary" />
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-ds-content">{log.action}</p>
+                                            <p className="text-ds-xs text-ds-content-secondary">
+                                                {new Date(log.timestamp).toLocaleString()}
+                                            </p>
+                                            {log.recipient && (
+                                                <p className="mt-ds-1 text-ds-xs text-ds-content-secondary [overflow-wrap:anywhere]">
+                                                    Sent to: {log.recipient} ({log.method})
+                                                </p>
+                                            )}
+                                            {log.url && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleViewResult(log.url, `history-${i}`)}
+                                                    disabled={loadingResultUrl === `history-${i}`}
+                                                    loading={loadingResultUrl === `history-${i}`}
+                                                >
+                                                    View Uploaded Document
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ol>
+                        ) : (
+                            <p className="italic text-ds-content-secondary">No history available yet.</p>
+                        )}
+                    </div>
+                </Modal>
             )}
         </div>
     );
 }
-

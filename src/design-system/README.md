@@ -101,6 +101,19 @@ verified.
   DQ, PEV/VOE, Activity and Notes tab bodies are deliberately not migrated and
   stay reachable and unchanged inside the shell.
 
+- PEV initiation and tracking — the `PEVTab` summary/list/actions, the
+  verification-history dialog, `PEVRequestModal` and `FmcsaCarrierPicker` —
+  consumes `MetricCard`, `Card`, `Badge`, `Button`, `IconButton`, `ChoiceGroup`,
+  `Radio`, `FormField` and `Input`, plus the shared accessible `Modal`. The
+  shared `PaywallMessage` is migrated with it and now takes a `headingLevel` so
+  it stops colliding with its host's section heading. The callable payloads,
+  activity log, Firestore write, Storage path, clipboard/URL behaviour, delivery
+  values and every frozen string remain feature-owned. Documented feature-owned
+  exceptions: the FMCSA suggestion rows (raw `<button>`; no Listbox/SelectableCard
+  primitive) and the result-upload file input (no approved file-input contract).
+  `VOEPreviewModal`'s document layout, its PDF/print rendering and the employer
+  response portal are deliberately not migrated.
+
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
 durable visual baselines are owner-approved.

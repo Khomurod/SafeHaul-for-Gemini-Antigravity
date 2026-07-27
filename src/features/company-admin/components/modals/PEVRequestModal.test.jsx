@@ -474,7 +474,11 @@ describe('PEVRequestModal', () => {
 
 
 
-    fireEvent.click(screen.getByRole('button', { name: /Fax Transmission/i }));
+    // Delivery method is a native radio group as of the 2026-07-27 migration.
+    // It used to be three plain <button>s with a hand-drawn dot and no
+    // aria-checked, so nothing announced which method was selected.
+
+    fireEvent.click(screen.getByRole('radio', { name: /Fax Transmission/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /Continue to Preview/i }));
 

@@ -2047,7 +2047,7 @@ Status `Not started` means audited but not migrated.
 | Sandbox application | `SandboxApplyHandler` renders `PublicApplyHandler sandbox` verbatim, so it inherited the whole migration; `SandboxActionPanel` now consumes `Card`, `Button`, `FormField`, `Select` and `StatusMedallion` with a `<main>`/single-`<h1>`; the Magic Fill control stays a documented raw-button exception so the sandbox reads as a test surface | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | **Migrated (GO)** 2026-07-27 | Verified: the sandbox banner/Magic Fill render only when `sandbox` is true (unit-asserted), `listSandboxTenantCompanies` / `deleteSandboxApplication` / `transferSandboxApplication` payloads and the `/sandbox/transfer-success` navigation state unchanged, Super Admin gate unchanged, error announced, transfer select labelled |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Driver dossier modal | `DriverProfileModal` shell, `DossierHeader`, `DossierSidebar`, `DossierContent`, the read-only `ApplicationTab` summary and `DocumentsTab` now consume the shared accessible `Modal`, `Button`, `IconButton`, `Select`, `Badge`, `Card` and `--ds-*` tokens; the section navigation is a feature-owned WAI-ARIA tablist; `useCompactViewport` keeps `aria-orientation` in step with the layout | Dialog family, feature-owned Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | **Foundation migrated (GO)** 2026-07-27 — shell, header, navigation, read-only application summary and documents complete; DQ, PEV/VOE, Activity and Notes bodies deliberately **not** migrated and remain reachable and unchanged inside the shell | Verified: 136 focused unit tests, 19 new Chromium + Mobile Chrome E2E checks (focus containment/restoration, Arrow/Home/End walkthrough, nested delete + preview dialogs, page states, 1440/1024/412 px clipping, real-browser axe), existing candidate-table/a11y/access-control E2E, full suite/coverage, lint, typecheck, production build, `git diff --check` |
-| PEV/VOE workflows | local modals/tabs/forms/previews | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | Not started | Lookup/request/save/send/preview/audit, keyboard/mobile |
+| PEV/VOE workflows | **Initiation and tracking migrated**: `PEVTab` (summary `MetricCard`s, employer list, status `Badge`s, Initiate/View Result/Copy Link/Upload Result/History/Resend actions, paywall and no-employer states, verification-history dialog on the shared accessible `Modal`), `PEVRequestModal` (shared `Modal`, native `ChoiceGroup`/`Radio` delivery choice, `FormField`/`Input` contact fields, `Button`/`IconButton`), `FmcsaCarrierPicker` and the shared `PaywallMessage`. **Not migrated**: `VOEPreviewModal`'s generated document layout and PDF/print rendering, and the external employer response portal | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | **Initiation/tracking migrated (GO)** 2026-07-27 — VOE preview document and respondent portal remain | Verified: 107 focused unit tests (34 new PEVTab contract freezes covering the callable payload, activity log, Firestore write, Storage path, signed-URL and clipboard behaviour; 13 PEVTab a11y/structure; 22 request-modal dialog/radio/validation; 38 pre-existing FMCSA/lookup/modal), real-axe checks on every PEV surface and state, real-browser measurement at 1440/1024/412 px, dossier + candidate-table + campaigns E2E regressions, full suite/coverage, lint, typecheck, production build, `git diff --check`. **Limitation:** the PEV tab is unreachable in Playwright under `VITE_E2E_TEST_MODE=1` — see the completion log |
 
 ### 5.2 Shared component-family inventory
 
@@ -5061,6 +5061,176 @@ business contract.
 
 ---
 
+### PEV initiation and tracking completion log (GO) — 2026-07-27
+
+Scope: everything a recruiter touches to **start and track** a previous-employment
+verification — the `PEVTab` summary cards, the employer list and its status
+presentation, the Initiate / View Result / Copy Link / Upload Result / View
+History / Resend actions, the verification-history dialog, the paywall and
+no-employer states, `PEVRequestModal` with its email/fax/manual delivery choice
+and missing-contact validation, the `FmcsaCarrierPicker` lookup states, and the
+shared `PaywallMessage` both this tab and the Campaigns dashboard render.
+
+**Deliberately out of scope, and unchanged:** `VOEPreviewModal`'s generated
+document layout and its PDF/print rendering, and the external employer response
+portal. The transition into `VOEPreviewModal` is untouched, including the detail
+that closing the preview returns to the *request modal* rather than to the list.
+
+#### Contract freeze first
+
+`PEVTab` had **no test coverage at all** while owning a callable payload, an
+activity-log write, a Firestore employer update, a Storage upload path, a
+signed-URL callable, clipboard and window-opening behaviour, and an optimistic
+local-override cache. 34 contract tests were written and made to pass against the
+*unmigrated* component before any presentation changed.
+
+Writing them surfaced a pre-existing smell that is recorded rather than changed:
+`handleFinalSend` and `handleUploadResult` take a shallow `[...employers]` copy
+and then **mutate the employer objects inside it**, which are the same objects
+handed in through `appData`. The Firestore write and the employer data shape are
+frozen contracts for this campaign, so the mutation stands; the test fixture is a
+factory to keep it from leaking between cases. Worth fixing in the campaign that
+owns this data path.
+
+#### Defects found and fixed
+
+1. **The delivery-method choice was three plain `<button>`s with a hand-drawn
+   radio dot** and no `aria-checked`, `aria-pressed` or grouping of any kind.
+   Assistive technology was told neither which method was selected nor that the
+   three belonged together, and there was no arrow-key model. They are now native
+   radios in a real `<fieldset>`/`<legend>`, so the browser owns selection and
+   the question is announced once.
+2. **The verification-history overlay was not a dialog** — a bare
+   `<div class="fixed inset-0">` with no `role="dialog"`, no `aria-modal`, no
+   focus containment, no focus restoration and no Escape, opened on top of the
+   driver dossier, which *is* a modal dialog.
+3. **The request modal was equally hand-rolled**, with the same four omissions.
+4. **The history dialog was titled "Not Specified" for legacy employers.** It
+   read `employer.companyName` only, while the list uses `companyName || name` —
+   so the one place that tells you whose verification trail you are reading got
+   it wrong for every legacy-shaped record.
+5. **Three close controls had no accessible name**: the history dialog's (which
+   was also a `Plus` icon rotated 45° to fake an X, so its icon claimed "add"),
+   the request modal's, and the per-employer Resend action (whose only name
+   source was a `title` attribute).
+6. **The hidden file input was unlabelled and hidden by a CSS class alone**, so
+   any environment that did not apply the stylesheet exposed an unnamed file
+   control — axe `label`, **critical**. It now carries an accessible name and the
+   native `hidden` attribute.
+7. **Interface text at 10 px and 11 px** in eleven places across the summary
+   cards, status pills, "Missing Info" marker, FMCSA notes and legal note.
+8. **The employer list was a bare `<div>` grid**, so nothing announced how many
+   employers there were; and the FMCSA suggestions had no labelled region.
+9. **Every asynchronous action was silent** — the result upload, the signed-URL
+   fetch and the FMCSA registry search each showed only a spinning icon, and the
+   FMCSA error and no-results states announced nothing. All are now `role="status"`
+   live regions.
+10. **`PaywallMessage` always rendered an `<h3>`**, colliding with the section
+    heading of whichever surface embedded it; inside the dossier that put two
+    `<h3>`s at the same level. The level is now the caller's choice, defaulting
+    to `h3` so the Campaigns consumer is unaffected.
+
+#### Verification
+
+- **Focused tests:** 107 passing across 6 files — 34 new `PEVTab.contract.test.jsx`
+  freezes, 13 new `PEVTab.a11y.test.jsx`, 22 new `PEVRequestModal.a11y.test.jsx`,
+  plus the 38 pre-existing FMCSA/lookup/request-modal tests.
+- **Axe:** zero violations (wcag2a/2aa/21a/21aa) on every PEV surface and state —
+  the tab with mixed statuses, the no-employer state, the paywalled state, the
+  history dialog, and the request modal on open, with the fax field shown, and
+  while displaying a validation error. Run through the real axe engine in CI via
+  `vitest-axe`, and again in a real browser (below).
+- **Real-browser measurement at 1440×900 / 1024×768 / 412×915:** no horizontal
+  document overflow, no dialog clipping, no control outside the viewport, no
+  interface text below 12 px, and zero axe violations — measured on the tab, the
+  request dialog and the history dialog at each width. Heading order runs
+  `h3 → h4 → h5` with no skipped level.
+- **Keyboard and nested dialogs:** the history dialog moves focus in, closes on
+  Escape and restores focus to the action that opened it (asserted in CI and
+  confirmed in the browser); the request modal does the same.
+- **E2E regressions, serially at `workers: 1`:** `driver-dossier.spec.cjs`
+  (18 passed, 4 skipped, Chromium + Mobile Chrome), and
+  `company-candidate-table` / `a11y` / `campaigns-dashboard` (15 passed,
+  2 skipped) — the last of these covering the `PaywallMessage` change.
+- **Full frontend suite, coverage, lint, typecheck, production build and
+  `git diff --check`:** see the summary at the end of this log.
+
+#### Honest limitation of the E2E evidence
+
+**The PEV tab cannot be reached in a Playwright run.** Under
+`VITE_E2E_TEST_MODE=1` Firestore is deliberately unreachable, so the driver
+dossier settles into its error state and never mounts `DossierContent` — which is
+what renders `PEVTab`. This was verified directly, not assumed. Consequently
+there is **no PEV E2E spec**, and adding one would require an E2E fixture path in
+`useAppFetch`, a shared data hook this campaign was scoped not to touch.
+
+What was done instead, and what it is worth: the axe and structural coverage runs
+the real axe engine in CI on the real markup, and the responsive/overflow figures
+above were measured in an actual browser against the real components through a
+temporary harness page, which was **deleted after measurement** and is not part
+of this change. That gives genuine layout numbers but, unlike a spec, it does not
+re-run in CI. Two consequences follow honestly: the 1440/1024/412 figures are a
+point-in-time measurement rather than a regression gate, and **native arrow-key
+radio selection was not driven end to end** — it is browser-owned behaviour, and
+what is asserted is the structure that guarantees it (one shared `name`, all
+three enabled, all inside one `<fieldset>`), plus that a real click fires
+`click → input → change` and updates the selection.
+
+#### Preserved contracts
+
+Firebase, Firestore, Storage and Cloud Functions; rules, schemas, collection
+paths, queries and subscriptions; feature flags and permissions. Specifically
+frozen and asserted by value: the `features.pev === false` paywall gate; the
+`sendVerificationRequest` payload key-by-key, including `employerEmail: null` for
+fax and manual; the
+`logActivity(companyId, collectionName, applicationId, 'PEV_REQUEST', entry, 'pev')`
+argument list and the exact log-entry string; the
+`updateDoc(companies/{companyId}/{collectionName}/{applicationId}, { employers })`
+write with its `verification` and `history` object shapes; the optimistic
+`localOverrides` merge; the `getSignedPevUrl({ storagePath })` payload, the
+`http(s)`-opens-directly rule and every
+`window.open(url, '_blank', 'noopener,noreferrer')`; the clipboard write; the
+`companies/{companyId}/{collectionName}/{applicationId}/pev_results/{Date.now()}_{name}`
+Storage path and the `.pdf,image/*` accept list; the `'email' | 'fax' | 'manual'`
+delivery values, their `Email | Fax | Manual` labels and the `'Manual Download'`
+recipient fallback; `mapFmcsaRowToPevContact` merge semantics and the FMCSA
+lookup skip rules; the `onProceed(deliveryMethod, contactInfo)` pair; the
+`companyEmail → email` seeding precedence; and every toast, validation and
+user-facing string.
+
+#### Documented exceptions
+
+- **Feature-owned raw `<button>` per FMCSA suggestion row.** Each row carries
+  multi-line structured content (legal name, USDOT + city/state, contact-availability
+  note); the approved `Button` takes inline children and owns its layout, and
+  there is no Listbox/Combobox or SelectableCard primitive yet — the same gap the
+  public application's FMCSA employer combobox records. `aria-pressed` carries
+  the selection and the selected state is also stated in text.
+- **Feature-owned file input** for the result upload — no approved file-input
+  contract exists yet (Phase 4), the same gap the public application's
+  `UploadField` documents. It is named and driven by a visible, named button.
+- **The request dialog's header is no longer an inverse panel.** It was
+  `bg-slate-900`. The token contract has `--ds-color-content-inverse` but **no
+  inverse surface**, so an inverse header cannot be expressed in approved tokens,
+  and inventing one is not a feature's call. It now follows the dossier
+  document-preview precedent and sits on `surface-subtle`, which also keeps the
+  ghost `IconButton` legible. **New recorded gap:** an inverse surface token
+  (`--ds-color-surface-inverse` + a secondary inverse content value) is missing
+  from the semantic contract.
+- **"Missing Info" moved into the radio's own description** rather than a
+  separate badge. `Radio` takes a string `description`, so the marker is
+  announced with the option instead of sitting in a 10 px pill beside it; the
+  visible text is preserved.
+
+#### Remaining PEV/VOE work
+
+- `VOEPreviewModal` — the generated document layout and the PDF/print rendering.
+- The external employer response portal (`/verify/:token` respondent side).
+- The in-place mutation of `appData.employers` noted above.
+- E2E reachability for the PEV tab, which depends on dossier E2E fixture data.
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` **Approve a `content-muted` value that is safe on `surface-subtle`.**
@@ -5081,6 +5251,14 @@ business contract.
   conformance failure. The public application uses the approved `size="lg"`
   (44 px) for the controls a driver taps repeatedly rather than overriding the
   primitive.
+- `[!]` **Add an inverse surface to the semantic token contract.** Recorded
+  2026-07-27 by the PEV campaign. The contract has
+  `--ds-color-content-inverse` but no `--ds-color-surface-inverse` and no
+  secondary inverse content value, so a dark dialog header or banner cannot be
+  expressed in approved tokens at all. `PEVRequestModal`'s header was a
+  `bg-slate-900` panel; rather than invent a colour it moved to
+  `surface-subtle`, following the dossier document-preview precedent. Any surface
+  that genuinely needs an inverse treatment is blocked on this.
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
 - `[!]` Select component catalog and visual baseline hosting/review ownership.
 - `[!]` Decide whether Inter remains externally hosted.
