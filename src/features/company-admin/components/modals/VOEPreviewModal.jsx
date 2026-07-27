@@ -4,7 +4,12 @@ import { getFieldValue } from '@shared/utils/helpers';
 import { useData } from '@/context/DataContext';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { sanitizeUserContent } from '@shared/utils/sanitizeUserContent';
+import {
+    PRINT_DOCUMENT_STYLES,
+    collectPrintStyles,
+    scrubTrustedPrintTree,
+    waitForPrintDocumentReady,
+} from '@shared/utils/printDocument';
 import { Modal } from '@shared/components/modals/Modal';
 import { Button, IconButton } from '@/design-system/components';
 
@@ -22,14 +27,20 @@ import { Button, IconButton } from '@/design-system/components';
  * depend on its literal styling:
  *   1. `handleDownloadPDF` rasterises it with html2canvas, so every colour is
  *      resolved from computed style at capture time.
- *   2. `handlePrint` writes its `innerHTML` into a bare `window.open` document
- *      that loads Tailwind from a CDN. That window has **no SafeHaul stylesheet
- *      and therefore no `--ds-*` custom properties at all** — a tokenised
- *      colour would resolve to nothing there and the printed form would lose
- *      its rules, borders and emphasis.
+ *   2. `handlePrint` clones it into a bare `window.open` document. That window
+ *      is built from scratch, so nothing in it can be assumed — see the print
+ *      pipeline note below for what is copied into it and what is not.
  * `VOEPreviewModal.export.test.jsx` enforces this: the document subtree must
  * contain no `ds-*` class and no `var(--ds-…)` value. Do not "finish the
  * migration" by tokenising it without first proving export parity.
+ *
+ * ── PRINT PIPELINE (rebuilt 2026-07-27) ──────────────────────────────────────
+ * See `@shared/utils/printDocument` for the reasoning. In short: the document is
+ * **cloned as a DOM tree** into the print window rather than serialised,
+ * sanitised as user content and re-parsed; the application's own stylesheets are
+ * inlined instead of pulling Tailwind from a CDN; and printing waits for the new
+ * document's images, fonts and stylesheets to settle instead of a flat one-second
+ * timer.
  *
  * Frozen contracts: every word of the regulatory text and its ordering; all
  * applicant/employer values and their `getFieldValue` / `NOT DISCLOSED` /
@@ -39,10 +50,9 @@ import { Button, IconButton } from '@/design-system/components';
  * date/time; the `{ scale: 2, useCORS: true }` html2canvas options; the jsPDF
  * `portrait` / `px` / `[canvas.width, canvas.height]` construction and
  * `addImage` placement; the `VOE_<employer>_<first>_<last>.pdf` filename with
- * whitespace underscored; the print window's feature string, its five
- * `document.write` payloads, the `sanitizeUserContent` step and the 1 s
- * print-then-close delay; and the `onClose` / `onSend()` callbacks, including
- * that `onClose` returns to `PEVRequestModal`.
+ * whitespace underscored; the print window's feature string, its title and its
+ * 20 px body padding; and the `onClose` / `onSend()` callbacks, including that
+ * `onClose` returns to `PEVRequestModal`.
  *
  * DEFECTS FIXED (2026-07-27):
  * - **The dialog was hand-rolled**: no `role="dialog"`, no `aria-modal`, no
@@ -75,6 +85,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
     const documentRef = useRef(null);
     const closeRef = useRef(null);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [isPreparingPrint, setIsPreparingPrint] = useState(false);
     const [exportError, setExportError] = useState('');
     const rawId = useId().replace(/:/g, '');
     const titleId = `voe-preview-title-${rawId}`;
@@ -122,8 +133,22 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
         );
     }
 
-    const handlePrint = () => {
+    /**
+     * Build and print a standalone copy of the generated document.
+     *
+     * DEFECT FIX (2026-07-27): this used to serialise the document to a string,
+     * run it through `sanitizeUserContent` — the strict *user-content* policy —
+     * and write the result into the print window. That policy allows no `div`,
+     * no `class` and no `img`, so Print emitted a flat, unstyled text dump with
+     * the applicant's signature deleted: an unsigned §391.23 release. See
+     * `@shared/utils/printDocument` for why trusted structure needs its own
+     * policy and why the shared sanitiser must not be loosened to accommodate
+     * this call site.
+     */
+    const handlePrint = async () => {
         const printContent = documentRef.current;
+        if (!printContent) return;
+
         const windowPrint = window.open('', '', 'left=0,top=0,width=800,height=900,toolbar=0,scrollbars=0,status=0');
         // DEFECT FIX: a blocked pop-up returned null and the next line threw a
         // TypeError, with nothing shown to the user.
@@ -131,19 +156,67 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
             setExportError('Could not open the print window. Please allow pop-ups for this site and try again.');
             return;
         }
+
         setExportError('');
-        windowPrint.document.write('<html><head><title>Print VOE</title>');
-        // Load tailwind via CDN for printing styles
-        windowPrint.document.write('<script src="https://cdn.tailwindcss.com"></script>');
-        windowPrint.document.write('</head><body>');
-        windowPrint.document.write('<div style="padding: 20px;">' + sanitizeUserContent(printContent.innerHTML) + '</div>');
-        windowPrint.document.write('</body></html>');
-        windowPrint.document.close();
-        windowPrint.focus();
-        setTimeout(() => {
+        setIsPreparingPrint(true);
+        try {
+            const printDocument = windowPrint.document;
+            printDocument.write('<!DOCTYPE html><html><head><title>Print VOE</title></head><body></body></html>');
+            printDocument.close();
+
+            // The application's own compiled CSS, not a CDN build of it.
+            const { cssText, hrefs, readableSheets, unreadableSheets } = collectPrintStyles(document);
+            for (const href of hrefs) {
+                const link = printDocument.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = href;
+                printDocument.head.appendChild(link);
+            }
+            if (cssText) {
+                const style = printDocument.createElement('style');
+                style.textContent = cssText;
+                printDocument.head.appendChild(style);
+            }
+            const printStyle = printDocument.createElement('style');
+            printStyle.textContent = PRINT_DOCUMENT_STYLES;
+            printDocument.head.appendChild(printStyle);
+
+            // Clone, then enforce the trusted-document policy on the clone —
+            // never on the node that is still on screen.
+            const clone = printContent.cloneNode(true);
+            scrubTrustedPrintTree(clone);
+
+            const wrapper = printDocument.createElement('div');
+            wrapper.setAttribute('style', 'padding: 20px;');
+            wrapper.appendChild(printDocument.importNode(clone, true));
+            printDocument.body.appendChild(wrapper);
+            printDocument.body.setAttribute('data-voe-print-ready', 'true');
+
+            if (readableSheets === 0 && unreadableSheets === 0) {
+                // Nothing to style the copy with. Say so rather than printing a
+                // silently unstyled legal document.
+                setExportError('Could not load the document styles for printing. The printed copy may be unstyled.');
+            }
+
+            windowPrint.focus();
+            // Condition-based, not a flat timer: wait for the *new* document's
+            // stylesheets, signature image and fonts before invoking print.
+            await waitForPrintDocumentReady(windowPrint);
+            if (windowPrint.closed) return;
+
             windowPrint.print();
             windowPrint.close();
-        }, 1000);
+        } catch (error) {
+            console.error('Error preparing the print document:', error);
+            setExportError('Failed to prepare the document for printing. Please try again.');
+            try {
+                windowPrint.close();
+            } catch {
+                // The window is already gone; nothing further to clean up.
+            }
+        } finally {
+            setIsPreparingPrint(false);
+        }
     };
 
     const handleDownloadPDF = async () => {
@@ -226,7 +299,12 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-ds-2">
-                        <Button variant="secondary" size="sm" onClick={handlePrint}>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handlePrint}
+                            disabled={isPreparingPrint}
+                        >
                             <Printer size={14} aria-hidden="true" /> Print
                         </Button>
                         <Button
@@ -245,6 +323,7 @@ export function VOEPreviewModal({ employer, applicant, onClose, onSend }) {
                 {/* Export progress and failure were both silent before. */}
                 <p role="status" className="ds-visually-hidden">
                     {isDownloading ? 'Generating the verification PDF…' : ''}
+                    {isPreparingPrint ? 'Preparing the verification document for printing…' : ''}
                 </p>
                 {exportError && (
                     <p role="alert" className="mt-ds-2 text-ds-xs font-medium text-ds-status-danger-fg">
