@@ -9,6 +9,17 @@ const ActivityHistoryTab = React.lazy(() => import('@features/company-admin/comp
 const NotesTab = React.lazy(() => import('@features/company-admin/components/tabs').then(m => ({ default: m.NotesTab })));
 const PEVTab = React.lazy(() => import('@features/company-admin/components/tabs/PEVTab').then(m => ({ default: m.PEVTab }))); // Legacy PEV Tab
 
+/**
+ * Routes the active dossier tab to its content component.
+ *
+ * Presentation migrated to `--ds-*` tokens (2026-07-27). Every prop handed to
+ * every tab, the lazy-loading split, and the `'application' | 'documents' | 'dq'
+ * | 'pev' | 'activity' | 'notes'` routing values are unchanged.
+ *
+ * DEFECT FIXED (2026-07-27): the lazy-tab loading fallback was a bare spinner
+ * with no live region, so switching to Previous Employment, Activity or Notes
+ * announced nothing at all while the chunk downloaded.
+ */
 export function DossierContent({
     activeTab,
     appData,
@@ -24,8 +35,8 @@ export function DossierContent({
 }) {
     // Shared Loading Fallback
     const TabLoading = () => (
-        <div className="flex items-center justify-center py-20 text-gray-400">
-            <Loader2 size={24} className="animate-spin mr-2" /> Loading Tab...
+        <div role="status" className="flex items-center justify-center py-ds-12 text-ds-content-secondary">
+            <Loader2 size={24} className="mr-ds-2 animate-spin" aria-hidden="true" /> Loading Tab...
         </div>
     );
 

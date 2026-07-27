@@ -1,8 +1,37 @@
-import React, { useMemo } from 'react';
+import React, { useId, useMemo } from 'react';
 import { X, Download, Trash2 } from 'lucide-react';
 import { generateApplicationPDF } from '@shared/utils/pdfGenerator';
 import { ATS_STATUS_DROPDOWN_OPTIONS } from '@shared/constants/atsStatus';
+import { Badge, IconButton, Select } from '@/design-system/components';
 
+/**
+ * Dossier header: the current section's title, the application reference, the
+ * status/assignment controls, and the primary actions.
+ *
+ * Presentation migrated to the approved `IconButton`, `Select` and `Badge`
+ * primitives with `--ds-*` tokens (2026-07-27).
+ *
+ * Frozen contracts: every per-tab title string, the `App ID: <first 8 chars>`
+ * presentation and its `Loading...` placeholder, the status option set
+ * (`ATS_STATUS_DROPDOWN_OPTIONS` plus the current status, deduplicated) with its
+ * `'New'` fallback, the `onStatusUpdate(value)` and `onAssignChange(value)`
+ * single-argument callbacks, the `name || displayName || email || id` assignee
+ * label chain, the empty string for "Unassigned", the
+ * `generateApplicationPDF({ applicant, company, agreements: [] })` payload, and
+ * the `canEdit` / `canDelete` visibility rules.
+ *
+ * DEFECTS FIXED (2026-07-27):
+ * - **The close button had no accessible name at all** — an icon-only `<button>`
+ *   with neither `title` nor `aria-label`. Screen-reader users were offered an
+ *   unlabelled control as the only way out of a modal dialog.
+ * - The Status and Assign To selects took their accessible name from a `<span>`
+ *   marked `hidden lg:inline`. Below `lg` that span is `display:none`, which
+ *   removes it from the accessible name computation — so on every tablet and
+ *   phone both selects were **completely unlabelled**. The label text is now
+ *   always present, visually hidden below `lg` instead of removed.
+ * - The Download action relied on `title` alone for its name; it now carries an
+ *   explicit `aria-label`.
+ */
 export function DossierHeader({
     activeTab,
     appData,
@@ -17,6 +46,10 @@ export function DossierHeader({
     canDelete = false,
     onDelete,
 }) {
+    const rawId = useId().replace(/:/g, '');
+    const statusId = `dossier-status-${rawId}`;
+    const assignId = `dossier-assign-${rawId}`;
+
     const getTitle = () => {
         switch (activeTab) {
             case 'application': return 'Application Review';
@@ -51,23 +84,35 @@ export function DossierHeader({
 
     return (
         <>
-            <div className="flex items-center gap-4 min-w-0 flex-1">
-                <h2 className="text-xl font-bold text-gray-800 truncate">{getTitle()}</h2>
+            <div className="flex min-w-0 flex-1 items-center gap-ds-3">
+                {/* `<h3>` sits under the identity `<h2>` in the sidebar, which in
+                    turn sits under the dialog's own accessible name. */}
+                <h3 className="truncate text-ds-body-lg font-bold text-ds-content">{getTitle()}</h3>
 
                 {activeTab === 'application' && (
-                    <span className="text-xs text-gray-400 font-medium px-2 py-1 bg-gray-50 rounded-md border border-gray-100 shrink-0">
-                        {appData ? `App ID: ${appData.id?.slice(0, 8)}` : 'Loading...'}
+                    <span className="shrink-0">
+                        <Badge tone="neutral">
+                            {appData ? `App ID: ${appData.id?.slice(0, 8)}` : 'Loading...'}
+                        </Badge>
                     </span>
                 )}
             </div>
 
-            <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-2">
                 {canEdit && (
                     <>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                            <span className="hidden lg:inline">Status</span>
-                            <select
-                                className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none max-w-[200px]"
+                        <div className="flex items-center gap-ds-2">
+                            {/* Always in the accessible name tree; only the visual
+                                presentation collapses on narrow headers. */}
+                            <label
+                                htmlFor={statusId}
+                                className="sr-only text-ds-xs font-semibold text-ds-content-secondary lg:not-sr-only"
+                            >
+                                Status
+                            </label>
+                            <Select
+                                id={statusId}
+                                className="max-w-[200px]"
                                 value={statusValue}
                                 onChange={(e) => {
                                     const v = e.target.value;
@@ -77,13 +122,19 @@ export function DossierHeader({
                                 {statusOptions.map((s) => (
                                     <option key={s} value={s}>{s}</option>
                                 ))}
-                            </select>
-                        </label>
+                            </Select>
+                        </div>
 
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                            <span className="hidden lg:inline">Assign To</span>
-                            <select
-                                className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none max-w-[180px]"
+                        <div className="flex items-center gap-ds-2">
+                            <label
+                                htmlFor={assignId}
+                                className="sr-only text-ds-xs font-semibold text-ds-content-secondary lg:not-sr-only"
+                            >
+                                Assign To
+                            </label>
+                            <Select
+                                id={assignId}
+                                className="max-w-[180px]"
                                 value={assignedTo || ''}
                                 onChange={(e) => {
                                     if (onAssignChange) void onAssignChange(e.target.value);
@@ -95,43 +146,40 @@ export function DossierHeader({
                                         {m.name || m.displayName || m.email || m.id}
                                     </option>
                                 ))}
-                            </select>
-                        </label>
+                            </Select>
+                        </div>
 
-                        <div className="h-6 w-px bg-gray-200 hidden sm:block" />
+                        <span aria-hidden="true" className="hidden h-6 w-px bg-ds-border-subtle sm:block" />
                     </>
                 )}
 
-                <button
+                <IconButton
+                    variant="ghost"
+                    label="Download application PDF"
                     onClick={handleDownload}
-                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors border border-transparent hover:border-blue-100"
-                    title="Download PDF"
-                    type="button"
                 >
-                    <Download size={20} />
-                </button>
+                    <Download size={20} aria-hidden="true" />
+                </IconButton>
 
                 {canDelete && (
-                    <button
+                    <IconButton
+                        variant="ghost"
+                        label="Delete application"
                         onClick={onDelete}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors border border-transparent hover:border-red-100"
-                        title="Delete application"
-                        aria-label="Delete application"
-                        type="button"
                     >
-                        <Trash2 size={20} />
-                    </button>
+                        <Trash2 size={20} aria-hidden="true" className="text-ds-status-danger-fg" />
+                    </IconButton>
                 )}
 
-                <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block" />
+                <span aria-hidden="true" className="mx-ds-1 hidden h-6 w-px bg-ds-border-subtle sm:block" />
 
-                <button
-                    type="button"
+                <IconButton
+                    variant="ghost"
+                    label="Close driver dossier"
                     onClick={onClose}
-                    className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
                 >
-                    <X size={24} />
-                </button>
+                    <X size={24} aria-hidden="true" />
+                </IconButton>
             </div>
         </>
     );

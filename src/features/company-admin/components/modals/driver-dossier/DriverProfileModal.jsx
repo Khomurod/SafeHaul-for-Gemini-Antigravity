@@ -1,18 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { useApplicationView } from '@features/company-admin/hooks/useApplicationView';
 import { useApplicationDelete } from '@features/applications/hooks/useApplicationDelete';
 import { useData } from '@/context/DataContext';
 import { Modal } from '@shared/components/modals/Modal';
+import { Button } from '@/design-system/components';
 import { DossierSidebar } from './DossierSidebar';
 import { DossierHeader } from './DossierHeader';
 import { DossierContent } from './DossierContent';
 
 /**
  * DriverProfileModal
- * 
- * The main container for the Driver Dossier (3-pane modal).
- * It manages the active tab state and orchestrates the data fetching via useApplicationView.
+ *
+ * The main container for the Driver Dossier. It manages the active tab state and
+ * orchestrates data fetching via `useApplicationView`.
+ *
+ * Presentation migrated to the shared accessible `Modal`, the approved `Button`
+ * and `--ds-*` tokens (2026-07-27).
+ *
+ * Frozen contracts: the dialog's accessible name **"Driver dossier"** and the
+ * fact that Escape closes it (both asserted by
+ * `e2e/company-candidate-table.spec.cjs`); the
+ * `useApplicationView(companyId, driverId, null, onClose, null)` argument list;
+ * the `'application'` initial tab and every tab state value; the
+ * `deleteApplication({ companyId, applicationId, collectionName })` payload and
+ * the `onDeleted()` → `onClose()` ordering after a successful delete; the
+ * `company_admin`-of-this-company OR `super_admin` delete rule; and every
+ * confirmation string.
+ *
+ * DEFECTS FIXED (2026-07-27):
+ * - The dialog was hand-rolled: `role="dialog"`/`aria-modal` with **no focus
+ *   containment, no focus move-in and no focus restoration**. Tab walked straight
+ *   out of the dossier into the page behind it, and closing dumped the keyboard
+ *   user back at the top of the document. It now uses the shared accessible
+ *   `Modal`, which owns all three.
+ * - Escape was a `window` listener owned by this component. While a delete was
+ *   in flight the confirmation's own `onClose` is intentionally `undefined`, so
+ *   nothing stopped the event and Escape tore down the whole dossier
+ *   mid-delete. `Modal` now owns Escape per dialog, so Escape dismisses the
+ *   topmost one and is inert while deleting.
+ * - The layout was `flex-row` with a fixed **280 px** sidebar inside a `90vw`
+ *   panel. At 412 px that left roughly 90 px for the actual content. The panel is
+ *   now full-screen below `sm` with the navigation as a horizontal strip, and the
+ *   three-pane desktop layout from `sm` up.
+ * - Loading was a bare spinning icon (no role, no text) and the error was a plain
+ *   `<div>`; neither was announced. They are now `role="status"` / `role="alert"`.
+ * - The destructive confirmation focused its first focusable element, which was
+ *   the destructive button. It now opens with focus on Cancel.
  */
 export function DriverProfileModal({
     companyId,
@@ -23,6 +57,10 @@ export function DriverProfileModal({
 }) {
     const [activeTab, setActiveTab] = useState('application');
     const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const cancelDeleteRef = useRef(null);
+    const rawId = useId().replace(/:/g, '');
+    const tabPanelId = `dossier-panel-${rawId}`;
+    const tabIdFor = (tab) => `dossier-tab-${tab}-${rawId}`;
 
     const { currentUserClaims } = useData();
     const isCompanyAdmin = currentUserClaims?.roles?.[companyId] === 'company_admin'
@@ -61,35 +99,25 @@ export function DriverProfileModal({
         }
     };
 
-    // Close on Escape key
-    useEffect(() => {
-        const handleEsc = (e) => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', handleEsc);
-        return () => window.removeEventListener('keydown', handleEsc);
-    }, [onClose]);
-
     if (!isOpen) return null;
 
     return (
-        <div
-            className="fixed inset-0 z-[60] flex items-center justify-center"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Driver dossier"
-        >
-            {/* Backdrop with blur */}
-            <div
-                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
-                onClick={onClose}
-            />
-
-            {/* Modal Card */}
-            <div className="relative bg-white w-[90vw] h-[90vh] max-w-7xl rounded-2xl shadow-2xl overflow-hidden flex flex-row animate-in fade-in zoom-in-95 duration-200">
-
-                {/* 1. Sidebar (Pane A) - Fixed Width */}
-                <div className="w-[280px] shrink-0 border-r border-gray-200 bg-slate-50 h-full">
+        <>
+            <Modal
+                label="Driver dossier"
+                onClose={onClose}
+                // Backdrop dismissal is kept from the previous implementation.
+                // z-[60] preserves the dossier's stacking above the candidate
+                // table's own overlays; the document preview sits above it again.
+                overlayClassName="fixed inset-0 z-[60] flex items-stretch justify-center bg-ds-overlay backdrop-blur-sm sm:items-center sm:p-ds-4"
+                className="flex h-full w-full flex-col overflow-hidden bg-ds-surface shadow-ds-lg sm:h-[90vh] sm:w-[90vw] sm:max-w-7xl sm:flex-row sm:rounded-ds-xl"
+            >
+                {/*
+                  Below `sm` the navigation is a horizontal strip above the
+                  content; from `sm` up it is the fixed-width left pane. Same DOM
+                  order either way, so the tab sequence never changes.
+                */}
+                <div className="shrink-0 border-b border-ds-border-subtle bg-ds-surface-subtle sm:h-full sm:w-[280px] sm:border-b-0 sm:border-r">
                     <DossierSidebar
                         appData={appData}
                         currentStatus={currentStatus}
@@ -97,14 +125,15 @@ export function DriverProfileModal({
                         setActiveTab={setActiveTab}
                         loading={loading}
                         dqStatus={dqStatus}
+                        tabPanelId={tabPanelId}
+                        tabIdFor={tabIdFor}
                     />
                 </div>
 
                 {/* Right Side Container */}
-                <div className="flex-1 flex flex-col min-w-0 bg-white h-full">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-ds-surface sm:h-full">
 
-                    {/* 2. Header (Pane B) - Sticky Top */}
-                    <div className="h-16 shrink-0 border-b border-gray-100 flex items-center justify-between px-6 bg-white z-10">
+                    <div className="z-10 flex shrink-0 flex-wrap items-center justify-between gap-ds-2 border-b border-ds-border-subtle bg-ds-surface px-ds-4 py-ds-3 sm:h-16 sm:flex-nowrap sm:px-ds-6 sm:py-0">
                         <DossierHeader
                             activeTab={activeTab}
                             appData={appData}
@@ -121,16 +150,30 @@ export function DriverProfileModal({
                         />
                     </div>
 
-                    {/* 3. Content (Pane C) - Scrollable */}
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 bg-white relative">
+                    {/*
+                      The tab panel is the scroll container, and it is
+                      keyboard-focusable so a keyboard user can scroll long tab
+                      content without tabbing through every control inside it.
+                    */}
+                    <div
+                        id={tabPanelId}
+                        role="tabpanel"
+                        aria-labelledby={tabIdFor(activeTab)}
+                        tabIndex={0}
+                        className="relative flex-1 overflow-y-auto overflow-x-hidden bg-ds-surface p-ds-4 focus-visible:outline-none focus-visible:shadow-ds-focus sm:p-ds-6"
+                    >
                         {loading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
-                                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                            <div
+                                role="status"
+                                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-ds-2 bg-ds-surface/80"
+                            >
+                                <Loader2 className="h-8 w-8 animate-spin text-ds-action-primary" aria-hidden="true" />
+                                <p className="text-ds-sm font-medium text-ds-content-secondary">Loading driver dossier…</p>
                             </div>
                         ) : error ? (
-                            <div className="p-8 text-center text-red-500">
-                                <p>Error loading application details.</p>
-                                <p className="text-sm mt-2 text-gray-400">{error}</p>
+                            <div role="alert" className="p-ds-8 text-center">
+                                <p className="font-medium text-ds-status-danger-fg">Error loading application details.</p>
+                                <p className="mt-ds-2 text-ds-sm text-ds-content-secondary [overflow-wrap:anywhere]">{error}</p>
                             </div>
                         ) : (
                             <DossierContent
@@ -149,48 +192,49 @@ export function DriverProfileModal({
                         )}
                     </div>
                 </div>
-
-            </div>
+            </Modal>
 
             {confirmingDelete && (
                 <Modal
                     onClose={deleting ? undefined : () => setConfirmingDelete(false)}
                     labelledBy="delete-app-title"
-                    className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+                    // Destructive dialogs open on the least destructive action.
+                    initialFocusRef={cancelDeleteRef}
+                    overlayClassName="fixed inset-0 z-[65] flex items-center justify-center bg-ds-overlay backdrop-blur-sm p-ds-4"
+                    className="w-full max-w-md overflow-hidden rounded-ds-xl bg-ds-surface shadow-ds-lg"
                 >
-                    <div className="p-6">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="p-2 bg-red-100 rounded-lg">
-                                <AlertTriangle size={22} className="text-red-600" />
-                            </div>
-                            <h2 id="delete-app-title" className="text-lg font-bold text-gray-900">Delete this application?</h2>
+                    <div className="p-ds-6">
+                        <div className="mb-ds-3 flex items-center gap-ds-3">
+                            <span className="rounded-ds-md bg-ds-status-danger-bg p-ds-2 text-ds-status-danger-fg">
+                                <AlertTriangle size={22} aria-hidden="true" />
+                            </span>
+                            <h2 id="delete-app-title" className="text-ds-body-lg font-bold text-ds-content">Delete this application?</h2>
                         </div>
-                        <p className="text-sm text-gray-600 mb-6">
+                        <p className="mb-ds-6 text-ds-sm text-ds-content-secondary">
                             This permanently removes the application, its activity history, notes, and all
                             uploaded documents. This cannot be undone.
                         </p>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                type="button"
+                        <div className="flex flex-col justify-end gap-ds-3 sm:flex-row">
+                            <Button
+                                ref={cancelDeleteRef}
+                                variant="secondary"
                                 onClick={() => setConfirmingDelete(false)}
                                 disabled={deleting}
-                                className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60"
                             >
                                 Cancel
-                            </button>
-                            <button
-                                type="button"
+                            </Button>
+                            <Button
+                                variant="danger"
                                 onClick={handleConfirmDelete}
                                 disabled={deleting}
-                                className="px-4 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
+                                loading={deleting}
                             >
-                                {deleting && <Loader2 size={16} className="animate-spin" />}
                                 {deleting ? 'Deleting…' : 'Delete permanently'}
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </Modal>
             )}
-        </div>
+        </>
     );
 }
