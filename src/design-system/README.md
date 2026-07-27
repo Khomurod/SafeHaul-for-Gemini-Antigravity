@@ -89,6 +89,18 @@ verified.
   Combobox/Listbox primitive yet), and two file-input compositions (no approved
   file-input contract yet).
 
+- The Driver Dossier foundation — the modal shell, header, section navigation,
+  read-only application summary and document gallery — consumes the shared
+  accessible `Modal`, Button/IconButton, Select, Badge and Card. The dossier
+  keeps its six tab state values, the `useApplicationView` argument list, the
+  delete payload and permission rule, the PDF payload, the document-URL
+  precedence and every frozen string. Documented feature-owned exceptions: the
+  WAI-ARIA tablist (no approved Tabs primitive), the summary/full toggle group
+  (no Segmented/ToggleGroup primitive), and four styled `<a>` navigations
+  (`tel:`, `mailto:`, download, CDL photos — no Link/ButtonLink primitive). The
+  DQ, PEV/VOE, Activity and Notes tab bodies are deliberately not migrated and
+  stay reachable and unchanged inside the shell.
+
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
 durable visual baselines are owner-approved.

@@ -1800,7 +1800,9 @@ The reverse directions are prohibited.
     exception, and the `CompanyCampaignsPage` fallback is tokenized. No Campaigns
     file remains on legacy interface styling.
 
-- [~] In progress — E-docs is **complete**; driver dossier and verification workflows remain.
+- [~] In progress — E-docs is **complete**; the driver dossier **foundation** is
+  complete (2026-07-27); the dossier's PEV/VOE, DQ and complex-editing workflows
+  and the verification workflows remain.
   - Complete when: dialogs/tables/forms/states migrate and document generation,
     employment verification, uploads, previews, and audit behavior pass.
   - [x] Migrate the E-Docs envelope history table (`EnvelopeHistory`) — the
@@ -2044,7 +2046,7 @@ Status `Not started` means audited but not migrated.
 | Change review `/review-change/:token` | `ReviewChangePortal` now consumes `Card`, `Button`, `Input`, and `Stack`/tokens with one `<h1>`, `role="status"`/`role="alert"` states, and a tokenized feature-owned approve/reject/edit toggle group; load/validation/payload/callables unchanged | Card, Button, Input, layout | Medium | High | Forms, cards, feedback | Compatibility slice completed 2026-07-23 | Verified: 16 focused tests (token load/cancellation/errors, scalar/array/object/empty previews, no-pending/completed, action default/reject/edit/exclusivity/edit-hidden-for-nonscalar, exact approve/reject/edit payloads + order, submitting/disabled, success/error fallbacks, single h1, applicant-name non-disclosure, axe) + existing 3, full suite, coverage, callable-contract, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
 | Sandbox application | `SandboxApplyHandler` renders `PublicApplyHandler sandbox` verbatim, so it inherited the whole migration; `SandboxActionPanel` now consumes `Card`, `Button`, `FormField`, `Select` and `StatusMedallion` with a `<main>`/single-`<h1>`; the Magic Fill control stays a documented raw-button exception so the sandbox reads as a test surface | Production primitives with feature-owned sandbox controls | Low | Medium | Public-application migration | **Migrated (GO)** 2026-07-27 | Verified: the sandbox banner/Magic Fill render only when `sandbox` is true (unit-asserted), `listSandboxTenantCompanies` / `deleteSandboxApplication` / `transferSandboxApplication` payloads and the `/sandbox/transfer-success` navigation state unchanged, Super Admin gate unchanged, error announced, transfer select labelled |
 | Sandbox transfer success | `SandboxTransferSuccess` now consumes `Card`, `Button`, `Badge`, `Stack`, and `Inline` with a single `<h1>`/`<main>` | Card, Button, Badge, layout primitives | Low | Low | Feedback, controls | Compatibility slice completed 2026-07-23 | Verified: name/id/final fallback, `New Application` status, Super Admin + Home navigation, single h1, keyboard actions, Chromium/Mobile Chrome, 1440/1024/412 px, axe, overflow |
-| Driver dossier modal | feature-local shell/tabs/application/documents | Dialog family, Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | Not started | Focus, tabs, edits/uploads/actions, large content, mobile |
+| Driver dossier modal | `DriverProfileModal` shell, `DossierHeader`, `DossierSidebar`, `DossierContent`, the read-only `ApplicationTab` summary and `DocumentsTab` now consume the shared accessible `Modal`, `Button`, `IconButton`, `Select`, `Badge`, `Card` and `--ds-*` tokens; the section navigation is a feature-owned WAI-ARIA tablist; `useCompactViewport` keeps `aria-orientation` in step with the layout | Dialog family, feature-owned Tabs, Card, Field display, PageState | High | High | Dialog, controls, feedback, layout | **Foundation migrated (GO)** 2026-07-27 — shell, header, navigation, read-only application summary and documents complete; DQ, PEV/VOE, Activity and Notes bodies deliberately **not** migrated and remain reachable and unchanged inside the shell | Verified: 136 focused unit tests, 19 new Chromium + Mobile Chrome E2E checks (focus containment/restoration, Arrow/Home/End walkthrough, nested delete + preview dialogs, page states, 1440/1024/412 px clipping, real-browser axe), existing candidate-table/a11y/access-control E2E, full suite/coverage, lint, typecheck, production build, `git diff --check` |
 | PEV/VOE workflows | local modals/tabs/forms/previews | Dialog, Field, Button, Status, document layout | High | Very high | Dialog, forms, status | Not started | Lookup/request/save/send/preview/audit, keyboard/mobile |
 
 ### 5.2 Shared component-family inventory
@@ -2062,7 +2064,7 @@ Status `Not started` means audited but not migrated.
 | Loading | SafeHaulLoader, GlobalLoadingState, skeletons, local spinners; approved determinate `ProgressBar` added 2026-07-27 | Spinner/Skeleton/LoadingState/Progress | Medium | Medium | Tokens, feedback | In progress — `ProgressBar` implemented and consumed by the public application wizard and its upload fields; Spinner/Skeleton/LoadingState not started | ProgressBar verified (6 unit tests, real-browser `aria-valuenow`, reduced-motion transition). Still needed for the rest: live regions, reduced motion, async transition visuals |
 | Empty/error | Error boundaries and many table-local messages | EmptyState/ErrorState/InlineAlert/PageState | High | Medium | Controls, cards | Not started | Recovery actions, announcements, long text, mobile |
 | Toast/notification | ToastProvider and notification components — **visuals still legacy palette** | Retain behavior; normalize visuals through tokens/components | Medium | High | Feedback, controls | Not started (visuals). Two accessibility defects were fixed in place on 2026-07-27 because the public application depends on toasts for upload, validation and draft feedback: the dismiss control had no accessible name (axe `button-name` **critical**, one node per visible toast) and a 16×16 px hit area (WCAG 2.2 AA SC 2.5.8 failure). The palette migration was deliberately **not** bundled — it is a global surface and an app-wide restyle needs its own review. | Timers, focus, announcements, stacking, mobile; plus the token migration of the nine remaining legacy palette classes |
-| Layout | WorkspaceFrame and page primitives adopted by the feature-owned Company shell/dashboard; the public `Stepper` wizard frame migrated 2026-07-27 (approved `ProgressBar`, `--ds-*` tokens, single `<h1>` step title, focus moved to the new step heading, one deterministic scroll owner) | Business-neutral layouts/progress; feature owns orchestration | High | Very high | Controls, forms, feedback | In progress — Company shell/dashboard 2026-07-23; public application Stepper 2026-07-27 | Remaining: route/workflow parity for the Super Admin shell and the driver-dossier/PEV surfaces |
+| Layout | WorkspaceFrame and page primitives adopted by the feature-owned Company shell/dashboard; the public `Stepper` wizard frame migrated 2026-07-27 (approved `ProgressBar`, `--ds-*` tokens, single `<h1>` step title, focus moved to the new step heading, one deterministic scroll owner) | Business-neutral layouts/progress; feature owns orchestration | High | Very high | Controls, forms, feedback | In progress — Company shell/dashboard 2026-07-23; public application Stepper 2026-07-27; driver-dossier shell 2026-07-27 (full-screen sheet below `sm`, three-pane from `sm`, wrapping header, `useCompactViewport` keeping `aria-orientation` in step with the CSS) | Remaining: route/workflow parity for the Super Admin shell and the PEV surfaces |
 | Icons | Lucide + branded SVGs + icon-only buttons | Icon contract and accessible IconButton | Medium | Medium | Controls | Not started | Sizes/strokes/names, branded exceptions |
 
 ### 5.3 Raw table migration inventory
@@ -4900,6 +4902,165 @@ template/signing contracts; navigation destinations and callable payloads. The
 
 ---
 
+### Driver dossier foundation completion log (GO) — 2026-07-27
+
+Scope: the Driver Dossier **shell and foundation** — the dialog itself
+(`DriverProfileModal`), its header and actions (`DossierHeader`), the identity
+block and section navigation (`DossierSidebar`), the tab router
+(`DossierContent`), the read-only Application summary (`ApplicationTab`), the
+document gallery and its preview (`DocumentsTab`), and the `useCompactViewport`
+hook that keeps the announced tab orientation honest.
+
+**Deliberately out of scope, and unchanged:** the PEV/VOE workflow content, the
+DQ File workflow internals, the full-application `SchemaSection` editing path and
+the propose-changes / review-link workflow, and the Activity and Notes internals.
+Only their trigger buttons were restyled; every callback argument is untouched.
+All four tabs remain reachable and behave exactly as before inside the migrated
+shell, which is asserted directly by
+`e2e/driver-dossier.spec.cjs › keeps every section reachable and titled`.
+
+#### Defects found and fixed
+
+The first six were found and fixed during the initial migration pass; items 7–10
+were found by the completion audit on the same day.
+
+1. **The dialog was hand-rolled** — `role="dialog"`/`aria-modal` with no focus
+   containment, no focus move-in and no focus restoration. Tab walked straight
+   out of the dossier into the page behind it. Now the shared accessible `Modal`.
+2. **Escape was a `window` listener**, so it tore the whole dossier down
+   mid-delete. `Modal` now owns Escape per dialog: the topmost one is dismissed,
+   and it is inert while a delete is in flight.
+3. **The layout was `flex-row` with a fixed 280 px sidebar inside a 90vw panel** —
+   at 412 px that left roughly 90 px for content. Now a full-screen sheet below
+   `sm` with a horizontal navigation strip.
+4. **The section navigation was six plain `<button>`s** — no `tablist`, no
+   `aria-selected`, no `aria-controls`, no arrow-key model; selection was carried
+   by background colour alone; the DQ-incomplete warning was a bare red dot.
+5. **The close button had no accessible name**, and below `lg` the Status and
+   Assign To selects were completely unlabelled (their label span was
+   `display:none`, which removes it from the name computation).
+6. **The document cards were `<div onClick>`** and the preview lightbox was a
+   hand-rolled overlay with no dialog role, focus containment, restoration or
+   Escape — layered on top of another modal.
+7. **The dossier opened with focus on the `tel:` link.** `Modal` focuses the
+   first focusable child, and in DOM order that is the sidebar's "Call" link — so
+   opening a dossier and pressing Enter dialled the driver. Focus now goes to the
+   tab panel, which is the reading surface and is inert when activated.
+8. **At 412 px the Close and Delete actions were off-screen entirely.** The
+   header's action group was `shrink-0`, so its `flex-wrap` never engaged: it
+   held its 489 px max-content width inside a 412 px panel whose
+   `overflow-hidden` clipped it away. On a phone — which has no Escape key —
+   **there was no way at all to close the dossier.** The group now shrinks and
+   wraps.
+9. **At 1024 px the section title collapsed to zero width.** The header was
+   `sm:flex-nowrap` with a fixed `sm:h-16`, and the title is `truncate`, so it did
+   not ellipsise — it simply vanished while the status/assign controls kept their
+   full width. The header now wraps at every width with a minimum height, the
+   title holds a `basis-48` line, and the Status/Assign labels become visible at
+   `xl` rather than `lg` (they stay in the accessible name tree at every width).
+   Header height at 1024 px went from a clipped 151 px to a correct 100 px.
+10. **`ApplicationTab` rendered nothing at all without application data** — a
+    blank tab panel with no explanation. Now an announced empty state. Summary
+    rows also applied `truncate` to their value, so long addresses and names were
+    clipped with no tooltip; they now wrap.
+
+#### Verification
+
+- **Focused unit tests:** 136 passing across 7 files (up from 109 across 6). New
+  this pass: `DriverProfileModal.behavior.test.jsx` (12 — focus move-in, the
+  tel:-link regression, restoration on close and on Escape, nested delete
+  confirmation focus/Escape scoping/in-flight inertness, page states), 12 new
+  tablist-semantics and Arrow/Home/End keyboard tests in
+  `DossierSidebar.contract.test.jsx`, 3 nested-preview focus tests in
+  `DocumentsTab.contract.test.jsx`, and the reworked `ApplicationTab` empty-state
+  assertions.
+- **New E2E** (`e2e/driver-dossier.spec.cjs`): 10 checks on Chromium and 8 on
+  Mobile Chrome (Pixel 7) — focus containment, keyboard-opened focus restoration
+  to the originating row, the full Arrow/Home/End walkthrough with panel and
+  title kept in step, every section reachable, the panel never silently blank,
+  the nested delete confirmation, real-browser axe on both dialogs, and
+  no-clipping/no-hidden-action/12 px-text checks at 1440×900, 1024×768 and
+  412×915.
+- **Existing E2E regressions:** `company-candidate-table.spec.cjs`,
+  `a11y.spec.cjs` and `access-control.spec.cjs` — 11 passed, 1 skipped, serially
+  at `workers: 1`.
+- **Full frontend suite:** 1655 passed / 48 skipped (1703) across 137 passed / 2
+  skipped (139) files. The two skipped files are the Firestore/Storage rules
+  suites, which need emulators.
+- **Coverage gate (`npm run test:coverage`):** passed — statements 42.95 %,
+  branches 43.21 %, functions 43.70 %, lines 43.91 %.
+- **Lint:** 0 errors (137 pre-existing repo-wide warnings). **Typecheck:** clean.
+  **Production build:** succeeded. **`git diff --check`:** clean.
+- **Accessibility:** zero axe violations (wcag2a/2aa/21a/21aa) on the dossier
+  dialog and on the delete confirmation, on Chromium and Mobile Chrome. No
+  interface text below the 12 px floor at any of the three widths.
+
+#### Honest limitation of the E2E evidence
+
+Under `VITE_E2E_TEST_MODE=1` Firestore is deliberately unreachable, so
+`useAppFetch` never returns a document and the dossier settles into its
+loading/error page state. The shell, navigation, header actions, page states and
+responsive layout all render regardless and are genuinely covered — but **the
+application summary, the document gallery, the document preview and the download
+action cannot be exercised end-to-end.** Those surfaces are covered only by the
+focused contract tests. Giving them real E2E coverage needs an E2E fixture path
+in `useAppFetch`, which is a change to a shared data hook and was out of scope
+here; it is recorded as remaining work rather than quietly skipped. For the same
+reason the E2E page-state test deliberately asserts "the panel always announces
+*a* state" rather than pinning the error state, which proved
+environment-dependent between the preview browser and Playwright.
+
+#### Preserved contracts
+
+Firebase, Firestore, Storage and Cloud Functions; rules, indexes, schemas,
+collection paths, queries and subscriptions; routes, permissions, role checks and
+feature flags. Specifically frozen and asserted: the dialog's accessible name
+`Driver dossier`; the
+`useApplicationView(companyId, driverId, null, onClose, null)` argument list; the
+`'application'` initial tab and all six tab state values in order; the
+`deleteApplication({ companyId, applicationId, collectionName })` payload and the
+`onDeleted()` → `onClose()` ordering; the `company_admin`-of-this-company OR
+`super_admin` delete rule; every confirmation string; the
+`generateApplicationPDF({ applicant, company, agreements: [] })` payload; the
+`onStatusUpdate(value)` / `onAssignChange(value)` single-argument callbacks and
+the assignee label chain; the eight document keys, their labels and order, and
+the `fileUrls[key]` → `appData[key].url` → `appData.uploadedDocuments[key]` URL
+precedence; the `download` attribute and `target`/`rel` pair; the SSN masking
+rule, CDL expiry bands, consent values and every `--` / `'A'` / `'Driver'`
+fallback. The Super Admin `DashboardModals` consumer, which passes no `onDeleted`,
+is unaffected.
+
+Two rendering behaviours were changed deliberately rather than frozen, and are
+called out because a previously committed test asserted the old one:
+`ApplicationTab` no longer returns `null` without data (it renders an announced
+empty state), and summary-row values wrap instead of truncating. Neither is a
+business contract.
+
+#### Documented exceptions
+
+- **Feature-owned WAI-ARIA tab composition.** The design system has no approved
+  Tabs primitive — `SectionNavigation` is a vertical `nav` with `aria-current`,
+  not a tablist. This follows the Documents Center precedent: real
+  `role="tablist"`/`role="tab"`, `aria-selected`, `aria-controls`, roving
+  `tabIndex` and automatic activation.
+- **Feature-owned summary/full toggle group** in `ApplicationTab` — carries
+  `aria-pressed`; there is no Segmented/ToggleGroup primitive yet.
+- **Styled `<a>` rather than an approved control**, in four places: the sidebar
+  `tel:` / `mailto:` actions, the preview download, and the CDL photo links. All
+  four are navigations, so a link is the correct element, and there is no
+  Link/ButtonLink primitive yet. Tokens only, 44 px targets, visible focus rings.
+
+#### Remaining dossier work
+
+- PEV/VOE workflow content and DQ File workflow internals (their own roadmap
+  rows, both `Very high` / `High` risk).
+- The full-application `SchemaSection` rendering and editing path, and the
+  propose-changes / review-link workflow — the complex-editing campaign.
+- Activity and Notes internals.
+- E2E fixture coverage for the loaded dossier (see the limitation above).
+
+---
+
 ## 7. Decisions and blockers
 
 - `[!]` **Approve a `content-muted` value that is safe on `surface-subtle`.**
@@ -5350,6 +5511,17 @@ restyle needs its own review. That is now the clearest small next slice.
 With this, Phase 13 has three groups left: **Super Admin**, the **driver
 dossier / PEV-VOE** workflows, and **Import leads / Quick add lead**. The SMS
 number-assignment and Integrations NO-GOs are unchanged.
+
+**Update — 2026-07-27, later the same day.** The driver dossier's *foundation*
+is now migrated (see "Driver dossier foundation completion log" in section 6):
+the modal shell, header, section navigation, read-only application summary and
+document gallery. The dossier group is therefore reduced, not closed — its
+**PEV/VOE workflow content, DQ File internals, the full-application editing and
+change-review path, and the Activity/Notes internals are untouched** and are the
+next slices. That campaign also fixed two defects that made the dossier
+unusable outside a wide desktop: at 412 px the Close and Delete actions were
+clipped off-screen entirely (no way to close the dossier on a phone), and at
+1024 px the section title collapsed to zero width.
 
 Sequence (whichever slice the owner selects):
 

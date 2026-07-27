@@ -148,4 +148,41 @@ describe('DocumentsTab preview', () => {
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'MVR Report' }), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  // The preview is a dialog opened from inside another dialog. Its focus
+  // handling is what stops a keyboard user from being stranded in the dossier
+  // behind it, so it is frozen here rather than left to the shared Modal.
+  it('opens the preview with focus inside it, on the close control', () => {
+    render(<DocumentsTab fileUrls={{ 'mvr-upload': 'https://x/mvr.pdf' }} appData={{}} />);
+    fireEvent.click(screen.getByRole('button', { name: /MVR Report/ }));
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /close preview/i }));
+  });
+
+  it('returns focus to the document card the preview was opened from', () => {
+    render(
+      <DocumentsTab
+        fileUrls={{ 'cdl-front': 'https://x/f.pdf', 'mvr-upload': 'https://x/mvr.pdf' }}
+        appData={{}}
+      />,
+    );
+    const card = screen.getByRole('button', { name: /MVR Report/ });
+    card.focus();
+    fireEvent.click(card);
+    fireEvent.click(screen.getByRole('button', { name: /close preview/i }));
+
+    expect(document.activeElement).toBe(card);
+  });
+
+  it('names the preview dialog after the document it is showing', () => {
+    render(
+      <DocumentsTab
+        fileUrls={{ 'cdl-front': 'https://x/f.pdf', 'mvr-upload': 'https://x/mvr.pdf' }}
+        appData={{}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /CDL Front/ }));
+    expect(screen.getByRole('dialog', { name: 'CDL Front' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'MVR Report' })).toBeNull();
+  });
 });

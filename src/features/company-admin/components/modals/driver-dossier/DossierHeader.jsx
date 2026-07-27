@@ -31,6 +31,12 @@ import { Badge, IconButton, Select } from '@/design-system/components';
  *   always present, visually hidden below `lg` instead of removed.
  * - The Download action relied on `title` alone for its name; it now carries an
  *   explicit `aria-label`.
+ * - **At 412 px the Close and Delete actions were off-screen entirely.** The
+ *   action group was `shrink-0`, so its `flex-wrap` never engaged: it stayed at
+ *   its 489 px max-content width inside a 412 px dialog panel whose
+ *   `overflow-hidden` then clipped it. On a phone — which has no Escape key —
+ *   there was no way at all to close the dossier. The group now shrinks and
+ *   wraps.
  */
 export function DossierHeader({
     activeTab,
@@ -84,7 +90,10 @@ export function DossierHeader({
 
     return (
         <>
-            <div className="flex min-w-0 flex-1 items-center gap-ds-3">
+            {/* `basis-48` keeps the title a readable line: with `flex-1`'s zero
+                basis it absorbed none of the available width and collapsed to
+                nothing behind the action group. */}
+            <div className="flex min-w-0 flex-1 basis-48 items-center gap-ds-3">
                 {/* `<h3>` sits under the identity `<h2>` in the sidebar, which in
                     turn sits under the dialog's own accessible name. */}
                 <h3 className="truncate text-ds-body-lg font-bold text-ds-content">{getTitle()}</h3>
@@ -98,7 +107,13 @@ export function DossierHeader({
                 )}
             </div>
 
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-2">
+            {/*
+              DEFECT FIX (see the note above): `shrink-0` gave this group an
+              unconstrained max-content width, so `flex-wrap` never engaged and
+              the group ran 489 px wide inside a 412 px dialog. It may now shrink
+              and wrap onto further lines; `min-w-0` is what actually lets it.
+            */}
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-ds-2">
                 {canEdit && (
                     <>
                         <div className="flex items-center gap-ds-2">
@@ -106,7 +121,7 @@ export function DossierHeader({
                                 presentation collapses on narrow headers. */}
                             <label
                                 htmlFor={statusId}
-                                className="sr-only text-ds-xs font-semibold text-ds-content-secondary lg:not-sr-only"
+                                className="sr-only text-ds-xs font-semibold text-ds-content-secondary xl:not-sr-only"
                             >
                                 Status
                             </label>
@@ -128,7 +143,7 @@ export function DossierHeader({
                         <div className="flex items-center gap-ds-2">
                             <label
                                 htmlFor={assignId}
-                                className="sr-only text-ds-xs font-semibold text-ds-content-secondary lg:not-sr-only"
+                                className="sr-only text-ds-xs font-semibold text-ds-content-secondary xl:not-sr-only"
                             >
                                 Assign To
                             </label>
