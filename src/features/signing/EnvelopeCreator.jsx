@@ -26,6 +26,13 @@ import { FIELD_TEMPLATES, getFieldIcon } from './components/envelope-creator/fie
 import { FieldPropertiesPanel } from './components/envelope-creator/FieldPropertiesPanel';
 import { EnvelopeSidebar } from './components/envelope-creator/EnvelopeSidebar';
 import { PdfFieldWorkbench } from './components/envelope-creator/PdfFieldWorkbench';
+import { AiScanOptionsDialog } from './components/envelope-creator/AiScanOptionsDialog';
+import { AiSuggestionReviewPanel } from './components/envelope-creator/AiSuggestionReviewPanel';
+import { useAiFieldAssistant } from './hooks/useAiFieldAssistant';
+import {
+    applySuggestionsToFields,
+    selectHighConfidence,
+} from '@features/signing/utils/aiFieldSuggestions';
 
 /**
  * EnvelopeCreator — one-off signing request + template editor.
@@ -76,6 +83,18 @@ export default function EnvelopeCreator({
     const [title, setTitle] = useState('');
 
     const [fields, setFields] = useState([]);
+
+    // --- AI Field Assistant -------------------------------------------------
+    // Suggestions live entirely inside the assistant until the reviewer applies
+    // them; nothing here can save a template or send a document.
+    const [aiScanDialogOpen, setAiScanDialogOpen] = useState(false);
+    const [aiPanelOpen, setAiPanelOpen] = useState(false);
+    const [selectedSuggestionId, setSelectedSuggestionId] = useState(null);
+    // One-level undo for the last "apply". Holds the exact fields array from
+    // before the apply, so restoring it can never resurrect a removed field or
+    // lose an edit made before the apply.
+    const [aiUndoSnapshot, setAiUndoSnapshot] = useState(null);
+
     const [pageDimensions, setPageDimensions] = useState({});
     const [pdfViewportWidth, setPdfViewportWidth] = useState(PDF_VIEWPORT_WIDTH_DEFAULT);
 
@@ -182,6 +201,110 @@ export default function EnvelopeCreator({
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, []);
+
+    const aiAssistant = useAiFieldAssistant({
+        companyId,
+        file,
+        numPages,
+        activePage,
+        fields,
+    });
+
+    const {
+        startScan: startAiScan,
+        suggestions: aiSuggestions,
+        updateSuggestion: updateAiSuggestion,
+        setSuggestionStatus: setAiSuggestionStatus,
+        removeSuggestions: removeAiSuggestions,
+        discardAll: discardAiSuggestions,
+    } = aiAssistant;
+
+    const openAiAssistant = useCallback(() => {
+        setAiPanelOpen(true);
+        setAiScanDialogOpen(true);
+    }, []);
+
+    const handleAiScanStart = useCallback(
+        ({ scope, selectedPages }) => {
+            setAiScanDialogOpen(false);
+            setAiPanelOpen(true);
+            setSelectedSuggestionId(null);
+            startAiScan({ scope, selectedPages });
+        },
+        [startAiScan],
+    );
+
+    const toggleSuggestionAccepted = useCallback(
+        (suggestionId) => {
+            const current = aiSuggestions.find((item) => item.suggestionId === suggestionId);
+            if (!current) return;
+            setAiSuggestionStatus(suggestionId, current.status === 'accepted' ? 'pending' : 'accepted');
+        },
+        [aiSuggestions, setAiSuggestionStatus],
+    );
+
+    const rejectSuggestion = useCallback(
+        (suggestionId) => {
+            removeAiSuggestions([suggestionId]);
+            setSelectedSuggestionId((prev) => (prev === suggestionId ? null : prev));
+        },
+        [removeAiSuggestions],
+    );
+
+    /**
+     * The ONLY path from suggestion to real field. Appends; never deletes,
+     * replaces or reorders an existing field, and never saves or sends.
+     */
+    const applySuggestions = useCallback(
+        (toApply) => {
+            if (!toApply.length) return;
+            setFields((prev) => {
+                setAiUndoSnapshot(prev);
+                return applySuggestionsToFields({ fields: prev, suggestions: toApply, idFactory: () => uuidv4() })
+                    .fields;
+            });
+            removeAiSuggestions(toApply.map((item) => item.suggestionId));
+            setSelectedSuggestionId(null);
+            showSuccess(`${toApply.length} field${toApply.length === 1 ? '' : 's'} placed. Review before saving.`);
+        },
+        [removeAiSuggestions, showSuccess],
+    );
+
+    const handleApplySelected = useCallback(() => {
+        applySuggestions(aiSuggestions.filter((item) => item.status === 'accepted'));
+    }, [aiSuggestions, applySuggestions]);
+
+    const handleApplyHighConfidence = useCallback(() => {
+        applySuggestions(selectHighConfidence(aiSuggestions));
+    }, [aiSuggestions, applySuggestions]);
+
+    const handleAiUndo = useCallback(() => {
+        if (!aiUndoSnapshot) return;
+        setFields(aiUndoSnapshot);
+        setAiUndoSnapshot(null);
+        setSelectedFieldId(null);
+        showSuccess('Last AI placement undone.');
+    }, [aiUndoSnapshot, showSuccess]);
+
+    const handleAiDiscardAll = useCallback(() => {
+        discardAiSuggestions();
+        setSelectedSuggestionId(null);
+    }, [discardAiSuggestions]);
+
+    const closeAiPanel = useCallback(() => {
+        setAiPanelOpen(false);
+        setSelectedSuggestionId(null);
+    }, []);
+
+    const moveSuggestion = useCallback(
+        (suggestionId, x, y) => updateAiSuggestion(suggestionId, { x, y }),
+        [updateAiSuggestion],
+    );
+
+    const resizeSuggestion = useCallback(
+        (suggestionId, width, height) => updateAiSuggestion(suggestionId, { width, height }),
+        [updateAiSuggestion],
+    );
 
     // Derive active field from selection
     const activeField = useMemo(() => {
@@ -529,6 +652,13 @@ export default function EnvelopeCreator({
 
     const getIcon = getFieldIcon;
 
+    /**
+     * The right rail holds one panel at a time. The assistant wins while it is
+     * open, because a reviewer working through suggestions should not lose the
+     * list by touching a placed field.
+     */
+    const rightRailContent = aiPanelOpen ? 'ai' : selectedFieldId ? 'field' : null;
+
     // Show loading state while hydrating for Correct flow
     if (hydrating) {
         return (
@@ -550,27 +680,17 @@ export default function EnvelopeCreator({
                             : <UploadCloud className="text-ds-action-primary" aria-hidden="true" />}
                         {isEditingTemplate ? 'Edit Template' : isEditingRequest ? 'Correct Document' : creatorMode === 'template' ? 'Create Template' : 'New Envelope'}
                     </h2>
+                    {/* The mode is chosen up front in the New Document dialog and is
+                        FIXED here: the old One-off Send / Save Template toggle let the
+                        outcome change silently after fields were placed, so the same
+                        screen could either send a document or save a template depending
+                        on a control most people never noticed. The mode is now stated,
+                        not switchable. Template editing and request correction are
+                        unaffected — both already arrive with their mode pinned. */}
                     {!isEditingRequest && !isEditingTemplate && (
-                        /* Mode is a two-option toggle, so selection is exposed with
-                           aria-pressed and stated by the button label, never colour alone. */
-                        <div role="group" aria-label="Creator mode" className="flex gap-ds-1 rounded-ds-md bg-ds-surface-subtle p-ds-1">
-                            <Button
-                                variant={creatorMode === 'request' ? 'primary' : 'ghost'}
-                                size="sm"
-                                aria-pressed={creatorMode === 'request'}
-                                onClick={() => setCreatorMode('request')}
-                            >
-                                One-off Send
-                            </Button>
-                            <Button
-                                variant={creatorMode === 'template' ? 'primary' : 'ghost'}
-                                size="sm"
-                                aria-pressed={creatorMode === 'template'}
-                                onClick={() => setCreatorMode('template')}
-                            >
-                                Save Template
-                            </Button>
-                        </div>
+                        <p className="rounded-ds-md bg-ds-surface-subtle px-ds-3 py-ds-1 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">
+                            {creatorMode === 'template' ? 'Reusable template' : 'One-off send'}
+                        </p>
                     )}
                 </div>
                 <div className="flex flex-wrap gap-ds-3">
@@ -614,6 +734,8 @@ export default function EnvelopeCreator({
                     setSelectedFieldId={setSelectedFieldId}
                     removeField={removeField}
                     getIcon={getIcon}
+                    onOpenAiAssistant={openAiAssistant}
+                    aiAssistantBusy={aiAssistant.isScanning}
                 />
 
                 {/* CENTER: PDF Viewer & Draggable Fields */}
@@ -636,6 +758,13 @@ export default function EnvelopeCreator({
                     removeField={removeField}
                     updateFieldLabel={updateFieldLabel}
                     getIcon={getIcon}
+                    aiSuggestions={aiSuggestions}
+                    selectedSuggestionId={selectedSuggestionId}
+                    onSelectSuggestion={setSelectedSuggestionId}
+                    onMoveSuggestion={moveSuggestion}
+                    onResizeSuggestion={resizeSuggestion}
+                    onAcceptSuggestion={toggleSuggestionAccepted}
+                    onRejectSuggestion={rejectSuggestion}
                 />
 
                 {/* RIGHT SIDEBAR: Field Properties Editor.
@@ -647,15 +776,37 @@ export default function EnvelopeCreator({
                     sheet with its own close control, because the usual way to
                     dismiss it — clicking the canvas — sits underneath the sheet. */}
                 <div
-                    role={selectedFieldId ? 'group' : undefined}
-                    aria-label={selectedFieldId ? 'Field properties' : undefined}
+                    role={rightRailContent ? 'group' : undefined}
+                    aria-label={rightRailContent === 'ai' ? 'AI field suggestions' : rightRailContent ? 'Field properties' : undefined}
                     className={`overflow-y-auto bg-ds-surface shadow-ds-lg transition-all duration-200 motion-reduce:transition-none ${
-                        selectedFieldId
+                        rightRailContent
                             ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm border-l border-ds-border-subtle md:static md:z-auto md:w-80 md:max-w-none md:shrink-0'
                             : 'hidden md:block md:w-0 md:shrink-0'
                     }`}
                 >
-                    {selectedFieldId && (
+                    {rightRailContent === 'ai' && (
+                        <AiSuggestionReviewPanel
+                            status={aiAssistant.status}
+                            progress={aiAssistant.progress}
+                            suggestions={aiSuggestions}
+                            manualReview={aiAssistant.manualReview}
+                            stats={aiAssistant.stats}
+                            error={aiAssistant.error}
+                            selectedSuggestionId={selectedSuggestionId}
+                            onSelectSuggestion={setSelectedSuggestionId}
+                            onUpdateSuggestion={updateAiSuggestion}
+                            onToggleAccepted={toggleSuggestionAccepted}
+                            onApplySelected={handleApplySelected}
+                            onApplyHighConfidence={handleApplyHighConfidence}
+                            onDiscardAll={handleAiDiscardAll}
+                            onRescan={() => setAiScanDialogOpen(true)}
+                            onUndo={handleAiUndo}
+                            canUndo={Boolean(aiUndoSnapshot)}
+                            onCancel={aiAssistant.cancelScan}
+                            onClose={closeAiPanel}
+                        />
+                    )}
+                    {rightRailContent === 'field' && (
                         <>
                             <div className="flex justify-end p-ds-2 md:hidden">
                                 <Button
@@ -675,6 +826,15 @@ export default function EnvelopeCreator({
                     )}
                 </div>
             </div>
+
+            {aiScanDialogOpen && (
+                <AiScanOptionsDialog
+                    activePage={activePage}
+                    numPages={numPages || 1}
+                    onClose={() => setAiScanDialogOpen(false)}
+                    onStart={handleAiScanStart}
+                />
+            )}
         </div>
     );
 }

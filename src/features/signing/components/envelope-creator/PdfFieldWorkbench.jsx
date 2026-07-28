@@ -3,6 +3,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import { IconButton, Button } from '@/design-system/components';
 import { ResizableDraggableField } from './ResizableDraggableField';
+import { AiSuggestionOverlay } from './AiSuggestionOverlay';
 import {
     PDF_VIEWPORT_WIDTH_DEFAULT,
     clampPdfViewportWidth,
@@ -51,6 +52,15 @@ export function PdfFieldWorkbench({
     removeField,
     updateFieldLabel,
     getIcon,
+    // AI Field Assistant. Suggestions render in their own layer above the field
+    // layer and are never part of `fields` until the reviewer applies them.
+    aiSuggestions = [],
+    selectedSuggestionId = null,
+    onSelectSuggestion,
+    onMoveSuggestion,
+    onResizeSuggestion,
+    onAcceptSuggestion,
+    onRejectSuggestion,
 }) {
     const rawId = useId().replace(/:/g, '');
     const zoomLabelId = `pdf-zoom-label-${rawId}`;
@@ -159,6 +169,31 @@ export function PdfFieldWorkbench({
                                         />
                                     ))}
                                 </div>
+                                {aiSuggestions.length > 0 && (
+                                    <div
+                                        className="absolute inset-0 z-20 pointer-events-none"
+                                        aria-label={`AI field suggestions on page ${pageNum}`}
+                                        role="group"
+                                    >
+                                        {aiSuggestions
+                                            .filter((suggestion) => suggestion.page === pageNum)
+                                            .map((suggestion) => (
+                                                <AiSuggestionOverlay
+                                                    key={suggestion.suggestionId}
+                                                    suggestion={suggestion}
+                                                    pageNum={pageNum}
+                                                    pageWidth={pdfViewportWidth}
+                                                    pageHeight={dims ? dims.height : 900}
+                                                    isSelected={selectedSuggestionId === suggestion.suggestionId}
+                                                    onSelect={onSelectSuggestion}
+                                                    onMove={onMoveSuggestion}
+                                                    onResize={onResizeSuggestion}
+                                                    onAccept={onAcceptSuggestion}
+                                                    onReject={onRejectSuggestion}
+                                                />
+                                            ))}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

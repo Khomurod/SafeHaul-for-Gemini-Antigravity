@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -86,58 +86,43 @@ describe('EnvelopeCreator shell — heading matrix', () => {
     });
 });
 
-describe('EnvelopeCreator shell — mode toggle', () => {
-    it('shows the toggle only when creating something new', async () => {
-        const { unmount } = setup();
-        expect(screen.getByRole('group', { name: 'Creator mode' })).toBeInTheDocument();
+describe('EnvelopeCreator shell — fixed creator mode', () => {
+    // The One-off Send / Save Template toggle is gone. The mode is chosen in the
+    // Documents workspace before the creator opens and cannot change here, so a
+    // half-built envelope can no longer silently become a template (or vice
+    // versa). These tests are the guardrail against the toggle coming back.
+    it('never offers a control that switches the creator mode', async () => {
+        setup();
+        await screen.findByRole('heading', { name: 'New Envelope' });
+        expect(screen.queryByRole('group', { name: 'Creator mode' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'One-off Send' })).not.toBeInTheDocument();
+    });
+
+    it.each([
+        ['One-off send', {}],
+        ['Reusable template', { initialMode: 'template' }],
+    ])('states the fixed mode as %s', async (label, overrides) => {
+        setup(overrides);
+        await screen.findByRole('heading');
+        expect(screen.getByText(label)).toBeInTheDocument();
+    });
+
+    it('states no mode when correcting a request or editing a template', async () => {
+        const { unmount } = setup({ editRequestId: 'req-1' });
+        await screen.findByRole('heading', { name: 'Correct Document' });
+        expect(screen.queryByText('One-off send')).not.toBeInTheDocument();
         unmount();
 
-        setup({ editRequestId: 'req-1' });
-        await screen.findByRole('heading', { name: 'Correct Document' });
-        expect(screen.queryByRole('group', { name: 'Creator mode' })).not.toBeInTheDocument();
-    });
-
-    it('hides the toggle when editing a template', async () => {
         setup({ editTemplateId: 'tpl-1' });
         await screen.findByRole('heading', { name: 'Edit Template' });
-        expect(screen.queryByRole('group', { name: 'Creator mode' })).not.toBeInTheDocument();
-    });
-
-    it('exposes the selected mode with aria-pressed and switches both ways', () => {
-        setup();
-        const group = screen.getByRole('group', { name: 'Creator mode' });
-        const oneOff = within(group).getByRole('button', { name: 'One-off Send' });
-        const template = within(group).getByRole('button', { name: 'Save Template' });
-
-        expect(oneOff).toHaveAttribute('aria-pressed', 'true');
-        expect(template).toHaveAttribute('aria-pressed', 'false');
-
-        fireEvent.click(template);
-        expect(screen.getByRole('heading', { name: 'Create Template' })).toBeInTheDocument();
-        expect(within(group).getByRole('button', { name: 'Save Template' })).toHaveAttribute('aria-pressed', 'true');
-
-        fireEvent.click(within(group).getByRole('button', { name: 'One-off Send' }));
-        expect(screen.getByRole('heading', { name: 'New Envelope' })).toBeInTheDocument();
-    });
-
-    it('keeps both toggle options keyboard reachable', () => {
-        setup();
-        const group = screen.getByRole('group', { name: 'Creator mode' });
-        within(group).getAllByRole('button').forEach((b) => {
-            expect(b.tagName).toBe('BUTTON');
-            b.focus();
-            expect(b).toHaveFocus();
-        });
+        expect(screen.queryByText('Reusable template')).not.toBeInTheDocument();
     });
 });
 
 describe('EnvelopeCreator shell — primary actions', () => {
-    // In template mode the mode toggle also reads "Save Template", so the save
-    // action is resolved as the match outside the "Creator mode" group.
     const findSaveAction = async (label) => {
         await screen.findByRole('heading');
-        const matches = screen.getAllByRole('button', { name: label });
-        const action = matches.find(b => !b.closest('[role="group"][aria-label="Creator mode"]'));
+        const action = screen.getByRole('button', { name: label });
         expect(action).toBeDefined();
         return action;
     };
