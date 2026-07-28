@@ -30,8 +30,11 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('firebase/storage', () => ({ getStorage: vi.fn(() => ({})) }));
 vi.mock('firebase/functions', () => ({ getFunctions: vi.fn(() => ({})) }));
 
+// Deliberately low-entropy, obviously-not-a-key strings. The assertions only
+// need these values to round-trip, and a realistic-looking `AIza...` literal
+// here would be a standing false positive for the secret scanner.
 const REAL_CONFIG = {
-  VITE_FIREBASE_API_KEY: 'AIzaSyRealProductionKey000000000000000',
+  VITE_FIREBASE_API_KEY: 'not-a-real-api-key',
   VITE_FIREBASE_AUTH_DOMAIN: 'safehaul-real.firebaseapp.com',
   VITE_FIREBASE_PROJECT_ID: 'safehaul-real',
   VITE_FIREBASE_STORAGE_BUCKET: 'safehaul-real.appspot.com',
