@@ -106,6 +106,9 @@ exports.onLeadAtsContactSms = atsContactSms.onLeadAtsContactSms;
 exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
 exports.parseCdlWithGroq = require('./cdlParser').parseCdlWithGroq;
 exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').createPostApplicationSigningRequest;
+// AI Field Assistant: authenticated, company-scoped PDF field-placement suggestions.
+// Deliberately separate from parseCdlWithGroq (public guest path, different model pin).
+exports.analyzeEdocFieldPlacement = require('./edocFieldPlacement').analyzeEdocFieldPlacement;
 exports.backfillApplicationSearchFields = require('./searchFieldsBackfill').backfillApplicationSearchFields;
 
 // 4d. Sandbox applications (Super Admin maintenance)
