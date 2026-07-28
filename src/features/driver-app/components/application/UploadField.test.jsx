@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import UploadField from './UploadField';
 
 const file = (name = 'cdl.pdf') => new File(['x'], name, { type: 'application/pdf' });
@@ -87,7 +87,8 @@ describe('UploadField upload lifecycle', () => {
   });
 
   // jsdom does not implement window.confirm, so it is stubbed by assignment
-  // rather than spied on.
+  // rather than spied on. It is asserted *unused*: the removal prompt was a bare
+  // `confirm(...)` until 2026-07-28 and must not come back.
   const stubConfirm = (answer) => {
     const previous = window.confirm;
     const spy = vi.fn(() => answer);
@@ -95,13 +96,22 @@ describe('UploadField upload lifecycle', () => {
     return { spy, restore: () => { window.confirm = previous; } };
   };
 
+  const clickRemove = () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Upload CDL (Front) file' }));
+
   it('clears the value through onChange(name, null) after confirmation', () => {
     const { spy, restore } = stubConfirm(true);
     const { onChange } = renderField({ value: { name: 'cdl.pdf', url: 'u' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Upload CDL (Front) file' }));
+    clickRemove();
 
-    expect(spy).toHaveBeenCalledWith('Are you sure you want to remove this file?');
+    // The blocking prompt is gone; an accessible dialog names the field instead.
+    const dialog = screen.getByRole('dialog', { name: 'Remove this file?' });
+    expect(spy).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(dialog).toHaveTextContent('Upload CDL (Front)');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove file' }));
     expect(onChange).toHaveBeenCalledWith('cdl-front', null);
     restore();
   });
@@ -110,10 +120,27 @@ describe('UploadField upload lifecycle', () => {
     const { restore } = stubConfirm(false);
     const { onChange } = renderField({ value: { name: 'cdl.pdf', url: 'u' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Upload CDL (Front) file' }));
+    clickRemove();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep file' }));
 
     expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     restore();
+  });
+
+  it('keeps the file when the confirmation is dismissed with Escape', () => {
+    const { onChange } = renderField({ value: { name: 'cdl.pdf', url: 'u' } });
+
+    clickRemove();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('opens the removal confirmation with focus on the safe action', () => {
+    renderField({ value: { name: 'cdl.pdf', url: 'u' } });
+    clickRemove();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep file' }));
   });
 });
 

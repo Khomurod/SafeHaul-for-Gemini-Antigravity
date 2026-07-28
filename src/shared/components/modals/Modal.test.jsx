@@ -70,6 +70,108 @@ describe('Modal (C4 accessible dialog)', () => {
         expect(document.activeElement).toBe(opener);
     });
 
+    /**
+     * Regression guard for the CI failure on `main` at `113a118f`
+     * (`frontend-quality`, `DriverProfileModal.behavior.test.jsx > leaves focus on
+     * a real element after a successful delete`).
+     *
+     * When a nested confirmation and the dialog that owns it unmount in the *same*
+     * commit, the inner dialog's restore target is a control inside the outer
+     * dialog — which is being destroyed too. Restoring focus to it cannot succeed,
+     * and depending on the order React runs the two cleanups it either does
+     * nothing or drops `document.activeElement` to `<body>`. `Modal` now skips a
+     * restore target that is no longer connected, so the surviving outer restore
+     * is what sticks, whichever order runs.
+     *
+     * This asserts the contract on `Modal` itself rather than only through the
+     * dossier, because every nested-dialog consumer depends on it.
+     */
+    it('never attempts to restore focus to an element that has left the document', () => {
+        function Harness({ showTemp, open }) {
+            return (
+                <div>
+                    <button>Trigger</button>
+                    {showTemp && <button>Temp</button>}
+                    {open && (
+                        <Modal label="Restore guard" onClose={() => {}}>
+                            <button>Inside</button>
+                        </Modal>
+                    )}
+                </div>
+            );
+        }
+
+        const { rerender } = render(<Harness showTemp open={false} />);
+
+        // `Temp` is focused when the dialog opens, so it becomes the restore target.
+        const temp = screen.getByRole('button', { name: 'Temp' });
+        temp.focus();
+        const tempFocus = vi.spyOn(temp, 'focus');
+
+        rerender(<Harness showTemp open />);
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+        // Now the restore target is removed while the dialog is still open — the
+        // same situation a nested confirmation is in when it unmounts together
+        // with the dialog that owns it.
+        rerender(<Harness showTemp={false} open />);
+        expect(temp.isConnected).toBe(false);
+
+        rerender(<Harness showTemp={false} open={false} />);
+
+        // Focusing a detached node cannot succeed. Depending on the DOM
+        // implementation it is either a silent no-op or it clears
+        // `document.activeElement` to `<body>` — which is what stranded the
+        // keyboard user in CI. `Modal` must not make the call at all.
+        expect(tempFocus).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Behavioural companion to the guard above, in the exact shape of the driver
+     * dossier's delete flow: a nested confirmation and its owner unmount in the
+     * same commit. Focus must end on the original trigger, never on `<body>`.
+     */
+    it('leaves focus on the original trigger when a nested dialog unmounts with its owner', () => {
+        function Harness() {
+            const [open, setOpen] = React.useState(false);
+            const [confirming, setConfirming] = React.useState(false);
+            return (
+                <div>
+                    <button onClick={() => setOpen(true)}>Open owner</button>
+                    {open && (
+                        <>
+                            <Modal label="Owner dialog" onClose={() => setOpen(false)}>
+                                <button onClick={() => setConfirming(true)}>Destroy</button>
+                            </Modal>
+                            {confirming && (
+                                <Modal label="Confirm dialog" onClose={() => setConfirming(false)}>
+                                    {/* Closing both at once is what the real delete flow does. */}
+                                    <button onClick={() => { setConfirming(false); setOpen(false); }}>
+                                        Confirm
+                                    </button>
+                                </Modal>
+                            )}
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        render(<Harness />);
+        const trigger = screen.getByRole('button', { name: 'Open owner' });
+        trigger.focus();
+        fireEvent.click(trigger);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Destroy' }));
+        expect(screen.getByRole('dialog', { name: 'Confirm dialog' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(document.activeElement).not.toBe(document.body);
+        expect(document.activeElement).toBe(trigger);
+    });
+
     it('closes on Escape', () => {
         const onClose = vi.fn();
         render(

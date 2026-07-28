@@ -4,7 +4,7 @@ import { useData } from '@/context/DataContext';
 import { FileSignature, CheckCircle, Save, Eraser } from 'lucide-react';
 import { getSignatureDataUrl, clearCanvas, initializeSignatureCanvas } from '@/lib/signature';
 import { isE2ETestMode } from '@lib/runtime/e2eMode';
-import { Button, Checkbox } from '@/design-system/components';
+import { Button, Checkbox, FieldMessage } from '@/design-system/components';
 import { StepNavigation } from './components/StepNavigation';
 
 const E2E_SIGNATURE_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAAUCAYAAABwR4+JAAAAAXNSR0IArs4c6QAAAO5JREFUaEPt1zEOgjAURdEtjPEEXoCLcAuuYfQAroJzMJ5BG8kpXAxwsf96YfNQfGrJ1zR56Qvwf6MQQxgkNC+CP+zr79WD4QxR2jEfSxO93Jt0NdRnM6xQ81YeJX1FW/EMubQIq4B15xTCg+0haEoQO4jYl3mRr6z4nQ18fpwevUJj2wkfjmaB2YRQ4c2tw+Zx0AMmN7cN6wEJxS3R+lAk4lHCAZ5QULvXLiP9hCV2dAW8hJw8YZSUdBBQ+J0F6sN2W3/8c2kP4aK8e5zQ3VCfN8bYQ9xH+Hh2BV9AE2Lh5ws6gN95AAAAAElFTkSuQmCC';
@@ -18,7 +18,8 @@ const E2E_SIGNATURE_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAH
  * flags; the full CERTIFICATION OF APPLICANT text including the 49 CFR 391.23
  * rights list; the `final-certification` `'agreed'` / `''` values; the drawn vs
  * typed `signatureType`; the `signatureDate` ISO stamp; the
- * `dataUrl.length < 100` blank-canvas guard and its exact `alert()` text; the
+ * `dataUrl.length < 100` blank-canvas guard and its exact message text — which as
+ * of 2026-07-28 is an announced inline error rather than a blocking `alert()`; the
  * `isE2ETestMode`-only "Use Test Signature" control; the "Signature Saved &
  * Locked" confirmation; and the
  * `!isFinalCertified || !isSigned || isSubmitting || isUploading` submit gate
@@ -44,6 +45,8 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, is
     const canvasRef = useRef(null);
 
     const [isSigned, setIsSigned] = useState(!!formData.signature);
+    // Replaces the blocking `alert()` on the blank-canvas guard.
+    const [signatureError, setSignatureError] = useState('');
     const isFinalCertified = formData['final-certification'] === 'agreed';
 
     // Initialize canvas on mount
@@ -60,10 +63,16 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, is
 
         // Validation: Ensure the signature is not empty (dataURLs for blank canvases are very short)
         if (!dataUrl || dataUrl.length < 100) {
-            alert("Please draw your signature first.");
+            // Was a blocking `alert()`. The wording is preserved verbatim and is now
+            // an announced inline error next to the canvas, matching how every other
+            // validation message on this wizard behaves. A native alert on the
+            // public application's most mobile-heavy step also could not be styled
+            // or reliably dismissed.
+            setSignatureError("Please draw your signature first.");
             return;
         }
 
+        setSignatureError('');
         updateFormData('signature', dataUrl);
         updateFormData('signatureType', 'drawn');
         updateFormData('signatureDate', new Date().toISOString()); // Save the signing date
@@ -193,6 +202,13 @@ const Step9_Consent = ({ formData, updateFormData, onNavigate, onFinalSubmit, is
                                         <CheckCircle size={18} aria-hidden="true" /> Signature Saved &amp; Locked
                                     </p>
                                 </div>
+                            )}
+                        </div>
+
+                        {/* Announced blank-canvas guard; was a blocking `alert()`. */}
+                        <div role="alert">
+                            {signatureError && (
+                                <FieldMessage tone="error" className="mt-ds-2">{signatureError}</FieldMessage>
                             )}
                         </div>
 

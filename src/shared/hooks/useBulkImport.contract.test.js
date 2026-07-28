@@ -35,9 +35,20 @@ class FakeWorker {
     }
 }
 
+/**
+ * The hook's failure *messages* are the frozen contract; the sink they go to is
+ * the consumer's choice. These tests inject an `onError` spy, which is what both
+ * real consumers do.
+ *
+ * `alertMock` is still stubbed and asserted to be unused: the default sink used to
+ * be a blocking `alert()`, and that must not come back.
+ */
+let onError;
+
 beforeEach(() => {
     workerInstances = [];
     alertMock = vi.fn();
+    onError = vi.fn();
     vi.stubGlobal('alert', alertMock);
     vi.stubGlobal('Worker', FakeWorker);
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -95,16 +106,19 @@ describe('useBulkImport — preserved contracts', () => {
     });
 
     it('reports a missing sheet URL with the frozen message', async () => {
-        const { result } = renderHook(() => useBulkImport());
+        const { result } = renderHook(() => useBulkImport({ onError }));
         await act(async () => { await result.current.handleSheetImport(); });
-        expect(alertMock).toHaveBeenCalledWith('Please enter a Google Sheet URL.');
+        expect(onError).toHaveBeenCalledWith('Please enter a Google Sheet URL.');
+        // The default sink must never be a blocking browser dialog again.
+        expect(alertMock).not.toHaveBeenCalled();
     });
 
     it('reports an unparseable sheet URL with the frozen message', async () => {
-        const { result } = renderHook(() => useBulkImport());
+        const { result } = renderHook(() => useBulkImport({ onError }));
         act(() => result.current.setSheetUrl('https://example.test/not-a-sheet'));
         await act(async () => { await result.current.handleSheetImport(); });
-        expect(alertMock).toHaveBeenCalledWith('Invalid Google Sheet URL.');
+        expect(onError).toHaveBeenCalledWith('Invalid Google Sheet URL.');
+        expect(alertMock).not.toHaveBeenCalled();
     });
 
     it('derives the xlsx export URL from the sheet id', async () => {
@@ -132,14 +146,15 @@ describe('useBulkImport — preserved contracts', () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
         vi.stubGlobal('alert', alertMock);
 
-        const { result } = renderHook(() => useBulkImport());
+        const { result } = renderHook(() => useBulkImport({ onError }));
         act(() => result.current.setSheetUrl(SHEET_URL));
         await act(async () => { await result.current.handleSheetImport(); });
 
-        expect(alertMock).toHaveBeenCalledWith(
+        expect(onError).toHaveBeenCalledWith(
             "Error importing sheet: Failed to fetch sheet. Make sure the sheet has "
             + "'Anyone with the link' access enabled in Google Sheets sharing settings.",
         );
+        expect(alertMock).not.toHaveBeenCalled();
         expect(result.current.processingSheet).toBe(false);
     });
 
@@ -172,7 +187,7 @@ describe('useBulkImport — preserved contracts', () => {
         vi.stubGlobal('alert', alertMock);
         vi.stubGlobal('Worker', FakeWorker);
 
-        const { result } = renderHook(() => useBulkImport());
+        const { result } = renderHook(() => useBulkImport({ onError }));
         act(() => result.current.setSheetUrl(SHEET_URL));
         act(() => { result.current.handleSheetImport(); });
 
@@ -183,9 +198,10 @@ describe('useBulkImport — preserved contracts', () => {
             });
         });
 
-        await waitFor(() => expect(alertMock).toHaveBeenCalledWith(
+        await waitFor(() => expect(onError).toHaveBeenCalledWith(
             'Error reading file: artificial parse error',
         ));
+        expect(alertMock).not.toHaveBeenCalled();
         expect(result.current.step).toBe('upload');
     });
 

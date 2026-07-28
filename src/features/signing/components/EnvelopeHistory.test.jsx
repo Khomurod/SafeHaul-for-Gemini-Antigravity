@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -286,6 +286,12 @@ describe('EnvelopeHistory — action visibility', () => {
 });
 
 describe('EnvelopeHistory — void action', () => {
+    /** Opens the void confirmation for a row and returns the dialog. */
+    async function openVoidConfirmation(rowLabel = 'Void Offer Letter') {
+        fireEvent.click(screen.getByRole('button', { name: rowLabel }));
+        return screen.findByRole('dialog');
+    }
+
     it('writes the exact update after the exact confirmation and reports success', async () => {
         const confirmMock = vi.fn(() => true);
         vi.stubGlobal('confirm', confirmMock);
@@ -293,8 +299,14 @@ describe('EnvelopeHistory — void action', () => {
         renderHistory();
         emit([makeDoc({ status: 'sent' })]);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Void Offer Letter' }));
-        expect(confirmMock).toHaveBeenCalledWith('Are you sure you want to void "Offer Letter"? This cannot be undone.');
+        const dialog = await openVoidConfirmation();
+        // The blocking prompt is gone; the dialog names the envelope and warns.
+        expect(dialog).toHaveAccessibleName('Void "Offer Letter"?');
+        expect(dialog).toHaveTextContent(/cannot be undone/i);
+        expect(confirmMock).not.toHaveBeenCalled();
+        expect(fs.updateDoc).not.toHaveBeenCalled();
+
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Void document' }));
 
         await waitFor(() => expect(fs.updateDoc).toHaveBeenCalledTimes(1));
         expect(fs.doc).toHaveBeenCalledWith({}, 'companies', 'co-1', 'signing_requests', 'req-1');
@@ -302,37 +314,64 @@ describe('EnvelopeHistory — void action', () => {
         await waitFor(() => expect(toast.showSuccess).toHaveBeenCalledWith('Document voided successfully.'));
     });
 
-    it('uses the this-document fallback in the confirmation when untitled', () => {
-        const confirmMock = vi.fn(() => false);
-        vi.stubGlobal('confirm', confirmMock);
+    it('uses the this-document fallback in the confirmation when untitled', async () => {
         renderHistory();
         emit([makeDoc({ status: 'sent', title: undefined })]);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Void Untitled' }));
-        expect(confirmMock).toHaveBeenCalledWith('Are you sure you want to void "this document"? This cannot be undone.');
+        const dialog = await openVoidConfirmation('Void Untitled');
+        expect(dialog).toHaveAccessibleName('Void "this document"?');
+    });
+
+    it('does not void when the confirmation is cancelled or dismissed', async () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+
+        let dialog = await openVoidConfirmation();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Keep document' }));
+        expect(fs.updateDoc).not.toHaveBeenCalled();
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+        dialog = await openVoidConfirmation();
+        fireEvent.keyDown(dialog, { key: 'Escape' });
         expect(fs.updateDoc).not.toHaveBeenCalled();
     });
 
+    it('voids once even when confirmed twice in the same tick', async () => {
+        let resolveVoid;
+        fs.updateDoc.mockReturnValue(new Promise((resolve) => { resolveVoid = resolve; }));
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+
+        const dialog = await openVoidConfirmation();
+        const confirm = within(dialog).getByRole('button', { name: 'Void document' });
+        fireEvent.click(confirm);
+        fireEvent.click(confirm);
+
+        expect(fs.updateDoc).toHaveBeenCalledTimes(1);
+        await React.act(async () => { resolveVoid(); });
+    });
+
     it('reports a void failure with the exact message', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         fs.updateDoc.mockRejectedValueOnce(new Error('offline'));
         renderHistory();
         emit([makeDoc({ status: 'sent' })]);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Void Offer Letter' }));
+        const dialog = await openVoidConfirmation();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Void document' }));
         await waitFor(() => expect(toast.showError).toHaveBeenCalledWith('Failed to void document.'));
         consoleError.mockRestore();
     });
 
     it('shows a busy state on the voiding row only', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
         let resolveVoid;
         fs.updateDoc.mockReturnValue(new Promise((resolve) => { resolveVoid = resolve; }));
         renderHistory();
         emit([makeDoc({ status: 'sent' }), makeDoc({ id: 'req-2', title: 'NDA', status: 'sent' })]);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Void Offer Letter' }));
+        const dialog = await openVoidConfirmation();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Void document' }));
+
         await waitFor(() => expect(screen.getByRole('button', { name: 'Void Offer Letter' })).toBeDisabled());
         expect(screen.getByRole('button', { name: 'Void NDA' })).toBeEnabled();
 

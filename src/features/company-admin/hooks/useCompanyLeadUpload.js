@@ -27,8 +27,11 @@ import { LEAD_DEFAULT_STATUS } from '@shared/constants/atsStatus';
  * `{ current: 0, total: 0 }` for operations that have no countable unit of work.
  */
 export function useCompanyLeadUpload(companyId, onUploadComplete, options = {}) {
-    const notifyError = options.onError || ((message) => alert(message));
-    const notifyInfo = options.onInfo || ((message) => alert(message));
+    // Defaults log rather than block. `CompanyBulkUpload`, the only consumer, always
+    // passes both handlers, so these are unreachable in the app; they used to be
+    // `alert(message)`, which froze the tab. See the same change in `useBulkImport`.
+    const notifyError = options.onError || ((message) => console.error('[useCompanyLeadUpload]', message));
+    const notifyInfo = options.onInfo || ((message) => console.info('[useCompanyLeadUpload]', message));
 
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState('');

@@ -8,6 +8,7 @@ import { CampaignResultsTable } from './CampaignResultsTable';
 import { functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { useData } from '@/context/DataContext';
 import { Badge, Button, Card, FieldMessage, IconButton } from '@/design-system/components';
 
@@ -66,6 +67,9 @@ export function CampaignDetails({ campaign, onClose }) {
     const [pausing, setPausing] = useState(false);
     const [resuming, setResuming] = useState(false);
     const [cancelling, setCancelling] = useState(false);
+    // Replace the two bare `confirm(...)` guards on retry and cancel.
+    const [pendingRetry, setPendingRetry] = useState(false);
+    const [pendingCancel, setPendingCancel] = useState(false);
     const { showSuccess, showError } = useToast();
 
     if (!campaign) return null;
@@ -93,9 +97,14 @@ export function CampaignDetails({ campaign, onClose }) {
         return date.toLocaleString();
     };
 
-    const handleRetry = async () => {
-        if (!confirm("Start a new campaign for FAILED recipients only? This will retry permanent errors too.")) return;
-
+    /**
+     * Retry and cancel used bare `confirm(...)` — the same blocking browser dialog
+     * as `window.confirm`, just without the explicit `window.` prefix, which is why
+     * the earlier `window.confirm` sweep missed them. Both now use the shared
+     * accessible `ConfirmDialog`. Every callable, payload, toast string and
+     * `onClose()` timing below is unchanged.
+     */
+    const confirmRetry = async () => {
         try {
             setRetrying(true);
             const retryFn = httpsCallable(functions, 'retryFailedAttempts');
@@ -106,6 +115,7 @@ export function CampaignDetails({ campaign, onClose }) {
 
             if (result.data.success) {
                 showSuccess(`Retry session started with ${result.data.targetCount} targets.`);
+                setPendingRetry(false);
                 onClose(); // Close details to see the new session in dashboard
             } else {
                 showError(result.data.message || "Retry failed to start.");
@@ -150,13 +160,13 @@ export function CampaignDetails({ campaign, onClose }) {
         }
     };
 
-    const handleCancel = async () => {
-        if (!confirm("Are you sure you want to cancel this campaign? This action cannot be undone.")) return;
+    const confirmCancel = async () => {
         try {
             setCancelling(true);
             const cancelFn = httpsCallable(functions, 'cancelBulkSession');
             await cancelFn({ companyId: effectiveCompanyId, sessionId: campaign.id });
             showSuccess("Campaign cancelled.");
+            setPendingCancel(false);
             onClose();
         } catch (err) {
             showError(err.message);
@@ -211,14 +221,14 @@ export function CampaignDetails({ campaign, onClose }) {
                     )}
 
                     {(isActive || isPaused) && (
-                        <Button variant="secondary" size="sm" onClick={handleCancel} loading={cancelling}>
+                        <Button variant="secondary" size="sm" onClick={() => setPendingCancel(true)} loading={cancelling}>
                             {!cancelling && <XCircle size={14} aria-hidden="true" />}
                             {cancelling ? 'Cancelling...' : 'Details & Cancel'}
                         </Button>
                     )}
 
                     {hasFailures && !isActive && (
-                        <Button variant="danger" size="sm" onClick={handleRetry} loading={retrying}>
+                        <Button variant="danger" size="sm" onClick={() => setPendingRetry(true)} loading={retrying}>
                             {!retrying && <RefreshCw size={14} aria-hidden="true" />}
                             {retrying ? 'Starting...' : 'Retry Failed'}
                         </Button>
@@ -339,6 +349,32 @@ export function CampaignDetails({ campaign, onClose }) {
 
                 </div>
             </div>
+
+            {/* Replaces the bare `confirm("Start a new campaign for FAILED recipients only? …")`. */}
+            <ConfirmDialog
+                isOpen={pendingRetry}
+                tone="danger"
+                title="Start a new campaign for failed recipients?"
+                description="This creates a new campaign and messages every failed recipient from this run again, including those that failed with permanent errors."
+                confirmLabel="Start retry campaign"
+                cancelLabel="Don't retry"
+                loading={retrying}
+                onConfirm={confirmRetry}
+                onCancel={() => setPendingRetry(false)}
+            />
+
+            {/* Replaces the bare `confirm("Are you sure you want to cancel this campaign? This action cannot be undone.")`. */}
+            <ConfirmDialog
+                isOpen={pendingCancel}
+                tone="warning"
+                title="Cancel this campaign?"
+                description="This action cannot be undone. Sending stops and no further messages go out; the campaign record is kept for reporting."
+                confirmLabel="Cancel campaign"
+                cancelLabel="Keep sending"
+                loading={cancelling}
+                onConfirm={confirmCancel}
+                onCancel={() => setPendingCancel(false)}
+            />
         </div>
     );
 }

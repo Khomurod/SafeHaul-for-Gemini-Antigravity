@@ -5,12 +5,15 @@ import { X, RotateCcw } from 'lucide-react';
 import { db, functions } from '@lib/firebase';
 import { useToast } from '@shared/components/feedback';
 import { Modal } from '@shared/components/modals/Modal';
+import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { Badge, Button, IconButton } from '@/design-system/components';
 
 export default function DetailedReportModal({ companyId, sessionId, isOpen, onClose }) {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [retrying, setRetrying] = useState(false);
+    // Replaces the blocking `window.confirm` on the retry action.
+    const [pendingRetry, setPendingRetry] = useState(false);
     const { showSuccess, showError } = useToast();
 
     useEffect(() => {
@@ -39,9 +42,16 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
         fetchLogs();
     }, [isOpen, companyId, sessionId, showError]);
 
-    const handleRetry = async () => {
-        if (!window.confirm('Start a new campaign for FAILED recipients only? This will retry permanent errors too.')) return;
-
+    /**
+     * Retry used to be guarded by a blocking `window.confirm`. It now opens the
+     * shared accessible `ConfirmDialog`, nested inside this report dialog.
+     *
+     * This is a *costly* action — it creates a whole new campaign and re-sends to
+     * every failed recipient, including permanent errors — so the dialog is
+     * explicitly destructive-toned and spells that out rather than reading as an
+     * informational modal.
+     */
+    const confirmRetry = async () => {
         try {
             setRetrying(true);
             const retryFn = httpsCallable(functions, 'retryFailedAttempts');
@@ -52,8 +62,11 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
 
             if (result.data.success) {
                 showSuccess(`Retry session started with ${result.data.targetCount} targets.`);
+                setPendingRetry(false);
                 onClose();
             } else {
+                // Leave the confirmation open so the operator can retry; the toast
+                // wording is unchanged.
                 showError(result.data.message || 'Retry failed to start.');
             }
         } catch (err) {
@@ -79,7 +92,7 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
         <Modal
             onClose={onClose}
             labelledBy="delivery-report-title"
-            overlayClassName="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm"
+            overlayClassName="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-ds-overlay p-4 backdrop-blur-sm"
             className="m-auto w-full max-w-4xl overflow-hidden rounded-ds-xl bg-ds-surface shadow-ds-lg"
         >
             <div className="flex flex-col gap-ds-4 p-ds-6">
@@ -92,7 +105,7 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
                             <Button
                                 variant="danger"
                                 size="sm"
-                                onClick={handleRetry}
+                                onClick={() => setPendingRetry(true)}
                                 loading={retrying}
                             >
                                 {!retrying && <RotateCcw size={14} aria-hidden="true" />}
@@ -177,6 +190,24 @@ export default function DetailedReportModal({ companyId, sessionId, isOpen, onCl
                     </Button>
                 </div>
             </div>
+
+            {/*
+              Replaces `window.confirm('Start a new campaign for FAILED recipients
+              only? This will retry permanent errors too.')`. Nested inside this
+              report dialog: on success both unmount together, which is exactly the
+              case the shared `Modal`'s connected-target focus-restore guard covers.
+            */}
+            <ConfirmDialog
+                isOpen={pendingRetry}
+                tone="danger"
+                title="Start a new campaign for failed recipients?"
+                description="This creates a new campaign and messages every failed recipient from this run again, including those that failed with permanent errors."
+                confirmLabel="Start retry campaign"
+                cancelLabel="Don't retry"
+                loading={retrying}
+                onConfirm={confirmRetry}
+                onCancel={() => setPendingRetry(false)}
+            />
         </Modal>
     );
 }

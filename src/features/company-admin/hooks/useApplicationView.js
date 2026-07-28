@@ -6,9 +6,11 @@ import { getFieldValue } from '@shared/utils/helpers.js';
 import { useData } from '@/context/DataContext';
 import { useApplicationDetails } from '@features/applications/hooks/useApplicationDetails';
 import { logActivity } from '@shared/utils/activityLogger';
+import { useToast } from '@shared/components/feedback';
 
 export function useApplicationView(companyId, applicationId, onStatusUpdate, onClosePanel, onPhoneClick) {
     const { currentUserClaims, currentUser } = useData();
+    const { showError } = useToast();
     const details = useApplicationDetails(companyId, applicationId, onStatusUpdate);
 
     // Deconstruct key items from details for easier access
@@ -95,7 +97,10 @@ export function useApplicationView(companyId, applicationId, onStatusUpdate, onC
             }
         } catch (e) {
             console.error('PDF Generation failed:', e);
-            alert("PDF Generation failed. Please try again.");
+            // Was a blocking `alert()`. The toast is a `role="alert"` live region, so
+            // the failure is still announced — without freezing the tab. Wording
+            // preserved verbatim.
+            showError("PDF Generation failed. Please try again.");
         }
     };
 

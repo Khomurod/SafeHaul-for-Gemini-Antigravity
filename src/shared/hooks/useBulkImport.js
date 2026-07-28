@@ -18,7 +18,18 @@ import { useState } from 'react';
  *   Messages are unchanged in both paths.
  */
 export function useBulkImport(options = {}) {
-    const notifyError = options.onError || ((message) => alert(message));
+    /**
+     * Consumers are expected to pass `onError` and surface the message themselves
+     * (a toast, an inline `FieldMessage`, whatever fits the surface).
+     *
+     * The default used to be `alert(message)`, which froze the tab. Both real
+     * consumers now pass a handler — `CompanyBulkUpload` always did, and
+     * `AudienceBuilder` was fixed on 2026-07-28 — so this fallback is no longer
+     * reachable in the app. It logs instead of blocking, because a hook must not
+     * own presentation, and a native prompt is the one sink it cannot style,
+     * announce or dismiss consistently.
+     */
+    const notifyError = options.onError || ((message) => console.error('[useBulkImport]', message));
     const [csvData, setCsvData] = useState([]);
     const [processingSheet, setProcessingSheet] = useState(false);
     const [step, setStep] = useState('upload');

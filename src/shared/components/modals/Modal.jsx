@@ -78,7 +78,30 @@ export function Modal({
         target?.focus?.();
 
         return () => {
-            previouslyFocused.current?.focus?.();
+            /**
+             * Only restore focus to an element that is still in the document.
+             *
+             * When two dialogs unmount in the same commit — a nested confirmation
+             * plus the dialog that owns it, e.g. the driver dossier's "delete
+             * application" flow — the inner dialog's restore target is a control
+             * *inside* the outer dialog, and it is being destroyed too. Focusing a
+             * detached node cannot succeed: depending on the DOM implementation it
+             * is either a silent no-op or it clears `document.activeElement` to
+             * `<body>`, stranding the keyboard user at the top of the page. That is
+             * the CI failure on `main` at `113a118f`
+             * (`DriverProfileModal.behavior.test.jsx > leaves focus on a real
+             * element after a successful delete`), which passed locally and failed
+             * on the runner precisely because the behaviour is environment- and
+             * cleanup-order-dependent.
+             *
+             * With this guard the outcome is the same whichever order runs: the
+             * detached restore is skipped, and the surviving outer dialog's
+             * restore to the original trigger is what sticks.
+             */
+            const previous = previouslyFocused.current;
+            if (previous?.isConnected) {
+                previous.focus?.();
+            }
         };
         // Mount/unmount only — re-running would steal focus on every render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
