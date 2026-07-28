@@ -2033,15 +2033,17 @@ reconciliation flag below and closed out the last two open sub-areas (SMS
 number assignment and Integrations), so the whole **Company settings** row is
 now complete. **Super Admin** is the only row still open.
 
-> **Super Admin closeout campaign — started 2026-07-28, row still OPEN.** The
-> shell, navigation and all five dialogs are migrated and verified (see the
-> Super Admin shell and modals completion log in section 6). The **eleven data
-> and ops views behind the rail are not migrated yet**, so the row stays
-> `In progress` and the figure stays 18/19. It must not be counted as complete
-> until those views are done — see the explicit remaining-scope list in that
-> log. This note exists because the previous two campaigns both found a stale
-> roadmap claim that overstated progress; this one records the gap up front
-> instead.
+> **Super Admin closeout campaign — updated 2026-07-28, row still OPEN.** The
+> shell, navigation and all five dialogs were migrated first (see that
+> completion log). A second pass then migrated **seven of the eleven** remaining
+> views: `DashboardView`, `AnalyticsView`, `CompaniesView`, `UsersView`,
+> `GlobalSearchResults`, `FeaturesView`, `StatsBackfillPanel` and
+> `UnifiedDriverList`. **Four remain unmigrated** — `IntegrationManager`,
+> `LineManager` + `AddLineModal`, `GlobalQuestionsManager`, `SystemHealthView`
+> and `CreateView` — so the row stays `In progress` and the figure stays 18/19.
+> It must not be counted as complete until those are done. This note is kept
+> deliberately explicit because the two campaigns before this one each found a
+> stale roadmap claim that overstated progress.
 
 > **Reconciliation flag from 2026-07-27 — resolved 2026-07-28.** The flag
 > below recorded that the **Company settings** row read `Not started` while
@@ -2112,20 +2114,20 @@ short, long, empty, loading, error, and representative numeric/date data.
 
 | Current table | Target | Priority | Risk | Additional dependencies | Status | Verification needed |
 |---|---|---|---|---|---|---|
-| `shared/components/table/ModernDriverTable.jsx` | DataTable pilot/compatibility wrapper | Critical | High | Selection, pagination, Badge | In progress — Company candidate consumer migrated; Super Admin consumer remains | Verify remaining Super Admin behavior before adapting or removing the compatibility component |
+| `shared/components/table/ModernDriverTable.jsx` | DataTable pilot/compatibility wrapper | Critical | High | Selection, pagination, Badge | In progress — both consumers now migrated around it; **a11y defects fixed in place 2026-07-28** (unnamed select-all/per-row checkbox buttons, unnamed pagination buttons, 2.56:1 empty-state text), full DataTable adoption still open | Component-level a11y verified via the Unified Driver DB axe run and the company candidate-table regression; adapting or removing the wrapper remains open |
 | `campaigns/components/CampaignResultsTable.jsx` | Card + Input + Badge + semantic DS-token table (DataTable not a fit — see Phase 13 note) | High | Medium | Status adapter | Migrated 2026-07-24 (GO) | 10px/contrast headers fixed, labelled search, text+icon status, readable errors, preserved max-height scroll + sticky header |
 | `campaigns/components/DetailedReportModal.jsx` | Shared accessible `Modal` + `Button`/`IconButton`/`Badge` + semantic DS-token table in a labelled keyboard-focusable scroll region (DataTable not adopted — same primitive-fit exception as the results table) | Medium | High | Dialog, status | Migrated 2026-07-24 (GO) | Focus trap/Escape/restore added, backdrop preserved, text+badge status, wrapping errors, internal scroll with no doc overflow, 17 unit + Chromium/Mobile Chrome + dialog-scoped axe |
 | `company-admin/components/InlineLeaderboard.jsx` | Numeric compact DataTable | High | Medium | Metric formatting | Completed 2026-07-23 | Verified: representative/empty/error/retry unit states, header/cell end alignment under 1 px, compact density, long names, labeled mobile overflow, desktop/mobile axe |
 | `settings/number-assignment/AssignmentTable.jsx` | DataTable with form controls | High | High | Select/Checkbox | Not started | Header/cell alignment, control labels, save states, mobile |
 | `settings/questions/StandardQuestionsConfig.jsx` | Settings DataTable | Medium | High | Checkbox/Switch | Not started | Keyboard toggles, labels, sticky/overflow, mobile |
 | `signing/components/EnvelopeHistory.jsx` | Approved `DataTable` (adopted — no max-height/sticky-header constraint and no exact loading string to preserve, so the results-table primitive-fit exception does not apply here) + `Badge`/`Button` with a feature-owned status adapter | Medium | High | Status, IconButton | Migrated 2026-07-24 (GO) | 5-column contract, row header + accessible per-row action names, text+icon status (never colour alone), announced loading/empty/error, labelled keyboard-focusable scroll region, 46 unit + 10 Chromium/Mobile Chrome E2E, 1440/1024/412 px, scoped axe |
-| `super-admin/components/CompaniesView.jsx` | DataTable | High | High | Badge, actions | Not started | Loading/error/empty, sticky header, permissions, long names |
-| `super-admin/components/FeaturesView.jsx` | DataTable/matrix | High | Very high | Switch/Checkbox, responsive matrix | Not started | Sticky first column, header/cell alignment, keyboard, overflow |
+| `super-admin/components/CompaniesView.jsx` | Approved native-table pattern + `Card`/`Badge`/`Button`/`IconButton`/`Input`/`Select` (DataTable not adopted — per-row interactive controls plus a row-level click target sit outside its display-table contract; same exception as `CampaignResultsTable`) | High | High | Badge, actions | **Migrated 2026-07-28 (GO)** | Verified: 20 unit tests incl. the stale-enrichment regression guard, real-browser axe on Chromium + Mobile Chrome, named row actions, keyboard-reachable company name, accessible activate/deactivate dialog, 1440/1024/412 px |
+| `super-admin/components/FeaturesView.jsx` | Approved native-table matrix + `Checkbox`/`IconButton`/`Modal` (DataTable not adopted — every cell is an editable control) | High | Very high | Switch/Checkbox, responsive matrix | **Migrated 2026-07-28 (GO)** | Verified: 18 unit tests, toggles now named + stateful (were unnamed bare buttons), sticky first column, both overlays on the shared `Modal`, named focusable scroll region, real-browser axe both lanes |
 | `super-admin/integrations/LineManager.jsx` | DataTable | Medium | High | Badge, actions | Not started | Phone/label/status/default/action alignment, keyboard |
-| `super-admin/modals/ViewCompanyAppsModal.jsx` | DataTable inside Dialog | Medium | High | Dialog, status | Not started | Focus, overflow, status/date alignment, mobile |
-| `super-admin/components/StatsBackfillPanel.jsx` | Compact numeric DataTable | Medium | High | Feedback/progress | Not started | Numeric alignment, maintenance actions, error states |
-| `super-admin/components/UsersView.jsx` | DataTable | High | High | Badge/actions | Not started | Roles/actions, loading/error/empty, long email, mobile |
-| `super-admin/views/AnalyticsView.jsx` | Analytics DataTables | High | High | Charts/number/date format | Not started | Numeric and date alignment, periods, empty states, mobile |
+| `super-admin/modals/ViewCompanyAppsModal.jsx` | Shared accessible `Modal` + native table + `Badge` (DataTable unproven inside a dialog with its own scroll container and sticky header) | Medium | High | Dialog, status | **Migrated 2026-07-28 (GO)** | Verified in the Super Admin modals suite: focus containment/restoration, Escape, named close, `Badge` status (was colour-only), header contrast corrected |
+| `super-admin/components/StatsBackfillPanel.jsx` | `Card`/`FormField`/`Button` + compact numeric native table | Medium | High | Feedback/progress | **Migrated 2026-07-28 (GO)** | Verified: 16 unit tests incl. the previously-absent confirmation on the platform-wide writing run, announced error/result/in-flight states, real-browser axe |
+| `super-admin/components/UsersView.jsx` | Approved native-table pattern + `Badge`/`IconButton` | High | High | Badge/actions | **Migrated 2026-07-28 (GO)** | Verified: role/membership mapping frozen, named row actions, announced loading/error, named focusable scroll region, real-browser axe both lanes |
+| `super-admin/views/AnalyticsView.jsx` | `Card`/`MetricCard`/`Badge` + WAI-ARIA tab interface + native data tables; SVG chart geometry stays feature-owned | High | High | Charts/number/date format | **Migrated 2026-07-28 (GO)** | Verified: 13 unit tests incl. the frozen CSV export contract, tabs/date-range no longer colour-only, chart given `role="img"` + hidden data table, header contrast corrected |
 | `shared/components/admin/BulkUploadLayout.jsx` | Preview DataTable pattern | Medium | High | Upload/feedback | Not started | Large data, truncation, headers, errors, performance |
 
 ### 5.4 Company settings/profile form migration inventory
@@ -6263,6 +6265,148 @@ here so they are not lost:
 - `UnifiedDriverList` — receives `loadMore`/`hasMore` from `ViewRouter` but uses
   neither, so the Unified Driver DB has **no working Load More** despite the
   router wiring one. Needs a decision: wire it up or remove the dead props.
+
+### Super Admin data/ops views completion log (GO — partial row) — 2026-07-28
+
+**Scope completed:** seven of the eleven views behind the Super Admin rail.
+**Four remain unmigrated**, so the 5.1 row stays `In progress` and the overall
+figure stays **18 of 19 (94.7%)**. Base: `origin/main` at `c5e09ef`.
+
+#### Migrated
+
+`DashboardView`, `AnalyticsView`, `CompaniesView` (both normal and
+`isIntegrationMode` / SMS Integrations Hub), `UsersView`, `GlobalSearchResults`,
+`FeaturesView`, `StatsBackfillPanel`, `UnifiedDriverList`.
+
+#### Not migrated (remaining scope for this row)
+
+`IntegrationManager`, `LineManager` + `AddLineModal`, `GlobalQuestionsManager`,
+`SystemHealthView`, `CreateView`.
+
+#### Defects found and fixed
+
+1. **`CompaniesView` stale derived data.** `filteredCompanyList`'s `useMemo` read
+   `displayList` but listed `[companySearch, companyList]`. When the async SMS
+   enrichment resolved, the filtered rows never recomputed, so the Integrations
+   hub showed blank SMS numbers until an unrelated re-render. Regression-guarded:
+   the test fails against the old dependency array.
+2. **`CompaniesView` row actions double-fired.** The row `onClick` opened the
+   editor and the action buttons did not stop propagation, so "View
+   Applications" or "Delete" *also* opened the edit modal — two dialogs at once.
+3. **`CompaniesView` was unusable by keyboard.** Opening a company was a click
+   handler on `<tr>` with no role/tabIndex/key handling. The company name is now
+   a real button; pointer row-click is preserved.
+4. **`FeaturesView` toggles had no accessible name and no state** — bare
+   `<button>`s with a styled `<span>`, no text, no `aria-label`, no
+   `aria-checked`. The worst defect in the area. Now approved `Checkbox`
+   controls labelled with both feature and company.
+5. **`StatsBackfillPanel` "Run All Companies" had no confirmation at all**,
+   while the single-company action required an explicit ID. It rewrites
+   `stats_daily` for every company and runs up to nine minutes. Now behind an
+   accessible confirmation; the non-mutating dry-runs stay unguarded.
+6. **`UnifiedDriverList` Load More was wired but ignored.** `ViewRouter` passes
+   `loadMore`/`hasMore` and `useSuperAdminData` fully supports
+   `loadMore('applications')`, but the view destructured and never used them, so
+   older records were unreachable. Wired to the same control `CompaniesView`
+   already uses — no new workflow invented.
+7. **`UnifiedDriverList` row actions were hover-only** (`opacity-0
+   group-hover:*`), invisible to keyboard users. Now revealed on focus too.
+8. Blocking `window.confirm`/`alert()` replaced with accessible dialogs in
+   `CompaniesView` (activate/deactivate) and `UnifiedDriverList` (permanent
+   delete), wording preserved verbatim.
+9. Colour-only status in `GlobalSearchResults` (`getStatusColor` pill) and
+   `UsersView` role chips — now `Badge`s whose text carries the meaning.
+10. **`AnalyticsView` tabs and date range were colour-only** with no
+    `aria-selected`/`aria-pressed` and no arrow-key movement. Now a real
+    WAI-ARIA tab interface with roving focus.
+11. **The Analytics trend chart was an unlabelled `<svg>`** — invisible to
+    assistive technology. Now `role="img"` with a summarising name plus a
+    visually-hidden table of the same figures.
+12. **Real-browser contrast failures the jsdom axe could not see.** Table
+    headers used `content-muted` on `surface-subtle` = **4.34:1** (below 4.5).
+    The design system already specified the correct pairing
+    (`--ds-table-header-fg: content-secondary`, 6.92:1); 13 headers across five
+    files were corrected. A tinted `status-info-bg` card also dropped DS field
+    help text to 3.9:1 and was de-tinted.
+13. **`ModernDriverTable` (shared) a11y defects**, surfaced by the Unified
+    Driver DB axe run: select-all and per-row checkbox buttons had **no
+    accessible name**, both pagination buttons had **no accessible name**, and
+    the empty-state message was `#94a3b8` on white = **2.56:1**. Fixed in the
+    shared component; its other consumer (company candidate table) re-verified.
+14. **`scrollable-region-focusable` on mobile** — in the empty state the table
+    scroll containers held no focusable children, so keyboard users could not
+    scroll them. Now named, focusable regions, matching the pattern already used
+    by `EnvelopeHistory` and `CampaignResultsTable`.
+15. Unlabelled search inputs and all four `UnifiedDriverList` filter selects.
+16. `text-[10px]` removed from `FeaturesView` schedules, `AnalyticsView` axis
+    labels and the recruiter company name.
+17. Two hand-built `fixed inset-0` overlays in `FeaturesView` (schedule, alert
+    stats) moved to the shared accessible `Modal`.
+
+#### Design-system additions
+
+- `MetricCard` gained a `danger` tone. The status-danger tokens already existed
+  and `Card`/`Badge`/`StatusMedallion` already exposed danger; `MetricCard` was
+  the only primitive missing it, and the Super Admin dashboard has a real
+  "Error" metric state that every other tone misrepresents.
+- `Checkbox`/`Radio` gained `labelHidden`. `label` stays required — this changes
+  only whether the name is *shown*. Needed for the feature matrix, where row and
+  column headers already carry the meaning for sighted users.
+
+#### Contracts preserved (frozen by test)
+
+`useSuperAdminData` untouched. Frozen: the `features.{key}` /
+`featureSchedules.{key}` update shapes and the clear-schedule-on-manual-toggle
+rule; `backfillCompanyStats` / `backfillAllStats` names, `{ timeout: 540000 }`
+and `{ companyId, dryRun }` / `{ dryRun }` payloads; the
+`companies/{id}/{applications|leads}/{id}` delete path; `updateDoc(companies/{id},
+{ isActive })`; the CSV export column order, headers and filename patterns; the
+`callsMade > 20` High/Low rule; the `super_admin`-over-memberships precedence and
+`company_admin → Admin` label rule; the `allCompaniesMap.get(...) || "Unknown"` /
+`'Unknown Company'` fallbacks; `loadMore('companies')` and
+`loadMore('applications')`; every `sourceType`, status value and toast string.
+
+#### Verification
+
+- `npx vitest run` — **2306 passed, 48 skipped, 0 failed** (2200 before; 106 new).
+- 167 focused Super Admin unit tests across 10 files.
+- `e2e/super-admin-views.spec.cjs` (new) + `super-admin-shell.spec.cjs` —
+  **38 passed on Chromium + Mobile Chrome**, zero serious/critical axe on every
+  migrated view on both lanes, 1440/1024/412 px overflow clean, single `<h1>`
+  per view, keyboard tab-strip walkthrough, platform-wide backfill confirmation.
+- `company-candidate-table.spec.cjs` re-run to prove the shared
+  `ModernDriverTable` change did not regress its other consumer.
+- `npx eslint src` — 0 errors. `tsc --noEmit` clean. `npm run build` succeeds.
+  `git diff --check` clean.
+
+#### PRODUCT / LEGAL blockers — deliberately not decided here
+
+1. **`UnifiedDriverList` bulk actions are false affordances.** Message, Assign,
+   Move Status and Archive are placeholders that only fire a success toast.
+   Archiving 50 records reports success and archives nothing. Implementing them
+   would be inventing a workflow and the toast wording is a frozen contract, so
+   the behaviour is preserved exactly and escalated for an owner decision.
+2. **`StatsBackfillPanel` names a real customer in operator copy** — "Only run
+   after verifying Ray Star LLC results." Preserved verbatim; the repository
+   establishes no generic replacement wording.
+3. **`FeaturesView.handleBulkAction` is unreachable** — the handler exists but
+   nothing renders a bulk control, so the platform has no bulk enable/disable
+   UI. Left intact rather than migrated or deleted.
+
+#### Approved feature-owned exceptions
+
+- Native tables instead of `DataTable` in `CompaniesView`, `UsersView` and
+  `FeaturesView`: all three carry per-row interactive controls (and, in
+  Companies, a row-level click target), which is outside `DataTable`'s proven
+  display-table contract. Same exception already recorded for
+  `CampaignResultsTable`, `AssignmentTable` and `ViewCompanyAppsModal`.
+- The `AnalyticsView` SVG trend-chart geometry stays feature-owned; only its
+  colours, labels and surrounding card are standardised. The design system has
+  no approved chart contract.
+- `FeaturesView` uses a native `Checkbox` rather than an ARIA switch: there is
+  no approved switch primitive. The `ToggleSwitch` in Company Settings is
+  feature-owned and importing it across features would break layering. **Gap
+  recorded**: promoting a `Switch` to the design system remains open.
 
 ---
 
