@@ -101,8 +101,11 @@ export const ModernDriverTable = memo(function ModernDriverTable({
                             {showCheckboxes && (
                                 <th className="w-12 px-4 py-3.5">
                                     <button
+                                        type="button"
+                                        aria-label={allSelected ? 'Deselect all rows' : 'Select all rows'}
+                                        aria-pressed={allSelected}
                                         onClick={onToggleSelectAll}
-                                        className="p-0.5 text-slate-400 hover:text-blue-600 transition-colors"
+                                        className="p-0.5 text-slate-500 hover:text-blue-600 transition-colors"
                                     >
                                         {allSelected
                                             ? <CheckSquare size={18} className="text-blue-600" />
@@ -130,7 +133,7 @@ export const ModernDriverTable = memo(function ModernDriverTable({
                                     colSpan={columns.length + (showCheckboxes ? 1 : 0)}
                                     className="py-16 text-center"
                                 >
-                                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                                    <div className="flex flex-col items-center gap-2 text-slate-600">
                                         {emptyIcon || <Inbox size={36} className="opacity-30" />}
                                         <p className="text-sm font-medium">{emptyMessage}</p>
                                     </div>
@@ -164,7 +167,12 @@ export const ModernDriverTable = memo(function ModernDriverTable({
                                                     onToggleSelect?.(item.id, e);
                                                 }}
                                             >
-                                                <button className="p-0.5 text-slate-400 hover:text-blue-600 transition-colors">
+                                                <button
+                                                    type="button"
+                                                    aria-label={isChecked ? 'Deselect row' : 'Select row'}
+                                                    aria-pressed={isChecked}
+                                                    className="p-0.5 text-slate-500 hover:text-blue-600 transition-colors"
+                                                >
                                                     {isChecked
                                                         ? <CheckSquare size={18} className="text-blue-600" />
                                                         : <Square size={18} className="text-slate-300" />
@@ -199,6 +207,8 @@ export const ModernDriverTable = memo(function ModernDriverTable({
                     </span>
                     <div className="flex items-center gap-2">
                         <button
+                            type="button"
+                            aria-label="Previous page"
                             onClick={pagination.onPrev}
                             disabled={!pagination.hasPrev}
                             className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -209,6 +219,8 @@ export const ModernDriverTable = memo(function ModernDriverTable({
                             Page <span className="text-slate-900 font-bold">{pagination.currentPage}</span> of <span className="text-slate-900 font-bold">{pagination.totalPages || 1}</span>
                         </span>
                         <button
+                            type="button"
+                            aria-label="Next page"
                             onClick={pagination.onNext}
                             disabled={!pagination.hasNext}
                             className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
