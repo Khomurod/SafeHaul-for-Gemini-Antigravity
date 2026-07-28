@@ -69,6 +69,14 @@ describe('metrics', () => {
         expect(metric('Active templates')).toHaveAccessibleName('Active templates: —');
     });
 
+    it('names its shortcuts distinctly from the page header actions', () => {
+        // The header offers "Manage Templates"; a second control differing only
+        // in case would be indistinguishable by accessible name.
+        renderOverview();
+        expect(screen.getByRole('button', { name: 'Browse template library' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Manage templates$/i })).not.toBeInTheDocument();
+    });
+
     it('routes the metric cards to the matching view', () => {
         const { props } = renderOverview();
         fireEvent.click(metric('Awaiting signature'));

@@ -102,12 +102,15 @@ export function DocumentsOverview({
                         onActivate={onViewTemplates}
                     />
                 </ResponsiveGrid>
+                {/* Distinct accessible names from the page header's actions —
+                    two controls whose names differ only in case would be
+                    indistinguishable to anyone navigating by name. */}
                 <div className="mt-ds-3 flex flex-wrap gap-ds-2">
                     <Button variant="secondary" size="sm" onClick={onViewSentDocuments}>
                         View sent documents
                     </Button>
                     <Button variant="secondary" size="sm" onClick={onViewTemplates}>
-                        Manage templates
+                        Browse template library
                     </Button>
                 </div>
             </section>
