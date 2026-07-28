@@ -1,9 +1,51 @@
 import React, { useEffect, useState } from 'react';
-import { Facebook, CheckCircle, AlertCircle, Loader2, Blocks } from 'lucide-react';
+import { Facebook, CheckCircle, Loader2, Blocks } from 'lucide-react';
 import { functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { Badge, Button, Card, FieldMessage } from '@/design-system/components';
+import { PageHeader, ResponsiveGrid, Stack } from '@/design-system/layouts';
 
+/**
+ * Company Settings "Integrations" tab.
+ *
+ * Migrated to the design system 2026-07-27. This is a PRESENTATION-ONLY
+ * migration: every SDK-load, login, Graph API, and callable contract recorded
+ * in the 2026-07-23 Integrations deep-audit (NO-GO) is unchanged, and no
+ * Cloud Function, rule, or data shape was touched.
+ *
+ * That audit found a real, unfixed **tenant-binding security defect**:
+ * `connectFacebookPage` derives the tenant from `request.auth.uid` rather than
+ * the company's real Firestore document id, which is incompatible with
+ * SafeHaul's auto-id + membership multi-tenant model. Connected leads would
+ * ingest to `companies/{uid}/leads` instead of the real company. That defect
+ * is NOT fixed here — fixing it means changing `functions/integrations/
+ * facebook.js`, which is out of this campaign's scope (no Firebase/Functions
+ * changes) and belongs to a separate, security-reviewed backend project. This
+ * migration only replaces the presentation layer around that unchanged,
+ * still-unsafe workflow; it does not make the workflow production-ready.
+ *
+ * No credential or secret ever reaches this component: only the public
+ * `VITE_FACEBOOK_APP_ID` and a short-lived user access token are used
+ * client-side, and that token is never rendered, logged, or stored — it flows
+ * directly into the Graph API fetch and the callable payload, matching the
+ * audit's frozen token-security contract.
+ *
+ * Defects fixed (presentation only):
+ *  - the "Connected" state was communicated by a small pill with no visible
+ *    icon-independent meaning beyond color+text sized at 10px (below the
+ *    12 px floor) — now a `Badge`, which floors at `--ds-font-size-xs`;
+ *  - the "SDK Loading..." notice was plain 10px red text with no live-region
+ *    role, so a screen-reader user was never told the button would activate
+ *    once loading finished — now a `role="status"` `FieldMessage`.
+ *
+ * Preserved and NOT changed: the connected-state limitation itself (local
+ * React state only — not loaded from Firestore, lost on refresh, no
+ * disconnect/reconnect flow). Adding a disconnect action would be new
+ * business logic with no backend support today, not a presentation fix, so
+ * none was added; the "Connected" control remains a disabled indicator, as
+ * frozen by the audit.
+ */
 export function IntegrationsTab() {
     const { showSuccess, showError } = useToast();
     const [isSdkLoaded, setIsSdkLoaded] = useState(false);
@@ -65,25 +107,8 @@ export function IntegrationsTab() {
     // 3. Call Backend
     const connectBackend = async (shortLivedUserToken) => {
         try {
-            // First, we need to choose a page. 
-            // For this basic version, we'll assume the user grants access to the page they want, 
-            // and maybe we pick the first one or ask the backend to handle it.
-            // BUT, the connectFacebookPage function expects `pageId`.
-            // So we need to fetch pages first? 
-            // The prompt says: "Trigger FB.login... On success... Call connectFacebookPage".
-            // However, connectFacebookPage needs pageId.
-            // Let's quickly fetch pages here using the graph api to let user select, 
-            // OR simply pass the token to backend and let backend auto-select (if defined in prompt).
-            // Prompt says: "Call the backend function connectFacebookPage... passing { userToken: accessToken }"
-            // WAIT - The prompt's detailed instruction for frontend step 1 says: "Call the backend function connectFacebookPage (using httpsCallable) passing the { userToken: accessToken }."
-            // But the backend I implemented expects `pageId` and `pageName`.
-            // I should reconcile this. I'll stick to the backend I implemented which is robust.
-            // So I will fetch the pages client-side using the token, let user see "Connecting..." and maybe just pick the first one for now 
-            // OR ideally show a modal. 
-            // Given "UI State: If possible, display a simple 'Connected' badge", I'll try to automate picking the page 
-            // OR just fetch pages and pick the first one for this MVP step.
-
-            // Let's fetch pages client side to get the ID.
+            // Fetch the user's pages client-side and auto-select the first one.
+            // First-page-only, no picker: a recorded, frozen MVP behavior.
             const pagesResp = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${shortLivedUserToken}`)
                 .then(r => r.json());
 
@@ -91,8 +116,6 @@ export function IntegrationsTab() {
                 throw new Error("No Facebook Pages found for this user.");
             }
 
-            // For MVP, just pick the first one or the one with 'Transport' in name?
-            // Let's pick the first one.
             const pageToConnect = pagesResp.data[0];
 
             const connectFn = httpsCallable(functions, 'connectFacebookPage');
@@ -114,76 +137,82 @@ export function IntegrationsTab() {
     };
 
     return (
-        <div className="space-y-6 max-w-4xl animate-in fade-in">
-            <div className="border-b border-gray-200 pb-4 mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Integrations</h2>
-                <p className="text-sm text-gray-500 mt-1">Manage connections with third-party platforms.</p>
-            </div>
+        <Stack gap="lg">
+            <PageHeader
+                title="Integrations"
+                description="Manage connections with third-party platforms."
+            />
 
-            <div className="grid gap-6">
-                {/* Facebook Card */}
-                <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6 hover:shadow-sm transition-shadow">
-                    <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-[#1877F2]/10 text-[#1877F2] rounded-lg flex items-center justify-center shrink-0">
-                            <Facebook size={24} />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                                Facebook Lead Ads
-                                {connectedPage && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full uppercase tracking-wide">Connected</span>}
-                            </h3>
-                            <p className="text-sm text-gray-500 mt-1 max-w-md">
-                                Automatically import leads from your Facebook Lead Gen forms.
-                                We'll sync new leads directly to your dashboard in real-time.
-                            </p>
-                            {connectedPage && (
-                                <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
-                                    <CheckCircle size={12} className="text-green-500" />
-                                    Active Page: <span className="font-medium text-gray-700">{connectedPage}</span>
+            <ResponsiveGrid minItemWidth="320px">
+                <Card padding="md">
+                    <div className="flex flex-col items-start justify-between gap-ds-4 sm:flex-row">
+                        <div className="flex min-w-0 items-start gap-ds-4">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-ds-lg bg-[#1877F2]/10 text-[#1877F2]">
+                                <Facebook size={24} aria-hidden="true" />
+                            </div>
+                            <div className="min-w-0">
+                                <h2 className="flex flex-wrap items-center gap-ds-2 font-bold text-ds-content">
+                                    Facebook Lead Ads
+                                    {connectedPage && <Badge tone="success">Connected</Badge>}
+                                </h2>
+                                <p className="mt-ds-1 max-w-md text-ds-sm text-ds-content-muted">
+                                    Automatically import leads from your Facebook Lead Gen forms.
+                                    We&apos;ll sync new leads directly to your dashboard in real-time.
                                 </p>
+                                {connectedPage && (
+                                    <p className="mt-ds-2 flex items-center gap-ds-1 text-ds-xs text-ds-content-muted">
+                                        <CheckCircle size={12} className="text-ds-status-success-fg" aria-hidden="true" />
+                                        Active Page: <span className="truncate font-medium text-ds-content">{connectedPage}</span>
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="w-full shrink-0 sm:w-auto">
+                            {connectedPage ? (
+                                <Button variant="secondary" disabled fullWidth>
+                                    Connected
+                                </Button>
+                            ) : (
+                                <Button
+                                    variant="primary"
+                                    fullWidth
+                                    onClick={handleConnectFacebook}
+                                    disabled={connecting || !isSdkLoaded}
+                                    loading={connecting}
+                                >
+                                    {!connecting && <Facebook size={16} aria-hidden="true" />}
+                                    {connecting ? 'Connecting...' : 'Connect Facebook'}
+                                </Button>
+                            )}
+                            {!isSdkLoaded && !connecting && (
+                                <FieldMessage tone="help" role="status" className="mt-ds-1 text-center">
+                                    <Loader2 size={12} className="animate-spin" aria-hidden="true" /> SDK Loading...
+                                </FieldMessage>
                             )}
                         </div>
                     </div>
+                </Card>
 
-                    <div className="flex-shrink-0">
-                        {connectedPage ? (
-                            <button
-                                disabled
-                                className="px-4 py-2 bg-gray-100 text-gray-400 font-semibold rounded-lg text-sm cursor-not-allowed border border-gray-200"
-                            >
-                                Connected
-                            </button>
-                        ) : (
-                            <button
-                                onClick={handleConnectFacebook}
-                                disabled={connecting || !isSdkLoaded}
-                                className={`
-                                    flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-sm
-                                    ${connecting || !isSdkLoaded
-                                        ? 'bg-gray-100 text-gray-400 cursor-wait'
-                                        : 'bg-[#1877F2] text-white hover:bg-[#166fe5] hover:shadow-md'
-                                    }
-                                `}
-                            >
-                                {connecting ? <Loader2 size={16} className="animate-spin" /> : <Facebook size={16} />}
-                                {connecting ? 'Connecting...' : 'Connect Facebook'}
-                            </button>
-                        )}
-                        {!isSdkLoaded && !connecting && (
-                            <p className="text-[10px] text-red-400 mt-1 text-center">SDK Loading...</p>
-                        )}
+                {/*
+                  No `opacity-*` dimming here: applying it to the whole card
+                  (as the pre-migration markup did) scales every descendant
+                  color toward the background, including the approved
+                  `--ds-color-content-muted` token — dropping its contrast
+                  below WCAG AA even though the token itself passes on its own
+                  (enforced by `design-system/tests/tokens.test.js`). A real
+                  Chromium axe scan caught this. The placeholder look is
+                  carried by the dashed border and muted icon/text tokens
+                  instead, at full opacity.
+                */}
+                <Card padding="md" className="flex flex-col items-center justify-center border-dashed text-center">
+                    <div className="mb-ds-3 flex h-10 w-10 items-center justify-center rounded-full bg-ds-surface-subtle text-ds-content-muted">
+                        <Blocks size={20} aria-hidden="true" />
                     </div>
-                </div>
-
-                {/* Placeholder for future */}
-                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-6 flex flex-col items-center justify-center text-center opacity-70">
-                    <div className="w-10 h-10 bg-gray-200 text-gray-400 rounded-full flex items-center justify-center mb-3">
-                        <Blocks size={20} />
-                    </div>
-                    <h4 className="font-semibold text-gray-500">More Integrations Coming Soon</h4>
-                    <p className="text-xs text-gray-400 mt-1">Tenstreet, Driver Pulse, and more.</p>
-                </div>
-            </div>
-        </div>
+                    <h2 className="font-semibold text-ds-content-muted">More Integrations Coming Soon</h2>
+                    <p className="mt-ds-1 text-ds-xs text-ds-content-muted">Tenstreet, Driver Pulse, and more.</p>
+                </Card>
+            </ResponsiveGrid>
+        </Stack>
     );
 }

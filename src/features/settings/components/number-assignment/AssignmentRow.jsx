@@ -1,8 +1,30 @@
 import React from 'react';
-import { AlertCircle, RefreshCw, ShieldCheck, Activity } from 'lucide-react';
+import { AlertCircle, ShieldCheck, Activity } from 'lucide-react';
+import { Badge, IconButton, Select } from '@/design-system/components';
 import { MISSING_TOKEN, lineDisplay, sanitizePhone } from '../../utils/linePhone';
 
-/** One team-member row of the assignment matrix — extracted verbatim from NumberAssignmentManager.jsx. */
+/**
+ * One team-member row of the assignment matrix.
+ *
+ * Presentation only — the token/select derivation, `setAssignments`/
+ * `setAssignmentTokenOverrides` wiring, and `handleVerifyLine` are unchanged
+ * from `NumberAssignmentManager.jsx`, where this row was originally inlined.
+ * The row stays a real `<tr>` (not the approved `DataTable`): editable
+ * per-row `<select>`s and verify actions are outside `DataTable`'s proven
+ * display-table contract, per the 2026-07-23 deep-audit; see
+ * `NumberAssignmentManager.jsx` for the full rationale.
+ *
+ * Defects fixed here:
+ *  - the assignment `<select>` had no accessible name (now `aria-label`);
+ *  - the verify button was icon-only with a `title` but no `aria-label`
+ *    (now an `IconButton`);
+ *  - the "Not in current team" / "Dedicated Credentials" badges used
+ *    `text-[9px]`, below the 12 px floor (now `Badge`, which floors at
+ *    `--ds-font-size-xs`);
+ *  - the connection-status dot in the last column was colour-only, with only
+ *    a `title` attribute — no visible or accessible text (now paired with a
+ *    visually-hidden status string).
+ */
 export function AssignmentRow({
     user,
     inventory,
@@ -27,24 +49,37 @@ export function AssignmentRow({
     // Match against sanitized inventory numbers
     const invItem = inventory.find(i => sanitizePhone(i.phoneNumber) === currentPhone);
     const hasDedicated = invItem?.hasDedicatedCredentials;
+    const memberName = user.name || user.fullName || user.email;
+    const isVerifyingRow = verifyingLine === currentPhone;
+    const rowStatus = lineStatuses[currentPhone];
+
+    const dotClassName = !isAssigned
+        ? 'bg-ds-border'
+        : !rowStatus
+            ? (invItem ? 'bg-ds-status-info-fg' : 'bg-ds-status-warning-fg')
+            : rowStatus.success === false ? 'bg-ds-status-danger-fg' : 'bg-ds-status-success-fg';
+    const dotText = !isAssigned
+        ? 'No assignment'
+        : !rowStatus
+            ? 'Untested'
+            : rowStatus.success === false ? 'Connection error' : 'Active';
 
     return (
-        <tr className="hover:bg-gray-50 transition-colors">
-            <td className="px-6 py-4 text-sm font-medium text-gray-900 border-r border-gray-50">
-                {user.name || user.fullName || user.email}
-                <div className="text-xs text-gray-400 font-normal">{user.email}</div>
+        <tr className="transition-colors hover:bg-ds-surface-hover">
+            <th scope="row" className="border-r border-ds-border-subtle px-ds-6 py-ds-4 text-left text-ds-sm font-medium text-ds-content">
+                {memberName}
+                <div className="font-normal text-ds-xs text-ds-content-muted">{user.email}</div>
                 {user._unlinkedAssignment && (
-                    <div className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-                        <AlertCircle size={10} /> Not in current team
-                    </div>
+                    <Badge tone="warning" icon={AlertCircle}>Not in current team</Badge>
                 )}
-            </td>
-            <td className="px-6 py-4 text-xs text-gray-500 uppercase tracking-wider">
+            </th>
+            <td className="px-ds-6 py-ds-4 text-ds-xs uppercase tracking-wider text-ds-content-muted">
                 {user.role?.replace('_', ' ')}
             </td>
-            <td className="px-6 py-4">
-                <div className="flex flex-col gap-1">
-                    <select
+            <td className="px-ds-6 py-ds-4">
+                <div className="flex flex-col items-start gap-ds-1">
+                    <Select
+                        aria-label={`Assigned number for ${memberName}`}
                         value={selectedToken}
                         onChange={(e) => {
                             const t = e.target.value;
@@ -57,8 +92,7 @@ export function AssignmentRow({
                             const nextPhone = !t ? '' : (t === MISSING_TOKEN ? currentPhone : phoneForToken(t));
                             setAssignments(prev => ({ ...prev, [user.id]: nextPhone }));
                         }}
-                        className={`w-full p-2 border rounded text-sm outline-none transition-all ${isAssigned ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-400'
-                            }`}
+                        className="w-full"
                     >
                         <option value="">No Direct Line</option>
                         {/* 1. Show existing inventory (label-first so it stays readable even if a
@@ -74,56 +108,44 @@ export function AssignmentRow({
                                 {currentPhone} (Missing from sync)
                             </option>
                         )}
-                    </select>
+                    </Select>
                     {isAssigned && hasDedicated && (
-                        <div className="flex items-center gap-1 text-[9px] text-blue-600 font-bold uppercase tracking-tighter">
-                            <ShieldCheck size={10} /> Dedicated Credentials
-                        </div>
+                        <Badge tone="info" icon={ShieldCheck}>Dedicated Credentials</Badge>
                     )}
                 </div>
             </td>
-            <td className="px-6 py-4">
+            <td className="px-ds-6 py-ds-4">
                 {isAssigned ? (
-                    <div className="flex items-center gap-2">
-                        <button
+                    <div className="flex items-center gap-ds-2">
+                        <IconButton
+                            label={`Verify connection for ${memberName}`}
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleVerifyLine(currentPhone)}
-                            disabled={verifyingLine === currentPhone}
-                            className="p-1.5 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
-                            title="Verify Connection"
+                            disabled={isVerifyingRow}
+                            loading={isVerifyingRow}
                         >
-                            {verifyingLine === currentPhone ? (
-                                <RefreshCw size={14} className="animate-spin text-gray-400" />
-                            ) : (
-                                <Activity size={14} className={lineStatuses[currentPhone] ? 'text-blue-500' : 'text-gray-400'} />
+                            {!isVerifyingRow && (
+                                <Activity size={14} className={rowStatus ? 'text-ds-content-link' : 'text-ds-content-muted'} />
                             )}
-                        </button>
-                        {lineStatuses[currentPhone] ? (
-                            <span className={`text-[10px] font-medium ${lineStatuses[currentPhone].success ? 'text-green-600' : 'text-red-600'
-                                }`}>
-                                {lineStatuses[currentPhone].success ? 'Connected' : 'Failed'}
-                            </span>
+                        </IconButton>
+                        {rowStatus ? (
+                            <Badge tone={rowStatus.success ? 'success' : 'danger'}>
+                                {rowStatus.success ? 'Connected' : 'Failed'}
+                            </Badge>
                         ) : isAssigned && !invItem ? (
-                            <span className="text-[10px] text-orange-500 font-medium">Inventory Mismatch</span>
+                            <Badge tone="warning">Inventory Mismatch</Badge>
                         ) : (
-                            <span className="text-[10px] text-gray-400">Untested</span>
+                            <span className="text-ds-xs text-ds-content-muted">Untested</span>
                         )}
                     </div>
                 ) : (
-                    <span className="text-gray-300">-</span>
+                    <span className="text-ds-content-muted" aria-hidden="true">-</span>
                 )}
             </td>
-            <td className="px-6 py-4 text-center">
-                {isAssigned ? (
-                    <div
-                        className={`w-2 h-2 rounded-full mx-auto ${!lineStatuses[currentPhone]
-                            ? (invItem ? 'bg-blue-400' : 'bg-orange-400')
-                            : lineStatuses[currentPhone].success === false ? 'bg-red-500' : 'bg-green-500'
-                            }`}
-                        title={!lineStatuses[currentPhone] ? 'Untested' : lineStatuses[currentPhone].success === false ? 'Connection Error' : 'Active'}
-                    ></div>
-                ) : (
-                    <div className="w-2 h-2 rounded-full bg-gray-200 mx-auto" title="No Assignment"></div>
-                )}
+            <td className="px-ds-6 py-ds-4 text-center">
+                <span aria-hidden="true" className={`mx-auto block h-2 w-2 rounded-full ${dotClassName}`} />
+                <span className="sr-only">{dotText}</span>
             </td>
         </tr>
     );

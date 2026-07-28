@@ -147,13 +147,29 @@ describe('ManageTeamModal', () => {
         expect(opts).toEqual({ merge: true });
     });
 
-    it('alerts when a goal save fails', async () => {
+    it('shows the exact goal-save-failure message inline instead of a blocking alert', async () => {
         fs.setDoc.mockRejectedValueOnce(new Error('offline'));
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         await renderLoaded();
         const contact = screen.getByRole('spinbutton', { name: 'Daily contact goal for Artificial One' });
         fireEvent.blur(contact);
-        await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Error saving goal'));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Error saving goal');
+        expect(window.alert).not.toHaveBeenCalled();
+        expect(contact).toHaveAttribute('aria-invalid', 'true');
+        consoleError.mockRestore();
+    });
+
+    it('clears the goal-save-failure message once a save succeeds', async () => {
+        fs.setDoc.mockRejectedValueOnce(new Error('offline'));
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        await renderLoaded();
+        const contact = screen.getByRole('spinbutton', { name: 'Daily contact goal for Artificial One' });
+        fireEvent.blur(contact);
+        await screen.findByRole('alert');
+
+        fireEvent.blur(contact);
+        await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
         consoleError.mockRestore();
     });
 
@@ -182,17 +198,61 @@ describe('ManageTeamModal', () => {
         expect(fn.showSuccess).toHaveBeenCalledWith('Custom recruiter link copied!');
     });
 
-    it('confirms before removing and does nothing when cancelled', async () => {
-        window.confirm.mockReturnValue(false);
+    it('confirms before removing in an accessible dialog with the exact frozen question, not window.confirm', async () => {
         await renderLoaded();
         fireEvent.click(screen.getByRole('button', { name: 'Remove Artificial One from the team' }));
-        expect(window.confirm).toHaveBeenCalledWith('Are you sure you want to remove Artificial One from the team?');
+
+        expect(window.confirm).not.toHaveBeenCalled();
+        const confirmDialog = screen.getByRole('dialog', { name: 'Remove team member' });
+        expect(confirmDialog).toHaveTextContent(
+            'Are you sure you want to remove Artificial One from the team?',
+        );
+        expect(fn.deleteFn).not.toHaveBeenCalled();
+
+        fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Cancel' }));
+        expect(screen.queryByRole('dialog', { name: 'Remove team member' })).toBeNull();
         expect(fn.deleteFn).not.toHaveBeenCalled();
     });
 
-    it('removes a user with the exact deletePortalUser request and toasts', async () => {
+    it('closes the confirmation dialog on Escape without deleting', async () => {
         await renderLoaded();
         fireEvent.click(screen.getByRole('button', { name: 'Remove Artificial One from the team' }));
+        const confirmDialog = screen.getByRole('dialog', { name: 'Remove team member' });
+
+        fireEvent.keyDown(confirmDialog, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Remove team member' })).toBeNull();
+        expect(fn.deleteFn).not.toHaveBeenCalled();
+    });
+
+    it('nests the confirmation dialog inside the team modal, moving focus in and restoring it on close', async () => {
+        await renderLoaded();
+        const teamDialog = screen.getByRole('dialog', { name: 'Manage Team & Links' });
+        const trigger = screen.getByRole('button', { name: 'Remove Artificial One from the team' });
+        trigger.focus();
+
+        fireEvent.click(trigger);
+        const confirmDialog = screen.getByRole('dialog', { name: 'Remove team member' });
+
+        // Nested: both dialogs are simultaneously present in the DOM.
+        expect(teamDialog).toBeInTheDocument();
+        expect(teamDialog).toContainElement(confirmDialog);
+        // Focus moved into the nested dialog, not left on the trigger behind it.
+        expect(confirmDialog.contains(document.activeElement)).toBe(true);
+
+        fireEvent.keyDown(confirmDialog, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Remove team member' })).toBeNull();
+        // The outer team dialog survives the nested one closing...
+        expect(screen.getByRole('dialog', { name: 'Manage Team & Links' })).toBeInTheDocument();
+        // ...and focus returns to the exact control that opened the nested dialog.
+        expect(trigger).toHaveFocus();
+    });
+
+    it('removes a user with the exact deletePortalUser request and toasts after confirming', async () => {
+        await renderLoaded();
+        fireEvent.click(screen.getByRole('button', { name: 'Remove Artificial One from the team' }));
+        const confirmDialog = screen.getByRole('dialog', { name: 'Remove team member' });
+        fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Remove' }));
+
         await waitFor(() => expect(fn.deleteFn).toHaveBeenCalledWith({ userId: 'u1', companyId: 'company-1' }));
         expect(fn.showSuccess).toHaveBeenCalledWith('Artificial One has been removed from the team.');
     });
@@ -202,6 +262,9 @@ describe('ManageTeamModal', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         await renderLoaded();
         fireEvent.click(screen.getByRole('button', { name: 'Remove Artificial One from the team' }));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Remove team member' }))
+            .getByRole('button', { name: 'Remove' }));
+
         await waitFor(() => expect(fn.showError).toHaveBeenCalledWith('Failed to remove user: claims sync failed'));
         expect(screen.getByRole('button', { name: 'Remove Artificial Two from the team' })).toBeEnabled();
         consoleError.mockRestore();
@@ -212,6 +275,9 @@ describe('ManageTeamModal', () => {
         fn.deleteFn.mockImplementation(() => new Promise((resolve) => { resolveDelete = resolve; }));
         await renderLoaded();
         fireEvent.click(screen.getByRole('button', { name: 'Remove Artificial One from the team' }));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Remove team member' }))
+            .getByRole('button', { name: 'Remove' }));
+
         await waitFor(() => expect(screen.getByRole('button', { name: 'Remove Artificial One from the team' })).toBeDisabled());
         expect(screen.getByRole('button', { name: 'Remove Artificial Two from the team' })).toBeEnabled();
         resolveDelete({ data: {} });

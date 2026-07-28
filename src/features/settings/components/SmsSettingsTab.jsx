@@ -21,7 +21,7 @@ export function SmsSettingsTab({ currentCompanyProfile }) {
     const companyName = currentCompanyProfile?.companyName || currentCompanyProfile?.name;
 
     if (!companyId) {
-        return <div className="p-8 text-center text-gray-400 text-sm">Select a company to configure SMS.</div>;
+        return <div className="p-ds-8 text-center text-ds-sm text-ds-content-muted">Select a company to configure SMS.</div>;
     }
 
     return (

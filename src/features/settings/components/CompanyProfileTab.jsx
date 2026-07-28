@@ -99,10 +99,10 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
 
     return (
         <div className="space-y-6 max-w-6xl animate-in fade-in">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-gray-200 pb-4 gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-ds-border-subtle pb-4 gap-4">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-900">Company Profile</h2>
-                    <p className="text-sm text-gray-500 mt-1">Manage your public presence and application settings.</p>
+                    <h2 className="text-xl font-bold text-ds-content">Company Profile</h2>
+                    <p className="text-sm text-ds-content-muted mt-1">Manage your public presence and application settings.</p>
                 </div>
                 {isCompanyAdmin && !isEditing && (
                     <Button
@@ -137,9 +137,9 @@ export function CompanyProfileTab({ currentCompanyProfile }) {
                 )}
             </div>
 
-            <div className="grid grid-cols-1 sm:flex border-b border-gray-200">
+            <div className="grid grid-cols-1 sm:flex border-b border-ds-border-subtle">
                 {tabs.map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`min-h-11 px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-left sm:whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`min-h-11 px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-left sm:whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-ds-action-primary text-ds-content-link' : 'border-transparent text-ds-content-muted hover:text-ds-content-secondary'}`}>
                         <tab.icon size={16} /> {tab.label}
                     </button>
                 ))}
