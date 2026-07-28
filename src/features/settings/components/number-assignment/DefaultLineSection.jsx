@@ -1,8 +1,25 @@
 import React from 'react';
-import { Check, RefreshCw, ShieldCheck, ShieldAlert, Activity, Wifi, WifiOff } from 'lucide-react';
+import { Check, Wifi, WifiOff, Activity } from 'lucide-react';
+import { Badge, Card, IconButton, Select } from '@/design-system/components';
 import { MISSING_TOKEN, lineDisplay } from '../../utils/linePhone';
 
-/** Company Default Line card — extracted verbatim from NumberAssignmentManager.jsx. */
+/**
+ * Company Default Line card.
+ *
+ * Presentation only — the token/select value derivation, the
+ * `setDefaultNumber`/`setDefaultTokenOverride` wiring, and `handleVerifyLine`
+ * are unchanged from `NumberAssignmentManager.jsx`, where this card was
+ * originally inlined.
+ *
+ * Defects fixed here:
+ *  - the `<select>` had no accessible name (now `aria-label`);
+ *  - the verify button was icon-only with a `title` but no `aria-label`, so its
+ *    accessible name depended on the title-fallback step of the accessible-name
+ *    algorithm rather than an explicit label (now an `IconButton`);
+ *  - the verify result was a plain colored `<div>` with `text-[10px]` (below the
+ *    12 px floor) and no live-region role (now a `role="status"`/`role="alert"`
+ *    `Badge` row at `text-ds-xs`).
+ */
 export function DefaultLineSection({
     lines,
     sanitizedDefault,
@@ -19,20 +36,24 @@ export function DefaultLineSection({
     verifyingLine,
     lineStatuses,
 }) {
+    const status = lineStatuses[defaultNumber];
+    const isVerifying = verifyingLine === defaultNumber;
+
     return (
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex justify-between items-start mb-4">
+        <Card padding="md">
+            <div className="mb-ds-4 flex items-start justify-between">
                 <div>
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                        <Check className="text-green-500" size={18} /> Company Default Line
+                    <h3 className="flex items-center gap-ds-2 font-bold text-ds-content">
+                        <Check className="text-ds-status-success-fg" size={18} aria-hidden="true" /> Company Default Line
                     </h3>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="mt-ds-1 text-ds-xs text-ds-content-muted">
                         Used for automated system messages and unassigned recruiters.
                     </p>
                 </div>
             </div>
-            <div className="flex gap-3 max-w-lg">
-                <select
+            <div className="flex max-w-lg gap-ds-3">
+                <Select
+                    aria-label="Company default line"
                     value={defaultTokenOverride ?? (tokenForPhone(sanitizedDefault) || resolveLineToken(savedDefaultToken) || (sanitizedDefault ? MISSING_TOKEN : ''))}
                     onChange={(e) => {
                         const t = e.target.value;
@@ -41,7 +62,7 @@ export function DefaultLineSection({
                         else if (t !== MISSING_TOKEN) setDefaultNumber(phoneForToken(t));
                         // MISSING_TOKEN: keep the configured-but-unsynced default as-is
                     }}
-                    className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    className="flex-1"
                 >
                     <option value="">-- Select Default Number --</option>
                     {lines.map((l, idx) => (
@@ -55,43 +76,31 @@ export function DefaultLineSection({
                             {sanitizedDefault} (Missing from sync)
                         </option>
                     )}
-                </select>
+                </Select>
                 {defaultNumber && (
-                    <button
+                    <IconButton
+                        label="Verify default line connection"
+                        variant="secondary"
                         onClick={() => handleVerifyLine(defaultNumber)}
-                        disabled={verifyingLine === defaultNumber}
-                        className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        title="Verify Connectivity"
+                        disabled={isVerifying}
+                        loading={isVerifying}
                     >
-                        {verifyingLine === defaultNumber ? (
-                            <RefreshCw size={16} className="animate-spin" />
-                        ) : lineStatuses[defaultNumber]?.success ? (
-                            <Wifi size={16} className="text-green-500" />
-                        ) : lineStatuses[defaultNumber]?.success === false ? (
-                            <WifiOff size={16} className="text-red-500" />
-                        ) : (
-                            <Activity size={16} />
+                        {!isVerifying && (
+                            status?.success ? <Wifi size={16} className="text-ds-status-success-fg" />
+                                : status?.success === false ? <WifiOff size={16} className="text-ds-status-danger-fg" />
+                                    : <Activity size={16} />
                         )}
-                    </button>
+                    </IconButton>
                 )}
             </div>
-            {lineStatuses[defaultNumber] && (
-                <div className={`mt-3 p-2 rounded text-[10px] flex items-center gap-2 ${lineStatuses[defaultNumber].success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                    }`}>
-                    {lineStatuses[defaultNumber].success ? (
-                        <>
-                            <ShieldCheck size={12} />
-                            Verified: {lineStatuses[defaultNumber].identity}
-                        </>
-                    ) : (
-                        <>
-                            <ShieldAlert size={12} />
-                            Error: {lineStatuses[defaultNumber].error}
-                        </>
-                    )}
+            {status && (
+                <div className="mt-ds-3" role={status.success ? 'status' : 'alert'}>
+                    <Badge tone={status.success ? 'success' : 'danger'}>
+                        {status.success ? `Verified: ${status.identity}` : `Error: ${status.error}`}
+                    </Badge>
                 </div>
             )}
-        </div>
+        </Card>
     );
 }
 

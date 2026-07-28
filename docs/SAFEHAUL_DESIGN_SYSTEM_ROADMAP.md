@@ -2027,19 +2027,32 @@ The reverse directions are prohibited.
 
 Status `Not started` means audited but not migrated.
 
-**Progress, counted from the Status column (2026-07-27): 17 of 19 rows complete
-— 89.5%.** The lead-intake campaign closed out **Import leads** and **Quick add
-lead**. The two rows still open are **Company settings** and **Super Admin**.
+**Progress, counted from the Status column (2026-07-28): 18 of 19 rows complete
+— 94.7%.** The Company Settings closeout campaign resolved the stale
+reconciliation flag below and closed out the last two open sub-areas (SMS
+number assignment and Integrations), so the whole **Company settings** row is
+now complete. **Super Admin** is the only row still open.
 
-> **Reconciliation flag, raised 2026-07-27 and deliberately not silently
-> resolved.** The **Company settings** row reads `Not started`, but section 8's
-> narrative records that Company info, branding, Team & Users, Billing, Automated
-> SMS, Email Settings, account security and application questions are all
-> **migrated (GO)**, with only *SMS number assignment* and *Integrations*
-> remaining NO-GO. The row and the narrative disagree. This campaign did not
-> touch Company Settings and has no evidence either way, so the row is left as it
-> stands and the discrepancy is recorded here for whoever owns that area. If the
-> narrative is right, the true figure is higher than 78.9%.
+> **Reconciliation flag from 2026-07-27 — resolved 2026-07-28.** The flag
+> below recorded that the **Company settings** row read `Not started` while
+> section 8's narrative already described Company info, branding, Team &
+> Users, Billing, Automated SMS, Email Settings, account security and
+> application questions as migrated (GO). The Company Settings closeout
+> campaign audited every one of those sections against the current
+> design-system contract (not just the roadmap's claim) and found the
+> narrative was **mostly right, with two real gaps**: `ManageTeamModal`
+> (Team & Users) still used a blocking `window.confirm`/`alert()`, and
+> `CustomQuestionsBuilder` (application questions) still used a blocking
+> `alert()` for its DOT-required delete guard — both are now fixed (see the
+> Company Settings completion log in section 6). `CompanyProfileTab`'s own
+> header/tab-strip and part of `EmailSettingsTab`'s SMTP setup guide also still
+> had hardcoded Tailwind classes alongside their otherwise-migrated markup;
+> both are now tokenized. Everything else the narrative described as GO was
+> re-verified and found genuinely compliant, unchanged. The two areas the
+> narrative and the row agreed were still open — **SMS number assignment** and
+> **Integrations** — are migrated now too. The original flag's suspicion was
+> correct: the true figure was higher than 78.9% throughout, and it is 94.7%
+> as of this closeout.
 
 | Screen / area | Current implementation | Target component or pattern | Priority | Risk | Dependencies | Status | Verification needed |
 |---|---|---|---|---|---|---|---|
@@ -2052,7 +2065,7 @@ lead**. The two rows still open are **Company settings** and **Super Admin**.
 | Import leads | `ImportLeadsPage` (shell, header, access-denied, feature-locked), `CompanyBulkUpload` (assignment mode, team-member selection, repair action) and the shared `BulkUploadLayout` (step meter, upload methods, preview table, progress, success) now consume the shared accessible `Modal`, `Button`/`IconButton`, `ChoiceGroup`/`Radio`/`Checkbox`, `FormField`/`Input`, the approved `DataTable` for the preview, `ProgressBar`, `StatusMedallion`, `FieldMessage` and `PageHeader`/`PageContainer`/`Stack` | Upload pattern, DataTable preview, shared Modal, PageState | Medium | High | Forms, table, dialog, feedback | **Complete (GO)** 2026-07-27 | Verified: 91 focused unit tests (26 `BulkUploadLayout` contract freeze + 31 `BulkUploadLayout` a11y/defect + 20 `CompanyBulkUpload` contract freeze + 16 `CompanyBulkUpload` a11y/defect + 10 `ImportLeadsPage` contract freeze + 5 `ImportLeadsPage` a11y, plus 11 `useBulkImport` + 19 `useCompanyLeadUpload` hook contract freezes), full suite/coverage, lint, typecheck, production build, callable-contract, 25 new Chromium + 19 Mobile Chrome E2E (real Web Worker CSV parse, Google Sheet error path, assignment/recipient selection, data-repair dialog, large-preview row cap and bounded scroll, keyboard walkthrough, axe on every state), regression E2E on the other `BulkUploadLayout`/`useBulkImport` consumers (`AudienceBuilder`, company dashboard shell), 1440/1024/412 px, `git diff --check` |
 | Quick add lead | `QuickAddLeadPage` now consumes `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `Button`, `Card`, `PageHeader`/`PageContainer`/`Stack`/`ResponsiveGrid`. `QuickLeadModal` (a separate dashboard-launched modal with its own phone-or-email rule and `LEAD_DEFAULT_STATUS`) was out of this campaign's scope and remains unmigrated | Form layout, Field controls, Button | Medium | Medium | Controls, forms | **Complete (GO)** 2026-07-27 — `QuickAddLeadPage` only; `QuickLeadModal` open | Verified: 36 focused unit tests (14 contract freeze + 22 a11y/defect), full suite/coverage, lint, typecheck, production build, 12 new Chromium + 2 Mobile Chrome E2E (labelling, app-level validation with focus management, duplicate-submit lock, CDL options, keyboard completion, axe), 1440/1024/412 px, `git diff --check` |
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
-| Company settings | `CompanySettings` tabs and settings components | Tabs, PageHeader, Field family, Table, Dialog, PageState | High | High | Controls, forms, table, dialog, status | Not started | All save/integration/number/team/question tests and mobile |
+| Company settings | `CompanySettings` shell now names the page with a `PageHeader` `<h1>` (suppressed only on the one tab that already supplies its own) and drops a dead, never-invoked local success-toast mechanism. Every tab is migrated: Company info/branding/questions, Team & Users, Billing, Automated SMS, Email Settings and account security were re-verified as already-compliant (two real gaps fixed in place: `ManageTeamModal`'s `window.confirm`/`alert()` and `CustomQuestionsBuilder`'s DOT-delete `alert()`, both replaced with accessible non-blocking equivalents). **SMS number assignment** (`NumberAssignmentManager` + `DefaultLineSection`/`AssignmentTable`/`AssignmentRow`/`SMSDiagnosticModal`) and **Integrations** (`IntegrationsTab`) — the two areas the 2026-07-23 deep-audits left NO-GO — are now migrated (presentation only) | Tabs, PageHeader, Field family, native-table pattern, shared Modal, Field/Button/Card/Badge/StatusMedallion | High | High | Controls, forms, table, dialog, status | **Complete (GO)** 2026-07-28 — full row closeout; see the Company Settings closeout completion log | Verified: 190 focused unit tests across the two newly-migrated areas and the fixed defects (99 contract-freeze incl. the pre-existing frozen 15-case SMS suite + 91 a11y/defect), full suite/coverage (2129 passed, 0 regressions), lint, typecheck, production build, callable-contract, 25 new Chromium + 19 Mobile Chrome E2E on the two new areas, full 12-spec Company Settings regression E2E on Chromium (51 passed, 1 pre-existing unrelated flake in `AutomatedSmsTab` — untouched by this campaign, reproduced in isolation) and Mobile Chrome (38 passed, 0 failed), a real Chromium axe scan catching and fixing a genuine color-contrast regression from an `opacity-70` decorative wrapper, 1440/1024/412 px, `git diff --check` |
 | Super Admin `/super-admin/*` | feature-local view router, tables, forms, modals, analytics | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | Not started | Permissions, maintenance actions, integrations, analytics, desktop/mobile |
 | Public application `/apply/:slug` | `PublicApplyHandler` shell, the shared `Stepper` frame, all nine steps, the custom-questions step, the four status screens, the intake chooser, the post-application `RequiredDocumentsChecklist`, `UploadField`, and the shared `InputField` / `RadioGroup` / `MonthYearField` / `DynamicRow` / `AgreementBox` adapters now consume `Card`, `Button`, `IconButton`, `Badge`, `FormSection`, `FormField`, `Input`, `Textarea`, `Select`, `Checkbox`, `Radio`, `ChoiceGroup`, `FieldDisplay`, `FieldMessage`, `Label`, `StatusMedallion` and the new `ProgressBar` | Feature-owned wizard on approved Progress/Field/Button/Card/status primitives | Critical | Very high | Forms, feedback, layout, compatibility plan | **Migrated (GO)** 2026-07-27 | Verified: 89 new focused unit tests (submission contract, wizard frame, choice/date/upload/agreement controls, checklist, status screens, custom questions, review) + full suite/coverage, lint, typecheck, production build, callable-contract, 6 guest E2E specs serially and at 4× under worker contention, new responsive spec at 1440/1024/412 px, extended real-browser axe across every step and both status screens on Chromium and Mobile Chrome, keyboard walkthrough, `git diff --check`, grep audit |
 | Signing room `/sign/...` | Status screens, room shell, signer field layer and signature capture sheet all consume approved `Card`/`Button`/`StatusMedallion` and `--ds-*` tokens; the PDF canvas, coordinates and zoom stay feature-owned | Approved controls/states around feature-owned document canvas | Medium | Very high | Controls, dialog, feedback; signing QA | **Complete** 2026-07-25 (slices 1–4 + final audit) | Verified: per-slice completion logs in section 6, the 2026-07-25 final audit (zero serious/critical axe in the room, no legacy palette classes, documented `SIGNATURE_INK` and three raw-button exceptions), existing signing unit/E2E, coordinates, zoom/touch/signature, mobile |
@@ -5869,6 +5882,168 @@ scroll (the defect above), a keyboard walkthrough, axe on every major state,
 1440/1024/412 px overflow checks, regression E2E on the other
 `BulkUploadLayout`/`useBulkImport` consumers (`AudienceBuilder`, the company
 dashboard shell — both pass unchanged), and `git diff --check`.
+
+---
+
+### Company Settings closeout completion log (GO) — 2026-07-28
+
+Scope: full reconciliation of the **Company Settings** row. Base `origin/main`
+at `2580d1d` (merged PR #122) with a clean tree.
+
+#### Audit: resolving the 2026-07-27 reconciliation flag
+
+Every tab claimed migrated by section 8's narrative was read in full, not
+just trusted: `CompanyProfileTab` + `profile/`/`questions/` subcomponents,
+`TeamManagementTab` + `ManageTeamModal`, `BillingTab`, `AutomatedSmsTab`,
+`EmailSettingsTab`, `PersonalProfileTab`. `BillingTab`, `AutomatedSmsTab` and
+`PersonalProfileTab` were fully clean — no defect, no hardcoded color, no
+sub-12px text. Three real gaps surfaced in files otherwise already on the
+design system (defects below). The two areas the roadmap itself listed as
+open — `NumberAssignmentManager` (SMS number assignment) and `IntegrationsTab`
+(Integrations) — were unchanged since their respective 2026-07-23 deep-audits
+and matched those audits' findings exactly.
+
+#### Defects found and fixed
+
+1. **`ManageTeamModal.jsx`** used `window.confirm` for the remove-team-member
+   guard and a bare `alert("Error saving goal")` for a failed goal save —
+   both inside a file the roadmap called "full GO." Replaced with a nested
+   accessible confirmation dialog (exact frozen question text preserved) and
+   an inline, per-member `role="alert"` message (exact frozen text
+   preserved). Proven with a real nested-dialog test: both dialogs
+   simultaneously in the DOM, focus moving into the nested one on open and
+   returning to the exact trigger button when it closes via Escape.
+2. **`CustomQuestionsBuilder.jsx`** used a blocking `alert()` for its
+   DOT-required delete guard. Replaced with an inline `role="alert"`
+   message, exact frozen text preserved, cleared on the next successful
+   delete.
+3. **`CompanyProfileTab.jsx`**'s own header and internal tab-strip (not a
+   subcomponent — the file the roadmap itself names) still used raw
+   `border-gray-200`/`text-gray-900`/`text-gray-500`/`border-blue-600` etc.
+   alongside already-tokenized sibling markup. Tokenized in place.
+4. **`EmailSettingsTab.jsx`**'s "How to Set Up SMTP" guide (Gmail/Outlook/
+   SendGrid cards, ~70 lines) never used a single `ds-*` token despite sitting
+   inside an otherwise fully-migrated component. Tokenized in place
+   (Gmail/Outlook mapped to the `info` status tone, SendGrid to `accent` to
+   preserve the three cards' visual distinction).
+5. **`CompanySettings.jsx`** (the shell) had no page-level heading at all for
+   seven of its eight tabs — only the Security Profile tab (via its own
+   `PageHeader`) had one. Added a shell-level `<h1>Company Settings</h1>`,
+   suppressed only on the one tab that already supplies its own, so no page
+   ever carries two competing h1s.
+6. **`CompanySettings.jsx`** also carried a **dead success-toast mechanism**:
+   a local `showSuccess`/`successMsg` handler was passed to four tabs as
+   `onShowSuccess`, but grepping every real tab confirmed none of them ever
+   call it — each already uses the shared `useToast()` directly. The hard-coded
+   green `fixed bottom-8 right-8` toast bar it drove could never render in
+   production. Removed; nothing user-visible changed (proven by the existing
+   and new shell tests, all passing before and after).
+7. **`NumberAssignmentManager`/`DefaultLineSection`/`AssignmentTable`/
+   `AssignmentRow`** — the exact debt the 2026-07-23 SMS deep-audit recorded:
+   unlabelled per-row and default-line `<select>`s, `text-[9px]`/`text-[10px]`
+   status text, and color-only status dots. Fixed: every select now has an
+   `aria-label` naming its recruiter or "Company default line"; every status
+   is now paired with visible/`sr-only` text via `Badge`, never color alone;
+   all text floors at `--ds-font-size-xs`. The editable matrix deliberately
+   stays a native `<table>`, not the approved `DataTable` — that unproven-fit
+   finding from the 2026-07-23 audit is unchanged — but the table now has
+   `scope="col"` headers, a `<caption>`, and sits in a labelled, focusable
+   horizontal-scroll region for mobile overflow. A dead "Refresh Inventory"
+   button with no `onClick` handler at all (a false affordance) was removed.
+8. **`SMSDiagnosticModal`** was a hand-rolled `fixed inset-0` overlay with no
+   dialog semantics and an icon-only close control with no accessible name;
+   its sender `<select>` had a visually-adjacent `<label>` with no
+   `htmlFor`/`id` pairing, so it was never programmatically associated.
+   Migrated to the shared accessible `Modal` with `FormField`-paired controls.
+9. **`IntegrationsTab`** — presentation-only fixes matching the 2026-07-23
+   Integrations deep-audit's recorded debt: the "Connected" state was a
+   10 px color pill; the "SDK Loading..." notice had no live-region role.
+   Both fixed (`Badge`, `role="status"` `FieldMessage`). A **real
+   color-contrast regression was caught by a live Chromium axe scan**: the
+   "More Integrations Coming Soon" placeholder card carried the pre-migration
+   markup's `opacity-70` on the whole card, which dims every descendant color
+   toward the background — including the approved `--ds-color-content-muted`
+   token, which passes WCAG AA on its own (enforced by
+   `design-system/tests/tokens.test.js`) but fails once dimmed to 70%.
+   Removed the opacity; the placeholder look is carried by the dashed border
+   and muted tokens alone, at full opacity.
+10. A second color-contrast finding from the same axe scan was in
+    `LineManager.jsx` (`text-[10px] text-gray-400`, Phone Line Wallet) — this
+    is the explicitly out-of-scope, Super-Admin-owned shared component next to
+    `NumberAssignmentManager` on the same tab. **Not fixed here** — it belongs
+    to whoever owns that shared component — and the new SMS-numbers E2E spec
+    scopes its axe check to `[data-testid="number-assignment-manager"]`
+    specifically so this campaign does not claim credit for, or silently
+    mask, a defect in code it did not touch.
+
+#### Preserved contracts (frozen by the respective 2026-07-23 deep-audits, unchanged)
+
+SMS: the live `sms_provider` Firestore doc shape, `saveSmsLineAssignments`/
+`verifyLineConnection`/`verifySmsConfig`/`sendTestSMS` callable payloads, the
+stable line-token model (`<select>` option values are never raw phone
+numbers), `MISSING_TOKEN` resilience, the roster resolution and one-time
+legacy-token backfill, and the safety-critical 15-case
+`NumberAssignmentManager.test.jsx` suite (cases A–O), which passed unchanged
+before and after. Integrations: the Facebook SDK-load sequence,
+`FB.login` scope string, the Graph API first-page-only auto-select,
+`connectFacebookPage({ shortLivedUserToken, pageId, pageName })`, every
+message, and the connected-state limitation itself (local React state only —
+no persistence, no disconnect/reconnect flow; none was invented, since adding
+one would be new business logic with no backend support, not a presentation
+fix). The **tenant-binding security defect** in `connectFacebookPage`
+(`request.auth.uid` instead of the real company id) recorded by that audit is
+**still unfixed** — this migration is presentation-only and does not touch
+`functions/`, so it does not and cannot make that workflow production-ready;
+it remains a separate, security-reviewed backend project. Team & Users:
+`createPortalUser`/`deletePortalUser` callables, the membership `onSnapshot`
+subscription, the goal `setDoc` write, and the tracking-link construction.
+Application questions: `applicationConfig`/`customQuestions` shape,
+`crypto.randomUUID()` creation, and the DOT-required deletion protection rule
+(only its *delivery* changed, from blocking to inline, with the exact same
+wording). No Firebase, Firestore, Storage, Functions, rule, index, schema,
+route, tab id, permission check, or callable payload changed anywhere in this
+campaign.
+
+#### Verification
+
+99 contract-freeze tests written before any presentation change (7
+`SMSDiagnosticModal`, 11 `IntegrationsTab`, plus the pre-existing frozen
+15-case `NumberAssignmentManager` suite and the pre-existing
+`ManageTeamModal`/`CustomQuestionsBuilder` suites used as the freeze) plus 91
+new a11y/defect-proof tests (14 `NumberAssignmentManager`, 9
+`SMSDiagnosticModal`, 8 `IntegrationsTab`, plus new/updated cases in
+`ManageTeamModal.test.jsx`, `CustomQuestionsBuilder.test.jsx`, and
+`CompanySettings.test.jsx`) — all passing. Full frontend suite/coverage: 2129
+passed, 0 regressions (48 pre-existing emulator-gated rules tests skipped by
+their environment guard). Lint: 0 errors (132 pre-existing warnings, none in a
+changed file). Typecheck: clean. Production build: passed. Callable-contract
+check: passed (56 frontend callables verified; this campaign added no new
+callable reference). Two new E2E specs
+(`company-settings-sms-numbers.spec.cjs`, `company-settings-integrations.spec.cjs`)
+plus the full 12-spec Company Settings E2E regression suite ran serially on
+Chromium (51 passed, 13 skipped, 1 failure — `company-settings-automated-sms.spec.cjs`'s
+"announces an accessible loading status" case, reproduced in isolation on
+this same commit; `AutomatedSmsTab.jsx` and its test were not touched by this
+campaign, and the spec's own code comment already documents this exact
+Firestore-offline-timing race as pre-existing) and Mobile Chrome (38 passed,
+0 failed, 27 skipped). 1440/1024/412 px overflow checks and a real-browser
+axe scan on every new/changed surface (the axe scan is what caught defect 9
+above). `git diff --check` passed.
+
+#### Documented exceptions
+
+- The SMS assignment matrix stays a native `<table>`, not the approved
+  `DataTable` — an explicit, unchanged carry-forward of the 2026-07-23
+  deep-audit's "no safe universal conversion" finding for editable-matrix
+  tables, not a new decision.
+- Integrations is migrated in **presentation only**. It is not, and this
+  campaign does not claim it to be, production-ready: the tenant-binding
+  defect stands and must be fixed by a separate security-reviewed project
+  before this workflow should be relied on.
+- `LineManager.jsx` (Phone Line Wallet, Super-Admin-owned, shared with
+  Super Admin's own integrations screen) is untouched and has its own
+  pre-existing color-contrast defect (`text-[10px] text-gray-400`), recorded
+  here for whoever owns that component, not fixed in this campaign.
 
 ---
 

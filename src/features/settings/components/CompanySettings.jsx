@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
 import {
-    Building, User, CreditCard, CheckCircle,
+    Building, User, CreditCard,
     Blocks, ArrowLeft, Users, Mail, MessageSquare, Send
 } from 'lucide-react';
 
@@ -17,11 +17,11 @@ import { IntegrationsTab } from './IntegrationsTab';
 import { BillingTab } from './BillingTab';
 import { ManageTeamModal } from '@shared/components/modals';
 import { Button, SectionNavigation } from '@/design-system/components';
+import { PageHeader } from '@/design-system/layouts';
 
 export function CompanySettings() {
     const { currentCompanyProfile, currentUser, currentUserClaims } = useData();
     const [activeTab, setActiveTab] = useState('company');
-    const [successMsg, setSuccessMsg] = useState('');
     const [showManageTeam, setShowManageTeam] = useState(false);
     const navigate = useNavigate();
 
@@ -69,18 +69,12 @@ export function CompanySettings() {
         return <Navigate to="/company/dashboard" replace />;
     }
 
-    const showSuccess = (msg) => {
-        setSuccessMsg(msg);
-        setTimeout(() => setSuccessMsg(''), 3000);
-    };
-
     const renderContent = () => {
         switch (activeTab) {
             case 'company':
                 return (
                     <CompanyProfileTab
                         currentCompanyProfile={currentCompanyProfile}
-                        onShowSuccess={showSuccess}
                     />
                 );
             case 'team':
@@ -88,7 +82,6 @@ export function CompanySettings() {
                     <TeamManagementTab
                         currentCompanyProfile={currentCompanyProfile}
                         isCompanyAdmin={isCompanyAdmin}
-                        onShowSuccess={showSuccess}
                         onShowManageTeam={() => setShowManageTeam(true)}
                     />
                 );
@@ -97,14 +90,12 @@ export function CompanySettings() {
                     <PersonalProfileTab
                         currentUser={currentUser}
                         currentCompanyProfile={currentCompanyProfile}
-                        onShowSuccess={showSuccess}
                     />
                 );
             case 'email':
                 return (
                     <EmailSettingsTab
                         currentCompanyProfile={currentCompanyProfile}
-                        onShowSuccess={showSuccess}
                     />
                 );
             case 'sms':
@@ -120,7 +111,7 @@ export function CompanySettings() {
             case 'billing':
                 return <BillingTab currentCompanyProfile={currentCompanyProfile} />;
             default:
-                return <div className="p-10 text-center text-gray-500">Select a tab to view settings.</div>;
+                return <div className="p-ds-10 text-center text-ds-content-muted">Select a tab to view settings.</div>;
         }
     };
 
@@ -142,6 +133,17 @@ export function CompanySettings() {
                 </Button>
             </div>
             <div className="max-w-7xl mx-auto px-ds-4 sm:px-ds-6 lg:px-ds-8 pb-20">
+                {/*
+                  Every other tab renders no top-level heading at all (several
+                  use a bare `<h2>`, several use none), so a screen-reader user
+                  landing on them heard an unnamed page. The Personal Profile
+                  tab is the one exception — it already renders its own `<h1>`
+                  via `PageHeader` — so this shell heading is suppressed there
+                  rather than duplicating it.
+                */}
+                {activeTab !== 'personal' && (
+                    <PageHeader title="Company Settings" className="mb-ds-6" />
+                )}
                 <div className="flex min-w-0 flex-col xl:flex-row gap-ds-8">
                     <aside className="w-full min-w-0 xl:w-64 flex-shrink-0">
                         <SectionNavigation
@@ -160,11 +162,6 @@ export function CompanySettings() {
                         className="flex-1 min-w-0 min-h-[600px] relative"
                         aria-label="Company settings content"
                     >
-                        {successMsg && (
-                            <div className="fixed bottom-8 right-8 bg-green-600 text-white px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
-                                <CheckCircle size={20} /> {successMsg}
-                            </div>
-                        )}
                         {renderContent()}
                     </section>
                 </div>

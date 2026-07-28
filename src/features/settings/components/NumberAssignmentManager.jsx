@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Phone, AlertCircle, Save, RefreshCw, Beaker } from 'lucide-react';
+import { Phone, AlertCircle, Save, Beaker } from 'lucide-react';
+import { Badge, Button, Card, StatusMedallion } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
 import { SMSDiagnosticModal } from './SMSDiagnosticModal';
 import { useLineAssignments } from '../hooks/useLineAssignments';
 import { sanitizePhone, buildLineModel } from '../utils/linePhone';
@@ -11,6 +13,23 @@ import { AssignmentTable } from './number-assignment/AssignmentTable';
  * =======================
  * Company-admin screen that maps SMS lines to recruiters and picks the
  * company default line.
+ *
+ * Migrated to the design system 2026-07-27, closing the debt recorded by the
+ * 2026-07-23 deep-audit ("Company Settings SMS / number-assignment deep-audit
+ * log (NO-GO)"): unlabelled per-row and default-line selects, `text-[9px]`/
+ * `text-[10px]` status text, and color-only status dots. Presentation only —
+ * every Firestore/callable contract that audit froze is unchanged:
+ * `saveSmsLineAssignments`/`verifyLineConnection` payloads, the stable
+ * line-token model (never raw phone values as `<select>` option values), the
+ * `sms_provider` doc shape, the roster resolution, and the one-time legacy
+ * token backfill. `useLineAssignments.js` and `utils/linePhone.js` are
+ * untouched.
+ *
+ * `DataTable` is deliberately NOT used for the assignment matrix: every cell
+ * is an editable per-row `<select>` plus a verify action, which is outside
+ * `DataTable`'s proven display-table contract. That finding is unchanged from
+ * the deep-audit; only the raw, unlabelled, sub-12px markup around it is
+ * fixed. See `AssignmentTable.jsx` for what was fixed there instead.
  *
  * Split for readability (behavior unchanged):
  *  - ../hooks/useLineAssignments.js            — data/logic (listener, roster, backfill, verify, save)
@@ -43,15 +62,25 @@ export function NumberAssignmentManager({ companyId }) {
 
     const [showTestModal, setShowTestModal] = useState(false);
 
-    if (loading) return <div className="p-8 text-center text-gray-400 text-sm">Loading inventory...</div>;
+    if (loading) {
+        return (
+            <p role="status" data-testid="number-assignment-manager" className="p-ds-8 text-center text-ds-sm text-ds-content-muted">
+                Loading inventory...
+            </p>
+        );
+    }
 
     if (!configDoc || !configDoc.isActive) {
         return (
-            <div className="bg-orange-50 p-6 rounded-xl border border-orange-100 text-center">
-                <AlertCircle className="mx-auto text-orange-400 mb-2" />
-                <h3 className="text-orange-800 font-bold">SMS Integration Not Active</h3>
-                <p className="text-orange-600 text-sm mt-1">Please contact a Super Admin to enable SMS for your company.</p>
-            </div>
+            <Card
+                data-testid="number-assignment-manager"
+                padding="lg"
+                className="border-ds-status-warning-border bg-ds-status-warning-bg text-center"
+            >
+                <StatusMedallion tone="warning" className="mx-auto mb-ds-2"><AlertCircle /></StatusMedallion>
+                <h3 className="font-bold text-ds-status-warning-fg">SMS Integration Not Active</h3>
+                <p className="mt-ds-1 text-ds-sm text-ds-status-warning-fg">Please contact a Super Admin to enable SMS for your company.</p>
+            </Card>
         );
     }
 
@@ -69,50 +98,40 @@ export function NumberAssignmentManager({ companyId }) {
 
     if (inventory.length === 0) {
         return (
-            <div className="bg-gray-50 p-8 rounded-xl border border-gray-200 text-center">
-                <Phone className="mx-auto text-gray-400 mb-3" size={32} />
-                <h3 className="text-gray-900 font-bold">No Numbers Found</h3>
-                <p className="text-gray-500 text-sm mt-1">We couldn't find any phone numbers connected to your provider account.</p>
-                <button className="mt-4 text-blue-600 hover:underline text-sm font-medium flex items-center justify-center gap-2 mx-auto">
-                    <RefreshCw size={14} /> Refresh Inventory
-                </button>
-            </div>
+            <Card data-testid="number-assignment-manager" padding="lg" className="text-center">
+                <Phone className="mx-auto mb-ds-3 text-ds-content-muted" size={32} />
+                <h3 className="font-bold text-ds-content">No Numbers Found</h3>
+                <p className="mt-ds-1 text-ds-sm text-ds-content-muted">We couldn't find any phone numbers connected to your provider account.</p>
+            </Card>
         );
     }
 
     return (
-        <div className="space-y-6 max-w-5xl animate-in fade-in">
-            <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+        <Stack gap="lg" data-testid="number-assignment-manager">
+            <div className="flex items-center justify-between border-b border-ds-border-subtle pb-ds-4">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <Phone className="text-blue-600" size={24} /> Number Assignments
+                    <h2 className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                        <Phone className="text-ds-content-link" size={24} aria-hidden="true" /> Number Assignments
                     </h2>
-                    <p className="text-sm text-gray-500 mt-1">inventory: {inventory.length} numbers available</p>
+                    <p className="mt-ds-1 text-ds-sm text-ds-content-muted">inventory: {inventory.length} numbers available</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-ds-3">
                     {hasChanges && (
-                        <span className="flex items-center gap-1.5 text-[10px] font-bold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full border border-orange-200 animate-pulse">
-                            <AlertCircle size={12} /> UNSAVED CHANGES
-                        </span>
+                        <Badge tone="warning" icon={AlertCircle}>Unsaved changes</Badge>
                     )}
-                    {/* Diagnostic Test Button */}
-                    <button
-                        onClick={() => setShowTestModal(true)}
-                        className="px-3 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center gap-2 text-sm font-medium transition-colors"
-                    >
-                        <Beaker size={16} />
+                    <Button variant="secondary" onClick={() => setShowTestModal(true)}>
+                        <Beaker size={16} aria-hidden="true" />
                         Diagnostic Lab
-                    </button>
-                    {/* Save Button */}
-                    <button
+                    </Button>
+                    <Button
+                        variant="primary"
                         onClick={handleSave}
                         disabled={saving}
-                        className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 ${hasChanges ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-200' : 'bg-blue-600 hover:bg-blue-700 text-white'
-                            }`}
+                        loading={saving}
                     >
-                        {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
+                        {!saving && <Save size={18} aria-hidden="true" />}
                         {hasChanges ? 'Save Changes Now' : 'Save Changes'}
-                    </button>
+                    </Button>
                 </div>
             </div>
 
@@ -160,6 +179,6 @@ export function NumberAssignmentManager({ companyId }) {
                     onClose={() => setShowTestModal(false)}
                 />
             )}
-        </div>
+        </Stack>
     );
 }

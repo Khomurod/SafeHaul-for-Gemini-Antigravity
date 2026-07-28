@@ -1,13 +1,24 @@
 import React, { useState } from 'react';
-import { X, Send, Loader2, Smartphone, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Send, CheckCircle, AlertTriangle } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { Button, FieldMessage, FormField, Input, Select } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
+import { Modal } from '@shared/components/modals/Modal';
 
 /**
  * SMS Diagnostic Lab Modal
  * Allows admins to test specific phone lines from their inventory
  * by selecting a source number and sending to a destination.
+ *
+ * Migrated to the design system 2026-07-27. The previous overlay was a bare
+ * `fixed inset-0` div with no dialog semantics (no focus move/trap/restore,
+ * no Escape) and its close control was icon-only with no accessible name;
+ * both now come from the shared accessible `Modal`. The sender `<select>`
+ * had a visually adjacent `<label>` with no `htmlFor`/`id` pairing, so it was
+ * never programmatically associated — now a `FormField`. Every
+ * `verifySmsConfig`/`sendTestSMS` payload, guard, and message is unchanged.
  */
 export function SMSDiagnosticModal({ companyId, inventory, onClose }) {
     const { showSuccess, showError } = useToast();
@@ -62,31 +73,27 @@ export function SMSDiagnosticModal({ companyId, inventory, onClose }) {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-in fade-in">
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
-                {/* Header */}
-                <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                        <Smartphone size={18} className="text-blue-600" />
-                        SMS Diagnostic Lab
-                    </h3>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
+        <Modal
+            onClose={onClose}
+            labelledBy="sms-diagnostic-title"
+            className="w-full max-w-md overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            <header className="flex items-center justify-between border-b border-ds-border-subtle bg-ds-surface-subtle px-ds-6 py-ds-4">
+                <h2 id="sms-diagnostic-title" className="flex items-center gap-ds-2 font-bold text-ds-content">
+                    SMS Diagnostic Lab
+                </h2>
+                <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
+                    Close
+                </Button>
+            </header>
 
-                {/* Body */}
-                <form onSubmit={handleSendTest} className="p-6 space-y-5">
-                    {/* Sender Selection */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
-                            Send From (Source)
-                        </label>
-                        <select
-                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+            <form onSubmit={handleSendTest} className="p-ds-6">
+                <Stack gap="lg">
+                    <FormField
+                        label="Send From (Source)"
+                        description="Choose a specific number to verify individual line functionality."
+                    >
+                        <Select
                             value={selectedSender}
                             onChange={(e) => setSelectedSender(e.target.value)}
                         >
@@ -98,56 +105,54 @@ export function SMSDiagnosticModal({ companyId, inventory, onClose }) {
                                     </option>
                                 ))}
                             </optgroup>
-                        </select>
-                        <p className="text-[10px] text-gray-400 mt-1">
-                            Choose specific number to verify individual line functionality.
-                        </p>
-                    </div>
+                        </Select>
+                    </FormField>
 
-                    {/* Destination Input */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
-                            Send To (Destination)
-                        </label>
-                        <input
+                    <FormField label="Send To (Destination)">
+                        <Input
                             type="tel"
                             placeholder="+1 (555) 000-0000"
-                            className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                             value={destination}
                             onChange={(e) => setDestination(e.target.value)}
                         />
-                    </div>
+                    </FormField>
 
-                    {/* Actions */}
-                    <div className="pt-2 space-y-3">
-                        <button
+                    <Stack gap="sm">
+                        <Button
                             type="button"
+                            variant="secondary"
+                            fullWidth
                             onClick={handleVerifyConfig}
                             disabled={verifying}
-                            className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-70"
+                            loading={verifying}
                         >
-                            {verifying ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                            {!verifying && <CheckCircle size={18} aria-hidden="true" />}
                             {verifying ? 'Verifying...' : 'Verify Configuration'}
-                        </button>
+                        </Button>
 
                         {verificationResult && (
-                            <div className={`p-3 rounded-lg text-xs flex items-start gap-2 ${verificationResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-                                {verificationResult.success ? <CheckCircle className="w-4 h-4 mt-0.5" /> : <AlertTriangle className="w-4 h-4 mt-0.5" />}
-                                <span className="flex-1">{verificationResult.message}</span>
-                            </div>
+                            <FieldMessage
+                                tone={verificationResult.success ? 'success' : 'error'}
+                                role={verificationResult.success ? 'status' : 'alert'}
+                            >
+                                {verificationResult.success ? <CheckCircle size={14} aria-hidden="true" /> : <AlertTriangle size={14} aria-hidden="true" />}
+                                {' '}{verificationResult.message}
+                            </FieldMessage>
                         )}
 
-                        <button
+                        <Button
                             type="submit"
+                            variant="primary"
+                            fullWidth
                             disabled={sending}
-                            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-70"
+                            loading={sending}
                         >
-                            {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                            {!sending && <Send size={18} aria-hidden="true" />}
                             {sending ? 'Sending Test...' : 'Send Test Message'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                        </Button>
+                    </Stack>
+                </Stack>
+            </form>
+        </Modal>
     );
 }

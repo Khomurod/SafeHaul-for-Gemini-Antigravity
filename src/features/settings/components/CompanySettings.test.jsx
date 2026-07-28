@@ -93,6 +93,17 @@ describe('CompanySettings shell compatibility slice', () => {
             .toBeInTheDocument();
     });
 
+    it('names the page with a level-1 "Company Settings" heading, suppressed only where a tab supplies its own', () => {
+        renderSettings();
+        expect(screen.getByRole('heading', { level: 1, name: 'Company Settings' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Security Profile' }));
+        // Personal Profile already renders its own `<h1>` (mocked here as
+        // "Personal Profile Content"); the shell's own heading must not also
+        // render, or the page would carry two competing h1s.
+        expect(screen.queryByRole('heading', { level: 1, name: 'Company Settings' })).toBeNull();
+    });
+
     it('supports directional focus navigation across visible settings sections', () => {
         renderSettings();
 

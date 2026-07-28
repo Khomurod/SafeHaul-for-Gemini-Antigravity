@@ -71,7 +71,7 @@ describe('CustomQuestionsBuilder', () => {
         expect(screen.getByText('Night driving?')).toBeInTheDocument();
     });
 
-    it('blocks deletion of a DOT-required question with the exact alert', () => {
+    it('blocks deletion of a DOT-required question with the exact message, shown inline rather than a blocking alert', () => {
         const alertMock = vi.fn();
         vi.stubGlobal('alert', alertMock);
         const onChangeSpy = vi.fn();
@@ -83,10 +83,27 @@ describe('CustomQuestionsBuilder', () => {
         );
         fireEvent.click(screen.getByRole('button', { name: 'Delete question 1' }));
 
-        expect(alertMock).toHaveBeenCalledWith(
+        expect(alertMock).not.toHaveBeenCalled();
+        expect(screen.getByRole('alert')).toHaveTextContent(
             'Cannot delete DOT-required field. This question is mandated by FMCSA regulations.',
         );
         expect(onChangeSpy).not.toHaveBeenCalled();
+    });
+
+    it('clears the blocked-delete message once a deletable question is removed', () => {
+        render(
+            <Harness
+                initial={[
+                    { ...INITIAL_QUESTION_STATE, id: 'dot', label: 'SSN', dotRequired: true },
+                    { ...INITIAL_QUESTION_STATE, id: 'b', label: 'Removable' },
+                ]}
+            />,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Delete question 1' }));
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Delete question 2' }));
+        expect(screen.queryByRole('alert')).toBeNull();
     });
 
     it('deletes a non-DOT question', () => {

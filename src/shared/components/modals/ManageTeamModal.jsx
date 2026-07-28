@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useId, useState, useEffect } from 'react';
 import { Users, Link as LinkIcon, Phone, Trash2, X } from 'lucide-react';
 import { db, functions } from '@lib/firebase';
 import { collection, query, where, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { useToast } from '@shared/components/feedback';
-import { Button, IconButton } from '@/design-system/components';
+import { Button, FieldMessage, IconButton } from '@/design-system/components';
 import { Modal } from './Modal';
 
 export function ManageTeamModal({ companyId, onClose }) {
@@ -12,6 +12,17 @@ export function ManageTeamModal({ companyId, onClose }) {
     const [loading, setLoading] = useState(true);
     const [companySlug, setCompanySlug] = useState('');
     const [deleteLoading, setDeleteLoading] = useState(null);
+    /**
+     * `{ userId, userName } | null` — replaces `window.confirm` with an
+     * accessible confirmation dialog, keeping the exact frozen question text.
+     */
+    const [pendingDelete, setPendingDelete] = useState(null);
+    /**
+     * `{ [userId]: string } | {}` — replaces `alert("Error saving goal")` with
+     * an inline, per-member message, keeping the exact frozen text.
+     */
+    const [goalErrors, setGoalErrors] = useState({});
+    const confirmTitleId = useId().replace(/:/g, '');
 
     const { showSuccess, showError } = useToast();
 
@@ -88,16 +99,25 @@ export function ManageTeamModal({ companyId, onClose }) {
                 [field]: Number(value),
                 updatedAt: new Date()
             }, { merge: true });
+            setGoalErrors((prev) => {
+                if (!(userId in prev)) return prev;
+                const next = { ...prev };
+                delete next[userId];
+                return next;
+            });
         } catch (err) {
             console.error(err);
-            alert("Error saving goal");
+            setGoalErrors((prev) => ({ ...prev, [userId]: "Error saving goal" }));
         }
     };
 
-    const handleDeleteUser = async (userId, userName) => {
-        if (!window.confirm(`Are you sure you want to remove ${userName || 'this user'} from the team?`)) {
-            return;
-        }
+    const handleDeleteUser = (userId, userName) => {
+        setPendingDelete({ userId, userName });
+    };
+
+    const confirmDeleteUser = async () => {
+        const { userId, userName } = pendingDelete;
+        setPendingDelete(null);
 
         setDeleteLoading(userId);
         try {
@@ -142,10 +162,12 @@ export function ManageTeamModal({ companyId, onClose }) {
                     <ul className="space-y-3">
                         {team.map(member => {
                             const memberName = member.name || 'Unknown';
+                            const goalErrorId = `manage-team-goal-error-${member.id}`;
+                            const goalError = goalErrors[member.id];
                             return (
                                 <li
                                     key={member.id}
-                                    className="flex flex-col items-center justify-between gap-ds-4 rounded-ds-lg border border-ds-border bg-ds-surface p-ds-4 shadow-ds-xs lg:flex-row"
+                                    className="flex flex-col items-center justify-between gap-ds-4 rounded-ds-lg border border-ds-border bg-ds-surface p-ds-4 shadow-ds-xs lg:flex-row lg:flex-wrap"
                                 >
                                     <div className="flex w-full min-w-0 items-center gap-ds-3 lg:w-1/3">
                                         <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ds-surface-subtle font-bold text-ds-content-secondary">
@@ -165,6 +187,8 @@ export function ManageTeamModal({ companyId, onClose }) {
                                                 <input
                                                     type="number"
                                                     aria-label={`Daily dial goal for ${memberName}`}
+                                                    aria-describedby={goalError ? goalErrorId : undefined}
+                                                    aria-invalid={goalError ? true : undefined}
                                                     className="w-14 rounded-ds-sm bg-transparent text-center text-ds-sm font-bold text-ds-content outline-none focus-visible:shadow-ds-focus"
                                                     defaultValue={member.callGoal}
                                                     onBlur={(e) => handleSaveGoal(member.id, 'callGoal', e.target.value)}
@@ -179,6 +203,8 @@ export function ManageTeamModal({ companyId, onClose }) {
                                                 <input
                                                     type="number"
                                                     aria-label={`Daily contact goal for ${memberName}`}
+                                                    aria-describedby={goalError ? goalErrorId : undefined}
+                                                    aria-invalid={goalError ? true : undefined}
                                                     className="w-14 rounded-ds-sm bg-transparent text-center text-ds-sm font-bold text-ds-content outline-none focus-visible:shadow-ds-focus"
                                                     defaultValue={member.contactGoal}
                                                     onBlur={(e) => handleSaveGoal(member.id, 'contactGoal', e.target.value)}
@@ -205,12 +231,41 @@ export function ManageTeamModal({ companyId, onClose }) {
                                             <Trash2 size={14} aria-hidden="true" />
                                         </IconButton>
                                     </div>
+
+                                    {goalError && (
+                                        <FieldMessage id={goalErrorId} tone="error" className="w-full">
+                                            {goalError}
+                                        </FieldMessage>
+                                    )}
                                 </li>
                             );
                         })}
                     </ul>
                 )}
             </div>
+
+            {pendingDelete && (
+                <Modal
+                    onClose={() => setPendingDelete(null)}
+                    labelledBy={confirmTitleId}
+                    className="w-full max-w-sm rounded-ds-xl border border-ds-border bg-ds-surface p-ds-6 shadow-ds-lg"
+                >
+                    <h3 id={confirmTitleId} className="mb-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                        Remove team member
+                    </h3>
+                    <p className="mb-ds-6 text-ds-content-secondary">
+                        Are you sure you want to remove {pendingDelete.userName || 'this user'} from the team?
+                    </p>
+                    <div className="flex justify-end gap-ds-3">
+                        <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+                            Cancel
+                        </Button>
+                        <Button variant="danger" onClick={confirmDeleteUser}>
+                            Remove
+                        </Button>
+                    </div>
+                </Modal>
+            )}
         </Modal>
     );
 }

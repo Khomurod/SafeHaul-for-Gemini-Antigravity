@@ -1,11 +1,17 @@
 import React, { useState, useRef } from 'react';
 import { Plus, Eye, EyeOff, Save, Shield } from 'lucide-react';
-import { Button, Card, Badge } from '@/design-system/components';
+import { Button, Card, Badge, FieldMessage } from '@/design-system/components';
 import { QuestionEditor } from './QuestionEditor';
 import { INITIAL_QUESTION_STATE } from './QuestionConfig';
 
 export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loading }) {
     const [previewMode, setPreviewMode] = useState(false);
+    /**
+     * Replaces a blocking `alert()` with an inline, non-blocking message,
+     * keeping the exact frozen wording. Cleared on the next delete attempt so
+     * a stale message can't be mistaken for a fresh one.
+     */
+    const [blockedDeleteMessage, setBlockedDeleteMessage] = useState('');
     const dragItem = useRef(null);
     const dragOverItem = useRef(null);
 
@@ -27,9 +33,10 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
         const question = questions[index];
         // Prevent deletion of DOT-required fields
         if (question?.dotRequired) {
-            alert('Cannot delete DOT-required field. This question is mandated by FMCSA regulations.');
+            setBlockedDeleteMessage('Cannot delete DOT-required field. This question is mandated by FMCSA regulations.');
             return;
         }
+        setBlockedDeleteMessage('');
         const newQuestions = questions.filter((_, i) => i !== index);
         onChange(newQuestions);
     };
@@ -147,6 +154,10 @@ export function CustomQuestionsBuilder({ questions = [], onChange, onSave, loadi
                     </Button>
                 </div>
             </Card>
+
+            {blockedDeleteMessage && (
+                <FieldMessage tone="error">{blockedDeleteMessage}</FieldMessage>
+            )}
 
             <div className="min-h-[200px] space-y-ds-4">
                 {questions.length === 0 && (
