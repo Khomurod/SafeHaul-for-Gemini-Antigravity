@@ -1,6 +1,6 @@
 // src/features/super-admin/hooks/useSuperAdminData.js
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db, functions } from '@lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -47,6 +47,16 @@ export function useSuperAdminData() {
 
     const [hasMoreCompanies, setHasMoreCompanies] = useState(true);
     const [hasMoreApps, setHasMoreApps] = useState(true);
+
+    // Database "Load More" concurrency guard. Two fast clicks on the visible
+    // control would otherwise both read the same (stale) cursor state, fetch the
+    // same batch and append it twice — duplicate records and duplicate React
+    // keys. The ref is the real guard: it flips synchronously, before any await,
+    // so a second invocation in the same tick is rejected at the handler level
+    // rather than only being hidden visually. `loadingMore` is the observable
+    // mirror that lets each view disable its button and show an accurate state.
+    const loadMoreInFlight = useRef({ companies: false, applications: false });
+    const [loadingMore, setLoadingMore] = useState({ companies: false, applications: false });
 
     // Preserved Error State
     const [statsError, setStatsError] = useState({
@@ -244,10 +254,16 @@ export function useSuperAdminData() {
 
     // --- 2. LOAD MORE (Pagination Logic) ---
     const loadMore = useCallback(async (type) => {
+        if (type !== 'companies' && type !== 'applications') return;
+        // Reject a duplicate concurrent invocation before touching any cursor.
+        if (loadMoreInFlight.current[type]) return;
         if (type === 'companies' && (!lastCompanyDoc || !hasMoreCompanies)) return;
         if (type === 'applications' && (!lastAppDoc && !lastLeadDoc && !hasMoreApps)) return;
 
         console.log(`📡 Loading more ${type}...`);
+
+        loadMoreInFlight.current[type] = true;
+        setLoadingMore(prev => ({ ...prev, [type]: true }));
 
         try {
             if (type === 'companies') {
@@ -339,6 +355,10 @@ export function useSuperAdminData() {
         } catch (err) {
             console.error(`Error loading more ${type}:`, err);
             showError(`Failed to load more ${type}.`);
+        } finally {
+            // Always release the guard so a retry is allowed after a failure.
+            loadMoreInFlight.current[type] = false;
+            setLoadingMore(prev => ({ ...prev, [type]: false }));
         }
     }, [lastCompanyDoc, lastAppDoc, lastLeadDoc, hasMoreCompanies, hasMoreApps, showError]);
 
@@ -433,6 +453,7 @@ export function useSuperAdminData() {
         setSearchQuery,
         // Pagination
         loadMore,
+        loadingMore,
         hasMoreCompanies,
         hasMoreApps,
         // UI expects this structure for rendering tables

@@ -6408,6 +6408,75 @@ and `{ companyId, dryRun }` / `{ dryRun }` payloads; the
   feature-owned and importing it across features would break layering. **Gap
   recorded**: promoting a `Switch` to the design system remains open.
 
+### Super Admin review-defect closeout + integration contract freeze — 2026-07-28
+
+**Row status unchanged: `In progress`, still 18 of 19 (94.7%).** This slice
+fixes the two review defects merged with PR #127 and freezes the SMS-integration
+security contracts ahead of that migration. It does **not** migrate any of the
+four remaining views, so the figure does not move. Base: `origin/main` at
+`1b90976`. Branch: `claude/super-admin-final-views` (uncommitted).
+
+#### Review defects fixed
+
+1. **Unified Driver DB "Load More" allowed overlapping concurrent loads.** The
+   visible button called `loadMore(type)` with no in-flight guard, so two fast
+   activations both read the same (stale) Firestore cursors, fetched the same
+   batch and appended it twice — duplicate records and duplicate React keys. The
+   guard now lives in `useSuperAdminData.loadMore`: a `useRef` flag keyed by type
+   flips synchronously before any `await`, rejecting a duplicate concurrent
+   invocation at the handler level (not just visually); a `loadingMore` state is
+   threaded through `ViewRouter` to both `UnifiedDriverList` and `CompaniesView`
+   so the button disables and shows a loading state; `finally` releases the guard
+   so a retry after failure works. Pagination semantics, cursors, mapping,
+   ordering, append behaviour and `loadMore('applications')` / `loadMore('companies')`
+   are all unchanged. `CompaniesView` shared the same risk through the same shared
+   handler and is fixed by the same guard. Regression-guarded at the hook level
+   (rapid double-activation fetches once, no duplicate ids appended, per-type
+   guard lets companies and applications load concurrently, retry works) plus
+   component-level disabled-state proofs in both views.
+2. **Analytics accessible peak reported the visual scaling floor, not the data.**
+   The trend chart floors its visual scale at 5 (`Math.max(dataPeak, 5)`) so a
+   quiet period is not stretched to full height, but its `role="img"` summary
+   announced that floored maximum as the real activity peak (e.g. a true peak of
+   2 announced as "peaking at 5"). The real data peak is now computed separately
+   for the accessible text; the floored maximum still governs only the SVG
+   geometry. Tested across all-zero data, real peak below/at/above the floor, and
+   that the polyline coordinates still use the floored maximum while the summary
+   always reports the true peak.
+
+#### Integration contract freeze (Phase 2 first step — presentation NOT yet migrated)
+
+`IntegrationManager.contract.test.jsx` (new, 11 tests) locks the
+security-sensitive SMS contracts before any presentation change: the
+`companies/{id}/integrations/sms_provider` read path; initial `ringcentral` /
+`isSandbox: true`; **encrypted credentials never loaded into form fields** and
+never rendered into the DOM; `hasExistingCredentials` detection via the `:`
+separator; the `__PRESERVE__` sentinel for blank-but-existing credentials and
+typed-value override; RingCentral / 8x8 required-credential validation; phone
+sanitisation and string coercion of every config value; `saveIntegrationConfig({
+companyId, provider, config })` and `sendTestSMS({ companyId, testPhoneNumber })`
+payloads; and the exact save/verify/test toast wording. The component's
+presentation is **still legacy (0 design-system imports)** — the migration of
+`IntegrationManager`, `LineManager`, `AddLineModal`, `GlobalQuestionsManager`,
+`SystemHealthView` and `CreateView` remains open.
+
+#### Contracts preserved (frozen by test)
+
+`useSuperAdminData` public interface unchanged except the additive `loadingMore`
+return. All contracts listed in the previous log entry remain frozen; the SMS
+contracts above are newly frozen.
+
+#### Verification (this slice)
+
+- `npx vitest run src/features/super-admin/` — **189 passed, 0 failed** across 12
+  files (60 in the four Phase-1-touched files; 11 new integration contract tests).
+- `npx eslint` on all changed files — **0 errors** (only pre-existing warnings).
+- `tsc -p jsconfig.json --noEmit` — no errors in any changed file.
+- `git diff --check` — clean.
+- **Not run this slice** (honest gaps): Chromium / Mobile Chrome E2E, real-browser
+  axe, full-repo coverage, production build. These are required before the row can
+  move and were not part of this defect-and-freeze slice.
+
 ---
 
 ## 7. Decisions and blockers

@@ -118,6 +118,7 @@ export function UnifiedDriverList({
     onAppClick,
     onDataUpdate,
     loadMore,
+    isLoadingMore = false,
     hasMore,
     isLoading = false
 }) {
@@ -559,11 +560,20 @@ export function UnifiedDriverList({
 
                 {/* Database pagination. `loadMore`/`hasMore` were passed by
                     ViewRouter and ignored, so older records were unreachable.
-                    Same control the sibling CompaniesView already uses. */}
+                    Same control the sibling CompaniesView already uses. The
+                    button reflects `isLoadingMore` so it is disabled and shows a
+                    loading state while a fetch is in flight; the real guard
+                    against a double-fetch (and the duplicate records/keys it
+                    caused) lives in `useSuperAdminData.loadMore`, not just
+                    here in the visual state. */}
                 {hasMore && (
                     <div className="shrink-0 border-t border-ds-border-subtle bg-ds-surface p-ds-4 text-center">
-                        <Button variant="secondary" onClick={() => loadMore('applications')}>
-                            Load More from Database
+                        <Button
+                            variant="secondary"
+                            loading={isLoadingMore}
+                            onClick={() => loadMore('applications')}
+                        >
+                            {isLoadingMore ? 'Loading…' : 'Load More from Database'}
                         </Button>
                     </div>
                 )}

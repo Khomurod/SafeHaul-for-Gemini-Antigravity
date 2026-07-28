@@ -25,6 +25,7 @@ export function SuperAdminDashboard() {
     totalSearchResults,
     refreshData,
     loadMore,
+    loadingMore,
     hasMoreCompanies,
     hasMoreApps,
     searchQuery,
@@ -186,6 +187,7 @@ export function SuperAdminDashboard() {
               onDeleteUser={setDeletingUser}
               onDataUpdate={refreshData}
               loadMore={loadMore}
+              loadingMore={loadingMore}
               hasMoreCompanies={hasMoreCompanies}
               hasMoreApps={hasMoreApps}
             />

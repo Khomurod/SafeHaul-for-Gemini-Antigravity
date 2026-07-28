@@ -45,6 +45,7 @@ export function ViewRouter({
     onDeleteUser,
     onDataUpdate,
     loadMore,
+    loadingMore = { companies: false, applications: false },
     hasMoreCompanies,
     hasMoreApps,
     // Integration Specific
@@ -91,6 +92,7 @@ export function ViewRouter({
                     onEdit={onEditCompany}
                     onDelete={onDeleteCompany}
                     loadMore={loadMore}
+                    isLoadingMore={loadingMore.companies}
                     hasMore={hasMoreCompanies}
                 />
             );
@@ -113,6 +115,7 @@ export function ViewRouter({
                     onAppClick={onAppClick}
                     onDataUpdate={onDataUpdate}
                     loadMore={loadMore}
+                    isLoadingMore={loadingMore.applications}
                     hasMore={hasMoreApps}
                 />
             );
@@ -146,6 +149,7 @@ export function ViewRouter({
                     onEdit={onSelectIntegrationCompany} // Use select for integration
                     onDelete={onDeleteCompany}
                     loadMore={loadMore}
+                    isLoadingMore={loadingMore.companies}
                     hasMore={hasMoreCompanies}
                     isIntegrationMode={true} // Add flag for special UI if needed
                 />

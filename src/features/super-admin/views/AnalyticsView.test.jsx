@@ -163,6 +163,87 @@ describe('AnalyticsView — chart is reachable without sight (defect)', () => {
     });
 });
 
+describe('AnalyticsView — accessible peak reports real data, not the scale floor (defect)', () => {
+    /** The polyline geometry floors the visual scale at 5; the sr summary must not. */
+    function trendStats(dailyTrend) {
+        return { ...STATS, dailyTrend };
+    }
+
+    it('reports 0 for all-zero data while the visual scale stays floored at 5', () => {
+        useAnalytics.mockReturnValue({
+            loading: false,
+            stats: trendStats([
+                { date: 'd1', value: 0 },
+                { date: 'd2', value: 0 },
+                { date: 'd3', value: 0 },
+            ]),
+            dateRange: '30d',
+            setDateRange,
+        });
+        const { container } = render(<AnalyticsView />);
+        expect(
+            screen.getByRole('img', { name: /peaking at 0\./ }),
+        ).toBeInTheDocument();
+        // Geometry floors at 5: value 0 sits on the baseline (y = height - padding = 180).
+        const points = container.querySelector('polyline').getAttribute('points');
+        expect(points).toBe('20,180 400,180 780,180');
+    });
+
+    it('reports the real peak when it is below the floor, and geometry still uses 5', () => {
+        useAnalytics.mockReturnValue({
+            loading: false,
+            stats: trendStats([
+                { date: 'd1', value: 0 },
+                { date: 'd2', value: 4 },
+                { date: 'd3', value: 0 },
+            ]),
+            dateRange: '30d',
+            setDateRange,
+        });
+        const { container } = render(<AnalyticsView />);
+        // Real peak is 4 — previously mis-announced as 5.
+        expect(screen.getByRole('img', { name: /peaking at 4\./ })).toBeInTheDocument();
+        // Middle point y = 200 - (4/5 * 160) - 20 = 52. Dividing by 4 (the peak)
+        // instead of the floor of 5 would put it at y = 20.
+        const points = container.querySelector('polyline').getAttribute('points');
+        expect(points).toBe('20,180 400,52 780,180');
+    });
+
+    it('reports the real peak when it equals the floor of 5', () => {
+        useAnalytics.mockReturnValue({
+            loading: false,
+            stats: trendStats([
+                { date: 'd1', value: 1 },
+                { date: 'd2', value: 5 },
+                { date: 'd3', value: 3 },
+            ]),
+            dateRange: '30d',
+            setDateRange,
+        });
+        render(<AnalyticsView />);
+        expect(screen.getByRole('img', { name: /peaking at 5\./ })).toBeInTheDocument();
+    });
+
+    it('reports the real peak when it is above the floor', () => {
+        useAnalytics.mockReturnValue({
+            loading: false,
+            stats: trendStats([
+                { date: 'd1', value: 0 },
+                { date: 'd2', value: 9 },
+                { date: 'd3', value: 0 },
+            ]),
+            dateRange: '30d',
+            setDateRange,
+        });
+        const { container } = render(<AnalyticsView />);
+        expect(screen.getByRole('img', { name: /peaking at 9\./ })).toBeInTheDocument();
+        // Peak 9 (above the floor) drives both text and geometry: middle point
+        // y = 200 - (9/9*160) - 20 = 20, endpoints on the baseline at 180.
+        const points = container.querySelector('polyline').getAttribute('points');
+        expect(points).toBe('20,180 400,20 780,180');
+    });
+});
+
 describe('AnalyticsView — states', () => {
     it('announces loading', () => {
         useAnalytics.mockReturnValue({ loading: true, stats: STATS, dateRange: '30d', setDateRange });

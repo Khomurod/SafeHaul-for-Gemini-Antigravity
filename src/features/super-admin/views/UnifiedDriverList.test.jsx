@@ -72,6 +72,18 @@ describe('UnifiedDriverList — Load More wiring (defect)', () => {
         renderView({ hasMore: false });
         expect(screen.queryByRole('button', { name: 'Load More from Database' })).not.toBeInTheDocument();
     });
+
+    it('disables Load More and shows a loading state while a fetch is in flight', () => {
+        const loadMore = vi.fn();
+        renderView({ hasMore: true, isLoadingMore: true, loadMore });
+        // The label changes to the loading text and the button is disabled, so a
+        // second activation cannot fire a duplicate fetch even by pointer.
+        const button = screen.getByRole('button', { name: 'Loading…' });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('aria-busy', 'true');
+        fireEvent.click(button);
+        expect(loadMore).not.toHaveBeenCalled();
+    });
 });
 
 describe('UnifiedDriverList — frozen delete contract', () => {

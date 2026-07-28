@@ -85,6 +85,15 @@ describe('CompaniesView — frozen callback contracts', () => {
         expect(loadMore).toHaveBeenCalledWith('companies');
     });
 
+    it('disables Load More while a database fetch is in flight', () => {
+        const loadMore = vi.fn();
+        renderView({ hasMore: true, isLoadingMore: true, loadMore });
+        const button = screen.getByRole('button', { name: 'Loading…' });
+        expect(button).toBeDisabled();
+        fireEvent.click(button);
+        expect(loadMore).not.toHaveBeenCalled();
+    });
+
     it('writes only isActive when toggling, to the exact company doc', async () => {
         renderView();
         fireEvent.click(screen.getByRole('button', { name: /Active — Artificial Freight Co/ }));

@@ -55,6 +55,7 @@ export function CompaniesView({
     onEdit,
     onDelete,
     loadMore,
+    isLoadingMore = false,
     hasMore,
     isIntegrationMode = false
 }) {
@@ -390,8 +391,12 @@ export function CompaniesView({
             {/* Database Pagination (Load More) */}
             {hasMore && (
                 <div className="shrink-0 border-t border-ds-border-subtle bg-ds-surface p-ds-4 text-center">
-                    <Button variant="secondary" onClick={() => loadMore('companies')}>
-                        Load More from Database
+                    <Button
+                        variant="secondary"
+                        loading={isLoadingMore}
+                        onClick={() => loadMore('companies')}
+                    >
+                        {isLoadingMore ? 'Loading…' : 'Load More from Database'}
                     </Button>
                 </div>
             )}

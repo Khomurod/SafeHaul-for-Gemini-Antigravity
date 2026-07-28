@@ -28,7 +28,10 @@ import { ResponsiveGrid, Stack } from '@/design-system/layouts';
  *  - The trend chart was an unlabelled `<svg>` — completely invisible to
  *    assistive technology. It now has `role="img"` with a summarising name plus
  *    a visually-hidden table of the same figures, so the data is reachable
- *    without sight.
+ *    without sight. The summary's "peaking at N" now reports the real data peak,
+ *    not the chart's visual scaling floor of 5, which previously over-reported a
+ *    quiet period's peak (e.g. a peak of 2 announced as 5). The floor still
+ *    governs the SVG geometry so a tiny peak is not stretched to full height.
  *  - The loading state was an unannounced `<div>`.
  *  - Both data tables lacked captions and `scope`.
  *  - The hardcoded chart hexes (`#2563eb`, `#f3f4f6`) now derive from tokens via
@@ -54,7 +57,14 @@ function ActivityTrendChart({ data }) {
     const width = 800;
     const padding = 20;
 
-    const maxValue = Math.max(...data.map(d => d.value), 5);
+    // The real activity peak, used only for the accessible summary. Reported
+    // truthfully even when it is 0 (all-zero days) or below the visual floor,
+    // so screen-reader users hear the actual number rather than the scale.
+    const dataPeak = data.reduce((peak, d) => Math.max(peak, d.value || 0), 0);
+    // The visual scale is floored at 5 so a quiet period does not stretch a tiny
+    // peak to full height. Geometry uses this floored maximum; the accessible
+    // text above must not — that is the defect this separation fixes.
+    const maxValue = Math.max(dataPeak, 5);
     const points = data.map((d, i) => {
         const x = (i / (data.length - 1)) * (width - padding * 2) + padding;
         const y = height - ((d.value / maxValue) * (height - padding * 2)) - padding;
@@ -73,7 +83,7 @@ function ActivityTrendChart({ data }) {
                     aria-labelledby={titleId}
                 >
                     <title id={titleId}>
-                        {`Daily activity trend across ${data.length} days, ${total} actions in total, peaking at ${maxValue}.`}
+                        {`Daily activity trend across ${data.length} days, ${total} actions in total, peaking at ${dataPeak}.`}
                     </title>
                     {[0, 0.25, 0.5, 0.75, 1].map(tick => (
                         <line
