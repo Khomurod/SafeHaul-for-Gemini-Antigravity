@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage, auth } from '@lib/firebase';
@@ -34,6 +34,13 @@ export function useAppActions({
   const { showSuccess, showError } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  /**
+   * Staged file removal awaiting confirmation: `{ fieldKey, storagePath } | null`.
+   * State only — the hook never renders the dialog. See
+   * `requestAdminFileDelete` below.
+   */
+  const [pendingFileRemoval, setPendingFileRemoval] = useState(null);
+  const removingFileRef = useRef(false);
 
   const getDocRef = () => {
     return doc(db, "companies", companyId, collectionName, applicationId);
@@ -104,8 +111,32 @@ export function useAppActions({
     }
   };
 
+  /**
+   * Admin removal of an uploaded application file.
+   *
+   * This used to open a blocking `window.confirm("Remove file?")` from inside the
+   * hook. Two problems with that, both fixed here (2026-07-28):
+   *
+   *  1. **A hook must not own a dialog.** Confirmation is presentation. Keeping it
+   *     here meant the only possible confirmation was the browser's blocking one,
+   *     and no consumer could substitute an accessible dialog.
+   *  2. **The guard was unreachable anyway.** `handleAdminFileDelete` is exported
+   *     through `useApplicationDetails` and `useApplicationView`, but no component
+   *     calls it — verified by a repository-wide search. The confirmation was dead
+   *     code sitting in a live API, waiting to surprise whoever wired it up.
+   *
+   * The Firebase work stays here. Confirmation ownership moves to the presentation
+   * layer through the additive `requestAdminFileDelete` /
+   * `confirmAdminFileDelete` / `cancelAdminFileDelete` API below, which holds the
+   * pending target as *state* — state is a hook's job; rendering is not.
+   *
+   * `handleAdminFileDelete` is retained with its original name and signature so
+   * the public hook contract is unchanged, but it is now purely the executor:
+   * **callers must confirm before invoking it.** Prefer the request/confirm API,
+   * which cannot be invoked without an explicit confirmation step.
+   */
   const handleAdminFileDelete = async (fieldKey, storagePath) => {
-    if (!storagePath || !window.confirm("Remove file?") || !canEdit) return;
+    if (!storagePath || !canEdit) return false;
     setIsUploading(true);
     try {
       try { await deleteObject(ref(storage, storagePath)); } catch (e) { console.warn("Storage file may not exist:", e.code); }
@@ -118,10 +149,47 @@ export function useAppActions({
 
       await logActivity(companyId, collectionName, applicationId, "File Deleted", `Deleted ${fieldKey}`);
       showSuccess("File removed");
+      // Additive: previously returned `undefined` in every branch, so reporting
+      // the outcome cannot break a caller. It lets the confirmation keep itself
+      // open for a retry when the removal fails.
+      return true;
     } catch (error) {
       showError("File deletion failed.");
+      return false;
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  /**
+   * Stage a file removal for confirmation. Performs no deletion — a presentation
+   * component renders the shared `ConfirmDialog` from `pendingFileRemoval` and
+   * calls `confirmAdminFileDelete` only when the operator confirms.
+   */
+  const requestAdminFileDelete = (fieldKey, storagePath) => {
+    if (!storagePath || !canEdit) return;
+    setPendingFileRemoval({ fieldKey, storagePath });
+  };
+
+  /** Dismiss the staged removal. Performs no deletion. */
+  const cancelAdminFileDelete = () => setPendingFileRemoval(null);
+
+  /**
+   * Remove the staged file. Guarded by a synchronous ref so two activations
+   * dispatched inside one render cannot both delete — `isUploading` is state and
+   * only takes effect on the next render.
+   */
+  const confirmAdminFileDelete = async () => {
+    const target = pendingFileRemoval;
+    if (!target || removingFileRef.current) return;
+    removingFileRef.current = true;
+    try {
+      const removed = await handleAdminFileDelete(target.fieldKey, target.storagePath);
+      // Only clear the target once the removal actually succeeded, so a failure
+      // leaves the confirmation open and the operator can retry the same file.
+      if (removed) setPendingFileRemoval(null);
+    } finally {
+      removingFileRef.current = false;
     }
   };
 
@@ -246,6 +314,12 @@ export function useAppActions({
     handleAdminFileDelete,
     handleSaveEdit,
     handleStatusUpdate,
-    handleDriverTypeUpdate
+    handleDriverTypeUpdate,
+    // Additive confirm-ready file-removal API (2026-07-28). Replaces the blocking
+    // `window.confirm` that used to live inside `handleAdminFileDelete`.
+    pendingFileRemoval,
+    requestAdminFileDelete,
+    confirmAdminFileDelete,
+    cancelAdminFileDelete
   };
 }
