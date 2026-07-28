@@ -1,14 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useId, useState, useEffect } from 'react';
 import { db } from '@lib/firebase';
 import { doc, getDoc } from "firebase/firestore";
 import { X } from 'lucide-react';
+import { Button, IconButton } from '@/design-system/components';
+import { Modal } from '@shared/components/modals/Modal';
 
 import { EditUserNameForm } from '../users/EditUserNameForm';
 import { UserMembershipsManager } from '../users/UserMembershipsManager';
 
+/**
+ * Super Admin user editor: name/email form plus the memberships manager.
+ *
+ * Migrated to the shared accessible `Modal` 2026-07-28. Presentation only — the
+ * `users/{userId}` read, the `companyId || Object.keys(allCompaniesMap)[0] || null`
+ * fallback passed to `EditUserNameForm`, and the `onSave` wiring into both
+ * children are unchanged. The `edit-user-modal` and `edit-user-close-btn` ids are
+ * preserved because existing selectors depend on them.
+ *
+ * Fixed here:
+ *  - Hand-built overlay replaced by the shared `Modal` (dialog semantics, focus
+ *    trap, Escape, focus restoration).
+ *  - Unnamed icon-only close control.
+ *  - The loading state was a bare `<div>` with no live-region semantics, so
+ *    nothing was announced while the user record was being fetched.
+ *  - Long content now scrolls inside the panel rather than growing the dialog
+ *    past the viewport on short screens.
+ */
 export function EditUserModal({ userId, companyId, allCompaniesMap, onClose, onSave }) {
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
+  const titleId = useId();
 
   const fetchUserData = async () => {
     setLoading(true);
@@ -28,19 +49,25 @@ export function EditUserModal({ userId, companyId, allCompaniesMap, onClose, onS
   }, [userId]);
 
   return (
-    <div id="edit-user-modal" className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-gray-200">
-        <header className="p-5 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-800">Edit User</h2>
-          <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full" onClick={onClose}>
-            <X size={20} />
-          </button>
+    <Modal
+      onClose={onClose}
+      labelledBy={titleId}
+      className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+    >
+      <div id="edit-user-modal" className="flex min-h-0 flex-col">
+        <header className="flex shrink-0 items-center justify-between border-b border-ds-border-subtle p-ds-5">
+          <h2 id={titleId} className="text-ds-heading-sm font-bold text-ds-content">Edit User</h2>
+          <IconButton data-testid="modal-close" label="Close" variant="ghost" size="sm" onClick={onClose}>
+            <X size={20} aria-hidden="true" />
+          </IconButton>
         </header>
 
         {loading || !userData ? (
-          <div className="p-6 text-center text-gray-500">Loading user data...</div>
+          <p role="status" className="p-ds-6 text-center text-ds-content-muted">
+            Loading user data...
+          </p>
         ) : (
-          <div className="p-5 overflow-y-auto space-y-6 bg-gray-50">
+          <div className="min-h-0 flex-1 space-y-ds-6 overflow-y-auto bg-ds-surface-subtle p-ds-5">
 
             {/* 1. Name and Email Form */}
             <EditUserNameForm
@@ -60,12 +87,12 @@ export function EditUserModal({ userId, companyId, allCompaniesMap, onClose, onS
           </div>
         )}
 
-        <footer className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end items-center rounded-b-xl">
-          <button id="edit-user-close-btn" className="px-5 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-all" onClick={onClose}>
+        <footer className="flex shrink-0 justify-end border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+          <Button id="edit-user-close-btn" variant="secondary" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }
