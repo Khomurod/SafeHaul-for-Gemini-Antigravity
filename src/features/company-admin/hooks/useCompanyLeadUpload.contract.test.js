@@ -97,8 +97,14 @@ function primeQueries({ dedupe = () => snapshot([]) } = {}) {
     });
 }
 
-async function mountHook(onUploadComplete = vi.fn()) {
-    const hook = renderHook(() => useCompanyLeadUpload(COMPANY_ID, onUploadComplete));
+/**
+ * `options` lets a case inject the `onError` / `onInfo` sinks, which is what the
+ * real consumer (`CompanyBulkUpload`) does. The hook's *messages* are the frozen
+ * contract; the sink is the consumer's choice. The defaults used to be blocking
+ * `alert()` calls and are now non-blocking logs.
+ */
+async function mountHook(onUploadComplete = vi.fn(), options = {}) {
+    const hook = renderHook(() => useCompanyLeadUpload(COMPANY_ID, onUploadComplete, options));
     await waitFor(() => expect(hook.result.current.teamMembers).toHaveLength(2));
     return { ...hook, onUploadComplete };
 }
@@ -461,14 +467,17 @@ describe('useCompanyLeadUpload — preserved contracts', () => {
         });
         const alertMock = vi.fn();
         vi.stubGlobal('alert', alertMock);
+        const onInfo = vi.fn();
 
-        const { result, onUploadComplete } = await mountHook();
+        const { result, onUploadComplete } = await mountHook(vi.fn(), { onInfo });
         await act(async () => { await result.current.runDataRepair(); });
 
-        const announced = alertMock.mock.calls.some(
+        const announced = onInfo.mock.calls.some(
             ([text]) => text === 'Scan complete. No misformatted records found.',
         );
         expect(announced).toBe(true);
+        // The message must never be delivered by a blocking browser dialog again.
+        expect(alertMock).not.toHaveBeenCalled();
         expect(result.current.uploading).toBe(false);
         expect(result.current.step).toBe('upload');
         expect(onUploadComplete).not.toHaveBeenCalled();

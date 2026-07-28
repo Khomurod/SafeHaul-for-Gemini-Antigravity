@@ -1,6 +1,7 @@
 import React, { useId, useRef, useState } from 'react';
 import { Upload, X, CheckCircle, RefreshCw, FileText, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { Button, IconButton, ProgressBar } from '@/design-system/components';
+import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 
 /**
  * UploadField
@@ -17,10 +18,14 @@ import { Button, IconButton, ProgressBar } from '@/design-system/components';
  * Frozen behaviour: the `onUpload(name, file)` call, the `onChange(name, result)`
  * / `onChange(name, null)` payloads, the "Upload completed but no file metadata
  * was returned." guard, the fake progress ramp and its 1 s success→idle reset,
- * the `confirm()` removal prompt, the `required && !hasValue` attribute on the
- * hidden input, the `accept` default, and the exact "Uploaded Successfully" /
- * "Upload failed. Please try again." strings (asserted by
- * `e2e/public-application.spec.cjs`).
+ * the fact that removing a file is confirmed before it happens, the
+ * `required && !hasValue` attribute on the hidden input, the `accept` default, and
+ * the exact "Uploaded Successfully" / "Upload failed. Please try again." strings
+ * (asserted by `e2e/public-application.spec.cjs`).
+ *
+ * DEFECT FIXED (2026-07-28): the removal prompt was a bare `confirm(...)`. The
+ * *rule* (removal is always confirmed) is preserved; the blocking browser dialog
+ * is replaced by the shared accessible `ConfirmDialog`.
  *
  * DEFECTS FIXED (2026-07-27):
  * - The empty state was a `<div onClick>`: unreachable by keyboard, no role, no
@@ -49,6 +54,8 @@ const UploadField = ({
     const [status, setStatus] = useState('idle'); // idle, uploading, success, error
     const [progress, setProgress] = useState(0);
     const [errorMsg, setErrorMsg] = useState(null);
+    // Replaces the bare `confirm("Are you sure you want to remove this file?")`.
+    const [pendingClear, setPendingClear] = useState(false);
     const fileInputRef = useRef(null);
     const rawId = useId().replace(/:/g, '');
     const labelId = `upload-${name}-label-${rawId}`;
@@ -109,15 +116,25 @@ const UploadField = ({
         fileInputRef.current?.click();
     };
 
-    const handleClear = (e) => {
+    /**
+     * Removing an uploaded document used a bare `confirm(...)` — the browser's
+     * blocking dialog. On the public driver application that is the worst place for
+     * one: it is the most mobile-heavy surface in the product, and a native prompt
+     * cannot be styled, announced or dismissed consistently across mobile browsers.
+     * It now opens the shared accessible `ConfirmDialog`.
+     */
+    const requestClear = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (confirm("Are you sure you want to remove this file?")) {
-            onChange(name, null);
-            setStatus('idle');
-            setProgress(0);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
+        setPendingClear(true);
+    };
+
+    const confirmClear = () => {
+        setPendingClear(false);
+        onChange(name, null);
+        setStatus('idle');
+        setProgress(0);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     // The state E2E and assistive tech can both rely on: what the driver's file
@@ -212,7 +229,7 @@ const UploadField = ({
                             variant="ghost"
                             size="md"
                             label={`Remove ${label} file`}
-                            onClick={handleClear}
+                            onClick={requestClear}
                         >
                             <X size={18} aria-hidden="true" />
                         </IconButton>
@@ -256,6 +273,18 @@ const UploadField = ({
                 accept={accept}
                 required={required && !hasValue}
                 onChange={handleFileSelect}
+            />
+
+            {/* Replaces the bare `confirm("Are you sure you want to remove this file?")`. */}
+            <ConfirmDialog
+                isOpen={pendingClear}
+                tone="warning"
+                title="Remove this file?"
+                description={`"${label}" will be removed and you will need to upload it again.`}
+                confirmLabel="Remove file"
+                cancelLabel="Keep file"
+                onConfirm={confirmClear}
+                onCancel={() => setPendingClear(false)}
             />
         </div>
     );

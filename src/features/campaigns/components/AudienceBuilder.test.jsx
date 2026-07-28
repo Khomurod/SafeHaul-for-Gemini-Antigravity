@@ -40,16 +40,27 @@ vi.mock('../hooks/useCampaignTargeting', () => ({
     })
 }));
 
+// Captures the options AudienceBuilder passes, so the fix that stopped
+// `useBulkImport` falling back to a blocking `alert()` here stays covered.
+const bulkImportOptions = { current: undefined };
 vi.mock('@/shared/hooks/useBulkImport', () => ({
-    useBulkImport: () => ({
-        csvData: mockCsvData,
-        processingSheet: importMocks.processingSheet,
-        handleFileChange: importMocks.handleFileChange,
-        handleSheetImport: importMocks.handleSheetImport,
-        sheetUrl: importMocks.sheetUrl,
-        setSheetUrl: importMocks.setSheetUrl,
-        reset: importMocks.reset,
-    })
+    useBulkImport: (options) => {
+        bulkImportOptions.current = options;
+        return {
+            csvData: mockCsvData,
+            processingSheet: importMocks.processingSheet,
+            handleFileChange: importMocks.handleFileChange,
+            handleSheetImport: importMocks.handleSheetImport,
+            sheetUrl: importMocks.sheetUrl,
+            setSheetUrl: importMocks.setSheetUrl,
+            reset: importMocks.reset,
+        };
+    }
+}));
+
+const toastMocks = { showSuccess: vi.fn(), showError: vi.fn() };
+vi.mock('@shared/components/feedback/ToastProvider', () => ({
+    useToast: () => toastMocks,
 }));
 
 // Records the props the list receives so the frozen prop contract can be
@@ -439,6 +450,19 @@ describe('AudienceBuilder — migrated presentation', () => {
     it('announces the recipient count', () => {
         renderBuilder();
         expect(screen.getByRole('status')).toHaveTextContent('10 recipients selected.');
+    });
+
+    /**
+     * This was the one `useBulkImport` consumer that passed no `onError`, so the
+     * hook fell back to a blocking `alert()` and every CSV/Sheet import failure
+     * froze the tab with a native prompt. Fixed 2026-07-28.
+     */
+    it('gives useBulkImport a non-blocking error sink', () => {
+        renderBuilder();
+        expect(typeof bulkImportOptions.current?.onError).toBe('function');
+
+        bulkImportOptions.current.onError('Invalid Google Sheet URL.');
+        expect(toastMocks.showError).toHaveBeenCalledWith('Invalid Google Sheet URL.');
     });
 
     it('has no accessibility violations in CRM mode', async () => {

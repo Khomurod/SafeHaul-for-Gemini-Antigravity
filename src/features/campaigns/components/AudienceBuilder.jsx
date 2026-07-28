@@ -5,6 +5,7 @@ import { useData } from '@/context/DataContext';
 import { APPLICATION_STATUSES, LAST_CALL_RESULTS } from '../constants/campaignConstants';
 import { Filter, Users, RefreshCw, CheckCircle2, UploadCloud, FileSpreadsheet, Check } from 'lucide-react';
 import { useBulkImport } from '@/shared/hooks/useBulkImport';
+import { useToast } from '@shared/components/feedback/ToastProvider';
 import VirtualLeadList from './VirtualLeadList';
 import { Button, Card, FormField, Input, Select } from '@/design-system/components';
 
@@ -75,6 +76,8 @@ export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey
         recruiterId: 'all'
     });
 
+    const { showError } = useToast();
+
     // 1. CRM COUNT HOOK (Stateless now)
     const { matchCount, isLoading: isCountLoading, excludedPhones } = useCampaignTargeting(companyId, localFilters, currentUser);
 
@@ -87,7 +90,12 @@ export function AudienceBuilder({ companyId, filters, onChange, campaignScopeKey
         sheetUrl,
         setSheetUrl,
         reset: resetImport
-    } = useBulkImport();
+        // `useBulkImport` used to fall back to a blocking `alert()` when no
+        // `onError` was supplied, and this was the one consumer that supplied none —
+        // so every CSV/Sheet import failure here froze the tab with a native prompt.
+        // The hook's messages are unchanged; they are now announced through the
+        // toast live region.
+    } = useBulkImport({ onError: showError });
     const lastUploadFingerprintRef = useRef('empty');
     const lastCampaignScopeRef = useRef(campaignScopeKey);
 
