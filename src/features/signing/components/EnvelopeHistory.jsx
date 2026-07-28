@@ -4,6 +4,7 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { FileText, CheckCircle, Clock, Download, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Edit3 } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
+import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { Badge, Button, DataTable, defineTableColumns } from '@/design-system/components';
 
 /**
@@ -31,18 +32,36 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
     const [loadError, setLoadError] = useState(null);
     const [copyingId, setCopyingId] = useState(null);
     const [voidingId, setVoidingId] = useState(null);
+    // Replaces the blocking `window.confirm` on the destructive void.
+    const [pendingVoid, setPendingVoid] = useState(null);
     const { showSuccess, showError } = useToast();
 
     // PHASE 4: Void a signing request
-    const handleVoid = async (docItem) => {
-        if (!window.confirm(`Are you sure you want to void "${docItem.title || 'this document'}"? This cannot be undone.`)) return;
-        setVoidingId(docItem.id);
+    /**
+     * The blocking `window.confirm` that guarded this is now the shared accessible
+     * `ConfirmDialog`.
+     *
+     * `pendingVoid` holds the envelope captured when the dialog opened. This list
+     * is driven by a live `onSnapshot`, so re-reading the row at confirm time could
+     * void a *different* envelope if the ordering shifted underneath an open
+     * dialog. The envelope title is interpolated into React text, never markup, so
+     * an untrusted document title cannot inject anything.
+     */
+    const requestVoid = (docItem) => {
+        if (!docItem?.id) return;
+        setPendingVoid({ id: docItem.id, title: docItem.title || 'this document' });
+    };
+
+    const confirmVoid = async () => {
+        if (!pendingVoid) return;
+        setVoidingId(pendingVoid.id);
         try {
-            await updateDoc(doc(db, 'companies', companyId, 'signing_requests', docItem.id), {
+            await updateDoc(doc(db, 'companies', companyId, 'signing_requests', pendingVoid.id), {
                 status: 'voided',
                 voidedAt: serverTimestamp()
             });
             showSuccess('Document voided successfully.');
+            setPendingVoid(null);
         } catch (err) {
             console.error('Void error:', err);
             showError('Failed to void document.');
@@ -215,7 +234,7 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
                             loading={voidingId === docItem.id}
                             aria-label={`Void ${title}`}
                             title="Void this document"
-                            onClick={() => handleVoid(docItem)}
+                            onClick={() => requestVoid(docItem)}
                         >
                             {voidingId !== docItem.id && <Ban size={12} aria-hidden="true" />} Void
                         </Button>
@@ -281,15 +300,34 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
     ]);
 
     return (
-        <DataTable
-            ariaLabel="Document history"
-            data={docs}
-            columns={columns}
-            isLoading={loading}
-            loadingLabel="Loading document history"
-            error={loadError ? { message: loadError } : undefined}
-            empty={{ title: 'No documents sent yet.' }}
-            getRowLabel={(docItem) => docItem.title || 'Untitled'}
-        />
+        <>
+            <DataTable
+                ariaLabel="Document history"
+                data={docs}
+                columns={columns}
+                isLoading={loading}
+                loadingLabel="Loading document history"
+                error={loadError ? { message: loadError } : undefined}
+                empty={{ title: 'No documents sent yet.' }}
+                getRowLabel={(docItem) => docItem.title || 'Untitled'}
+            />
+
+            {/*
+              Replaces `window.confirm('Are you sure you want to void "{title}"?
+              This cannot be undone.')`. The title is rendered as React text, so an
+              untrusted document title cannot inject markup.
+            */}
+            <ConfirmDialog
+                isOpen={!!pendingVoid}
+                tone="danger"
+                title={`Void "${pendingVoid?.title ?? ''}"?`}
+                description="This cannot be undone. The signer will no longer be able to open or complete this document."
+                confirmLabel="Void document"
+                cancelLabel="Keep document"
+                loading={!!pendingVoid && voidingId === pendingVoid.id}
+                onConfirm={confirmVoid}
+                onCancel={() => setPendingVoid(null)}
+            />
+        </>
     );
 }

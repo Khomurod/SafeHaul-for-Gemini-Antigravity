@@ -22,6 +22,7 @@ import { SendTemplateModal } from '../components/documents/SendTemplateModal';
 import { TemplatesPanel } from '../components/documents/TemplatesPanel';
 
 import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
+import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
 import { Button } from '@/design-system/components';
 import { Inline, PageContainer, PageHeader, Stack } from '@/design-system/layouts';
@@ -75,6 +76,9 @@ export default function DocumentsManager() {
     // post-application forms are required unless explicitly marked optional).
     const [postSubmitRequiredById, setPostSubmitRequiredById] = useState({});
     const [savingPostSubmitTemplates, setSavingPostSubmitTemplates] = useState(false);
+    // Replaces the blocking `window.confirm("Delete template?")`.
+    const [pendingTemplateDelete, setPendingTemplateDelete] = useState(null);
+    const [deletingTemplate, setDeletingTemplate] = useState(false);
     const isE2EEdocMock = isE2ETestMode && getE2EQueryParam('e2eEdoc', '') === 'mock';
 
     const rawId = useId().replace(/:/g, '');
@@ -354,8 +358,40 @@ export default function DocumentsManager() {
         })
         .filter(Boolean);
 
+    /**
+     * Template deletion used to be guarded by a blocking `window.confirm("Delete
+     * template?")` — a question that did not even say *which* template.
+     *
+     * `requestDeleteTemplate` captures the template at open time (id, title, and
+     * whether it is currently wired into the post-application flow) so the dialog
+     * can name it and warn about the second effect. `confirmDeleteTemplate` runs
+     * the original sequence unchanged.
+     */
+    // Takes an id, not a template: `TemplatesPanel`'s `handleDeleteTemplate(id)`
+    // callback shape is a frozen contract (see its own tests), so the lookup
+    // happens here.
+    const requestDeleteTemplate = (id) => {
+        if (!id) return;
+        const template = templates.find((item) => item.id === id);
+        setPendingTemplateDelete({
+            id,
+            title: String(template?.title || 'Untitled template').trim(),
+            isPostSubmit: postSubmitTemplateIds.includes(id),
+        });
+    };
+
+    const confirmDeleteTemplate = async () => {
+        if (!pendingTemplateDelete) return;
+        setDeletingTemplate(true);
+        try {
+            await handleDeleteTemplate(pendingTemplateDelete.id);
+            setPendingTemplateDelete(null);
+        } finally {
+            setDeletingTemplate(false);
+        }
+    };
+
     const handleDeleteTemplate = async (id) => {
-        if (!window.confirm("Delete template?")) return;
         await deleteDoc(doc(db, 'companies', currentCompanyProfile.id, 'templates', id));
         const nextIds = postSubmitTemplateIds.filter((templateId) => templateId !== id);
         setPostSubmitTemplateIds(nextIds);
@@ -555,7 +591,7 @@ export default function DocumentsManager() {
                                 togglePostSubmitTemplate={togglePostSubmitTemplate}
                                 handleUseTemplate={handleUseTemplate}
                                 handleEditTemplate={handleEditTemplate}
-                                handleDeleteTemplate={handleDeleteTemplate}
+                                handleDeleteTemplate={requestDeleteTemplate}
                             />
                         )}
                     </div>
@@ -588,6 +624,25 @@ export default function DocumentsManager() {
                     handleQuickSelect={handleQuickSelect}
                 />
             )}
+
+            {/*
+              Replaces `window.confirm("Delete template?")`, which never said which
+              template. When the template is also wired into the post-application
+              flow, the dialog says so — that second effect was previously invisible
+              until it silently happened.
+            */}
+            <ConfirmDialog
+                isOpen={!!pendingTemplateDelete}
+                tone="danger"
+                title={`Delete "${pendingTemplateDelete?.title ?? ''}"?`}
+                description={pendingTemplateDelete?.isPostSubmit
+                    ? 'This template is currently sent to applicants after they apply. Deleting it also removes it from the post-application forms, so applicants will stop receiving it. This cannot be undone.'
+                    : 'This template will be permanently deleted. This cannot be undone.'}
+                confirmLabel="Delete template"
+                loading={deletingTemplate}
+                onConfirm={confirmDeleteTemplate}
+                onCancel={() => setPendingTemplateDelete(null)}
+            />
         </div>
     );
 }
