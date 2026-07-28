@@ -15,9 +15,9 @@ export function GlobalSearchResults({
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold text-gray-900">
+      <h2 className="text-3xl font-bold text-gray-900">
         Search Results <span className="text-gray-400 font-normal">({totalResults} found)</span>
-      </h1>
+      </h2>
       
       <section>
         <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">

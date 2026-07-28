@@ -25,7 +25,7 @@ function StatCard({ title, value, icon, loading, hasError }) {
 export function DashboardView({ stats, statsLoading, statsError }) {
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+      <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
           title="Total Companies"

@@ -1,15 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useId, useState, useEffect } from 'react';
 import { updateCompany } from '@features/companies';
 import { uploadCompanyLogo } from '@lib/firebase';
 import { X, CreditCard } from 'lucide-react';
+import {
+  Button,
+  ChoiceGroup,
+  FormField,
+  IconButton,
+  Input,
+  Label,
+  Radio,
+} from '@/design-system/components';
+import { Modal } from '@shared/components/modals/Modal';
 
-function FormField({ id, label, ...props }) {
-    return (
-      <div>
-        <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input id={id} className="w-full p-3 border border-gray-300 rounded-lg" {...props} />
-      </div>
-    );
+/**
+ * Super Admin company editor.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the
+ * `updateCompany(companyDoc.id, companyData, originalSlug)` call and the exact
+ * shape of `companyData` (including `appSlug.toLowerCase().trim()` and
+ * `state.toUpperCase()`), the `uploadCompanyLogo` sequence, the 1500 ms
+ * close delay after a successful save, and every frozen string are unchanged.
+ * The `edit-company-modal` id is preserved for existing selectors.
+ *
+ * Fixed here:
+ *  - **Duplicate DOM ids**: both plan radios rendered `id="planType"`. Duplicate
+ *    ids are invalid, break `<label for>` association, and make the two options
+ *    indistinguishable to assistive technology. They are now one properly
+ *    grouped `ChoiceGroup` of `Radio`s with distinct ids.
+ *  - The plan choice was communicated by border/ring colour only.
+ *  - Hand-built overlay replaced by the shared accessible `Modal`.
+ *  - Unnamed icon-only close control.
+ *  - The save status message was plain text and never announced; it is now a
+ *    live region, and the error case is `role="alert"`.
+ *  - Duplicate submission: Save was disabled during the request but the dialog
+ *    could still be dismissed mid-flight; Escape/backdrop are now suppressed
+ *    while saving.
+ *
+ * Documented feature-owned exception: the logo file input stays a raw
+ * `<input type="file">` — the design system still has no approved file-input
+ * contract (the same exception already recorded for the public application and
+ * PEV result upload).
+ */
+function TextField({ id, label, ...props }) {
+  return (
+    <FormField id={id} label={label}>
+      <Input id={id} {...props} />
+    </FormField>
+  );
 }
 
 export function EditCompanyModal({ companyDoc, onClose, onSave }) {
@@ -19,6 +57,9 @@ export function EditCompanyModal({ companyDoc, onClose, onSave }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
+  const titleId = useId();
+  const logoId = useId();
+  const planGroupId = useId();
 
   useEffect(() => {
     if (companyDoc) {
@@ -96,88 +137,111 @@ export function EditCompanyModal({ companyDoc, onClose, onSave }) {
   };
 
   return (
-    <div id="edit-company-modal" className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-gray-200">
-        <header className="p-5 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-800">Edit Company</h2>
-          <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full" onClick={onClose}>
-            <X size={20} />
-          </button>
+    <Modal
+      onClose={onClose}
+      labelledBy={titleId}
+      closeOnBackdrop={!loading}
+      closeOnEscape={!loading}
+      className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+    >
+      <div id="edit-company-modal" className="flex min-h-0 flex-col">
+        <header className="flex shrink-0 items-center justify-between border-b border-ds-border-subtle p-ds-5">
+          <h2 id={titleId} className="text-ds-heading-sm font-bold text-ds-content">Edit Company</h2>
+          <IconButton data-testid="modal-close" label="Close" variant="ghost" size="sm" onClick={onClose} disabled={loading}>
+            <X size={20} aria-hidden="true" />
+          </IconButton>
         </header>
 
-        <div className="p-5 overflow-y-auto space-y-6">
+        <div className="min-h-0 flex-1 space-y-ds-6 overflow-y-auto p-ds-5">
 
           {/* --- Subscription Plan Section --- */}
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-            <div className="flex items-center gap-2 mb-3 text-blue-800 font-bold">
-               <CreditCard size={20} /> Subscription Plan
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${formData.planType === 'free' ? 'bg-white border-blue-500 ring-2 ring-blue-200' : 'bg-white border-gray-200 hover:border-blue-300'}`}>
-                    <span className="text-sm font-medium text-gray-700">Free Plan<br/><span className="text-xs text-gray-500">Standard features</span></span>
-                    <input type="radio" name="planType" id="planType" value="free" checked={formData.planType === 'free'} onChange={(e) => setFormData({...formData, planType: 'free'})} className="h-4 w-4 text-blue-600" />
-                </label>
-
-                <label className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all ${formData.planType === 'paid' ? 'bg-white border-green-500 ring-2 ring-green-200' : 'bg-white border-gray-200 hover:border-green-300'}`}>
-                    <span className="text-sm font-medium text-gray-700">Paid Plan<br/><span className="text-xs text-gray-500">All premium features</span></span>
-                    <input type="radio" name="planType" id="planType" value="paid" checked={formData.planType === 'paid'} onChange={(e) => setFormData({...formData, planType: 'paid'})} className="h-4 w-4 text-green-600" />
-                </label>
-            </div>
+          <div className="rounded-ds-lg border border-ds-status-info-border bg-ds-status-info-bg p-ds-4">
+            <CreditCard
+              size={20}
+              aria-hidden="true"
+              className="mb-ds-2 inline-block text-ds-status-info-fg"
+            />
+            <ChoiceGroup
+              id={planGroupId}
+              legend="Subscription Plan"
+              orientation="horizontal"
+            >
+              <Radio
+                name="planType"
+                value="free"
+                label="Free Plan"
+                description="Standard features"
+                checked={formData.planType === 'free'}
+                onChange={() => setFormData({ ...formData, planType: 'free' })}
+              />
+              <Radio
+                name="planType"
+                value="paid"
+                label="Paid Plan"
+                description="All premium features"
+                checked={formData.planType === 'paid'}
+                onChange={() => setFormData({ ...formData, planType: 'paid' })}
+              />
+            </ChoiceGroup>
           </div>
 
-          <hr className="border-gray-100" />
+          <hr className="border-ds-border-subtle" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField id="companyName" label="Company Name" required value={formData.companyName} onChange={handleChange} />
-            <FormField id="appSlug" label="Unique URL Slug" required value={formData.appSlug} onChange={handleChange} />
+          <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-2">
+            <TextField id="companyName" label="Company Name" required value={formData.companyName} onChange={handleChange} />
+            <TextField id="appSlug" label="Unique URL Slug" required value={formData.appSlug} onChange={handleChange} />
           </div>
 
           <div>
-            <label htmlFor="logo" className="block text-sm font-medium text-gray-700 mb-1">Company Logo</label>
-            <div className="flex items-center gap-4">
+            <Label htmlFor={logoId}>Company Logo</Label>
+            <div className="mt-ds-1 flex items-center gap-ds-4">
               {formData.companyLogoUrl && (
-                <img 
-                  src={formData.companyLogoUrl} 
-                  alt="Current Logo" 
-                  className="w-16 h-16 object-contain rounded-lg border border-gray-200 p-1 bg-gray-50"
+                <img
+                  src={formData.companyLogoUrl}
+                  alt="Current company logo"
+                  className="h-16 w-16 rounded-ds-lg border border-ds-border-subtle bg-ds-surface-subtle object-contain p-1"
                 />
               )}
-              <input 
-                type="file" 
-                id="logo" 
-                className="w-full p-3 border border-gray-300 rounded-lg" 
-                onChange={handleFileChange} 
-                accept="image/png, image/jpeg" 
+              {/* Feature-owned exception: no approved file-input contract yet. */}
+              <input
+                type="file"
+                id={logoId}
+                className="w-full rounded-ds-lg border border-ds-border p-ds-3 text-ds-sm text-ds-content"
+                onChange={handleFileChange}
+                accept="image/png, image/jpeg"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField id="phone" label="Contact Phone" type="tel" value={formData.phone} onChange={handleChange} />
-            <FormField id="email" label="Contact Email" type="email" value={formData.email} onChange={handleChange} />
+          <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-2">
+            <TextField id="phone" label="Contact Phone" type="tel" value={formData.phone} onChange={handleChange} />
+            <TextField id="email" label="Contact Email" type="email" value={formData.email} onChange={handleChange} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FormField id="city" label="City" value={formData.city} onChange={handleChange} />
-            <FormField id="state" label="State" value={formData.state} onChange={handleChange} maxLength="2" />
-            <FormField id="zip" label="ZIP Code" value={formData.zip} onChange={handleChange} />
+          <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
+            <TextField id="city" label="City" value={formData.city} onChange={handleChange} />
+            <TextField id="state" label="State" value={formData.state} onChange={handleChange} maxLength="2" />
+            <TextField id="zip" label="ZIP Code" value={formData.zip} onChange={handleChange} />
           </div>
         </div>
 
-        <footer className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center rounded-b-xl">
-          <p className={`text-sm ${messageType === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-ds-3 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+          <p
+            role={messageType === 'error' ? 'alert' : 'status'}
+            className={`text-ds-sm ${messageType === 'success' ? 'text-ds-status-success-fg' : 'text-ds-status-danger-fg'}`}
+          >
             {message}
           </p>
-          <div className="flex gap-3">
-            <button className="px-5 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-all" onClick={onClose}>
+          <div className="flex gap-ds-3">
+            <Button variant="secondary" onClick={onClose} disabled={loading}>
               Cancel
-            </button>
-            <button className="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md" onClick={handleSave} disabled={loading}>
+            </Button>
+            <Button variant="primary" onClick={handleSave} loading={loading}>
               {loading ? 'Saving...' : 'Save Changes'}
-            </button>
+            </Button>
           </div>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }

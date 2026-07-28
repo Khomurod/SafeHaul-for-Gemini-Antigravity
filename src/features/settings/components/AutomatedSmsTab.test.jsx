@@ -206,6 +206,31 @@ describe('AutomatedSmsTab compatibility slice', () => {
         expect(firestoreMocks.setDoc).not.toHaveBeenCalled();
     });
 
+    it('announces an accessible loading status while the read is in flight', async () => {
+        // Deterministic home for this assertion. `e2e/company-settings-automated-sms.spec.cjs`
+        // used to assert it in a real browser, but a loading state is transient by
+        // definition and E2E could only observe it because the offline Firestore SDK
+        // happened to take ~20s to give up — an accident of network timing, not a
+        // property of the component. Once E2E Firestore was made to fail immediately
+        // (`connectFirestoreEmulator` at a closed port) the state resolved too fast to
+        // catch and the browser test failed. Holding the promise open here tests the
+        // same behaviour with no race.
+        let resolveLoad;
+        firestoreMocks.getDoc.mockImplementation(() => new Promise((resolve) => {
+            resolveLoad = resolve;
+        }));
+
+        render(<AutomatedSmsTab companyId="company-1" />);
+
+        expect(screen.getByRole('status')).toHaveTextContent('Loading');
+
+        resolveLoad(existingTemplates({ templateContactAttempt1: 'done' }));
+        // Once resolved the announcement must go away, or a screen reader would be
+        // told the page is still loading forever.
+        expect(await findTextarea('Contact Attempt 1')).toBeInTheDocument();
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
     it('does not update state after unmount during an in-flight load', async () => {
         let resolveLoad;
         firestoreMocks.getDoc.mockImplementation(() => new Promise((resolve) => {

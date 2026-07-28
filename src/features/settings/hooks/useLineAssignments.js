@@ -19,6 +19,7 @@ import { sanitizePhone } from '../utils/linePhone';
 export function useLineAssignments(companyId) {
     const { showSuccess, showError } = useToast();
     const [configDoc, setConfigDoc] = useState(null);
+    const [configError, setConfigError] = useState(null);
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -47,6 +48,7 @@ export function useLineAssignments(companyId) {
 
         // 1. Listen to Integration Doc
         const unsub = onSnapshot(doc(db, 'companies', companyId, 'integrations', 'sms_provider'), (snap) => {
+            setConfigError(null);
             if (snap.exists()) {
                 const data = snap.data();
                 console.log("[SMS Config] Loaded Data:", data);
@@ -70,6 +72,16 @@ export function useLineAssignments(companyId) {
                 console.log("[SMS Config] Document does not exist.");
                 setConfigDoc(null);
             }
+            setLoading(false);
+        }, (error) => {
+            // Defect fix: `onSnapshot` was called with no error callback, so a failed
+            // listen (permission denied, rules change, Firestore outage) left `loading`
+            // stuck `true` forever and the screen showed "Loading inventory..." with no
+            // way out and nothing logged for the user. Settle the state and surface the
+            // failure instead of spinning silently.
+            console.error('[SMS Config] Listener failed:', error);
+            setConfigDoc(null);
+            setConfigError(error);
             setLoading(false);
         });
 
@@ -292,6 +304,7 @@ export function useLineAssignments(companyId) {
     return {
         loading,
         configDoc,
+        configError,
         users,
         saving,
         verifyingLine,

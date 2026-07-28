@@ -119,7 +119,7 @@ export function GlobalQuestionsManager() {
             <div className="mb-6">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Global Application Questions</h1>
+                        <h2 className="text-2xl font-bold text-gray-900">Global Application Questions</h2>
                         <p className="text-gray-500">
                             Define the standard questions asked to all drivers.
                             {schema?.version && (
