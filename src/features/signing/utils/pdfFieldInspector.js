@@ -59,11 +59,50 @@ export function categoryFromLabel(label) {
  * top-left, which is why placement is unaffected by editor zoom or by the pixel
  * size a page happened to be rendered at.
  *
+ * ROTATION: a page with `/Rotate 90` or `/Rotate 270` is *displayed* rotated by
+ * react-pdf, which swaps the axes relative to `page.view`. Measuring against the
+ * unrotated view would put every deterministic suggestion on the wrong axis, so
+ * when a PDF.js viewport is available its `convertToViewportRectangle` is used —
+ * it already carries the page's default rotation. The `view` path below stays
+ * for unrotated pages and for tests that supply plain geometry.
+ *
  * @param {number[]} rect  [x1, y1, x2, y2] in PDF user space
  * @param {number[]} view  page.view — [x0, y0, x1, y1]
+ * @param {object} [viewport] PDF.js viewport at scale 1, when one is available
  */
-export function rectToPercent(rect, view) {
-    if (!Array.isArray(rect) || rect.length < 4 || !Array.isArray(view) || view.length < 4) return null;
+export function rectToPercent(rect, view, viewport) {
+    if (!Array.isArray(rect) || rect.length < 4) return null;
+
+    if (viewport && typeof viewport.convertToViewportRectangle === 'function') {
+        const converted = viewport.convertToViewportRectangle(rect.map(Number));
+        const width = Number(viewport.width);
+        const height = Number(viewport.height);
+        if (
+            Array.isArray(converted) &&
+            converted.length >= 4 &&
+            Number.isFinite(width) &&
+            Number.isFinite(height) &&
+            width > 0 &&
+            height > 0 &&
+            converted.every((n) => Number.isFinite(Number(n)))
+        ) {
+            // Viewport space already has its origin at the top-left with y
+            // increasing downward, so only normalization is left.
+            const [cx0, cy0, cx1, cy1] = converted.map(Number);
+            const left = Math.min(cx0, cx1);
+            const right = Math.max(cx0, cx1);
+            const top = Math.min(cy0, cy1);
+            const bottom = Math.max(cy0, cy1);
+            return {
+                x: (left / width) * 100,
+                y: (top / height) * 100,
+                width: ((right - left) / width) * 100,
+                height: ((bottom - top) / height) * 100,
+            };
+        }
+    }
+
+    if (!Array.isArray(view) || view.length < 4) return null;
     const [vx0, vy0, vx1, vy1] = view.map(Number);
     const pageWidth = vx1 - vx0;
     const pageHeight = vy1 - vy0;
@@ -93,11 +132,11 @@ export function rectToPercent(rect, view) {
  *
  * @returns {{ suggestion?: object, manualReview?: object }}
  */
-export function annotationToSuggestion(annotation, { pageNumber, view }) {
+export function annotationToSuggestion(annotation, { pageNumber, view, viewport }) {
     if (!annotation || annotation.subtype !== 'Widget') return {};
     if (annotation.readOnly === true) return {};
 
-    const rect = rectToPercent(annotation.rect, view);
+    const rect = rectToPercent(annotation.rect, view, viewport);
     if (!rect) return {};
 
     const label =
@@ -114,6 +153,7 @@ export function annotationToSuggestion(annotation, { pageNumber, view }) {
                 // Embedded signature widgets are unambiguous.
                 confidence: 0.97,
                 source: 'pdf',
+                origin: 'widget',
                 page: pageNumber,
                 ...rect,
             },
@@ -138,6 +178,7 @@ export function annotationToSuggestion(annotation, { pageNumber, view }) {
                     required: false,
                     confidence: 0.95,
                     source: 'pdf',
+                    origin: 'widget',
                     page: pageNumber,
                     ...rect,
                 },
@@ -163,6 +204,7 @@ export function annotationToSuggestion(annotation, { pageNumber, view }) {
                 // Measured geometry, inferred meaning: high but not certain.
                 confidence: category === 'text' ? 0.82 : 0.9,
                 source: 'pdf',
+                origin: 'widget',
                 page: pageNumber,
                 ...rect,
             },
@@ -187,7 +229,7 @@ export function annotationToSuggestion(annotation, { pageNumber, view }) {
  * Items are expected in PDF.js `getTextContent()` shape:
  * `{ str, transform: [a, b, c, d, e, f], width, height }`.
  */
-export function blankRunsFromTextItems(items, { pageNumber, view }) {
+export function blankRunsFromTextItems(items, { pageNumber, view, viewport }) {
     if (!Array.isArray(items) || !Array.isArray(view) || view.length < 4) return [];
     const [, , , vy1] = view.map(Number);
 
@@ -236,6 +278,7 @@ export function blankRunsFromTextItems(items, { pageNumber, view }) {
             const rect = rectToPercent(
                 [item.x, item.baselineY, item.x + item.width, item.baselineY + item.height * 1.4],
                 view,
+                viewport,
             );
             if (!rect) continue;
 
@@ -246,6 +289,7 @@ export function blankRunsFromTextItems(items, { pageNumber, view }) {
                 // A ruled blank is real, but the label association is a guess.
                 confidence: labelText ? 0.7 : 0.5,
                 source: 'pdf',
+                origin: 'textRun',
                 page: pageNumber,
                 ...rect,
             });
@@ -280,6 +324,14 @@ export async function inspectPdfDocument(pdfDocument, pageNumbers, options = {})
             continue;
         }
         const view = page.view;
+        // Carries the page's default /Rotate, so a rotated page is measured on
+        // the axes it is actually displayed on.
+        let viewport = null;
+        try {
+            viewport = page.getViewport?.({ scale: 1 }) || null;
+        } catch (_) {
+            viewport = null;
+        }
 
         try {
             const annotations = await page.getAnnotations({ intent: 'display' });
@@ -287,6 +339,7 @@ export async function inspectPdfDocument(pdfDocument, pageNumbers, options = {})
                 const { suggestion, manualReview: warning } = annotationToSuggestion(annotation, {
                     pageNumber,
                     view,
+                    viewport,
                 });
                 if (suggestion) rawSuggestions.push(suggestion);
                 if (warning) manualReview.push(warning);
@@ -300,7 +353,7 @@ export async function inspectPdfDocument(pdfDocument, pageNumbers, options = {})
             const items = textContent?.items || [];
             const printed = items.map((item) => String(item?.str ?? '')).join('').trim();
             if (printed.length > 0) pagesWithText.push(pageNumber);
-            rawSuggestions.push(...blankRunsFromTextItems(items, { pageNumber, view }));
+            rawSuggestions.push(...blankRunsFromTextItems(items, { pageNumber, view, viewport }));
         } catch (_) {
             // Scanned pages have no text layer; the vision pass covers them.
         }

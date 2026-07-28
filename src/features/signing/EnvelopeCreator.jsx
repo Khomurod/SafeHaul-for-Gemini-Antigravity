@@ -90,10 +90,10 @@ export default function EnvelopeCreator({
     const [aiScanDialogOpen, setAiScanDialogOpen] = useState(false);
     const [aiPanelOpen, setAiPanelOpen] = useState(false);
     const [selectedSuggestionId, setSelectedSuggestionId] = useState(null);
-    // One-level undo for the last "apply". Holds the exact fields array from
-    // before the apply, so restoring it can never resurrect a removed field or
-    // lose an edit made before the apply.
-    const [aiUndoSnapshot, setAiUndoSnapshot] = useState(null);
+    // One-level undo for the last "apply". Holds the ids of the fields that
+    // apply appended — not a whole snapshot — so undoing removes exactly those
+    // and leaves any work done since the apply untouched.
+    const [aiUndoFieldIds, setAiUndoFieldIds] = useState([]);
 
     const [pageDimensions, setPageDimensions] = useState({});
     const [pdfViewportWidth, setPdfViewportWidth] = useState(PDF_VIEWPORT_WIDTH_DEFAULT);
@@ -259,9 +259,15 @@ export default function EnvelopeCreator({
         (toApply) => {
             if (!toApply.length) return;
             setFields((prev) => {
-                setAiUndoSnapshot(prev);
-                return applySuggestionsToFields({ fields: prev, suggestions: toApply, idFactory: () => uuidv4() })
-                    .fields;
+                const { fields: nextFields, appended } = applySuggestionsToFields({
+                    fields: prev,
+                    suggestions: toApply,
+                    idFactory: () => uuidv4(),
+                });
+                // Remember WHICH fields this apply added, not a whole snapshot:
+                // undoing must not throw away work done after the apply.
+                setAiUndoFieldIds(appended.map((field) => field.id));
+                return nextFields;
             });
             removeAiSuggestions(toApply.map((item) => item.suggestionId));
             setSelectedSuggestionId(null);
@@ -278,13 +284,21 @@ export default function EnvelopeCreator({
         applySuggestions(selectHighConfidence(aiSuggestions));
     }, [aiSuggestions, applySuggestions]);
 
+    /**
+     * Undo the last apply by removing exactly the fields it added.
+     *
+     * Restoring a pre-apply snapshot instead would silently discard every field
+     * the operator added, moved, renamed or deleted since — an undo that
+     * destroys unrelated work is worse than no undo.
+     */
     const handleAiUndo = useCallback(() => {
-        if (!aiUndoSnapshot) return;
-        setFields(aiUndoSnapshot);
-        setAiUndoSnapshot(null);
-        setSelectedFieldId(null);
+        if (aiUndoFieldIds.length === 0) return;
+        const undoIds = new Set(aiUndoFieldIds);
+        setFields((prev) => prev.filter((field) => !undoIds.has(field.id)));
+        setAiUndoFieldIds([]);
+        setSelectedFieldId((prev) => (prev && undoIds.has(prev) ? null : prev));
         showSuccess('Last AI placement undone.');
-    }, [aiUndoSnapshot, showSuccess]);
+    }, [aiUndoFieldIds, showSuccess]);
 
     const handleAiDiscardAll = useCallback(() => {
         discardAiSuggestions();
@@ -792,6 +806,8 @@ export default function EnvelopeCreator({
                             manualReview={aiAssistant.manualReview}
                             stats={aiAssistant.stats}
                             error={aiAssistant.error}
+                            partial={aiAssistant.partial}
+                            truncatedPages={aiAssistant.truncatedPages}
                             selectedSuggestionId={selectedSuggestionId}
                             onSelectSuggestion={setSelectedSuggestionId}
                             onUpdateSuggestion={updateAiSuggestion}
@@ -801,7 +817,7 @@ export default function EnvelopeCreator({
                             onDiscardAll={handleAiDiscardAll}
                             onRescan={() => setAiScanDialogOpen(true)}
                             onUndo={handleAiUndo}
-                            canUndo={Boolean(aiUndoSnapshot)}
+                            canUndo={aiUndoFieldIds.length > 0}
                             onCancel={aiAssistant.cancelScan}
                             onClose={closeAiPanel}
                         />

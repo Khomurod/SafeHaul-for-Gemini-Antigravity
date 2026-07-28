@@ -10,6 +10,7 @@ import {
     selectHighConfidence,
 } from '@features/signing/utils/aiFieldSuggestions';
 import { BINDING_LABELS } from '@features/signing/utils/prefillEngine';
+import { MAX_SCAN_PAGES } from '@features/signing/hooks/useAiFieldAssistant';
 
 /**
  * AI Field Assistant — review rail.
@@ -43,6 +44,8 @@ export function AiSuggestionReviewPanel({
     manualReview,
     stats,
     error,
+    partial = false,
+    truncatedPages = 0,
     selectedSuggestionId,
     onSelectSuggestion,
     onUpdateSuggestion,
@@ -113,12 +116,26 @@ export function AiSuggestionReviewPanel({
                         </p>
                     )}
 
+                    {truncatedPages > 0 && (
+                        <p className="rounded-ds-lg border border-ds-status-info-border bg-ds-status-info-bg p-ds-3 text-ds-xs text-ds-content-secondary">
+                            One scan covers at most {MAX_SCAN_PAGES} pages, so {truncatedPages} page
+                            {truncatedPages === 1 ? '' : 's'} you selected {truncatedPages === 1 ? 'was' : 'were'}{' '}
+                            left out. Scan the rest in a second pass.
+                        </p>
+                    )}
+
                     {error && (
                         <div
                             role="alert"
                             className="rounded-ds-lg border border-ds-status-danger-border bg-ds-status-danger-bg p-ds-3"
                         >
                             <p className="text-ds-sm text-ds-status-danger-fg">{error}</p>
+                            {partial && (
+                                <p className="mt-ds-1 text-ds-xs text-ds-content-secondary">
+                                    The pages that were analysed before this happened are still listed below —
+                                    you can review and apply them, then rescan the rest.
+                                </p>
+                            )}
                             <Button variant="secondary" size="sm" className="mt-ds-2" onClick={onRescan}>
                                 <RotateCcw size={14} aria-hidden="true" /> Try again
                             </Button>

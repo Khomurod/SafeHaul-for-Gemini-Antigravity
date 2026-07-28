@@ -31,6 +31,17 @@ import { loadPdfDocument, renderPageToDataUrl } from '@features/signing/utils/pd
 /** Pages per callable request. The backend hard-caps this at 5. */
 export const PAGES_PER_REQUEST = 3;
 
+/**
+ * Most pages one scan may cover.
+ *
+ * The callable allows 12 requests per user per 60 s, and a scan issues one
+ * request per `PAGES_PER_REQUEST` pages. Anything beyond this would spend the
+ * whole budget and then get rejected mid-scan, so the scan is capped up front
+ * and the operator is told, rather than discovering it as a failure halfway
+ * through a 60-page packet.
+ */
+export const MAX_SCAN_PAGES = PAGES_PER_REQUEST * 12;
+
 export const SCAN_SCOPES = Object.freeze(['current', 'selected', 'all']);
 
 const STATUS = Object.freeze({
@@ -53,12 +64,24 @@ export function resolveScanPages({ scope, selectedPages = [], activePage = 1, nu
     const inRange = (page) => Number.isInteger(page) && page >= 1 && page <= total;
 
     if (scope === 'all') {
-        return Array.from({ length: total }, (_, index) => index + 1);
+        return Array.from({ length: total }, (_, index) => index + 1).slice(0, MAX_SCAN_PAGES);
     }
     if (scope === 'selected') {
-        return [...new Set(selectedPages.filter(inRange))].sort((a, b) => a - b);
+        return [...new Set(selectedPages.filter(inRange))].sort((a, b) => a - b).slice(0, MAX_SCAN_PAGES);
     }
     return inRange(activePage) ? [activePage] : [1];
+}
+
+/** Pages the operator asked for, before MAX_SCAN_PAGES is applied. */
+export function resolveRequestedPageCount({ scope, selectedPages = [], numPages = 1 }) {
+    const total = Number.isFinite(numPages) && numPages > 0 ? numPages : 1;
+    if (scope === 'all') return total;
+    if (scope === 'selected') {
+        return new Set(
+            selectedPages.filter((page) => Number.isInteger(page) && page >= 1 && page <= total),
+        ).size;
+    }
+    return 1;
 }
 
 const newScanId = () =>
@@ -74,6 +97,10 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
     const [stats, setStats] = useState(null);
     const [error, setError] = useState(null);
     const [lastScan, setLastScan] = useState(null);
+    // True when a scan failed but had already produced usable suggestions.
+    const [partial, setPartial] = useState(false);
+    // Set when the requested page range was larger than one scan may cover.
+    const [truncatedPages, setTruncatedPages] = useState(0);
 
     // The id of the scan whose results the UI is currently willing to accept.
     const activeScanRef = useRef(null);
@@ -103,6 +130,8 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
         setManualReview([]);
         setStats(null);
         setError(null);
+        setPartial(false);
+        setTruncatedPages(0);
         setStatus(STATUS.IDLE);
         setProgress({ phase: 'idle', completed: 0, total: 0 });
     }, [file]);
@@ -114,6 +143,8 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
             if (!canScan) return;
 
             const pages = resolveScanPages({ scope, selectedPages, activePage, numPages });
+            const requestedCount = resolveRequestedPageCount({ scope, selectedPages, activePage, numPages });
+            setTruncatedPages(Math.max(0, requestedCount - pages.length));
             if (pages.length === 0) {
                 setError('Choose at least one page to scan.');
                 setStatus(STATUS.ERROR);
@@ -131,6 +162,7 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
 
             setStatus(STATUS.SCANNING);
             setError(null);
+            setPartial(false);
             setSuggestions([]);
             setManualReview([]);
             setStats(null);
@@ -139,6 +171,37 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
             const rawSuggestions = [];
             const rawManualReview = [];
             let pdfDocument = null;
+
+            /**
+             * Turn whatever has been collected so far into reviewable state.
+             * Called on success and on failure, so a scan that dies partway
+             * still surfaces the pages it did analyse.
+             *
+             * @returns {number} how many suggestions were published
+             */
+            const publishResults = () => {
+                const built = buildSuggestionSet({
+                    rawSuggestions,
+                    existingFields: fieldsRef.current,
+                    allowedPages: new Set(pages),
+                });
+
+                const seenWarning = new Set();
+                const warnings = rawManualReview
+                    .map(normalizeManualReview)
+                    .filter(Boolean)
+                    .filter((entry) => {
+                        const key = `${entry.page}:${entry.kind}`;
+                        if (seenWarning.has(key)) return false;
+                        seenWarning.add(key);
+                        return true;
+                    });
+
+                setSuggestions(built.suggestions);
+                setStats(built.stats);
+                setManualReview(warnings);
+                return built.suggestions.length;
+            };
 
             try {
                 pdfDocument = await loadPdfDocument(file);
@@ -152,14 +215,22 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
                 rawSuggestions.push(...inspection.rawSuggestions);
                 rawManualReview.push(...inspection.manualReview);
 
-                // Pages already described by embedded form widgets do not need a
-                // visual guess — and must not be overruled by one.
-                const pagesWithEmbeddedFields = new Set(
-                    inspection.rawSuggestions
-                        .filter((item) => item.confidence >= 0.9)
-                        .map((item) => item.page),
+                // A page is skipped only when its embedded AcroForm widgets
+                // describe the WHOLE page — that is, it has widget-derived
+                // suggestions and no ruled blanks left over. A hybrid page (one
+                // widget plus printed `______` blanks) still gets the vision
+                // pass, because one widget is not proof the rest is covered.
+                // Precedence is not at stake either way: `buildSuggestionSet`
+                // already lets a measured `pdf` suggestion win over a visual one.
+                const widgetPages = new Set();
+                const textRunPages = new Set();
+                for (const item of inspection.rawSuggestions) {
+                    if (item.origin === 'widget') widgetPages.add(item.page);
+                    else if (item.origin === 'textRun') textRunPages.add(item.page);
+                }
+                const visionPages = pages.filter(
+                    (page) => !widgetPages.has(page) || textRunPages.has(page),
                 );
-                const visionPages = pages.filter((page) => !pagesWithEmbeddedFields.has(page));
 
                 if (visionPages.length > 0) {
                     const functions = getFunctions();
@@ -204,27 +275,7 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
 
                 if (!isCurrent()) return;
 
-                const allowedPages = new Set(pages);
-                const built = buildSuggestionSet({
-                    rawSuggestions,
-                    existingFields: fieldsRef.current,
-                    allowedPages,
-                });
-
-                const seenWarning = new Set();
-                const warnings = rawManualReview
-                    .map(normalizeManualReview)
-                    .filter(Boolean)
-                    .filter((entry) => {
-                        const key = `${entry.page}:${entry.kind}`;
-                        if (seenWarning.has(key)) return false;
-                        seenWarning.add(key);
-                        return true;
-                    });
-
-                setSuggestions(built.suggestions);
-                setStats(built.stats);
-                setManualReview(warnings);
+                publishResults();
                 setLastScan({ scanId, scope, pages });
                 setStatus(STATUS.READY);
                 setProgress({ phase: 'done', completed: pages.length, total: pages.length });
@@ -242,6 +293,15 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
                     setError('Could not reach the AI service. Please try again.');
                 } else {
                     setError('The scan could not be completed. Please try again.');
+                }
+                // Keep whatever the scan already produced. Throwing away pages
+                // that were successfully analysed — and paid for — because a
+                // later page failed would make a partial failure worse than no
+                // scan at all. The error banner sits above the partial results.
+                const kept = publishResults();
+                if (kept > 0) {
+                    setPartial(true);
+                    setLastScan({ scanId, scope, pages });
                 }
                 setStatus(STATUS.ERROR);
                 setProgress({ phase: 'idle', completed: 0, total: 0 });
@@ -300,6 +360,8 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
         setManualReview([]);
         setStats(null);
         setError(null);
+        setPartial(false);
+        setTruncatedPages(0);
         setStatus(STATUS.IDLE);
         setProgress({ phase: 'idle', completed: 0, total: 0 });
     }, []);
@@ -313,6 +375,8 @@ export function useAiFieldAssistant({ companyId, file, numPages, activePage, fie
         manualReview,
         stats,
         error,
+        partial,
+        truncatedPages,
         lastScan,
         startScan,
         cancelScan,

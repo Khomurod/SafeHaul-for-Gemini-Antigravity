@@ -417,6 +417,54 @@ describe('safe undo and manual-field preservation', () => {
         expect('placedByAi' in restored).toBe(false);
     });
 
+    it('keeps work done after the apply when undoing', async () => {
+        // Undo must remove only the fields the apply added. Restoring a
+        // pre-apply snapshot would silently discard everything the operator did
+        // afterwards.
+        renderCreator();
+        await loadPdf();
+        await runScan();
+        fireEvent.click(await screen.findByRole('checkbox', { name: 'Apply Sign here' }));
+        fireEvent.click(screen.getByRole('button', { name: /Apply selected \(1\)/ }));
+        await waitFor(() => expect(workbenchProps[workbenchProps.length - 1].fields).toHaveLength(1));
+
+        // Manual work AFTER the apply.
+        fireEvent.click(screen.getByRole('button', { name: 'Add Text field' }));
+        await waitFor(() => expect(workbenchProps[workbenchProps.length - 1].fields).toHaveLength(2));
+        const manualAfterApply = workbenchProps[workbenchProps.length - 1].fields[1];
+
+        fireEvent.click(screen.getByRole('button', { name: /Undo apply/ }));
+
+        await waitFor(() => expect(workbenchProps[workbenchProps.length - 1].fields).toHaveLength(1));
+        const remaining = workbenchProps[workbenchProps.length - 1].fields[0];
+        expect(remaining.id).toBe(manualAfterApply.id);
+        expect('placedByAi' in remaining).toBe(false);
+    });
+
+    it('undoes only the last apply, leaving an earlier one in place', async () => {
+        callable.mockResolvedValue({
+            data: {
+                suggestions: [aiSuggestion(), aiSuggestion({ y: 60, label: 'Initial here', category: 'initials' })],
+                manualReview: [],
+            },
+        });
+        renderCreator();
+        await loadPdf();
+        await runScan();
+
+        fireEvent.click(await screen.findByRole('checkbox', { name: 'Apply Sign here' }));
+        fireEvent.click(screen.getByRole('button', { name: /Apply selected \(1\)/ }));
+        await waitFor(() => expect(workbenchProps[workbenchProps.length - 1].fields).toHaveLength(1));
+
+        fireEvent.click(await screen.findByRole('checkbox', { name: 'Apply Initial here' }));
+        fireEvent.click(screen.getByRole('button', { name: /Apply selected \(1\)/ }));
+        await waitFor(() => expect(workbenchProps[workbenchProps.length - 1].fields).toHaveLength(2));
+
+        fireEvent.click(screen.getByRole('button', { name: /Undo apply/ }));
+        await waitFor(() => expect(workbenchProps[workbenchProps.length - 1].fields).toHaveLength(1));
+        expect(workbenchProps[workbenchProps.length - 1].fields[0].label).toBe('Sign here');
+    });
+
     it('leaves undo unavailable until something has been applied', async () => {
         renderCreator();
         await loadPdf();

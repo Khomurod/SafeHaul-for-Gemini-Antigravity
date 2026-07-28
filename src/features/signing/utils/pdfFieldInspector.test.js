@@ -74,6 +74,55 @@ describe('rectToPercent', () => {
         expect(rectToPercent(['a', 0, 10, 10], VIEW)).toBeNull();
     });
 
+    it('measures a rotated page on the axes it is displayed on', () => {
+        // A /Rotate 90 page: PDF.js hands back a viewport whose width/height are
+        // swapped and whose convertToViewportRectangle already applies the
+        // rotation. Measuring against the unrotated `view` would put the box on
+        // the wrong axis entirely.
+        const rotatedViewport = {
+            width: 792,
+            height: 612,
+            // Landscape viewport: the PDF-space rect [50,500,250,540] lands in
+            // the upper-left quadrant once rotated.
+            convertToViewportRectangle: () => [252, 50, 292, 250],
+        };
+        const rect = rectToPercent([50, 500, 250, 540], VIEW, rotatedViewport);
+        expect(rect.x).toBeCloseTo((252 / 792) * 100, 5);
+        expect(rect.y).toBeCloseTo((50 / 612) * 100, 5);
+        expect(rect.width).toBeCloseTo((40 / 792) * 100, 5);
+        expect(rect.height).toBeCloseTo((200 / 612) * 100, 5);
+    });
+
+    it('normalises a viewport rectangle given in either corner order', () => {
+        const viewport = {
+            width: 100,
+            height: 200,
+            convertToViewportRectangle: () => [60, 120, 20, 40],
+        };
+        expect(rectToPercent([0, 0, 1, 1], VIEW, viewport)).toEqual({
+            x: 20,
+            y: 20,
+            width: 40,
+            height: 40,
+        });
+    });
+
+    it('falls back to the unrotated view when the viewport is unusable', () => {
+        const broken = { width: 0, height: 0, convertToViewportRectangle: () => [1, 2, 3, 4] };
+        expect(rectToPercent([0, 396, 306, 792], VIEW, broken)).toEqual({
+            x: 0,
+            y: 0,
+            width: 50,
+            height: 50,
+        });
+        expect(rectToPercent([0, 396, 306, 792], VIEW, {})).toEqual({
+            x: 0,
+            y: 0,
+            width: 50,
+            height: 50,
+        });
+    });
+
     it('is independent of the pixel size the page is rendered at', () => {
         // The same PDF rectangle, whatever zoom the editor happens to use.
         const atOneScale = rectToPercent([50, 500, 250, 540], VIEW);
@@ -100,7 +149,7 @@ describe('annotationToSuggestion', () => {
             widget({ fieldType: 'Sig', fieldName: 'driver_signature' }),
             GEOMETRY,
         );
-        expect(suggestion).toMatchObject({ category: 'signature', source: 'pdf', page: 1 });
+        expect(suggestion).toMatchObject({ category: 'signature', source: 'pdf', origin: 'widget', page: 1 });
         expect(suggestion.confidence).toBeGreaterThan(0.9);
     });
 
@@ -175,7 +224,13 @@ describe('blankRunsFromTextItems', () => {
             GEOMETRY,
         );
         expect(found).toHaveLength(1);
-        expect(found[0]).toMatchObject({ category: 'signature', label: 'Driver Signature', source: 'pdf', page: 1 });
+        expect(found[0]).toMatchObject({
+            category: 'signature',
+            label: 'Driver Signature',
+            source: 'pdf',
+            origin: 'textRun',
+            page: 1,
+        });
         expect(found[0].width).toBeGreaterThan(0);
     });
 
@@ -214,8 +269,9 @@ describe('blankRunsFromTextItems', () => {
 });
 
 describe('inspectPdfDocument', () => {
-    const stubPage = ({ annotations = [], items = [] } = {}) => ({
+    const stubPage = ({ annotations = [], items = [], viewport } = {}) => ({
         view: VIEW,
+        getViewport: vi.fn(() => viewport ?? null),
         getAnnotations: vi.fn(async () => annotations),
         getTextContent: vi.fn(async () => ({ items })),
     });
@@ -279,6 +335,36 @@ describe('inspectPdfDocument', () => {
             },
         });
         await expect(inspectPdfDocument(document, [1])).resolves.toMatchObject({ rawSuggestions: [] });
+    });
+
+    it('measures through the page viewport when one is available', async () => {
+        const viewport = {
+            width: 792,
+            height: 612,
+            convertToViewportRectangle: vi.fn(() => [0, 0, 79.2, 61.2]),
+        };
+        const document = stubDocument({
+            1: stubPage({
+                viewport,
+                annotations: [{ subtype: 'Widget', fieldType: 'Sig', fieldName: 'sig', rect: [50, 500, 250, 540] }],
+            }),
+        });
+
+        const result = await inspectPdfDocument(document, [1]);
+        expect(viewport.convertToViewportRectangle).toHaveBeenCalled();
+        expect(result.rawSuggestions[0]).toMatchObject({ x: 0, y: 0, width: 10, height: 10 });
+    });
+
+    it('survives a page whose viewport cannot be built', async () => {
+        const page = stubPage({
+            annotations: [{ subtype: 'Widget', fieldType: 'Sig', fieldName: 'sig', rect: [0, 396, 306, 792] }],
+        });
+        page.getViewport = vi.fn(() => {
+            throw new Error('no viewport');
+        });
+        const result = await inspectPdfDocument(stubDocument({ 1: page }), [1]);
+        // Falls back to the unrotated page.view geometry.
+        expect(result.rawSuggestions[0]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
     });
 
     it('skips a page it cannot load instead of failing the scan', async () => {

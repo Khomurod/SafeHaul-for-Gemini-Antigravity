@@ -28,7 +28,7 @@ vi.mock('@features/signing/utils/pdfFieldInspector', async (importOriginal) => (
     inspectPdfDocument: (...args) => pdfMocks.inspectPdfDocument(...args),
 }));
 
-import { resolveScanPages, useAiFieldAssistant } from './useAiFieldAssistant';
+import { MAX_SCAN_PAGES, resolveScanPages, useAiFieldAssistant } from './useAiFieldAssistant';
 
 const FILE = { name: 'artificial.pdf' };
 
@@ -87,6 +87,22 @@ describe('resolveScanPages', () => {
     it('falls back to page 1 when the active page is out of range', () => {
         expect(resolveScanPages({ scope: 'current', activePage: 9, numPages: 2 })).toEqual([1]);
     });
+
+    it('caps a scan at the callable rate budget rather than failing mid-way', () => {
+        // The callable allows 12 requests per user per minute, and a scan issues
+        // one request per batch, so a 200-page packet must not try to spend
+        // more than the budget and get rejected part-way through.
+        const all = resolveScanPages({ scope: 'all', numPages: 200 });
+        expect(all).toHaveLength(MAX_SCAN_PAGES);
+        expect(all[0]).toBe(1);
+
+        const selected = resolveScanPages({
+            scope: 'selected',
+            selectedPages: Array.from({ length: 100 }, (_, i) => i + 1),
+            numPages: 200,
+        });
+        expect(selected).toHaveLength(MAX_SCAN_PAGES);
+    });
 });
 
 describe('scan gating', () => {
@@ -123,9 +139,9 @@ describe('hybrid analysis', () => {
         expect(payload.pages).toEqual([{ pageNumber: 2, imageDataUrl: 'data:image/jpeg;base64,AAA' }]);
     });
 
-    it('skips the vision pass for a page already described by embedded form fields', async () => {
+    it('skips the vision pass for a page fully described by embedded form widgets', async () => {
         pdfMocks.inspectPdfDocument.mockResolvedValue({
-            rawSuggestions: [visionSuggestion({ page: 2, source: 'pdf', confidence: 0.97 })],
+            rawSuggestions: [visionSuggestion({ page: 2, source: 'pdf', origin: 'widget', confidence: 0.97 })],
             manualReview: [],
             pagesWithText: [2],
         });
@@ -138,6 +154,42 @@ describe('hybrid analysis', () => {
         expect(callable).not.toHaveBeenCalled();
         expect(result.current.suggestions).toHaveLength(1);
         expect(result.current.suggestions[0].source).toBe('pdf');
+    });
+
+    it('still runs vision on a hybrid page that has a widget AND printed blanks', async () => {
+        // One AcroForm widget is not proof the rest of the page is covered: the
+        // printed `______` blanks around it still need looking at.
+        pdfMocks.inspectPdfDocument.mockResolvedValue({
+            rawSuggestions: [
+                visionSuggestion({ page: 2, source: 'pdf', origin: 'widget', confidence: 0.97 }),
+                visionSuggestion({ page: 2, y: 40, source: 'pdf', origin: 'textRun', confidence: 0.7 }),
+            ],
+            manualReview: [],
+            pagesWithText: [2],
+        });
+
+        const { result } = setup();
+        await act(async () => {
+            await result.current.startScan({ scope: 'current' });
+        });
+
+        expect(callable).toHaveBeenCalledTimes(1);
+        expect(result.current.status).toBe('ready');
+    });
+
+    it('runs vision on a page with no embedded widgets at all', async () => {
+        pdfMocks.inspectPdfDocument.mockResolvedValue({
+            rawSuggestions: [visionSuggestion({ page: 2, source: 'pdf', origin: 'textRun', confidence: 0.7 })],
+            manualReview: [],
+            pagesWithText: [2],
+        });
+
+        const { result } = setup();
+        await act(async () => {
+            await result.current.startScan({ scope: 'current' });
+        });
+
+        expect(callable).toHaveBeenCalledTimes(1);
     });
 
     it('batches a long page range into several requests', async () => {
@@ -334,6 +386,58 @@ describe('failure handling', () => {
             await result.current.startScan({ scope: 'current' });
         });
         expect(result.current.error).toBe('The scan could not be completed. Please try again.');
+    });
+
+    it('keeps the pages it already analysed when a later batch fails', async () => {
+        // Batch 1 succeeds, batch 2 is rejected. Throwing away the first
+        // batch's results — which the company has already paid for — would
+        // make a partial failure worse than no scan at all.
+        const exhausted = new Error('rate limited');
+        exhausted.code = 'functions/resource-exhausted';
+        callable
+            .mockResolvedValueOnce({
+                data: { suggestions: [visionSuggestion({ page: 1, label: 'From batch one' })], manualReview: [] },
+            })
+            .mockRejectedValueOnce(exhausted);
+
+        const { result } = setup({ numPages: 6 });
+        await act(async () => {
+            await result.current.startScan({ scope: 'all' });
+        });
+
+        expect(result.current.status).toBe('error');
+        expect(result.current.partial).toBe(true);
+        expect(result.current.suggestions.map((item) => item.label)).toEqual(['From batch one']);
+    });
+
+    it('does not claim a partial result when nothing was analysed', async () => {
+        const error = new Error('down');
+        error.code = 'functions/unavailable';
+        callable.mockRejectedValue(error);
+
+        const { result } = setup();
+        await act(async () => {
+            await result.current.startScan({ scope: 'current' });
+        });
+
+        expect(result.current.partial).toBe(false);
+        expect(result.current.suggestions).toEqual([]);
+    });
+
+    it('reports how many selected pages the cap left out', async () => {
+        const { result } = setup({ numPages: MAX_SCAN_PAGES + 5 });
+        await act(async () => {
+            await result.current.startScan({ scope: 'all' });
+        });
+        expect(result.current.truncatedPages).toBe(5);
+    });
+
+    it('reports no truncation for a scan inside the cap', async () => {
+        const { result } = setup({ numPages: 3 });
+        await act(async () => {
+            await result.current.startScan({ scope: 'all' });
+        });
+        expect(result.current.truncatedPages).toBe(0);
     });
 });
 
