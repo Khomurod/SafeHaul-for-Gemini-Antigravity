@@ -1,8 +1,41 @@
-import { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
-import { Play, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Play, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Button, Card, FormField, Input, StatusMedallion } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
+import { Modal } from '@shared/components/modals/Modal';
 
+/**
+ * Performance-stats backfill maintenance panel.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the
+ * `backfillCompanyStats` and `backfillAllStats` callable names, their
+ * `{ timeout: 540000 }` option, the `{ companyId, dryRun }` and `{ dryRun }`
+ * payloads, the `companyId.trim()` transformation, the "Please enter a Company
+ * ID" guard, the result field precedence and every frozen string are unchanged.
+ *
+ * Defects fixed here:
+ *  1. **"Run All Companies" had no confirmation at all**, while the
+ *     single-company action at least required an explicit ID. It rewrites
+ *     `stats_daily` for *every* company on the platform and takes up to nine
+ *     minutes. It is now behind an accessible confirmation dialog. The
+ *     dry-run variants stay unguarded, because they are explicitly
+ *     non-mutating — the dialog only gates the writing runs.
+ *  2. Neither the error nor the result was announced, so a screen-reader user
+ *     got no feedback at all from a nine-minute maintenance action. Both are
+ *     now live regions, and the in-flight state is announced too.
+ *  3. Every button was disabled by a shared `loading` flag but nothing said a
+ *     run was in progress — silent progress on a long action.
+ *  4. Legacy palette throughout, including a `bg-amber-50` warning panel and a
+ *     `bg-red-600` run button.
+ *
+ * PRODUCT/LEGAL — deliberately NOT changed: the "All Companies" help text names
+ * a specific real customer ("Only run after verifying Ray Star LLC results.").
+ * Naming a customer in production operator copy is a product/legal decision, and
+ * the repository establishes no generic replacement wording, so the string is
+ * preserved verbatim and recorded in the roadmap for an owner to decide.
+ */
 export default function StatsBackfillPanel() {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
@@ -11,6 +44,8 @@ export default function StatsBackfillPanel() {
     // Having a hardcoded company ID in production code risks running a backfill
     // against the wrong company (data corruption) and exposes internal IDs.
     const [companyId, setCompanyId] = useState('');
+    const [confirmingRunAll, setConfirmingRunAll] = useState(false);
+    const companyFieldId = useId();
 
     const runBackfill = async (targetCompanyId, dryRun) => {
         if (!targetCompanyId.trim()) {
@@ -37,6 +72,7 @@ export default function StatsBackfillPanel() {
     };
 
     const runAllBackfill = async (dryRun) => {
+        setConfirmingRunAll(false);
         setLoading(true);
         setError('');
         setResult(null);
@@ -56,211 +92,220 @@ export default function StatsBackfillPanel() {
         }
     };
 
-    return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    Performance Stats Backfill
-                </h2>
-                <p className="text-sm text-gray-600">
-                    Rebuild stats_daily from all historical activity data. Use dry-run first to preview results.
-                </p>
-            </div>
+    const summaryRows = result ? [
+        result.companyId && ['Company ID:', result.companyId, 'font-mono text-ds-content'],
+        result.companiesProcessed && ['Companies Processed:', result.companiesProcessed, 'font-semibold text-ds-content'],
+        result.companiesSucceeded && ['Companies Succeeded:', result.companiesSucceeded, 'font-semibold text-ds-status-success-fg'],
+        ['Total Activities Processed:', result.totalActivitiesProcessed?.toLocaleString() || 0, 'font-semibold text-ds-content-link'],
+        result.legacyCount !== undefined && ['↳ Legacy (activities):', result.legacyCount.toLocaleString(), 'text-ds-content-secondary'],
+        result.modernCount !== undefined && ['↳ Modern (activity_logs):', result.modernCount.toLocaleString(), 'text-ds-content-secondary'],
+        result.daysWithStats && ['Days with Stats:', result.daysWithStats, 'font-semibold text-ds-content'],
+        result.daysWritten && ['Days Written:', result.daysWritten, 'font-semibold text-ds-status-success-fg'],
+    ].filter(Boolean) : [];
 
-            {/* Single Company Section */}
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h3 className="font-semibold text-gray-900 mb-3">
-                    Single Company Backfill
-                </h3>
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company ID
-                    </label>
-                    <input
-                        type="text"
-                        value={companyId}
-                        onChange={e => setCompanyId(e.target.value)}
-                        placeholder="Enter Firestore company document ID..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Find this in the Firebase Console → Firestore → companies → [document ID]
+    return (
+        <Card padding="lg">
+            <Stack gap="lg">
+                <div>
+                    <h2 className="mb-ds-2 text-ds-heading-sm font-semibold text-ds-content">
+                        Performance Stats Backfill
+                    </h2>
+                    <p className="text-ds-sm text-ds-content-secondary">
+                        Rebuild stats_daily from all historical activity data. Use dry-run first to preview results.
                     </p>
                 </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => runBackfill(companyId, true)}
-                        disabled={loading || !companyId.trim()}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        {loading ? (
-                            <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                            <Play size={16} />
-                        )}
-                        Dry-Run (Preview)
-                    </button>
-                    <button
-                        onClick={() => runBackfill(companyId, false)}
-                        disabled={loading || !companyId.trim()}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        {loading ? (
-                            <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                            <CheckCircle size={16} />
-                        )}
-                        Run Actual Backfill
-                    </button>
-                </div>
-            </div>
 
-            {/* All Companies Section */}
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                <h3 className="font-semibold text-gray-900 mb-3">
-                    All Companies
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                    ⚠️ This will process all companies. Only run after verifying Ray Star LLC results.
+                {/* A nine-minute action must not be silent. */}
+                <p role="status" className="sr-only">
+                    {loading ? 'Backfill running. This can take several minutes.' : ''}
                 </p>
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => runAllBackfill(true)}
-                        disabled={loading}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        {loading ? (
-                            <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                            <Play size={16} />
-                        )}
-                        Dry-Run All
-                    </button>
-                    <button
-                        onClick={() => runAllBackfill(false)}
-                        disabled={loading}
-                        className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        {loading ? (
-                            <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                            <CheckCircle size={16} />
-                        )}
-                        Run All Companies
-                    </button>
-                </div>
-            </div>
 
-            {/* Results Display */}
-            {error && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                    <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                        <h4 className="font-semibold text-red-900 mb-1">Error</h4>
-                        <p className="text-sm text-red-700">{error}</p>
+                {/* Single Company Section */}
+                <Card padding="md" className="border-ds-status-info-border">
+                    <h3 className="mb-ds-3 font-semibold text-ds-content">
+                        Single Company Backfill
+                    </h3>
+                    <FormField
+                        id={companyFieldId}
+                        label="Company ID"
+                        description="Find this in the Firebase Console → Firestore → companies → [document ID]"
+                    >
+                        <Input
+                            id={companyFieldId}
+                            type="text"
+                            value={companyId}
+                            onChange={e => setCompanyId(e.target.value)}
+                            placeholder="Enter Firestore company document ID..."
+                            className="font-mono"
+                        />
+                    </FormField>
+                    <div className="mt-ds-4 flex flex-wrap gap-ds-3">
+                        <Button
+                            variant="primary"
+                            onClick={() => runBackfill(companyId, true)}
+                            disabled={loading || !companyId.trim()}
+                            loading={loading}
+                        >
+                            {!loading && <Play size={16} aria-hidden="true" />}
+                            Dry-Run (Preview)
+                        </Button>
+                        <Button
+                            variant="primary"
+                            tone="success"
+                            onClick={() => runBackfill(companyId, false)}
+                            disabled={loading || !companyId.trim()}
+                            loading={loading}
+                        >
+                            {!loading && <CheckCircle size={16} aria-hidden="true" />}
+                            Run Actual Backfill
+                        </Button>
                     </div>
-                </div>
-            )}
+                </Card>
 
-            {result && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-start gap-3 mb-4">
-                        <CheckCircle size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+                {/* All Companies Section */}
+                <Card padding="md" className="border-ds-status-warning-border bg-ds-status-warning-bg">
+                    <h3 className="mb-ds-3 font-semibold text-ds-content">
+                        All Companies
+                    </h3>
+                    <p className="mb-ds-4 text-ds-sm text-ds-content-secondary">
+                        ⚠️ This will process all companies. Only run after verifying Ray Star LLC results.
+                    </p>
+                    <div className="flex flex-wrap gap-ds-3">
+                        <Button
+                            variant="secondary"
+                            onClick={() => runAllBackfill(true)}
+                            disabled={loading}
+                            loading={loading}
+                        >
+                            {!loading && <Play size={16} aria-hidden="true" />}
+                            Dry-Run All
+                        </Button>
+                        <Button
+                            variant="danger"
+                            onClick={() => setConfirmingRunAll(true)}
+                            disabled={loading}
+                            loading={loading}
+                        >
+                            {!loading && <CheckCircle size={16} aria-hidden="true" />}
+                            Run All Companies
+                        </Button>
+                    </div>
+                </Card>
+
+                {/* Results Display */}
+                {error && (
+                    <Card padding="md" role="alert" className="flex items-start gap-ds-3 border-ds-status-danger-border bg-ds-status-danger-bg">
+                        <AlertCircle size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-ds-status-danger-fg" />
                         <div>
-                            <h4 className="font-semibold text-green-900 mb-1">
-                                {result.dryRun ? 'Dry-Run Complete' : 'Backfill Complete'}
-                            </h4>
-                            <p className="text-sm text-green-700">
-                                {result.dryRun
-                                    ? 'Preview generated successfully. No data was modified.'
-                                    : 'Stats have been written to Firestore.'}
-                            </p>
+                            <h4 className="mb-1 font-semibold text-ds-status-danger-fg">Error</h4>
+                            <p className="break-words text-ds-sm text-ds-status-danger-fg">{error}</p>
                         </div>
-                    </div>
+                    </Card>
+                )}
 
-                    <div className="bg-white rounded-lg p-4 space-y-2">
-                        {result.companyId && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Company ID:</span>
-                                <span className="font-mono text-gray-900">{result.companyId}</span>
+                {result && (
+                    <Card padding="md" role="status" className="border-ds-status-success-border bg-ds-status-success-bg">
+                        <div className="mb-ds-4 flex items-start gap-ds-3">
+                            <CheckCircle size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-ds-status-success-fg" />
+                            <div>
+                                <h4 className="mb-1 font-semibold text-ds-status-success-fg">
+                                    {result.dryRun ? 'Dry-Run Complete' : 'Backfill Complete'}
+                                </h4>
+                                <p className="text-ds-sm text-ds-status-success-fg">
+                                    {result.dryRun
+                                        ? 'Preview generated successfully. No data was modified.'
+                                        : 'Stats have been written to Firestore.'}
+                                </p>
                             </div>
-                        )}
-                        {result.companiesProcessed && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Companies Processed:</span>
-                                <span className="font-semibold text-gray-900">{result.companiesProcessed}</span>
-                            </div>
-                        )}
-                        {result.companiesSucceeded && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Companies Succeeded:</span>
-                                <span className="font-semibold text-green-600">{result.companiesSucceeded}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between text-sm">
-                            <span className="text-gray-600">Total Activities Processed:</span>
-                            <span className="font-semibold text-blue-600">
-                                {result.totalActivitiesProcessed?.toLocaleString() || 0}
-                            </span>
                         </div>
-                        {result.legacyCount !== undefined && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-600 pl-4">↳ Legacy (activities):</span>
-                                <span className="text-gray-700">{result.legacyCount.toLocaleString()}</span>
-                            </div>
-                        )}
-                        {result.modernCount !== undefined && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-600 pl-4">↳ Modern (activity_logs):</span>
-                                <span className="text-gray-700">{result.modernCount.toLocaleString()}</span>
-                            </div>
-                        )}
-                        {result.daysWithStats && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Days with Stats:</span>
-                                <span className="font-semibold text-gray-900">{result.daysWithStats}</span>
-                            </div>
-                        )}
-                        {result.daysWritten && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-600">Days Written:</span>
-                                <span className="font-semibold text-green-600">{result.daysWritten}</span>
-                            </div>
-                        )}
-                    </div>
 
-                    {/* Preview Data */}
-                    {result.preview && result.preview.length > 0 && (
-                        <div className="mt-4">
-                            <h5 className="text-sm font-semibold text-gray-900 mb-2">
-                                Preview (First {result.preview.length} Days)
-                            </h5>
-                            <div className="bg-white rounded-lg border border-gray-200 max-h-64 overflow-y-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-gray-50 sticky top-0">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Date</th>
-                                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Dials</th>
-                                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Connected</th>
-                                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Users</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {result.preview.map((day, idx) => (
-                                            <tr key={idx} className="hover:bg-gray-50">
-                                                <td className="px-3 py-2 font-mono text-xs">{day.dateKey}</td>
-                                                <td className="px-3 py-2 text-right font-semibold">{day.totalDials}</td>
-                                                <td className="px-3 py-2 text-right text-green-600">{day.connected}</td>
-                                                <td className="px-3 py-2 text-right text-gray-600">{day.userCount}</td>
+                        <Card padding="md" className="bg-ds-surface">
+                            <dl className="space-y-ds-2">
+                                {summaryRows.map(([label, value, valueClass]) => (
+                                    <div key={label} className="flex justify-between gap-ds-4 text-ds-sm">
+                                        <dt className="text-ds-content-secondary">{label}</dt>
+                                        <dd className={`tabular-nums ${valueClass}`}>{value}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </Card>
+
+                        {/* Preview Data */}
+                        {result.preview && result.preview.length > 0 && (
+                            <div className="mt-ds-4">
+                                <h5 className="mb-ds-2 text-ds-sm font-semibold text-ds-content">
+                                    Preview (First {result.preview.length} Days)
+                                </h5>
+                                <div className="max-h-64 overflow-auto rounded-ds-lg border border-ds-border-subtle bg-ds-surface">
+                                    <table className="w-full text-ds-sm">
+                                        <caption className="sr-only">Backfill preview by day</caption>
+                                        <thead className="sticky top-0 bg-ds-surface-subtle">
+                                            <tr>
+                                                <th scope="col" className="px-ds-3 py-ds-2 text-left text-ds-xs font-semibold text-ds-content-secondary">Date</th>
+                                                <th scope="col" className="px-ds-3 py-ds-2 text-right text-ds-xs font-semibold text-ds-content-secondary">Dials</th>
+                                                <th scope="col" className="px-ds-3 py-ds-2 text-right text-ds-xs font-semibold text-ds-content-secondary">Connected</th>
+                                                <th scope="col" className="px-ds-3 py-ds-2 text-right text-ds-xs font-semibold text-ds-content-secondary">Users</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody className="divide-y divide-ds-border-subtle">
+                                            {result.preview.map((day, idx) => (
+                                                <tr key={idx} className="hover:bg-ds-surface-subtle">
+                                                    <th scope="row" className="px-ds-3 py-ds-2 text-left font-mono text-ds-xs font-normal text-ds-content">{day.dateKey}</th>
+                                                    <td className="px-ds-3 py-ds-2 text-right font-semibold tabular-nums text-ds-content">{day.totalDials}</td>
+                                                    <td className="px-ds-3 py-ds-2 text-right tabular-nums text-ds-status-success-fg">{day.connected}</td>
+                                                    <td className="px-ds-3 py-ds-2 text-right tabular-nums text-ds-content-secondary">{day.userCount}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </Card>
+                )}
+            </Stack>
+
+            {confirmingRunAll && (
+                <RunAllConfirmDialog
+                    onCancel={() => setConfirmingRunAll(false)}
+                    onConfirm={() => runAllBackfill(false)}
+                />
             )}
-        </div>
+        </Card>
+    );
+}
+
+/**
+ * Confirmation for the platform-wide writing backfill. There was previously no
+ * guard of any kind on this action.
+ */
+function RunAllConfirmDialog({ onCancel, onConfirm }) {
+    const titleId = useId();
+    const descriptionId = useId();
+
+    return (
+        <Modal
+            onClose={onCancel}
+            labelledBy={titleId}
+            describedBy={descriptionId}
+            closeOnBackdrop={false}
+            className="w-full max-w-lg overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            <div className="p-ds-5 text-center">
+                <StatusMedallion tone="danger" className="mx-auto mb-ds-3"><AlertTriangle /></StatusMedallion>
+                <h2 id={titleId} className="text-ds-heading-sm font-bold text-ds-content">
+                    Run the backfill for every company?
+                </h2>
+                <p id={descriptionId} className="mt-ds-3 text-ds-sm text-ds-content-secondary">
+                    This writes <code>stats_daily</code> for every company on the platform, overwriting
+                    existing figures. It can take up to nine minutes and cannot be undone. Run the
+                    dry-run first if you have not already.
+                </p>
+            </div>
+            <div className="flex justify-end gap-ds-3 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+                <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button variant="danger" onClick={onConfirm}>Run for all companies</Button>
+            </div>
+        </Modal>
     );
 }
