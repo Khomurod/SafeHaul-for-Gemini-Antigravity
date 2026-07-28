@@ -6177,12 +6177,41 @@ byte-for-byte unchanged.
 - `npx tsc -p jsconfig.json --noEmit` — clean.
 - `npm run build` — succeeds.
 - `git diff --check` — clean.
+- `gitleaks detect` over the branch range — reproduced the `secret-scan` failure
+  locally, then confirmed 0 findings after allowlisting the one known-fake
+  placeholder literal by exact string (not by path or rule).
 
 #### Approved feature-owned exception
 
 - The `EditCompanyModal` logo `<input type="file">` stays raw. The design system
   still has no approved file-input contract — the same exception already
   recorded for the public driver application and the PEV result upload.
+
+#### Two exceptions claimed in review and then withdrawn
+
+Automated review on PR #125 rejected two exceptions this campaign initially
+claimed, and it was right on both counts:
+
+- **`SuperAdminSidebar` was hand-rolled**, justified by calling
+  `SectionNavigation` a "flat list" contract. That was factually wrong:
+  `SectionNavigation` takes `groups`, and already owns `aria-current`, roving
+  Arrow/Home/End focus movement, a named `<nav>` landmark and a responsive
+  `mobileLayout`. The hand-rolled rail recreated precisely the competing visual
+  primitive — feature-local active, hover, focus, spacing and radius treatments
+  — that this migration exists to remove. It now consumes `SectionNavigation`,
+  which also gives the rail keyboard arrow navigation it never had. The group
+  keys (`core`/`data`/`ops`/`create`) gain visible labels, so the grouping is
+  announced instead of implied by a decorative divider.
+- **`ViewCompanyAppsModal` kept `getStatusColor`**, which returns legacy palette
+  classes (`bg-green-100`, `text-red-800`, ...). Adding text alongside the colour
+  fixed the colour-only defect but left arbitrary colours inside a surface
+  declared migrated. Status is now an approved `Badge`, with the domain→tone
+  mapping owned by the feature (the design system must not know what "Background
+  Check" means, and the feature must not invent colours).
+
+The `DataTable`-inside-a-dialog exception for that same modal's table stands: the
+approved `DataTable` contract has not been proven inside a dialog with its own
+scroll container and sticky header.
 
 #### Remaining scope for this row (explicitly NOT done)
 
