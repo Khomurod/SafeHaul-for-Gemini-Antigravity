@@ -2,10 +2,10 @@ import React, { useState, useEffect, useMemo, useId, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '@lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, onSnapshot, orderBy, deleteDoc, doc, updateDoc, getDocs, Timestamp, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, deleteDoc, doc, updateDoc, getDocs, addDoc, Timestamp, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { useData } from '@/context/DataContext';
 import EnvelopeCreator from '@features/signing/EnvelopeCreator';
-import EnvelopeHistory from '@features/signing/components/EnvelopeHistory';
+import { useSigningRequests } from '@features/signing/hooks/useSigningRequests';
 import {
     buildPrefillContext,
     buildEditablePrefillGroups,
@@ -15,11 +15,16 @@ import {
     resolveFieldsForSend,
 } from '@features/signing/utils/prefillEngine';
 import { GlobalLoadingState } from '@shared/components/feedback';
-import { FileSignature, History, ArrowLeft, Plus, FileText } from 'lucide-react';
+import { LayoutDashboard, Send, FileText, ClipboardList, ArrowLeft, Plus } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
-import { SendTemplateModal } from '../components/documents/SendTemplateModal';
-import { TemplatesPanel } from '../components/documents/TemplatesPanel';
+import { SendTemplateWizard } from '../components/documents/SendTemplateWizard';
+import { DocumentsOverview } from '../components/documents/DocumentsOverview';
+import { SentDocumentsPanel } from '../components/documents/SentDocumentsPanel';
+import { TemplateLibraryPanel } from '../components/documents/TemplateLibraryPanel';
+import { ApplicationFormsPanel } from '../components/documents/ApplicationFormsPanel';
+import { NewDocumentDialog } from '../components/documents/NewDocumentDialog';
+import { DEFAULT_FILTERS, isTemplateDuplicable } from '../utils/documentsWorkspace';
 
 import { FeatureLockedModal } from '@shared/components/modals/FeatureLockedModal';
 import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
@@ -28,16 +33,19 @@ import { Button } from '@/design-system/components';
 import { Inline, PageContainer, PageHeader, Stack } from '@/design-system/layouts';
 
 /**
- * The two Documents Center views, in tab order. The `id` values are the exact
- * `activeTab` state values the rest of this view already depends on ('list' is
- * the initial value) — the tab interface only changes how they are presented.
+ * The four Documents workspace views, in tab order.
+ *
+ * `overview` is the default: the old page opened straight into a tool (the
+ * history table) with no sense of what needed doing.
  *
  * The design system has no approved Tabs primitive yet (tracked in the
  * roadmap), so this WAI-ARIA tab interface stays feature-owned.
  */
 const DOCUMENT_TABS = [
-    { id: 'list', label: 'History', icon: History },
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'sent', label: 'Sent Documents', icon: Send },
     { id: 'templates', label: 'Templates', icon: FileText },
+    { id: 'forms', label: 'Application Forms', icon: ClipboardList },
 ];
 
 const TAB_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
@@ -47,14 +55,20 @@ export default function DocumentsManager() {
     const navigate = useNavigate();
     const { showSuccess, showError } = useToast();
 
-    const [activeTab, setActiveTab] = useState('list');
+    const [activeTab, setActiveTab] = useState('overview');
     const [viewMode, setViewMode] = useState('view');
     const [creatorInitialMode, setCreatorInitialMode] = useState('request');
     const [editRequestId, setEditRequestId] = useState(null);
     const [editTemplateId, setEditTemplateId] = useState(null);
+    const [showNewDocumentDialog, setShowNewDocumentDialog] = useState(false);
 
     const [templates, setTemplates] = useState([]);
     const [templatesLoading, setTemplatesLoading] = useState(true);
+    const [templateSearch, setTemplateSearch] = useState('');
+    const [templateSort, setTemplateSort] = useState('updated');
+    const [duplicatingTemplateId, setDuplicatingTemplateId] = useState(null);
+
+    const [sentFilters, setSentFilters] = useState({ ...DEFAULT_FILTERS });
 
     // Send Flow State
     const [showDriverPicker, setShowDriverPicker] = useState(false);
@@ -85,6 +99,16 @@ export default function DocumentsManager() {
     const tabPanelId = `edocs-tabpanel-${rawId}`;
     const tabIdFor = (value) => `edocs-tab-${value}-${rawId}`;
     const tabRefs = useRef({});
+
+    // One live subscription for the whole workspace: Overview metrics and the
+    // Sent Documents table read the same documents rather than opening two
+    // listeners on companies/{id}/signing_requests.
+    const {
+        documents: signingRequests,
+        isLoading: signingRequestsLoading,
+        loadError: signingRequestsError,
+        retry: retrySigningRequests,
+    } = useSigningRequests(isE2EEdocMock ? null : currentCompanyProfile?.id);
 
     // Automatic activation: arrow/Home/End both select and move focus, so the
     // panel always matches the focused tab.
@@ -212,6 +236,8 @@ export default function DocumentsManager() {
     };
 
     const executeTemplateSend = async () => {
+        // Guard against a second submission while the first is still in flight.
+        if (sending) return;
         // FEAT-2: Validate based on delivery method
         if (!manualName.trim()) {
             showError('Please enter a recipient name.');
@@ -336,7 +362,7 @@ export default function DocumentsManager() {
             }
 
             setShowDriverPicker(false);
-            setActiveTab('list');
+            setActiveTab('sent');
         } catch (err) {
             console.error(err);
             showError("Failed to send template.");
@@ -367,9 +393,8 @@ export default function DocumentsManager() {
      * can name it and warn about the second effect. `confirmDeleteTemplate` runs
      * the original sequence unchanged.
      */
-    // Takes an id, not a template: `TemplatesPanel`'s `handleDeleteTemplate(id)`
-    // callback shape is a frozen contract (see its own tests), so the lookup
-    // happens here.
+    // Takes an id, not a template: the panel's `onDelete(id)` callback shape is a
+    // frozen contract (see its own tests), so the lookup happens here.
     const requestDeleteTemplate = (id) => {
         if (!id) return;
         const template = templates.find((item) => item.id === id);
@@ -405,7 +430,7 @@ export default function DocumentsManager() {
                 });
             } catch (error) {
                 console.error('[DocumentsManager] Failed pruning deleted template from post-submit forms:', error);
-                showError('Template deleted, but the post-submission forms list could not be updated. Please press "Save Forms".');
+                showError('Template deleted, but the post-submission forms list could not be updated. Please press "Save forms".');
             }
         }
     };
@@ -416,6 +441,45 @@ export default function DocumentsManager() {
         setCreatorInitialMode('template');
         setViewMode('create');
     };
+
+    /**
+     * Copy a template. Deliberately gated on `isTemplateDuplicable`: a template
+     * without its stored PDF, or carrying a field type the editor does not
+     * know, would produce a copy that can never be sent or edited. The copy
+     * REUSES the original `storagePath` (the same immutable PDF) and never
+     * inherits the post-application configuration.
+     */
+    const handleDuplicateTemplate = async (template) => {
+        if (!isTemplateDuplicable(template)) {
+            showError('This template cannot be duplicated safely. Open it and re-save it first.');
+            return;
+        }
+        setDuplicatingTemplateId(template.id);
+        try {
+            await addDoc(collection(db, 'companies', currentCompanyProfile.id, 'templates'), {
+                companyId: currentCompanyProfile.id,
+                title: `${String(template.title || 'Untitled template').trim()} (copy)`,
+                fields: template.fields,
+                storagePath: template.storagePath,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                createdBy: auth.currentUser?.uid || null,
+            });
+            showSuccess('Template duplicated.');
+        } catch (error) {
+            console.error('[DocumentsManager] Failed duplicating template:', error);
+            showError('Could not duplicate this template. Please try again.');
+        } finally {
+            setDuplicatingTemplateId(null);
+        }
+    };
+
+    /**
+     * "Configure" is post-application usage — the only per-template
+     * configuration this product has — so it opens the Application Forms view
+     * rather than a second place to set the same thing.
+     */
+    const handleConfigureTemplate = () => setActiveTab('forms');
 
     const isTemplateEnabledPostSubmit = (templateId) => postSubmitTemplateIds.includes(templateId);
 
@@ -460,6 +524,23 @@ export default function DocumentsManager() {
         } finally {
             setSavingPostSubmitTemplates(false);
         }
+    };
+
+    /**
+     * New Document. The chosen mode is passed to EnvelopeCreator as
+     * `initialMode` and is FIXED there — the creator no longer offers a toggle
+     * that could silently change the outcome.
+     */
+    const handleNewDocumentChoice = (choice) => {
+        setShowNewDocumentDialog(false);
+        if (choice === 'template-send') {
+            setActiveTab('templates');
+            return;
+        }
+        setEditRequestId(null);
+        setEditTemplateId(null);
+        setCreatorInitialMode(choice === 'create-template' ? 'template' : 'request');
+        setViewMode('create');
     };
 
     if (loading) return <GlobalLoadingState />;
@@ -513,18 +594,15 @@ export default function DocumentsManager() {
                             stacks the actions under the title. */}
                         <PageHeader
                             className="flex-wrap"
-                            title={
-                                <span className="flex items-center gap-ds-2">
-                                    <FileSignature className="text-ds-action-primary" aria-hidden="true" /> Documents Center
-                                </span>
-                            }
+                            title="Documents"
+                            description="Create, send, track and manage documents requiring completion or signature."
                             actions={
                                 <Inline gap="sm">
-                                    <Button onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('template'); setViewMode('create'); }}>
-                                        <FileText size={18} aria-hidden="true" /> Create Template
+                                    <Button onClick={() => setActiveTab('templates')}>
+                                        <FileText size={18} aria-hidden="true" /> Manage Templates
                                     </Button>
-                                    <Button variant="primary" onClick={() => { setEditRequestId(null); setEditTemplateId(null); setCreatorInitialMode('request'); setViewMode('create'); }}>
-                                        <Plus size={20} aria-hidden="true" /> Send One-off
+                                    <Button variant="primary" onClick={() => setShowNewDocumentDialog(true)}>
+                                        <Plus size={20} aria-hidden="true" /> New Document
                                     </Button>
                                 </Inline>
                             }
@@ -533,7 +611,7 @@ export default function DocumentsManager() {
 
                     <div
                         role="tablist"
-                        aria-label="Document Center views"
+                        aria-label="Documents workspace views"
                         onKeyDown={handleTabKeyDown}
                         className="flex flex-wrap rounded-t-ds-xl border-b border-ds-border bg-ds-surface px-ds-2"
                     >
@@ -575,10 +653,59 @@ export default function DocumentsManager() {
                         tabIndex={-1}
                         className="animate-in fade-in slide-in-from-bottom-2 duration-300"
                     >
-                        {activeTab === 'list' ? (
-                            <EnvelopeHistory companyId={currentCompanyProfile.id} onCorrect={handleCorrect} />
-                        ) : (
-                            <TemplatesPanel
+                        {activeTab === 'overview' && (
+                            <DocumentsOverview
+                                documents={signingRequests}
+                                isLoading={signingRequestsLoading}
+                                loadError={signingRequestsError}
+                                onRetry={retrySigningRequests}
+                                templates={templates}
+                                templatesLoading={templatesLoading}
+                                onViewSentDocuments={() => {
+                                    setSentFilters({ ...DEFAULT_FILTERS });
+                                    setActiveTab('sent');
+                                }}
+                                onViewNeedsAttention={() => {
+                                    setSentFilters({ ...DEFAULT_FILTERS, needsAttention: true });
+                                    setActiveTab('sent');
+                                }}
+                                onViewTemplates={() => setActiveTab('templates')}
+                            />
+                        )}
+
+                        {activeTab === 'sent' && (
+                            <SentDocumentsPanel
+                                companyId={currentCompanyProfile.id}
+                                documents={signingRequests}
+                                isLoading={signingRequestsLoading}
+                                loadError={signingRequestsError}
+                                onRetry={retrySigningRequests}
+                                onCorrect={handleCorrect}
+                                filters={sentFilters}
+                                setFilters={setSentFilters}
+                            />
+                        )}
+
+                        {activeTab === 'templates' && (
+                            <TemplateLibraryPanel
+                                templates={templates}
+                                templatesLoading={templatesLoading}
+                                postSubmitTemplateIds={postSubmitTemplateIds}
+                                search={templateSearch}
+                                setSearch={setTemplateSearch}
+                                sort={templateSort}
+                                setSort={setTemplateSort}
+                                onSend={handleUseTemplate}
+                                onEdit={handleEditTemplate}
+                                onDuplicate={handleDuplicateTemplate}
+                                onConfigure={handleConfigureTemplate}
+                                onDelete={requestDeleteTemplate}
+                                duplicatingTemplateId={duplicatingTemplateId}
+                            />
+                        )}
+
+                        {activeTab === 'forms' && (
+                            <ApplicationFormsPanel
                                 templates={templates}
                                 templatesLoading={templatesLoading}
                                 postSubmitTemplateIds={postSubmitTemplateIds}
@@ -589,20 +716,28 @@ export default function DocumentsManager() {
                                 movePostSubmitTemplate={movePostSubmitTemplate}
                                 isTemplateEnabledPostSubmit={isTemplateEnabledPostSubmit}
                                 togglePostSubmitTemplate={togglePostSubmitTemplate}
-                                handleUseTemplate={handleUseTemplate}
-                                handleEditTemplate={handleEditTemplate}
-                                handleDeleteTemplate={requestDeleteTemplate}
                             />
                         )}
                     </div>
                 </Stack>
             </PageContainer>
 
-            {/* FEAT-2/3/4: REDESIGNED DRIVER PICKER MODAL */}
+            {showNewDocumentDialog && (
+                <NewDocumentDialog
+                    templateCount={templates.length}
+                    onClose={() => setShowNewDocumentDialog(false)}
+                    onChoose={handleNewDocumentChoice}
+                />
+            )}
+
+            {/* Guided three-step send. Every write, callable, message and
+                navigation inside `executeTemplateSend` is unchanged. */}
             {showDriverPicker && (
-                <SendTemplateModal
+                <SendTemplateWizard
                     selectedTemplate={selectedTemplate}
-                    onClose={() => setShowDriverPicker(false)}
+                    // Closing mid-send is blocked so an in-flight write cannot be
+                    // hidden behind a dismissed dialog.
+                    onClose={() => { if (!sending) setShowDriverPicker(false); }}
                     manualName={manualName}
                     setManualName={setManualName}
                     manualEmail={manualEmail}
@@ -646,5 +781,3 @@ export default function DocumentsManager() {
         </div>
     );
 }
-
-

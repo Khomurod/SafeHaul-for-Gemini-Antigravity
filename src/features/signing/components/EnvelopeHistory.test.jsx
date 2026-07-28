@@ -246,10 +246,13 @@ describe('EnvelopeHistory — action visibility', () => {
         expect(screen.queryByRole('button', { name: /Void/ })).not.toBeInTheDocument();
     });
 
-    it('offers no actions for a voided document', () => {
+    it('offers only Details for a voided document', () => {
         renderHistory();
         emit([makeDoc({ status: 'voided' })]);
-        expect(screen.getByText('No actions')).toBeInTheDocument();
+        // A voided document is read-only: the row still opens its details (which
+        // is how an operator sees why it was voided) but exposes no action that
+        // could change it.
+        expect(screen.getByRole('button', { name: 'Details for Offer Letter' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /Link for|Void|Correct|Download/ })).not.toBeInTheDocument();
     });
 
