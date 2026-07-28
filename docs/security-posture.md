@@ -104,8 +104,53 @@ should be left as-is. Any future change here must be validated end-to-end agains
 public CDL and medical-card upload flow **before** enforcement is turned on, so the
 original driver-upload failures are not reintroduced.
 
+## AI document analysis (AI Field Assistant)
+
+`analyzeEdocFieldPlacement` sends rendered E-Doc page images to a third-party
+vision provider. It is a **separate callable from the public CDL parser**
+(`parseCdlWithGroq`) on purpose — the CDL path is reachable by unauthenticated
+guests mid-application, and this one must not be.
+
+Controls enforced in [`functions/edocFieldPlacement.js`](../functions/edocFieldPlacement.js):
+
+- **Authentication** — `request.auth.uid` is required.
+- **Tenancy** — `assertCompanyAccessForRequest` (the same strict RBAC check
+  `getSigningLink` uses), plus an E-Docs feature check
+  (`companies/{id}.features.eDocs !== false`).
+- **Rate limits** — per user (12 / 60s) *and* per company (60 / 300s), both
+  `fail-closed`, because each call spends money at a third party.
+- **Payload ceilings** — at most 5 pages per request, ~2 MB per page image and
+  ~7 MB total; only `data:image/(png|jpeg|webp);base64` inputs are accepted.
+- **No arbitrary Storage access** — the client sends images it rendered itself.
+  The callable takes no Storage path and reads no file.
+- **No Firestore write** — the only datastore access is the company feature
+  read (and the shared rate-limit counters).
+- **No signing tokens** — none are accepted as input or returned. `scanId` is an
+  opaque client correlation id, capped at 64 characters.
+- **Server-side key only** — `GROQ_API_KEY` never reaches the browser; the model
+  pin is its own variable, `GROQ_DOCUMENT_VISION_MODEL`, so document analysis and
+  CDL OCR can move independently.
+- **Output validation** — every suggestion is checked against the supported
+  signer field types and prefill bindings, its page must be one that was
+  scanned, and its coordinates must be finite, in 0–100 %, and large enough to
+  use. Anything else is dropped.
+
+Privacy:
+
+- Rendered page images exist only in browser memory for the duration of one scan
+  and are never written to Storage, IndexedDB or localStorage.
+- Nothing logs PDF content, base64 images, recipient details, signatures, tokens,
+  or the provider's response text — only counts, ids and HTTP status codes.
+- The UI discloses, in plain language and before the scan starts, that page
+  images are sent to the configured AI provider.
+- **We do not claim provider Zero Data Retention.** No ZDR configuration has
+  been verified in this project's production account, so no such claim is made in
+  the product or in these docs.
+
 ## Related files
 
+- [`functions/edocFieldPlacement.js`](../functions/edocFieldPlacement.js) — AI Field Assistant callable
+- [`functions/shared/documentVisionProvider.js`](../functions/shared/documentVisionProvider.js) — provider-neutral vision boundary
 - [`functions/storageSecure.js`](../functions/storageSecure.js) — upload path reservation
 - [`functions/getSignedGuestUploadUrl.js`](../functions/getSignedGuestUploadUrl.js) — guest file preview URLs
 - [`functions/guestApplication.js`](../functions/guestApplication.js) — guest submit

@@ -11,6 +11,7 @@ Maps each **`httpsCallable`** export in [`functions/index.js`](../functions/inde
 | Callable | Caller file(s) | Typical use |
 |----------|----------------|-------------|
 | `addPhoneLine` | [`AddLineModal.jsx`](../src/features/super-admin/components/integrations/AddLineModal.jsx) | Add SMS line to company inventory |
+| `analyzeEdocFieldPlacement` | [`useAiFieldAssistant.js`](../src/features/signing/hooks/useAiFieldAssistant.js) | AI Field Assistant: suggest signer-field placement from rendered E-Doc pages (authenticated, company-scoped) |
 | `backfillAllSmsSentPhones` | [`useSystemHealth.js`](../src/features/super-admin/hooks/useSystemHealth.js) | Admin: backfill SMS sent phones (all companies) |
 | `backfillAllStats` | [`StatsBackfillPanel.jsx`](../src/features/super-admin/components/StatsBackfillPanel.jsx) | Admin: stats backfill all tenants |
 | `backfillCompanyStats` | [`StatsBackfillPanel.jsx`](../src/features/super-admin/components/StatsBackfillPanel.jsx) | Admin: stats backfill one company |

@@ -7479,3 +7479,116 @@ Users, and Integrations each remain independent items with their own audits and
 behavior-preservation evidence. `/company/profile` account security is migrated
 (GO) and no longer open. The SMS number-assignment slice stays blocked until the
 editable-matrix strategy is owner-approved.
+
+---
+
+### Documents workspace redesign and AI Field Assistant completion log (GO)
+
+- **Date:** 2026-07-28
+- **Starting baseline:** `main` / `origin/main` at
+  `00303f77451491f13ed11338c9e89d557bb821a9`.
+- **Scope:** the company-side Documents route only. The signing room, the
+  sealer, the public signing flow, the post-application backend and every
+  Firestore/Storage rule are untouched.
+
+**What changed**
+
+The route kept its path but stopped being a tool-first page. `DocumentsManager`
+is now a four-view workspace — **Overview** (default), **Sent Documents**,
+**Templates**, **Application Forms** — behind the same feature-owned WAI-ARIA tab
+interface (the design system still has no approved `Tabs` primitive; that gap is
+unchanged). The header is `Documents` with a description, a primary
+**New Document** action and a secondary **Manage Templates**.
+
+New feature-owned components, all built from approved primitives
+(`Card`, `MetricCard`, `Badge`, `Button`, `IconButton`, `DataTable`,
+`FormField`, `Input`, `Select`, `Checkbox`, `Radio`, `ChoiceGroup`,
+`ProgressBar`, `Modal`, `Stack`, `Inline`, `ResponsiveGrid`, `PageHeader`,
+`PageContainer`):
+
+- `DocumentsOverview`, `SentDocumentsPanel`, `TemplateLibraryPanel`,
+  `ApplicationFormsPanel`, `NewDocumentDialog`, `SentDocumentDetailsDialog`,
+  `SendTemplateWizard` (replaces `SendTemplateModal`);
+- `AiScanOptionsDialog`, `AiSuggestionReviewPanel`, `AiSuggestionOverlay` in the
+  envelope creator.
+
+`TemplatesPanel` and `SendTemplateModal` were **replaced, not wrapped** — their
+responsibilities split cleanly between the new template library and the new
+Application Forms view, and the single long send modal became a three-step
+guided flow. Both files and their suites were removed and re-covered by the
+replacements' own suites.
+
+**Preserved exactly** (audited before any presentation change): the route and
+feature flag, company permissions and tenant isolation, every Firestore and
+Storage path, the template and signing-request schemas, signing-token
+confidentiality (still only ever via the `getSigningLink` callable, never
+rendered), the status values, the `email` / `sms` / `both` / `copy` delivery
+values, the seven-day expiry, every callable name and payload, `sendSMS`, the
+signed-document download, `postApplicationTemplates` string/object compatibility
+with its required-by-default rule and its ordering, immediate pruning after a
+template delete, template editing, correction, voiding and deletion, and the
+prefill bindings and serializer.
+
+**Two deliberate behaviour changes, both recorded here rather than slipped in:**
+
+1. The envelope creator's **One-off Send / Save Template toggle is gone.** The
+   mode is chosen in the New Document dialog and is fixed for the rest of the
+   flow. The old toggle let the outcome of a half-built envelope change silently.
+   Template editing and request correction are unaffected — both already arrived
+   with their mode pinned.
+2. A **voided** row now offers a Details action (previously "No actions"). It is
+   read-only: nothing about a voided document can be changed from it.
+
+**AI Field Assistant.** New `Auto-place fields` action in the creator sidebar,
+disabled until a PDF is loaded. Suggestions live in their own array and their own
+visually distinct overlay layer, and only ever become real fields through an
+explicit Apply. It never saves a template, never sends a document and never
+writes raw model output to Firestore. Security, privacy and provider details are
+recorded in [`docs/security-posture.md`](./security-posture.md).
+
+**Design-system exceptions used (all pre-existing categories, none new):**
+
+- The four-view tab interface stays feature-owned — no approved `Tabs` primitive.
+- `AiSuggestionOverlay`'s two ~14 px corner controls are not `IconButton`, for
+  exactly the reason already recorded for `ResizableDraggableField`'s remove
+  control: the approved primitive's min-height would overflow a box whose
+  minimum size is 8 px. Both keep an accessible name, a focus-visible ring and
+  `--ds-*` tokens, and both retire when a compact icon-button size exists.
+- `AiScanOptionsDialog`'s page-range input is a local control: `FormField`
+  requires a plain-string label, and this one carries a live count. It keeps a
+  programmatic label, a 44 px height, `aria-invalid` and the focus ring.
+- `SendTemplateWizard` keeps the recorded `DateTripletField` composition
+  unchanged from `SendTemplateModal` (`Label` + control, because the label
+  carries a tooltip and an applies-count fragment).
+
+**Verification**
+
+1. Implementation complete; behaviour preserved as listed above.
+2. Tests: 405 Functions tests (61 suites, incl. 51 new for the callable and the
+   provider boundary); full frontend suite **2798 passed / 48 skipped** with the
+   coverage ratchet green; new focused suites for the workspace utils (38), the
+   Documents workspace shell (40), Overview, Sent Documents, the template
+   library, Application Forms, the send wizard, the AI suggestion utils (29), the
+   PDF inspector (30), the scan hook (30) and the assistant end-to-end in the
+   creator (23). The AI provider is a mock in every test — CI never calls it.
+3. Desktop visual behaviour reviewed at 1440 and 1024 px; no document-level
+   overflow.
+4. Mobile reviewed at 412 px; no document-level overflow.
+5. Keyboard and accessibility reviewed: tab roving/arrow/Home/End, dialog focus
+   trap and restoration, Escape gated during an in-flight send, `aria-current`
+   step state, and zero serious/critical axe violations in the vitest suites and
+   the scoped Playwright axe lane.
+6. Documentation: this log, `docs/security-posture.md` and
+   `docs/callable-frontend-map.md`.
+7. Final diff inspected; `git diff --check` clean; lint 0 errors; typecheck clean;
+   production build succeeds.
+
+**Honest limitations**
+
+- The configured document-vision model was verified against Groq's published
+  documentation (vision + `json_schema` structured outputs), **not** against a
+  live production API key — none is available in this environment. The pin lives
+  in `GROQ_DOCUMENT_VISION_MODEL` precisely so it can be corrected without code
+  changes, and the CDL model pin was not touched.
+- Firefox and WebKit E2E lanes were not run; they are not part of the repo's CI
+  gate, which runs Chromium and Mobile Chrome.
