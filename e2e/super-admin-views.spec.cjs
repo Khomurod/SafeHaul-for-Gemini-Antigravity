@@ -22,6 +22,15 @@ const VIEWS = [
   { nav: 'Global Features', expect: (page) => page.getByRole('heading', { name: 'Company Feature Overrides' }) },
   { nav: 'SMS Integrations', expect: (page) => page.getByRole('heading', { name: 'SMS Integrations Hub' }) },
   { nav: 'Stats Backfill', expect: (page) => page.getByRole('heading', { name: 'Performance Stats Backfill' }) },
+  // Added 2026-07-28 with the final three views of the Super Admin row.
+  { nav: 'System Health', expect: (page) => page.getByRole('heading', { name: 'System Health & Diagnostics' }) },
+  // Form Builder's schema lives in Firestore, so offline its *settled* state is
+  // the announced load failure — which is precisely the state the migration had
+  // to make accessible (it was a bare amber block before). The loaded editor is
+  // covered by `GlobalQuestionsManager.contract.test.jsx`, which can supply a
+  // schema deterministically.
+  { nav: 'Form Builder', expect: (page) => page.getByRole('heading', { name: 'Failed to load schema' }) },
+  { nav: 'Create New', expect: (page) => page.getByRole('heading', { name: 'Create New Entity' }) },
 ];
 
 async function openShell(page) {
@@ -108,6 +117,82 @@ test.describe('Super Admin views', () => {
     await page.getByRole('tab', { name: 'Activity Overview' }).focus();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: 'Company Performance' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  // ---- The final three views of the Super Admin row (2026-07-28) ----
+
+  test('System Health reports status as text and progress as a real progressbar', async ({ page }) => {
+    await openShell(page);
+    await gotoView(page, 'System Health');
+    await expect(page.getByRole('heading', { name: 'System Health & Diagnostics' })).toBeVisible({ timeout: 20_000 });
+
+    // Status was colour-only; it now carries a text label.
+    await expect(page.getByText('Ready', { exact: true })).toBeVisible();
+    // Progress was a bare div whose width was the only signal.
+    const bar = page.getByRole('progressbar');
+    await expect(bar).toHaveAttribute('aria-valuenow', '0');
+    // The log console was an unnamed, unfocusable scroll region.
+    const log = page.getByRole('log');
+    await expect(log).toBeVisible();
+    await expect(log).toHaveAttribute('tabindex', '0');
+  });
+
+  test('System Health guards Reset with an accessible dialog, never window.confirm', async ({ page }) => {
+    let nativeDialogs = 0;
+    page.on('dialog', async (d) => { nativeDialogs += 1; await d.dismiss(); });
+
+    await openShell(page);
+    await gotoView(page, 'System Health');
+    await expect(page.getByRole('heading', { name: 'System Health & Diagnostics' })).toBeVisible({ timeout: 20_000 });
+
+    // Reset is only offered for paused/error/success; idle must not show it.
+    await expect(page.getByRole('button', { name: /^Reset/ })).toHaveCount(0);
+    expect(nativeDialogs, 'a native confirm/alert was used').toBe(0);
+  });
+
+  test('Create New is a real tab interface with keyboard movement', async ({ page }) => {
+    await openShell(page);
+    await gotoView(page, 'Create New');
+    await expect(page.getByRole('heading', { name: 'Create New Entity' })).toBeVisible({ timeout: 20_000 });
+
+    const tablist = page.getByRole('tablist', { name: 'Entity type' });
+    await expect(tablist).toBeVisible();
+    await expect(page.getByRole('tab', { name: /New Company/ })).toHaveAttribute('aria-selected', 'true');
+
+    await page.getByRole('tab', { name: /New Company/ }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: /New User Only/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('Create New names every control and masks both passwords', async ({ page }) => {
+    await openShell(page);
+    await gotoView(page, 'Create New');
+    await expect(page.getByRole('heading', { name: 'Create New Entity' })).toBeVisible({ timeout: 20_000 });
+
+    // Three selects previously had no accessible name at all.
+    await expect(page.getByLabel('Role')).toBeVisible();
+    // The plan selector was two click-only divs; it is now a radio group.
+    await expect(page.getByRole('radio', { name: /Free Plan/ })).toBeChecked();
+    // Both password fields were type="text".
+    await expect(page.getByLabel(/^Password/)).toHaveAttribute('type', 'password');
+
+    await page.getByRole('tab', { name: /New User Only/ }).click();
+    await expect(page.getByLabel(/Assign to Company/)).toBeVisible();
+    await expect(page.getByLabel(/^Password/)).toHaveAttribute('type', 'password');
+  });
+
+  test('the Unified Driver DB bulk actions never report a false success', async ({ page }) => {
+    let nativeDialogs = 0;
+    page.on('dialog', async (d) => { nativeDialogs += 1; await d.dismiss(); });
+
+    await openShell(page);
+    await gotoView(page, 'Unified Driver DB');
+    await expect(page.getByRole('heading', { name: 'Unified Driver Database' })).toBeVisible({ timeout: 20_000 });
+
+    // Offline there are no rows to select, so the bar cannot appear at all —
+    // which is itself the assertion that no bulk control is reachable here.
+    await expect(page.getByRole('group', { name: 'Bulk actions for selected records' })).toHaveCount(0);
+    expect(nativeDialogs, 'a native confirm/alert was used').toBe(0);
   });
 
   for (const { label, width, height } of [

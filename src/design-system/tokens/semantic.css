@@ -7,6 +7,22 @@
   --ds-color-surface-selected: var(--ds-color-blue-50);
   --ds-color-overlay: rgb(15 23 42 / 0.6);
 
+  /* Inverse (dark) surface role.
+     Added 2026-07-28 for console/log output surfaces, which the product renders
+     as dark monospace panels. Previously every such panel picked its own raw
+     `bg-gray-900` / `text-gray-300` pairing, and one of them measured 2.2:1.
+     The design system owns the role; features decide what text goes in it.
+     Every pairing below is pinned in `tests/tokens.test.js`. */
+  --ds-color-surface-inverse: var(--ds-color-slate-900);
+  --ds-color-surface-inverse-subtle: var(--ds-color-slate-800);
+  --ds-color-border-inverse: var(--ds-color-slate-700);
+  --ds-color-content-on-inverse: var(--ds-color-slate-100);
+  --ds-color-content-on-inverse-muted: var(--ds-color-slate-400);
+  --ds-color-status-info-fg-on-inverse: var(--ds-color-blue-300);
+  --ds-color-status-success-fg-on-inverse: var(--ds-color-green-200);
+  --ds-color-status-warning-fg-on-inverse: var(--ds-color-amber-200);
+  --ds-color-status-danger-fg-on-inverse: var(--ds-color-red-200);
+
   /* Content */
   --ds-color-content: var(--ds-color-slate-800);
   --ds-color-content-secondary: var(--ds-color-slate-600);

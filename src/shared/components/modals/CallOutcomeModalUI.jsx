@@ -1,62 +1,82 @@
-import React from 'react';
+import React, { useId } from 'react';
 import {
-  Phone, X, Save, Loader2, MessageSquare, CheckCircle, XCircle,
-  Clock, AlertCircle, Ban, ThumbsDown, Briefcase,
-  BellPlus, User
+  Phone, X, Save, MessageSquare, CheckCircle, XCircle,
+  Clock, AlertCircle, Ban, ThumbsDown, Briefcase, BellPlus
 } from 'lucide-react';
 import { formatPhoneNumber } from '@shared/utils/helpers';
 import { EXPERIENCE_OPTIONS } from '../../../config/form-options';
+import {
+  Button, FormField, IconButton, Input, Select, Textarea,
+} from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
+import { Modal } from './Modal';
 
+/**
+ * Call-outcome logging dialog for the recruiter dialer.
+ *
+ * Migrated to the design system 2026-07-28; it was a hand-built overlay found by
+ * the repository-wide dialog scan.
+ *
+ * Presentation only — this component is purely controlled: every value and setter
+ * comes from `CallOutcomeModal`. Frozen and unchanged: the eight outcome ids and
+ * their exact labels and order; the twelve `DRIVER_TYPES` and eight `POSITIONS`
+ * and their order; the `EXPERIENCE_OPTIONS` source; the quick-reminder rule
+ * (+1 hour, `YYYY-MM-DD` date, `HH:MM` time, `outcome = 'callback'`, and the exact
+ * `'Quick reminder set: No Answer (1 hr follow-up)'` note); the callback date
+ * `min` of today; the `showDetailInputs` / `showCallbackSelect` visibility rules;
+ * the `handleSave` submit path; the `'Schedule & Save'` / `'Save Result'` label
+ * rule; the `tel:` link and `formatPhoneNumber` display; and every placeholder and
+ * string.
+ *
+ * Defects fixed:
+ *  1. **No focus management.** The overlay declared `role="dialog"` and
+ *     `aria-modal` but was a bare div: focus never moved into it, Tab escaped to
+ *     the page behind, Escape did nothing, and focus was not restored on close.
+ *     `role="dialog"` was also on the *backdrop*, so the whole page was nominally
+ *     inside the dialog. It now uses the shared accessible `Modal`.
+ *  2. **Six controls had no accessible name.** Position, Experience, Freight
+ *     Type, the callback Date and Time, and Recruiter Notes all had `<label>`
+ *     elements with no `htmlFor` and controls with no `id`. `FormField` owns the
+ *     association now.
+ *  3. **`text-[10px]` in five places** — every detail-field label and the network
+ *     hint — plus `text-gray-400` on them, which is 2.56:1 on white.
+ *  4. **The outcome grid communicated its selection by colour and a focus ring
+ *     only** — no `aria-pressed`, no grouping, so a screen-reader user could not
+ *     tell which of the eight outcomes was chosen.
+ *  5. **Eight locally-invented palette trios** (`border-green-200 bg-green-50
+ *     text-green-800` and friends, including a `text-red-400` icon) replaced by the
+ *     semantic status tokens. The feature keeps the domain→tone decision.
+ *  6. A `<label>` carried both `block` and `flex` display classes, so its icon
+ *     alignment depended on class order.
+ *
+ * Documented feature-owned exception: the outcome grid stays a `role="group"` of
+ * raw `<button aria-pressed>` elements. It is a single-select toggle group of
+ * tinted cards, and the design system has no approved Segmented/ToggleGroup or
+ * SelectableCard primitive — the same exception already recorded for the dossier's
+ * summary/full toggle and the PEV FMCSA suggestion rows. All of its colours are
+ * now approved tokens, and the selection is exposed through `aria-pressed`.
+ */
+
+/** Domain outcome → semantic tone. Feature-owned mapping; token-owned values. */
 const OUTCOMES_CONFIG = [
-  {
-    id: 'interested',
-    label: 'Connected / Interested',
-    icon: <CheckCircle size={18} className="text-green-600" />,
-    color: 'border-green-200 bg-green-50 text-green-800'
-  },
-  {
-    id: 'callback',
-    label: 'Connected / Scheduled Callback',
-    icon: <Clock size={18} className="text-blue-600" />,
-    color: 'border-blue-200 bg-blue-50 text-blue-800'
-  },
-  {
-    id: 'not_qualified',
-    label: 'Connected / Not Qualified',
-    icon: <Ban size={18} className="text-orange-600" />,
-    color: 'border-orange-200 bg-orange-50 text-orange-800'
-  },
-  {
-    id: 'not_interested',
-    label: 'Connected / Not Interested',
-    icon: <ThumbsDown size={18} className="text-gray-600" />,
-    color: 'border-gray-200 bg-gray-50 text-gray-800'
-  },
-  {
-    id: 'hired_elsewhere',
-    label: 'Connected / Hired Elsewhere',
-    icon: <Briefcase size={18} className="text-purple-600" />,
-    color: 'border-purple-200 bg-purple-50 text-purple-800'
-  },
-  {
-    id: 'voicemail',
-    label: 'Left Voicemail',
-    icon: <MessageSquare size={18} className="text-yellow-600" />,
-    color: 'border-yellow-200 bg-yellow-50 text-yellow-800'
-  },
-  {
-    id: 'no_answer',
-    label: 'No Answer',
-    icon: <XCircle size={18} className="text-red-600" />,
-    color: 'border-red-200 bg-red-50 text-red-800'
-  },
-  {
-    id: 'wrong_number',
-    label: 'Wrong Number',
-    icon: <AlertCircle size={18} className="text-red-400" />,
-    color: 'border-red-200 bg-red-50 text-red-800'
-  }
+  { id: 'interested', label: 'Connected / Interested', icon: <CheckCircle size={18} aria-hidden="true" />, tone: 'success' },
+  { id: 'callback', label: 'Connected / Scheduled Callback', icon: <Clock size={18} aria-hidden="true" />, tone: 'info' },
+  { id: 'not_qualified', label: 'Connected / Not Qualified', icon: <Ban size={18} aria-hidden="true" />, tone: 'warning' },
+  { id: 'not_interested', label: 'Connected / Not Interested', icon: <ThumbsDown size={18} aria-hidden="true" />, tone: 'neutral' },
+  { id: 'hired_elsewhere', label: 'Connected / Hired Elsewhere', icon: <Briefcase size={18} aria-hidden="true" />, tone: 'accent' },
+  { id: 'voicemail', label: 'Left Voicemail', icon: <MessageSquare size={18} aria-hidden="true" />, tone: 'warning' },
+  { id: 'no_answer', label: 'No Answer', icon: <XCircle size={18} aria-hidden="true" />, tone: 'danger' },
+  { id: 'wrong_number', label: 'Wrong Number', icon: <AlertCircle size={18} aria-hidden="true" />, tone: 'danger' },
 ];
+
+const TONE_CLASS = {
+  success: 'border-ds-status-success-border bg-ds-status-success-bg text-ds-status-success-fg',
+  info: 'border-ds-status-info-border bg-ds-status-info-bg text-ds-status-info-fg',
+  warning: 'border-ds-status-warning-border bg-ds-status-warning-bg text-ds-status-warning-fg',
+  neutral: 'border-ds-status-neutral-border bg-ds-status-neutral-bg text-ds-status-neutral-fg',
+  accent: 'border-ds-status-accent-border bg-ds-status-accent-bg text-ds-status-accent-fg',
+  danger: 'border-ds-status-danger-border bg-ds-status-danger-bg text-ds-status-danger-fg',
+};
 
 const DRIVER_TYPES = [
   'Dry Van', 'Reefer', 'Flatbed', 'Tanker', 'Box Truck', 'Car Hauler',
@@ -69,8 +89,6 @@ const POSITIONS = [
   'Owner Operator (Solo)', 'Owner Operator (Team)',
   'Lease to Purchase (Solo)', 'Lease to Purchase (Team)'
 ];
-
-
 
 export function CallOutcomeModalUI({
   lead,
@@ -92,6 +110,13 @@ export function CallOutcomeModalUI({
   showDetailInputs,
   showCallbackSelect,
 }) {
+  const titleId = useId();
+  const callbackDateId = useId();
+  const callbackTimeId = useId();
+  const positionId = useId();
+  const experienceId = useId();
+  const freightId = useId();
+  const notesId = useId();
 
   const handleQuickReminder = () => {
     const now = new Date();
@@ -106,62 +131,56 @@ export function CallOutcomeModalUI({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[70] backdrop-blur-sm"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Log call result"
+    <Modal
+      onClose={onClose}
+      labelledBy={titleId}
+      overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-ds-overlay p-4 backdrop-blur-sm"
+      className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
     >
-      <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 overflow-hidden max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="bg-blue-600 p-4 text-white flex justify-between items-center shrink-0">
-          <h3 className="font-bold flex items-center gap-2">
-            <Phone size={20} /> Log Call Result
-          </h3>
-          <button
-            type="button"
-            aria-label="Close call result"
-            onClick={onClose}
-            className="p-1 hover:bg-white/20 rounded-full"
+      <div className="flex shrink-0 items-center justify-between gap-ds-2 border-b border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+        <h2 id={titleId} className="flex items-center gap-ds-2 font-bold text-ds-content">
+          <Phone size={20} className="text-ds-content-link" aria-hidden="true" /> Log Call Result
+        </h2>
+        <IconButton label="Close call result" variant="ghost" size="sm" onClick={onClose}>
+          <X size={20} aria-hidden="true" />
+        </IconButton>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-ds-2 border-b border-ds-border-subtle bg-ds-surface-subtle p-ds-3">
+        <div className="text-ds-sm">
+          <span className="text-ds-content-secondary">Driver: </span>
+          <span className="font-bold text-ds-content">{lead.firstName} {lead.lastName}</span>
+        </div>
+
+        {lead.phone && (
+          <a
+            href={`tel:${lead.phone}`}
+            className="flex items-center gap-1 rounded-full bg-ds-status-success-bg px-ds-3 py-1.5 text-ds-xs font-bold text-ds-status-success-fg transition-colors hover:bg-ds-surface focus-visible:outline-none focus-visible:shadow-ds-focus"
           >
-            <X size={20} />
-          </button>
-        </div>
+            <Phone size={12} fill="currentColor" aria-hidden="true" />
+            <span className="sr-only">Call now: </span>
+            {formatPhoneNumber(lead.phone)}
+          </a>
+        )}
+      </div>
 
-        <div className="p-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between shrink-0">
-          <div className="text-sm">
-            <span className="text-gray-500">Driver: </span>
-            <span className="font-bold text-gray-900">{lead.firstName} {lead.lastName}</span>
-          </div>
+      <form onSubmit={handleSave} className="overflow-y-auto p-ds-5">
+        <Stack gap="lg">
 
-          {lead.phone && (
-            <a
-              href={`tel:${lead.phone}`}
-              className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-bold flex items-center gap-1 hover:bg-green-200 transition-colors"
-              title="Call now"
-            >
-              <Phone size={12} fill="currentColor" /> {formatPhoneNumber(lead.phone)}
-            </a>
-          )}
-        </div>
-
-        <form onSubmit={handleSave} className="p-5 space-y-5 overflow-y-auto">
-
-          <div className="grid grid-cols-2 gap-3">
+          <div role="group" aria-label="Call outcome" className="grid grid-cols-2 gap-ds-3">
             {OUTCOMES_CONFIG.map((opt) => {
               const isSelected = outcome === opt.id;
               return (
                 <button
                   key={opt.id}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() => setOutcome(opt.id)}
-                  className={`p-3 rounded-lg border text-xs font-bold flex flex-col items-center gap-2 transition-all text-center ${isSelected
-                      ? `${opt.color} ring-2 ring-offset-1 ring-blue-500`
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-600'
-                    }`}
+                  className={`flex flex-col items-center gap-ds-2 rounded-ds-md border p-ds-3 text-center text-ds-xs font-bold transition-all focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                    isSelected
+                      ? TONE_CLASS[opt.tone]
+                      : 'border-ds-border-subtle text-ds-content-secondary hover:bg-ds-surface-subtle'
+                  }`}
                 >
                   {opt.icon}
                   {opt.label}
@@ -171,130 +190,101 @@ export function CallOutcomeModalUI({
           </div>
 
           {outcome === 'no_answer' && (
-            <div className="flex justify-center animate-in fade-in">
-              <button
-                type="button"
-                onClick={handleQuickReminder}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-100 text-orange-700 text-xs font-bold rounded-full hover:bg-orange-200 transition-colors"
-              >
-                <BellPlus size={14} /> Remind me in 1 Hour
-              </button>
+            <div className="flex justify-center">
+              <Button variant="secondary" size="sm" onClick={handleQuickReminder}>
+                <BellPlus size={14} aria-hidden="true" /> Remind me in 1 Hour
+              </Button>
             </div>
           )}
 
           {showCallbackSelect && (
-            <div className="animate-in fade-in slide-in-from-top-2 bg-blue-50 p-3 rounded-lg border border-blue-100">
-              <label className="block text-xs font-bold text-blue-800 uppercase mb-2 flex items-center gap-1">
-                <Clock size={12} /> Schedule Callback
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-1">Date</label>
-                  <input
+            <div className="rounded-ds-md border border-ds-status-info-border bg-ds-status-info-bg p-ds-3">
+              <p className="mb-ds-2 flex items-center gap-1 text-ds-xs font-bold uppercase text-ds-status-info-fg">
+                <Clock size={12} aria-hidden="true" /> Schedule Callback
+              </p>
+              <div className="grid grid-cols-2 gap-ds-3">
+                <FormField id={callbackDateId} label="Date">
+                  <Input
                     type="date"
-                    className="w-full p-2 border border-blue-200 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     value={callbackDate}
                     onChange={(e) => setCallbackDate(e.target.value)}
                     min={new Date().toISOString().split('T')[0]}
                   />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-gray-500 mb-1">Time</label>
-                  <input
+                </FormField>
+                <FormField id={callbackTimeId} label="Time">
+                  <Input
                     type="time"
-                    className="w-full p-2 border border-blue-200 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     value={callbackTime}
                     onChange={(e) => setCallbackTime(e.target.value)}
                   />
-                </div>
+                </FormField>
               </div>
             </div>
           )}
 
           {showDetailInputs && (
-            <div className="space-y-3 pt-2 border-t border-gray-100 animate-in fade-in slide-in-from-top-2">
-              <h4 className="text-xs font-bold text-gray-500 uppercase">Verify Driver Details</h4>
+            <div className="border-t border-ds-border-subtle pt-ds-3">
+              <Stack gap="sm">
+                <h3 className="text-ds-xs font-bold uppercase text-ds-content-secondary">Verify Driver Details</h3>
 
-              <div>
-                <label className="block text-[10px] text-gray-400 mb-1">Position</label>
-                <select
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value)}
-                >
-                  <option value="">-- Select Position --</option>
-                  {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
+                <FormField id={positionId} label="Position">
+                  <Select value={position} onChange={(e) => setPosition(e.target.value)}>
+                    <option value="">-- Select Position --</option>
+                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </Select>
+                </FormField>
 
-              <div>
-                <label className="block text-[10px] text-gray-400 mb-1">Experience</label>
-                <select
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={experienceLevel}
-                  onChange={(e) => setExperienceLevel(e.target.value)}
-                >
-                  <option value="">-- Select Experience --</option>
-                  {EXPERIENCE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-              </div>
+                <FormField id={experienceId} label="Experience">
+                  <Select value={experienceLevel} onChange={(e) => setExperienceLevel(e.target.value)}>
+                    <option value="">-- Select Experience --</option>
+                    {EXPERIENCE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  </Select>
+                </FormField>
 
-              <div>
-                <label className="block text-[10px] text-gray-400 mb-1">Freight Type</label>
-                <select
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={driverType}
-                  onChange={(e) => setDriverType(e.target.value)}
+                <FormField
+                  id={freightId}
+                  label="Freight Type"
+                  description="Updating these fields helps the network."
                 >
-                  <option value="">-- Select Type --</option>
-                  {DRIVER_TYPES.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <p className="text-[10px] text-gray-400 italic flex items-center gap-1">
-                <User size={10} /> Updating these fields helps the network.
-              </p>
+                  <Select value={driverType} onChange={(e) => setDriverType(e.target.value)}>
+                    <option value="">-- Select Type --</option>
+                    {DRIVER_TYPES.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </Select>
+                </FormField>
+              </Stack>
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-              Recruiter Notes
-            </label>
-            <textarea
-              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          <FormField id={notesId} label="Recruiter Notes">
+            <Textarea
               rows="3"
               placeholder="Add specific details..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-            ></textarea>
-          </div>
+            />
+          </FormField>
 
-        </form>
+        </Stack>
+      </form>
 
-        <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 shrink-0">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-200 rounded-lg text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 text-sm shadow-md"
-          >
-            {saving ? (
-              <Loader2 className="animate-spin" size={16} />
-            ) : (
-              <Save size={16} />
-            )}
-            {showCallbackSelect ? 'Schedule & Save' : 'Save Result'}
-          </button>
-        </div>
+      <div className="flex shrink-0 justify-end gap-ds-3 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+        <Button variant="secondary" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          size="sm"
+          onClick={handleSave}
+          disabled={saving}
+          loading={saving}
+        >
+          {!saving && <Save size={16} aria-hidden="true" />}
+          {showCallbackSelect ? 'Schedule & Save' : 'Save Result'}
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }

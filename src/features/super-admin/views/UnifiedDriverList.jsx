@@ -64,8 +64,39 @@ const SourceBadge = ({ type }) => {
 };
 
 // ========== BULK ACTION BAR ==========
-const BulkActionBar = ({ selectedCount, onMessage, onAssign, onMoveStatus, onArchive, onClearSelection }) => (
-    <div className="flex flex-wrap items-center justify-between gap-ds-3 rounded-t-ds-xl bg-ds-action-primary px-ds-4 py-ds-3 text-ds-content-inverse">
+/**
+ * OPERATOR-SAFETY FIX (2026-07-28). Message, Assign, Move Status and Archive were
+ * **false affordances**: each handler did nothing but fire a *success* toast
+ * ("Archive action for 50 items"), and Archive additionally asked
+ * `window.confirm("Are you sure you want to archive 50 records?")` first — so an
+ * operator could confirm a destructive-sounding bulk action on 50 driver records,
+ * be told it succeeded, and have nothing happen at all. On a DOT-compliance
+ * surface that is a materially misleading state, not a cosmetic gap.
+ *
+ * No implementation is invented here, because none can be inferred safely:
+ *  - **Assign**: `LeadAssignmentModal` does real bulk assignment, but only within
+ *    a single company's `leads` collection. This view spans every company and
+ *    mixes applications with leads, so reusing it would mean inventing
+ *    cross-tenant assignment policy.
+ *  - **Message**: the campaigns feature owns bulk SMS (`initBulkSession`) with its
+ *    own audience, consent and throttling rules. There is no precedent for sending
+ *    from here.
+ *  - **Move Status**: per-record status updates exist; a cross-company bulk status
+ *    transition has no precedent and no audit-log shape.
+ *  - **Archive**: the view has a real *permanent delete* path, but nothing in the
+ *    repository defines an "archived" state, so Archive is not delete.
+ *
+ * The controls are therefore kept visible (so the owner decision stays visible
+ * too) but disabled and explicitly labelled as unavailable. `Clear` still works.
+ * No Firebase path, callable or business rule changed. Recorded in the roadmap for
+ * an owner decision.
+ */
+const BulkActionBar = ({ selectedCount, onClearSelection, unavailableNoteId }) => (
+    <div
+        role="group"
+        aria-label="Bulk actions for selected records"
+        className="flex flex-wrap items-center justify-between gap-ds-3 rounded-t-ds-xl bg-ds-action-primary px-ds-4 py-ds-3 text-ds-content-inverse"
+    >
         <div className="flex items-center gap-ds-3">
             <span className="font-semibold" role="status">{selectedCount} selected</span>
             <Button variant="ghost" size="sm" onClick={onClearSelection}>
@@ -73,23 +104,27 @@ const BulkActionBar = ({ selectedCount, onMessage, onAssign, onMoveStatus, onArc
             </Button>
         </div>
         <div className="flex flex-wrap items-center gap-ds-2">
-            <Button variant="secondary" size="sm" onClick={onMessage}>
+            <Button variant="secondary" size="sm" disabled aria-describedby={unavailableNoteId}>
                 <MessageSquare size={14} aria-hidden="true" /> Message
                 <span className="sr-only">{` ${selectedCount} selected records`}</span>
             </Button>
-            <Button variant="secondary" size="sm" onClick={onAssign}>
+            <Button variant="secondary" size="sm" disabled aria-describedby={unavailableNoteId}>
                 <UserPlus size={14} aria-hidden="true" /> Assign
                 <span className="sr-only">{` ${selectedCount} selected records`}</span>
             </Button>
-            <Button variant="secondary" size="sm" onClick={onMoveStatus}>
+            <Button variant="secondary" size="sm" disabled aria-describedby={unavailableNoteId}>
                 <ChevronUp size={14} aria-hidden="true" /> Move Status
                 <span className="sr-only">{` for ${selectedCount} selected records`}</span>
             </Button>
-            <Button variant="danger" size="sm" onClick={onArchive}>
+            <Button variant="danger" size="sm" disabled aria-describedby={unavailableNoteId}>
                 <Trash2 size={14} aria-hidden="true" /> Archive
                 <span className="sr-only">{` ${selectedCount} selected records`}</span>
             </Button>
         </div>
+        <p id={unavailableNoteId} className="w-full text-ds-xs text-ds-content-inverse">
+            Bulk Message, Assign, Move Status and Archive are not available yet. Use a
+            record&apos;s own actions instead.
+        </p>
     </div>
 );
 
@@ -125,6 +160,7 @@ export function UnifiedDriverList({
     const { showSuccess, showError } = useToast();
     const searchId = useId();
     const filterIdBase = useId();
+    const bulkUnavailableNoteId = useId();
 
     // --- Search & Filters ---
     const [search, setSearch] = useState('');
@@ -304,16 +340,10 @@ export function UnifiedDriverList({
         }
     };
 
-    // --- Bulk Action Handlers (Placeholder) ---
-    const handleBulkMessage = () => showSuccess(`Message action for ${selectedIds.size} items`);
-    const handleBulkAssign = () => showSuccess(`Assign action for ${selectedIds.size} items`);
-    const handleBulkMoveStatus = () => showSuccess(`Move status action for ${selectedIds.size} items`);
-    const handleBulkArchive = () => {
-        if (window.confirm(`Are you sure you want to archive ${selectedIds.size} records?`)) {
-            showSuccess(`Archive action for ${selectedIds.size} items`);
-            setSelectedIds(new Set());
-        }
-    };
+    // --- Bulk Action Handlers ---
+    // Removed 2026-07-28: four placeholder handlers that only fired a *success*
+    // toast without doing any work (see the `BulkActionBar` note). The controls are
+    // now disabled and labelled unavailable rather than reporting a false success.
 
     // --- Clear Filters ---
     const clearAllFilters = () => {
@@ -522,11 +552,8 @@ export function UnifiedDriverList({
                 {selectedIds.size > 0 && (
                     <BulkActionBar
                         selectedCount={selectedIds.size}
-                        onMessage={handleBulkMessage}
-                        onAssign={handleBulkAssign}
-                        onMoveStatus={handleBulkMoveStatus}
-                        onArchive={handleBulkArchive}
                         onClearSelection={() => setSelectedIds(new Set())}
+                        unavailableNoteId={bulkUnavailableNoteId}
                     />
                 )}
 
@@ -539,10 +566,15 @@ export function UnifiedDriverList({
                     emptyMessage="No drivers match your filters."
                     emptyIcon={hasActiveFilters ? (
                         <div className="text-center">
-                            <Search size={32} className="mx-auto mb-3 opacity-30 text-slate-400" />
-                            <button onClick={clearAllFilters} className="mt-1 text-blue-600 hover:underline text-sm">Clear Filters</button>
+                            <Search size={32} className="mx-auto mb-ds-3 text-ds-content-secondary" aria-hidden="true" />
+                            <Button variant="ghost" size="sm" onClick={clearAllFilters}>Clear Filters</Button>
                         </div>
                     ) : undefined}
+                    // Names the table, its caption, its scroll region and its pager.
+                    ariaLabel="Unified driver database"
+                    // Gives each row's selection checkbox a record-specific name
+                    // instead of eight identical "Select row" controls.
+                    getRowLabel={(item) => item.applicantName || item.name || `record ${item.id}`}
                     showCheckboxes={true}
                     selectedIds={selectedIds}
                     onToggleSelect={(id, e) => toggleSelect(id, e || { stopPropagation: () => { } })}

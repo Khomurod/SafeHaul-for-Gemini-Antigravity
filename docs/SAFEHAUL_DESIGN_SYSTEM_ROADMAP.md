@@ -2027,23 +2027,33 @@ The reverse directions are prohibited.
 
 Status `Not started` means audited but not migrated.
 
-**Progress, counted from the Status column (2026-07-28): 18 of 19 rows complete
-— 94.7%.** The Company Settings closeout campaign resolved the stale
-reconciliation flag below and closed out the last two open sub-areas (SMS
-number assignment and Integrations), so the whole **Company settings** row is
-now complete. **Super Admin** is the only row still open.
+**Progress, counted from the Status column (2026-07-28): 19 of 19 rows complete
+— 100% of the screen inventory.** The Super Admin row closed with the
+true-100% closeout campaign (see its completion log in section 6).
 
-> **Super Admin closeout campaign — updated 2026-07-28, row still OPEN.** The
-> shell, navigation and all five dialogs were migrated first (see that
-> completion log). A second pass then migrated **seven of the eleven** remaining
-> views: `DashboardView`, `AnalyticsView`, `CompaniesView`, `UsersView`,
-> `GlobalSearchResults`, `FeaturesView`, `StatsBackfillPanel` and
-> `UnifiedDriverList`. **Four remain unmigrated** — `IntegrationManager`,
-> `LineManager` + `AddLineModal`, `GlobalQuestionsManager`, `SystemHealthView`
-> and `CreateView` — so the row stays `In progress` and the figure stays 18/19.
-> It must not be counted as complete until those are done. This note is kept
-> deliberately explicit because the two campaigns before this one each found a
-> stale roadmap claim that overstated progress.
+> **IMPORTANT — 19/19 on this table is NOT the same as "the repository is
+> finished".** This table counts *screen/area rows*. The true-100% closeout
+> campaign audited the whole repository, not just these rows, and found real debt
+> inside rows this table already marked complete. All of it was fixed **except one
+> precisely enumerated item**, recorded in section 5.5 "Remaining active debt":
+> **six blocking `window.confirm` sites** in Campaigns, E-Docs and one
+> applications hook. Until those are closed, the honest repository-wide figure is
+> **not** 100%. Do not delete section 5.5 to make this number look better — the
+> three campaigns before this one each found a stale claim that overstated
+> progress, and this note exists to stop a fourth.
+
+> **Super Admin closeout — COMPLETE 2026-07-28.** Migrated across three passes:
+> the shell, navigation and all five dialogs; then seven views (`DashboardView`,
+> `AnalyticsView`, `CompaniesView`, `UsersView`, `GlobalSearchResults`,
+> `FeaturesView`, `StatsBackfillPanel`, `UnifiedDriverList`); then the SMS
+> integration group (`IntegrationManager`, `LineManager`, `AddLineModal`) and
+> `GlobalQuestionsManager`. The final campaign closed the last three views
+> (`SystemHealthView`, `CreateView`) **plus two sub-surfaces the dialog pass had
+> missed entirely** — `EditUserNameForm` and `UserMembershipsManager`, the two
+> bodies rendered inside the already-"migrated" `EditUserModal`, which were still
+> fully legacy with three `window.confirm`s, six `alert()`s, three `title`-only
+> icon controls and an unlabelled per-row select. All ten rail views now carry
+> real-browser axe on Chromium **and** Mobile Chrome with zero serious/critical.
 
 > **Reconciliation flag from 2026-07-27 — resolved 2026-07-28.** The flag
 > below recorded that the **Company settings** row read `Not started` while
@@ -2078,7 +2088,7 @@ now complete. **Super Admin** is the only row still open.
 | Quick add lead | `QuickAddLeadPage` now consumes `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `Button`, `Card`, `PageHeader`/`PageContainer`/`Stack`/`ResponsiveGrid`. `QuickLeadModal` (a separate dashboard-launched modal with its own phone-or-email rule and `LEAD_DEFAULT_STATUS`) was out of this campaign's scope and remains unmigrated | Form layout, Field controls, Button | Medium | Medium | Controls, forms | **Complete (GO)** 2026-07-27 — `QuickAddLeadPage` only; `QuickLeadModal` open | Verified: 36 focused unit tests (14 contract freeze + 22 a11y/defect), full suite/coverage, lint, typecheck, production build, 12 new Chromium + 2 Mobile Chrome E2E (labelling, app-level validation with focus management, duplicate-submit lock, CDL options, keyboard completion, axe), 1440/1024/412 px, `git diff --check` |
 | User profile | `UserProfilePage` now consumes `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack`; avatar upload moved to keyboard-accessible `ProfileAvatarField` (no nested interactives) | PageHeader, Card, Field, Button, FieldMessage | Medium | High | Forms, controls, cards, feedback | Completed 2026-07-24 (GO) | Verified: 38 focused tests (load prefs/fallback, avatar type/size + Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check |
 | Company settings | `CompanySettings` shell now names the page with a `PageHeader` `<h1>` (suppressed only on the one tab that already supplies its own) and drops a dead, never-invoked local success-toast mechanism. Every tab is migrated: Company info/branding/questions, Team & Users, Billing, Automated SMS, Email Settings and account security were re-verified as already-compliant (two real gaps fixed in place: `ManageTeamModal`'s `window.confirm`/`alert()` and `CustomQuestionsBuilder`'s DOT-delete `alert()`, both replaced with accessible non-blocking equivalents). **SMS number assignment** (`NumberAssignmentManager` + `DefaultLineSection`/`AssignmentTable`/`AssignmentRow`/`SMSDiagnosticModal`) and **Integrations** (`IntegrationsTab`) — the two areas the 2026-07-23 deep-audits left NO-GO — are now migrated (presentation only) | Tabs, PageHeader, Field family, native-table pattern, shared Modal, Field/Button/Card/Badge/StatusMedallion | High | High | Controls, forms, table, dialog, status | **Complete (GO)** 2026-07-28 — full row closeout; see the Company Settings closeout completion log | Verified: 190 focused unit tests across the two newly-migrated areas and the fixed defects (99 contract-freeze incl. the pre-existing frozen 15-case SMS suite + 91 a11y/defect), full suite/coverage (2129 passed, 0 regressions), lint, typecheck, production build, callable-contract, 25 new Chromium + 19 Mobile Chrome E2E on the two new areas, full 12-spec Company Settings regression E2E on Chromium (51 passed, 1 pre-existing unrelated flake in `AutomatedSmsTab` — untouched by this campaign, reproduced in isolation) and Mobile Chrome (38 passed, 0 failed), a real Chromium axe scan catching and fixing a genuine color-contrast regression from an `opacity-70` decorative wrapper, 1440/1024/412 px, `git diff --check` |
-| Super Admin `/super-admin/*` | **Shell migrated** — `SuperAdminDashboard`, `DashboardHeader` and `SuperAdminSidebar` consume `Button`/`IconButton`/`Input` and `--ds-*` tokens, with a named `<nav>`, `aria-current` active state, one `<h1>`, and a stacking responsive layout. **All five dialogs migrated** — `EditCompanyModal`, `DeleteCompanyModal`, `EditUserModal`, `DeleteUserModal` and `ViewCompanyAppsModal` now use the shared accessible `Modal`. The eleven data/ops views behind the rail (`DashboardView`, `AnalyticsView`, `CompaniesView`, `UsersView`, `UnifiedDriverList`, `GlobalSearchResults`, `FeaturesView`, `IntegrationManager`/`LineManager`/`AddLineModal`, `GlobalQuestionsManager`, `SystemHealthView`, `StatsBackfillPanel`, `CreateView`) are **not migrated** | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | **In progress** 2026-07-28 — shell, navigation and dialogs complete and verified; views open | Verified so far: 15 shell contract/a11y unit tests, 45 modal dialog/contract unit tests (focus containment, focus restoration to the exact trigger, Escape, named close controls, axe on all five dialogs, frozen `deleteCompany`/`deletePortalUser`/`updateCompany` payloads), 20 new Chromium + Mobile Chrome E2E (landmarks, single `<h1>`, `aria-current`, all eleven sections reachable, labelled global search, accessible maintenance dialog with focus restoration, keyboard-only walkthrough, real-browser axe with zero serious/critical, 1440/1024/412 px overflow), full suite/coverage, lint, typecheck, production build, `git diff --check`. Still needed: the eleven views, their tables/matrices/forms, and their own E2E/axe passes |
+| Super Admin `/super-admin/*` | **Complete.** Shell (`SuperAdminDashboard`, `DashboardHeader`, `SuperAdminSidebar`), all five dialogs (`EditCompanyModal`, `DeleteCompanyModal`, `EditUserModal`, `DeleteUserModal`, `ViewCompanyAppsModal`) **and both `EditUserModal` bodies** (`EditUserNameForm`, `UserMembershipsManager`), plus every view behind the rail: `DashboardView`, `AnalyticsView`, `CompaniesView`, `UsersView`, `UnifiedDriverList`, `GlobalSearchResults`, `FeaturesView`, `IntegrationManager`/`LineManager`/`AddLineModal`, `GlobalQuestionsManager`, `StatsBackfillPanel`, `SystemHealthView`, `CreateView` | Feature-owned router using layout/card/table/dialog/form system | High | High | All core families | **Complete (GO)** 2026-07-28 — see the true-100% closeout completion log | Verified: 15 shell + 45 dialog + 167 view unit tests, plus 96 new in the final campaign (37 `SystemHealthView`, 29 `CreateView`, 30 Edit User bodies) and 10 bulk-action safety tests; `vitest run src/features/super-admin` **321 passed**; `e2e/super-admin-views.spec.cjs` + `super-admin-shell.spec.cjs` — **31 passed on Chromium, 38 passed on Mobile Chrome**, real-browser axe with zero serious/critical on **all ten** rail views (System Health, Form Builder and Create New added in the final campaign), one `<h1>` per view, 1440/1024/412 px overflow clean, keyboard tab-strip walkthroughs, no native `confirm`/`alert` reachable; full suite/coverage, lint, typecheck, production build, callable-contract, `git diff --check` |
 | Public application `/apply/:slug` | `PublicApplyHandler` shell, the shared `Stepper` frame, all nine steps, the custom-questions step, the four status screens, the intake chooser, the post-application `RequiredDocumentsChecklist`, `UploadField`, and the shared `InputField` / `RadioGroup` / `MonthYearField` / `DynamicRow` / `AgreementBox` adapters now consume `Card`, `Button`, `IconButton`, `Badge`, `FormSection`, `FormField`, `Input`, `Textarea`, `Select`, `Checkbox`, `Radio`, `ChoiceGroup`, `FieldDisplay`, `FieldMessage`, `Label`, `StatusMedallion` and the new `ProgressBar` | Feature-owned wizard on approved Progress/Field/Button/Card/status primitives | Critical | Very high | Forms, feedback, layout, compatibility plan | **Migrated (GO)** 2026-07-27 | Verified: 89 new focused unit tests (submission contract, wizard frame, choice/date/upload/agreement controls, checklist, status screens, custom questions, review) + full suite/coverage, lint, typecheck, production build, callable-contract, 6 guest E2E specs serially and at 4× under worker contention, new responsive spec at 1440/1024/412 px, extended real-browser axe across every step and both status screens on Chromium and Mobile Chrome, keyboard walkthrough, `git diff --check`, grep audit |
 | Signing room `/sign/...` | Status screens, room shell, signer field layer and signature capture sheet all consume approved `Card`/`Button`/`StatusMedallion` and `--ds-*` tokens; the PDF canvas, coordinates and zoom stay feature-owned | Approved controls/states around feature-owned document canvas | Medium | Very high | Controls, dialog, feedback; signing QA | **Complete** 2026-07-25 (slices 1–4 + final audit) | Verified: per-slice completion logs in section 6, the 2026-07-25 final audit (zero serious/critical axe in the room, no legacy palette classes, documented `SIGNATURE_INK` and three raw-button exceptions), existing signing unit/E2E, coordinates, zoom/touch/signature, mobile |
 | Verification portal `/verify/:token` | `VerificationPortal` + status screens + 4 sections consume `Card`, `FormSection`, `FormField`, `Input`, `Select`, `Textarea`, `FieldDisplay`, `FieldMessage`, `Badge`, `Button`, `Stack`; feature-local `RadioGroup` accessibility-hardened; **closed out 2026-07-27** — the page header is tokenised, the validation summary names fields by their on-page label, submission is guarded against implicit re-submit, and the shared `SignaturePad` is migrated (tokens, named `role="img"` surface, associated instructions/error, design-system Clear button, pointer/pen support, corrected coordinate scaling) with the **resize/orientation divergence defect fixed** | Card, form primitives, Badge, Button, layout | Medium | High | Forms, cards, feedback | **Complete (GO)** 2026-07-27 | Verified: 73 focused tests (24 `SignaturePad` contract freeze + 20 portal closeout + 10 hook + 14 portal + 5 pre-existing pad), 29 new Chromium / 28 Mobile Chrome E2E (pixel-level signing, resize/orientation invariant, full employed walkthrough, duplicate submit, axe on all six states, 1440/1024/412 px), existing PEV portal E2E, full suite/coverage, lint, typecheck, production build, callable-contract, `git diff --check` |
@@ -2098,11 +2108,11 @@ now complete. **Super Admin** is the only row still open.
 | Select/textarea | 60 selects, 23 textareas, local styling | Select/Textarea under Field | High | Medium | Forms | Not started | Labels/errors/disabled/long content/mobile |
 | Radio/checkbox | Approved native-first `Checkbox`, `Radio` and `ChoiceGroup` primitives (2026-07-27); the shared `RadioGroup` is now a thin compatibility adapter over them and the public application, agreements and custom questions all consume them | Native-first Radio/Checkbox groups | High | High | Forms, table | In progress — primitive implemented and proven by the public driver application; `ToggleSwitch` (ARIA switch) and indeterminate selection remain feature-owned/open | Verified: 12 primitive tests (label/description/error association, native change events, label-click, group legend naming, `requiredMark` split, orientation, input validation), 8 adapter tests including the duplicate-id regression, real-browser axe on every application step, native arrow-key selection asserted in `e2e/public-application-responsive.spec.cjs`. Still needed: indeterminate state, Switch, catalog examples, durable baselines |
 | Cards | Card/MetricCard primitives adopted by Company dashboard; compatibility StatCard retained | Card/Section/Metric | High | Low | Tokens, layouts | In progress — Company dashboard verified; catalog and remaining consumers open | Spacing/elevation/heading/actions/mobile/approved visual baselines |
-| Dialogs | Accessible shared Modal plus local overlays | Dialog/AlertDialog family | Critical | High | Controls, layouts | Not started | Focus/inert/scroll/Escape/return/naming/mobile |
+| Dialogs | Every active overlay in the repository now goes through the shared accessible `Modal`. The true-100% closeout migrated the last five hand-built `fixed inset-0` overlays: `QuickLeadModal`, `LeadAssignmentModal`, `CompanyChooserModal`, `FeatureDeactivationWarning` and `CallOutcomeModalUI`. `Modal`'s own default overlay/panel classes were also moved off raw `bg-slate-900/60` / `bg-white rounded-2xl shadow-2xl` onto `--ds-*` tokens, so callers that do not override them no longer inherit an unapproved surface | Dialog/AlertDialog family | Critical | High | Controls, layouts | **Complete (GO)** 2026-07-28 — no active hand-built dialog remains | Verified: a repository-wide `fixed inset-0` scan returns only `Modal` itself and callers passing it an `overlayClassName`; focus move/trap/restore, Escape and named close controls asserted per dialog in the focused suites; `OnboardingTour`'s `pointer-events-none` spotlight is not a dialog and is correctly excluded |
 | Status badges | Generic Badge adopted by Company leaderboard; StatusBadge/statusStyles/local maps remain | Generic Badge/StatusIndicator + feature adapters | High | Medium | Tokens | In progress — generic Badge verified; StatusIndicator and remaining adapters open | Vocabulary, contrast, icons, non-color communication |
 | Loading | SafeHaulLoader, GlobalLoadingState, skeletons, local spinners; approved determinate `ProgressBar` added 2026-07-27 | Spinner/Skeleton/LoadingState/Progress | Medium | Medium | Tokens, feedback | In progress — `ProgressBar` implemented and consumed by the public application wizard and its upload fields; Spinner/Skeleton/LoadingState not started | ProgressBar verified (6 unit tests, real-browser `aria-valuenow`, reduced-motion transition). Still needed for the rest: live regions, reduced motion, async transition visuals |
 | Empty/error | Error boundaries and many table-local messages | EmptyState/ErrorState/InlineAlert/PageState | High | Medium | Controls, cards | Not started | Recovery actions, announcements, long text, mobile |
-| Toast/notification | ToastProvider and notification components — **visuals still legacy palette** | Retain behavior; normalize visuals through tokens/components | Medium | High | Feedback, controls | Not started (visuals). Two accessibility defects were fixed in place on 2026-07-27 because the public application depends on toasts for upload, validation and draft feedback: the dismiss control had no accessible name (axe `button-name` **critical**, one node per visible toast) and a 16×16 px hit area (WCAG 2.2 AA SC 2.5.8 failure). The palette migration was deliberately **not** bundled — it is a global surface and an app-wide restyle needs its own review. | Timers, focus, announcements, stacking, mobile; plus the token migration of the nine remaining legacy palette classes |
+| Toast/notification | `ToastProvider`, `NotificationBell` and `NotificationItem` all migrated to `--ds-*` tokens and approved primitives. The two 2026-07-27 dismiss-control fixes (missing accessible name — axe `button-name` **critical**; 16×16 px hit area) are superseded by the approved `IconButton`, which owns both | Retain behavior; normalize visuals through tokens/components | Medium | High | Feedback, controls | **Complete (GO)** 2026-07-28 | Verified: 15 `ToastProvider` contract tests (four `show*` helpers and their severity values, the 4000 ms auto-dismiss, per-toast manual dismissal, stacking order, the frozen dismiss-control name, a no-legacy-palette assertion, and jsdom axe with all four severities plus a 300-character unbroken message). Defects fixed beyond the palette: severity was **inaudible** (the icon was `aria-hidden` and the message never says what kind of notification it is — now announced); the stack could push a long message off-screen at 412 px (now inset from both edges, width-capped and wrapping); an unbounded stack could exceed the viewport height. In `NotificationItem`: the row was a click-only `<li>` (the title is now a real button, so opening a notification has a keyboard path at all), both actions were hover-only *and* `title`-named, `text-[10px]` twice, `text-gray-400` at 2.56:1, and unread was a coloured dot with no text equivalent. In `NotificationBell`: the bell had **no accessible name**, the tab strip was colour-only with no `role="tab"`/`aria-selected`/arrow keys (now a real WAI-ARIA tab interface with roving focus), `animate-pulse` ran indefinitely with no reduced-motion guard, and `text-[10px]` on the count badge |
 | Layout | WorkspaceFrame and page primitives adopted by the feature-owned Company shell/dashboard; the public `Stepper` wizard frame migrated 2026-07-27 (approved `ProgressBar`, `--ds-*` tokens, single `<h1>` step title, focus moved to the new step heading, one deterministic scroll owner) | Business-neutral layouts/progress; feature owns orchestration | High | Very high | Controls, forms, feedback | In progress — Company shell/dashboard 2026-07-23; public application Stepper 2026-07-27; driver-dossier shell 2026-07-27 (full-screen sheet below `sm`, three-pane from `sm`, wrapping header, `useCompactViewport` keeping `aria-orientation` in step with the CSS) | Remaining: route/workflow parity for the Super Admin shell and the PEV surfaces |
 | Icons | Lucide + branded SVGs + icon-only buttons | Icon contract and accessible IconButton | Medium | Medium | Controls | Not started | Sizes/strokes/names, branded exceptions |
 
@@ -2114,21 +2124,21 @@ short, long, empty, loading, error, and representative numeric/date data.
 
 | Current table | Target | Priority | Risk | Additional dependencies | Status | Verification needed |
 |---|---|---|---|---|---|---|
-| `shared/components/table/ModernDriverTable.jsx` | DataTable pilot/compatibility wrapper | Critical | High | Selection, pagination, Badge | In progress — both consumers now migrated around it; **a11y defects fixed in place 2026-07-28** (unnamed select-all/per-row checkbox buttons, unnamed pagination buttons, 2.56:1 empty-state text), full DataTable adoption still open | Component-level a11y verified via the Unified Driver DB axe run and the company candidate-table regression; adapting or removing the wrapper remains open |
+| `shared/components/table/ModernDriverTable.jsx` | Fully tokenised native table + `Checkbox`/`IconButton`, with **a recorded approved compatibility exception against `DataTable`** (documented in the component itself): it combines consumer-owned `render()` columns with per-cell `stopPropagation`, row activation, per-row selection *and* a footer pager, plus a caller `getRowClassName` with no `getRowTone` equivalent. `DataTable` is a display-table contract and that combination is unproven on the highest-row-count surface in the product. **It has exactly one consumer left** (`UnifiedDriverList`) — the company candidate list moved to the approved `DataTable` in the 2026-07-23 pilot | Critical | High | Selection, pagination, Badge | **Migrated (GO)** 2026-07-28 with an approved, evidenced exception | Verified: 33 new contract tests asserting **everything `DataTable` would have supplied**, so no debt hides behind the exception — table accessible name via `<caption>`, named focusable scroll region, `columnheader` roles, `aria-selected` rows, native checkboxes replacing the `aria-pressed` icon-button hack, record-specific selection names via the new `getRowLabel`, Enter/Space row activation with the `event.target !== event.currentTarget` guard, an announced loading state, a named pager, a no-legacy-palette assertion, and jsdom axe across six states. Plus the Unified Driver DB real-browser axe run on Chromium and Mobile Chrome |
 | `campaigns/components/CampaignResultsTable.jsx` | Card + Input + Badge + semantic DS-token table (DataTable not a fit — see Phase 13 note) | High | Medium | Status adapter | Migrated 2026-07-24 (GO) | 10px/contrast headers fixed, labelled search, text+icon status, readable errors, preserved max-height scroll + sticky header |
 | `campaigns/components/DetailedReportModal.jsx` | Shared accessible `Modal` + `Button`/`IconButton`/`Badge` + semantic DS-token table in a labelled keyboard-focusable scroll region (DataTable not adopted — same primitive-fit exception as the results table) | Medium | High | Dialog, status | Migrated 2026-07-24 (GO) | Focus trap/Escape/restore added, backdrop preserved, text+badge status, wrapping errors, internal scroll with no doc overflow, 17 unit + Chromium/Mobile Chrome + dialog-scoped axe |
 | `company-admin/components/InlineLeaderboard.jsx` | Numeric compact DataTable | High | Medium | Metric formatting | Completed 2026-07-23 | Verified: representative/empty/error/retry unit states, header/cell end alignment under 1 px, compact density, long names, labeled mobile overflow, desktop/mobile axe |
-| `settings/number-assignment/AssignmentTable.jsx` | DataTable with form controls | High | High | Select/Checkbox | Not started | Header/cell alignment, control labels, save states, mobile |
-| `settings/questions/StandardQuestionsConfig.jsx` | Settings DataTable | Medium | High | Checkbox/Switch | Not started | Keyboard toggles, labels, sticky/overflow, mobile |
+| `settings/number-assignment/AssignmentTable.jsx` | Approved native-table pattern + `Select`/`Badge` (DataTable not adopted — every row carries an editable control, the same recorded exception as `FeaturesView`) | High | High | Select/Checkbox | **Migrated (GO)** 2026-07-28 by the Company Settings closeout; this row read `Not started` until the true-100% closeout reconciled it | **Stale row corrected 2026-07-28.** The file was verified at that date to contain 30 `ds-*` references, zero legacy palette matches and zero raw controls; it is covered by the pre-existing frozen 15-case SMS safety suite plus the `NumberAssignmentManager` tests |
+| `settings/questions/StandardQuestionsConfig.jsx` | `Card` + accessible `ToggleSwitch` (ARIA switch) rows with unique "Require X"/"Hide X" names | Medium | High | Checkbox/Switch | **Migrated (GO)** 2026-07-24 by the Company Profile questions slice; this row read `Not started` until the true-100% closeout reconciled it | **Stale row corrected 2026-07-28.** Verified at that date: 29 `ds-*` references, zero legacy palette matches, zero raw controls. Covered by the 47 focused application-questions tests. It is **not** dead code — it is reachable from Company Settings → Application Questions |
 | `signing/components/EnvelopeHistory.jsx` | Approved `DataTable` (adopted — no max-height/sticky-header constraint and no exact loading string to preserve, so the results-table primitive-fit exception does not apply here) + `Badge`/`Button` with a feature-owned status adapter | Medium | High | Status, IconButton | Migrated 2026-07-24 (GO) | 5-column contract, row header + accessible per-row action names, text+icon status (never colour alone), announced loading/empty/error, labelled keyboard-focusable scroll region, 46 unit + 10 Chromium/Mobile Chrome E2E, 1440/1024/412 px, scoped axe |
 | `super-admin/components/CompaniesView.jsx` | Approved native-table pattern + `Card`/`Badge`/`Button`/`IconButton`/`Input`/`Select` (DataTable not adopted — per-row interactive controls plus a row-level click target sit outside its display-table contract; same exception as `CampaignResultsTable`) | High | High | Badge, actions | **Migrated 2026-07-28 (GO)** | Verified: 20 unit tests incl. the stale-enrichment regression guard, real-browser axe on Chromium + Mobile Chrome, named row actions, keyboard-reachable company name, accessible activate/deactivate dialog, 1440/1024/412 px |
 | `super-admin/components/FeaturesView.jsx` | Approved native-table matrix + `Checkbox`/`IconButton`/`Modal` (DataTable not adopted — every cell is an editable control) | High | Very high | Switch/Checkbox, responsive matrix | **Migrated 2026-07-28 (GO)** | Verified: 18 unit tests, toggles now named + stateful (were unnamed bare buttons), sticky first column, both overlays on the shared `Modal`, named focusable scroll region, real-browser axe both lanes |
-| `super-admin/integrations/LineManager.jsx` | DataTable | Medium | High | Badge, actions | Not started | Phone/label/status/default/action alignment, keyboard |
+| `super-admin/integrations/LineManager.jsx` | Approved native-table pattern + `Card`/`Badge`/`Button`/`IconButton` in a named focusable scroll region (DataTable not adopted — per-row destructive action, same recorded exception) | Medium | High | Badge, actions | **Migrated (GO)** 2026-07-28 by the SMS integration group; this row read `Not started` until the true-100% closeout reconciled it | **Stale row corrected 2026-07-28.** Covered by `LineManager.contract.test.jsx` (11 contract + remove-flow + 2 jsdom axe): phone/label/status/default alignment, text+icon status never colour alone, record-specific remove name, keyboard-reachable scroll region |
 | `super-admin/modals/ViewCompanyAppsModal.jsx` | Shared accessible `Modal` + native table + `Badge` (DataTable unproven inside a dialog with its own scroll container and sticky header) | Medium | High | Dialog, status | **Migrated 2026-07-28 (GO)** | Verified in the Super Admin modals suite: focus containment/restoration, Escape, named close, `Badge` status (was colour-only), header contrast corrected |
 | `super-admin/components/StatsBackfillPanel.jsx` | `Card`/`FormField`/`Button` + compact numeric native table | Medium | High | Feedback/progress | **Migrated 2026-07-28 (GO)** | Verified: 16 unit tests incl. the previously-absent confirmation on the platform-wide writing run, announced error/result/in-flight states, real-browser axe |
 | `super-admin/components/UsersView.jsx` | Approved native-table pattern + `Badge`/`IconButton` | High | High | Badge/actions | **Migrated 2026-07-28 (GO)** | Verified: role/membership mapping frozen, named row actions, announced loading/error, named focusable scroll region, real-browser axe both lanes |
 | `super-admin/views/AnalyticsView.jsx` | `Card`/`MetricCard`/`Badge` + WAI-ARIA tab interface + native data tables; SVG chart geometry stays feature-owned | High | High | Charts/number/date format | **Migrated 2026-07-28 (GO)** | Verified: 13 unit tests incl. the frozen CSV export contract, tabs/date-range no longer colour-only, chart given `role="img"` + hidden data table, header contrast corrected |
-| `shared/components/admin/BulkUploadLayout.jsx` | Preview DataTable pattern | Medium | High | Upload/feedback | Not started | Large data, truncation, headers, errors, performance |
+| `shared/components/admin/BulkUploadLayout.jsx` | Approved `DataTable` preview + shared `Modal`, `ProgressBar`, `StatusMedallion`, `ChoiceGroup`/`Radio`/`Checkbox`, `FormField`/`Input`, `PageHeader` | Medium | High | Upload/feedback | **Migrated (GO)** 2026-07-27 by the Import-leads campaign; this row read `Not started` while section 5.1's Import-leads row read `Complete` — **the exact contradiction the true-100% closeout was asked to resolve** | **Stale row corrected 2026-07-28.** Verified at that date: 77 `ds-*` references, zero legacy palette matches, and exactly two raw controls — both the file input, which is the already-recorded no-approved-file-input-contract exception. Covered by 57 focused `BulkUploadLayout` tests plus the large-preview row cap and bounded-scroll E2E. Re-verified live in the true-100% closeout: `e2e/lead-intake.spec.cjs` **49 passed** on Chromium including the real Web Worker CSV parse |
 
 ### 5.4 Company settings/profile form migration inventory
 
@@ -2150,6 +2160,79 @@ own rows. Data and workflow ownership stays in the feature.
 | Integrations | Facebook Lead Ads connection card: dynamic FB SDK load, `FB.login` popup, browser Graph API page lookup + first-page auto-select, `connectFacebookPage` callable; local-only Connected state | `connectFacebookPage` callable, `functions/integrations/facebook.js` token exchange/`integrations_index` write/webhook, feature-flag visibility | External SDK state, sensitive short-lived token, **tenant binding `companyId = request.auth.uid`**, non-persistent Connected state, no disconnect/reconnect | Medium / Very high | Deep-audited 2026-07-23; **not migrated (NO-GO)** — blocked on a tenant-binding correctness/security defect (`request.auth.uid` used as the company id, incompatible with the auto-id + membership multi-tenant model); presentation withheld so the UI does not imply the workflow is production-ready | Separate integration-correctness/security project to fix tenant binding; then SDK-load/login-scope/graph/first-page/callable mocks, token-safety, feature-flag/permission, connected-state, keyboard/mobile |
 | Billing | Approved `FormSection`, `FieldDisplay`, `Badge`, and `FieldMessage` replace the local heading/card/plan/support styling | Plan value display only; `planType` read from the loaded profile, unchanged | Empty/long plan content and support messaging | Low / Low | Compatibility slice completed 2026-07-23 | 7 focused tests, full suite, Chromium/Mobile Chrome, 1440/1024/412 px, labelled plan/badge status, support copy, axe, overflow passed |
 | `/company/profile` account profile/security | Approved `FormSection`, `FormField`, `Input`, `Button`, `FieldDisplay`, `FieldMessage`, `PageHeader`, `Stack` replace the local form/card/button styling; avatar upload moved to the keyboard-accessible `ProfileAvatarField` (visually hidden labelled input, `role="status"`, focus return, no nested interactives); autocomplete added | Firebase Auth profile/email/password, reauthentication, Storage `avatars/{uid}/{file.name}` upload, Firestore user writes/query all remain feature-owned and byte-for-byte unchanged | Passwords kept in transient state only; validation/error association; upload and reauth regressions | High / Very high | **Migrated (GO)** 2026-07-24 | 38 focused tests (load prefs/fallback, avatar type/size + exact Storage sequence, profile validation/username query + permission skip, email reauth/errors/cancel, password branches/reset, password non-exposure, autocomplete, keyboard avatar, axe), full suite/coverage, route manifest, Chromium/Mobile Chrome, 1440/1024/412 px, git diff --check passed; backend/callable/rules not applicable (no backend change) |
+
+### 5.5 Remaining active debt (repository-wide, 2026-07-28)
+
+This section is the honest counterweight to "19 of 19" in section 5.1. The
+true-100% closeout campaign scanned **all** active production code, not just the
+19 screen rows, and everything it found was fixed **except the following**. This
+list is exhaustive as of the scan date; keep it that way.
+
+#### OPEN — six blocking `window.confirm` guards
+
+Each is a real, reachable destructive or costly confirmation still using the
+browser's blocking dialog instead of the shared accessible `Modal`. Every other
+`window.confirm` and `alert()` in active production code has been replaced. These
+six sit inside rows section 5.1 already marks **Complete**, and earlier campaigns
+recorded them as deliberately *preserved* behaviour — which is why they survived.
+That reasoning is no longer consistent with the rest of the repository:
+
+| Site | Guard |
+|---|---|
+| `campaigns/CampaignsDashboard.jsx:179` | Cancel a sending campaign |
+| `campaigns/CampaignsDashboard.jsx:202` | Delete a campaign |
+| `campaigns/components/DetailedReportModal.jsx:43` | Retry failed recipients (starts a new campaign) |
+| `company-admin/views/DocumentsManager.jsx:358` | Delete an e-doc template |
+| `signing/components/EnvelopeHistory.jsx:38` | Void a signing envelope |
+| `applications/hooks/useAppActions.js:108` | Remove an uploaded application file |
+
+Why they were not done in this campaign: each needs its own `Modal`-based dialog
+plus contract tests, and `useAppActions` is a hook, so its guard has to be lifted
+into whichever component renders it — a genuine design decision, not a mechanical
+swap. Doing six of those without tests would breach this roadmap's own completion
+rules, so they are recorded rather than half-done. **Nothing else is open.**
+
+#### Approved, evidenced exceptions (not debt)
+
+- `ModernDriverTable` does not adopt `DataTable` — see its 5.3 row and the
+  rationale in the component. 33 tests prove no a11y debt hides behind it.
+- The `CallOutcomeModalUI` outcome grid stays a `role="group"` of raw
+  `<button aria-pressed>` cards: no approved Segmented/ToggleGroup or
+  SelectableCard primitive exists (same exception as the dossier summary toggle
+  and the PEV FMCSA rows). All its colours are now approved tokens.
+- File inputs in `DQFileTab`, `BulkUploadLayout`, the public application and the
+  PEV result upload: no approved file-input contract yet.
+- Styled `<a>` navigations (`tel:`, `mailto:`, download, CDL photos, the DQ file
+  download): no Link/ButtonLink primitive yet. All now carry real accessible
+  names — `DQFileTab`'s download was `title`-only before this campaign.
+- `VOEPreviewModal`'s generated 49 CFR §391.23 document keeps its raw palette and
+  its sub-12px type: it is rasterised by html2canvas into a bare print window with
+  no `--ds-*` custom properties, so a token would resolve to nothing. Enforced in
+  both directions by `VOEPreviewModal.export.test.jsx`.
+- `DeviceMockup`'s phone status-bar time keeps `text-[10px]` — decorative
+  illustration of a real device, not interface text.
+
+#### Retired / deleted
+
+- `company-admin/components/application/ApplicationUI.jsx` — **deleted**. It held
+  a local `Card` reimplementation (`Section`) plus `InfoGrid`/`InfoItem`, which had
+  an unlabelled input, an unlabelled select and `text-gray-300` "N/A" text. Its
+  only consumer was `DQFileTab`'s `Section` import; `InfoGrid`/`InfoItem` had no
+  consumers at all. Proven by import scan before removal.
+
+#### Known intermittent test (not a code defect)
+
+`DriverProfileModal.behavior.test.jsx > leaves focus on a real element after a
+successful delete` failed twice under heavy full-suite CPU contention and passed
+in every isolated run and in the final full-suite run. It asserts focus after two
+`Modal`s unmount in the same commit, which is inherently ordering-sensitive. It
+was **not** introduced by this campaign (the pre-change baseline full suite is
+green, and so is the post-change one). Left alone rather than papered over.
+
+`src/tests/playwrightConfig.test.js` **was** hardened: its first case pays a cold
+`require('@playwright/test')` — 330 ms idle, measured at 12.9 s under contention,
+past the 5 s default. It asserts config *shape* and has no timing behaviour, so
+the file now carries an explicit 60 s budget with that reasoning recorded inline.
 
 ---
 
@@ -6548,10 +6631,179 @@ contracts above are newly frozen.
   axe, full-repo coverage, production build. These are required before the row can
   move and were not part of this defect-and-freeze slice.
 
+### True-100% closeout completion log (GO, with one enumerated open item) — 2026-07-28
+
+Base: `main` / `origin/main` at `d25b3dc3d33cd1a6c2ea4e6fe2e0ffefbb51d7a7`
+(verified equal to local `main` before branching). Branch:
+`claude/design-system-true-100-closeout`, uncommitted.
+
+**Baseline honesty check.** The two commits after PR #127 (`1fd2215`, `d25b3dc`)
+had no CI run. Both diffs were reviewed and the baseline full unit suite was run
+on a clean tree: **177 files, 2364 passed, 48 skipped, 0 failed.** The Load-More
+concurrency guard, the Analytics accessible-peak fix, and the
+IntegrationManager / LineManager / AddLineModal / GlobalQuestionsManager
+migrations were all audited against the code (not the roadmap's claim) and found
+correctly implemented and test-covered.
+
+#### Scope completed
+
+1. **Super Admin — the last three views.** `SystemHealthView` and `CreateView`
+   migrated; **plus `EditUserNameForm` and `UserMembershipsManager`**, which the
+   dialog pass had missed entirely.
+2. **Design-system addition: an approved inverse (dark) surface role.** The System
+   Health log console needed one and there was none, so every dark panel had been
+   picking its own `bg-gray-900` / `text-gray-*` pairing — one of them at **2.2:1**.
+   Added `surface-inverse`, `surface-inverse-subtle`, `border-inverse`,
+   `content-on-inverse`, `content-on-inverse-muted` and four
+   `status-*-fg-on-inverse` tokens, the Tailwind bridge, and **12 new contrast
+   assertions** pinning every pairing the product puts on it.
+3. **Driver Dossier residual bodies** — `DQFileTab`, `ActivityHistoryTab`,
+   `NotesTab`. This closes the dossier row's deliberate carve-out (PEV/VOE was
+   closed separately on 2026-07-27).
+4. **QuickLeadModal** — the dashboard-launched modal, recorded residual since
+   2026-07-27.
+5. **Global notifications** — `ToastProvider`, `NotificationBell`,
+   `NotificationItem`.
+6. **The last five hand-built overlays** — `LeadAssignmentModal`,
+   `CompanyChooserModal`, `FeatureDeactivationWarning`, `CallOutcomeModalUI`,
+   `FeatureLockedModal` — plus `Modal`'s own unapproved default classes.
+7. **`ModernDriverTable`** — tokenised, accessibility-repaired, and given a
+   precise recorded `DataTable` exception with 33 tests proving nothing hides
+   behind it.
+8. **Roadmap reconciliation** — four stale `Not started` rows corrected
+   (`AssignmentTable`, `StandardQuestionsConfig`, `LineManager`,
+   `BulkUploadLayout`), including the `BulkUploadLayout` contradiction this
+   campaign was explicitly asked to resolve.
+
+#### Defects found and fixed (beyond palette)
+
+1. **`CreateView` rendered both new-user passwords as `type="text"`** — a new
+   portal user's password in clear text on screen, with no autofill hint, on the
+   form that calls `createPortalUser`. Now `type="password"` +
+   `autocomplete="new-password"`, matching the already-migrated Add-User form that
+   posts to the same callable. Payload byte-for-byte identical.
+2. **`UnifiedDriverList` bulk actions were false affordances.** Message / Assign /
+   Move Status / Archive fired a **success** toast and did nothing; Archive first
+   asked `window.confirm("…archive 50 records?")`. An operator could confirm a
+   destructive-sounding bulk action on real driver records and be told it
+   succeeded. No workflow was invented (none can be inferred safely — see the
+   note in the component); the controls are now disabled and explicitly labelled
+   unavailable, guarded by 10 regression tests.
+3. **`LeadAssignmentModal`'s round-robin pool was unusable by keyboard** — each
+   recruiter row was a `<div onClick>` with a `CheckSquare`/`Square` icon standing
+   in for a checkbox. No role, no tabIndex, no `aria-checked`, no name.
+4. **`NotificationItem` rows were click-only**, and both actions were hover-only
+   *and* `title`-named. **`NotificationBell` had no accessible name at all.**
+5. **`CreateView`'s plan selector was two `<div onClick>` cards** with a
+   border-colour-only selected state.
+6. **Nine controls had no accessible name whatsoever** across `CreateView` (3
+   selects), `CallOutcomeModalUI` (6), plus `UserMembershipsManager`'s per-row role
+   select and `ActivityHistoryTab`'s filter.
+7. **Ten blocking `window.confirm`s and thirteen `alert()`s** replaced with
+   accessible dialogs and announced live regions, every string preserved verbatim.
+8. **`DQFileTab` reached across its own boundary** with
+   `document.getElementById('dq-file-input')`, on a hard-coded id that would
+   collide if two dossiers were ever mounted.
+9. **`ActivityHistoryTab` invented ten icon hues** (`emerald`, `indigo`, `red-500`,
+   `yellow`…), none approved and several failing contrast. The feature keeps the
+   domain→meaning decision; the values are now semantic tones.
+10. **Unannounced silence** on eight long-running or failing operations
+    (System Health repair/backfill errors, DQ upload/delete, note save, membership
+    load, notification severity, activity/notes/DQ loading).
+11. **`animate-pulse` / `animate-bounce` with no reduced-motion guard** on the
+    notification bell and the deactivation warning; a dead `shimmer` keyframe
+    block in `FeatureLockedModal`.
+
+#### Contracts preserved (frozen by test)
+
+No Firebase rule, index, path, callable name, payload, or business workflow
+changed. Newly frozen this campaign: the `createNewCompany` company payload and
+both `createPortalUser` payloads (including the with-admin flow using the *new*
+company id); the slug auto-generation rule; `updateUser` argument order;
+`deletePortalUser`; `sendPasswordResetEmail`; `addMembership` /
+`updateMembershipRole` / `deleteMembership` and the two differing role
+vocabularies; the `QuickLeadModal` lead payload with `LEAD_DEFAULT_STATUS` and its
+phone-or-email rule; the DQ `dq_files` path, Storage path (including its
+deliberate `applications` segment for leads), eight `syncTargets` mappings and both
+`logActivity` detail strings; the `internal_notes` path, `sharedHistory`
+anonymisation and the 100-character log truncation; the `activity_logs` path, five
+filter rules and Today/Yesterday/Recent grouping; the `LeadAssignmentModal` batch
+payload and round-robin rotation; `ToastProvider`'s four helpers and 4000 ms
+default; `ModernDriverTable`'s full prop contract.
+
+#### Verification
+
+- `npx vitest run` — **185 files, 2600 passed, 48 skipped, 0 failed** (2364 at
+  baseline; **236 new tests**).
+- `npm run test:coverage` — gate passed. Statements 59.97%, branches 58.1%,
+  functions 62.03%, lines 61.34% against thresholds 16/13/13/16.
+- `npx eslint .` — **0 errors** (105 pre-existing warnings).
+- `npm run typecheck` (`tsc -p jsconfig.json --noEmit`) — clean.
+- `npm run build` — succeeds, 2653 modules transformed.
+- `node scripts/check-callable-contract.mjs` — passed, 56 frontend callables.
+- `npm run check:function-exports` — OK, mapped 101 / raw 101.
+- `git diff --check` — clean.
+- **Chromium E2E:** `super-admin-views` + `super-admin-shell` **31 passed**;
+  regression batch (`lead-intake`, `driver-dossier`, `company-shell-dashboard`,
+  `company-candidate-table`, `a11y`, `access-control`) **49 passed**; shared
+  Modal/Toast consumers (`login`, `edoc-send-template-modal`,
+  `campaign-report-modal`, `public-application`, `company-settings-team`)
+  **30 passed**. 0 failed.
+- **Mobile Chrome E2E:** `super-admin-views` + `super-admin-shell` **38 passed**.
+- **Real-browser axe:** zero serious/critical on all ten Super Admin rail views on
+  **both** lanes, plus the dossier, candidate-table, lead-intake and
+  public-application states covered by the regression batch.
+- **Responsive:** 1440 / 1024 / 412 px document-overflow sweeps clean across all
+  ten Super Admin views on Chromium, plus the Mobile Chrome device lane.
+
+**Runner note, worth keeping.** A 6-spec Chromium batch at the local default
+worker count produced **6 spurious `lead-intake` failures**; every one passed at
+`--workers=1` and the first also passed alone. This is exactly the shared
+dev-server hazard `AGENTS.md` rule 1 describes and the reason CI pins
+`workers: 1`. Re-verified against a clean baseline before concluding it was not a
+regression. **Run local Playwright batches with `--workers=1`.**
+
+#### Honest gaps
+
+- The six `window.confirm` sites in section 5.5 are **open**, so the
+  repository-wide figure is not 100% even though the 5.1 screen inventory is 19/19.
+- Firefox / WebKit / mobile-Safari lanes were not run (CI does not run them either).
+- `npm run test:rules:stress` was not run — it needs the Firebase emulators, and
+  nothing in this campaign touches rules.
+- The Cloud Functions Jest suite was not run — no backend file changed.
+
 ---
 
 ## 7. Decisions and blockers
 
+- `[!]` **Decide what the Unified Driver Database bulk actions should do.**
+  Recorded 2026-07-28 by the true-100% closeout. Message, Assign, Move Status and
+  Archive were placeholders that fired a **success** toast and did nothing, with
+  Archive asking for confirmation first — so an operator could confirm a
+  destructive-sounding action on 50 driver records and be told it worked. The
+  false success is now removed (the controls are disabled and labelled
+  unavailable), which is the safe end state but not the intended one. **A real
+  implementation cannot be inferred from the repository**: `LeadAssignmentModal`
+  does bulk assignment but only within one company's `leads`, and this view spans
+  every company and mixes applications with leads; campaigns own bulk SMS with
+  their own consent and throttling rules; nothing anywhere defines an "archived"
+  state, so Archive is not delete. Each of the four needs an owner decision on
+  cross-tenant policy and audit-log shape before anything is built.
+- `[!]` **Approve replacement wording for the customer named in operator copy.**
+  Carried forward from 2026-07-28: `StatsBackfillPanel`'s All-Companies help text
+  reads "Only run after verifying Ray Star LLC results." Still preserved verbatim;
+  the repository establishes no generic replacement.
+- `[!]` **Decide whether the six remaining `window.confirm` guards should become
+  shared dialogs.** Recorded 2026-07-28, enumerated in section 5.5. Every other
+  blocking browser dialog in active production code is gone. These six were
+  previously recorded as deliberately preserved behaviour, which is no longer
+  consistent. `useAppActions.js` is the only one that is not a mechanical swap: it
+  is a hook, so its guard must be lifted into a rendering component, which is a
+  design decision about where that dialog lives.
+- `[!]` **Promote a `Switch` primitive to the design system.** Carried forward:
+  `FeaturesView` uses a native `Checkbox` because there is no approved ARIA switch,
+  while Company Settings has a feature-owned `ToggleSwitch` that cannot be imported
+  across features without breaking layering.
 - `[!]` **Decide how an employer signs the verification portal without a
   mouse.** Recorded 2026-07-27 by the verification-portal closeout. A canvas
   cannot be drawn on with a keyboard, so `SignaturePad` — the legally operative

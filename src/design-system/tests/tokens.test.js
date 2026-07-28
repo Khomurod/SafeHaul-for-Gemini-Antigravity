@@ -70,6 +70,17 @@ describe('design tokens', () => {
     ['content-link', 'surface-subtle'],
     ['content', 'canvas'],
     ['content-secondary', 'canvas'],
+    // Inverse (dark) console surface role. Every foreground the product puts on
+    // it — body, muted, and the four log severities — is verified here, because
+    // the hand-rolled dark panels this replaced included a 2.2:1 pairing.
+    ['content-on-inverse', 'surface-inverse'],
+    ['content-on-inverse-muted', 'surface-inverse'],
+    ['content-on-inverse', 'surface-inverse-subtle'],
+    ['content-on-inverse-muted', 'surface-inverse-subtle'],
+    ['status-info-fg-on-inverse', 'surface-inverse'],
+    ['status-success-fg-on-inverse', 'surface-inverse'],
+    ['status-warning-fg-on-inverse', 'surface-inverse'],
+    ['status-danger-fg-on-inverse', 'surface-inverse'],
   ])('%s on %s meets WCAG AA normal-text contrast', (foreground, background) => {
     const ratio = contrast(
       resolveToken(`ds-color-${foreground}`),
@@ -107,5 +118,14 @@ describe('design tokens', () => {
     expect(colors['ds-action-primary']).toBe('var(--ds-color-action-primary)');
     expect(tailwindConfig.theme.extend.spacing['ds-4']).toBe('var(--ds-space-4)');
     expect(tailwindConfig.theme.extend.fontSize['ds-body'][0]).toBe('var(--ds-font-size-body)');
+  });
+
+  it('exposes the inverse console surface role through Tailwind utilities', () => {
+    const colors = tailwindConfig.theme.extend.colors;
+    expect(colors['ds-surface-inverse']).toBe('var(--ds-color-surface-inverse)');
+    expect(colors['ds-surface-inverse-subtle']).toBe('var(--ds-color-surface-inverse-subtle)');
+    expect(colors['ds-content-on-inverse']).toBe('var(--ds-color-content-on-inverse)');
+    expect(colors['ds-content-on-inverse-muted']).toBe('var(--ds-color-content-on-inverse-muted)');
+    expect(colors['ds-border-inverse']).toBe('var(--ds-color-border-inverse)');
   });
 });
