@@ -71,6 +71,15 @@ export function useLineAssignments(companyId) {
                 setConfigDoc(null);
             }
             setLoading(false);
+        }, (error) => {
+            // Without an error callback, a Listen-stream error (permission-denied,
+            // unavailable, project-not-found) never re-invokes the success callback
+            // above, so `loading` stays true forever and the admin is stuck on
+            // "Loading inventory..." with no feedback. Treat a listen failure the
+            // same as "no config exists" so the UI settles instead of hanging.
+            console.error("[SMS Config] Listener error:", error);
+            setConfigDoc(null);
+            setLoading(false);
         });
 
         // 2. Fetch Users (Recruiters/Admins)
