@@ -42,6 +42,13 @@ const ChoiceControl = forwardRef(function ChoiceControl({
   // announced required marker belongs on the group's legend — repeating it on
   // every option would read as "Yes required, No required".
   requiredMark = required,
+  // Hides the label visually while keeping it as the accessible name. Added
+  // 2026-07-28 for the Super Admin feature matrix, where each cell is one
+  // checkbox in a grid whose row and column headers already carry the meaning
+  // for sighted users — printing "PEV for Artificial Freight Co" inside every
+  // cell would be unusable. `label` stays required: this changes whether the
+  // name is *shown*, never whether it exists.
+  labelHidden = false,
   className = '',
   ...props
 }, ref) {
@@ -68,7 +75,10 @@ const ChoiceControl = forwardRef(function ChoiceControl({
         className="ds-choice__control"
       />
       <div className="ds-choice__text">
-        <label htmlFor={controlId} className="ds-choice__label">
+        <label
+          htmlFor={controlId}
+          className={labelHidden ? 'ds-visually-hidden' : 'ds-choice__label'}
+        >
           <span>{label}</span>
           {requiredMark && (
             <>
