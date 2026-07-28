@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useData } from '@/context/DataContext';
 import { db, functions } from '@lib/firebase';
 import { httpsCallable } from "firebase/functions";
@@ -50,6 +50,26 @@ export function SuperAdminDashboard() {
   const [backfillingEmployers, setBackfillingEmployers] = useState(false);
   const [confirmingBackfill, setConfirmingBackfill] = useState(false);
   const [backfillReport, setBackfillReport] = useState(null);
+  // The backfill spans two dialogs, and the shared Modal's own focus restoration
+  // cannot bridge them: confirming disables the trigger (`loading`) *and*
+  // unmounts the confirmation, so the confirmation restores focus to a disabled
+  // button — which silently lands on <body>. The result dialog then captures
+  // <body> as its "previously focused" element, and closing the report drops a
+  // keyboard user at the top of the page. Holding the trigger ourselves lets us
+  // put focus back where it started once the whole flow ends.
+  const backfillTriggerRef = useRef(null);
+  const restoreFocusAfterReport = useRef(false);
+
+  // Deliberately an effect rather than a call inside the dialog's `onClose`:
+  // the closing Modal restores focus in its own unmount cleanup, which runs
+  // *after* the click handler, so focusing there would just be overwritten.
+  // A parent effect runs after that cleanup, so this wins.
+  useEffect(() => {
+    if (!backfillReport && restoreFocusAfterReport.current) {
+      restoreFocusAfterReport.current = false;
+      backfillTriggerRef.current?.focus();
+    }
+  }, [backfillReport]);
 
   const isSearching = searchQuery.length > 0;
 
@@ -119,6 +139,7 @@ export function SuperAdminDashboard() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           onBackfillEmployers={() => setConfirmingBackfill(true)}
+          backfillTriggerRef={backfillTriggerRef}
           backfillingEmployers={backfillingEmployers}
           onLogout={handleLogout}
         />
@@ -182,7 +203,12 @@ export function SuperAdminDashboard() {
       {backfillReport && (
         <BackfillEmployersResultDialog
           stats={backfillReport}
-          onClose={() => setBackfillReport(null)}
+          onClose={() => {
+            // By now `backfillingEmployers` is false, so the trigger is
+            // focusable again and this is the end of the flow.
+            restoreFocusAfterReport.current = true;
+            setBackfillReport(null);
+          }}
         />
       )}
 

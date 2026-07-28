@@ -29,6 +29,7 @@ export function DashboardHeader({
     searchQuery,
     setSearchQuery,
     onBackfillEmployers,
+    backfillTriggerRef,
     backfillingEmployers,
     onLogout
 }) {
@@ -80,6 +81,7 @@ export function DashboardHeader({
 
                 <div className="flex flex-wrap items-center gap-ds-2">
                     <Button
+                        ref={backfillTriggerRef}
                         variant="secondary"
                         onClick={onBackfillEmployers}
                         loading={backfillingEmployers}

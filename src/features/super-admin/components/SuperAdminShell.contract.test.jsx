@@ -156,6 +156,31 @@ describe('Super Admin shell — blocking dialogs replaced (defect)', () => {
         vi.unstubAllGlobals();
     });
 
+    it('returns focus to the Backfill trigger after the report is closed', async () => {
+        httpsCallable.mockReturnValue(vi.fn().mockResolvedValue({
+            data: { message: 'ok', stats: { totalDocs: 3 } },
+        }));
+
+        render(<SuperAdminDashboard />);
+        const trigger = screen.getByRole('button', { name: /Backfill Employers/i });
+        trigger.focus();
+        fireEvent.click(trigger);
+        fireEvent.click(await screen.findByRole('button', { name: 'Run backfill' }));
+
+        await screen.findByText('Employer backfill report');
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+        // The confirmation cannot hand focus back itself: confirming disables the
+        // trigger and unmounts the dialog in the same commit, so its restore
+        // targets a disabled button and lands on <body>. Without the explicit
+        // hand-back, a keyboard user ends the flow at the top of the page.
+        await waitFor(() => {
+            expect(document.activeElement).toBe(
+                screen.getByRole('button', { name: /Backfill Employers/i }),
+            );
+        });
+    });
+
     it('presents the confirmation as a real dialog with an accessible name', async () => {
         render(<SuperAdminDashboard />);
         fireEvent.click(screen.getByRole('button', { name: /Backfill Employers/i }));
