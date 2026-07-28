@@ -1,6 +1,45 @@
-import React from 'react';
-import { getFieldValue, getStatusColor } from '@shared/utils/helpers.js';
+import React, { useId } from 'react';
+import { getFieldValue } from '@shared/utils/helpers.js';
 import { Building, Users, FileText, Edit2 } from 'lucide-react';
+import { Badge, Button, Card } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
+
+/**
+ * Global search results across companies, users and driver applications.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the three
+ * result groups and their order, the per-group counts, the total count, the
+ * `allCompaniesMap.get(app.companyId) || 'Unknown Company'` fallback, the
+ * `app.status || 'New Application'` default, the callback shapes
+ * (`{ id, name }` to `onViewApps`, bare id to `onEditCompany`, `{ id }` to
+ * `onEditUser`, the whole app object to `onAppClick`) and every frozen string
+ * are unchanged. The search query itself is owned by `useSuperAdminData`.
+ *
+ * Defects fixed here:
+ *  - **Status was communicated by colour alone.** Each application rendered
+ *    `getStatusColor(...)` as a bare pill of legacy palette classes. Status is
+ *    now an approved `Badge` whose text carries the meaning, with the
+ *    domain→tone mapping owned by this feature (the design system must not know
+ *    what "Background Check" means).
+ *  - The three groups were bare `<section>`s with no accessible name, so their
+ *    headings were not programmatically associated.
+ *  - Long company names, emails and slugs could not wrap or truncate, pushing
+ *    the action buttons off narrow screens.
+ *  - Legacy palette throughout.
+ *
+ * The page-level `<h1>` lives in the Super Admin masthead, so the results title
+ * is an `<h2>` and each group heading an `<h3>`.
+ */
+
+/** Domain status → semantic `Badge` tone. Keys are the exact frozen statuses. */
+const STATUS_TONES = {
+  'Approved': 'success',
+  'Rejected': 'danger',
+  'Background Check': 'accent',
+  'Awaiting Documents': 'warning',
+  'Pending Review': 'info',
+  'New Application': 'neutral',
+};
 
 export function GlobalSearchResults({
   results,
@@ -12,90 +51,103 @@ export function GlobalSearchResults({
   onAppClick
 }) {
   const { companies, users, applications } = results;
+  const companiesId = useId();
+  const usersId = useId();
+  const appsId = useId();
 
   return (
-    <div className="space-y-8">
-      <h2 className="text-3xl font-bold text-gray-900">
-        Search Results <span className="text-gray-400 font-normal">({totalResults} found)</span>
+    <Stack gap="lg">
+      <h2 className="text-ds-heading-lg font-bold text-ds-content">
+        Search Results <span className="font-normal text-ds-content-muted">({totalResults} found)</span>
       </h2>
-      
-      <section>
-        <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
-          <Building size={20} /> Companies ({companies.length})
-        </h2>
-        <div className="space-y-4">
+
+      <section aria-labelledby={companiesId}>
+        <h3 id={companiesId} className="mb-ds-4 flex items-center gap-ds-2 text-ds-heading-sm font-semibold text-ds-content-secondary">
+          <Building size={20} aria-hidden="true" /> Companies ({companies.length})
+        </h3>
+        <Stack gap="md">
           {companies.length > 0 ? (
             companies.map(company => (
-              <div key={company.id} className="p-4 border border-gray-200 rounded-lg bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                <div className="mb-3 sm:mb-0">
-                  <h3 className="font-semibold text-lg text-gray-900">{getFieldValue(company.companyName)}</h3>
-                  <p className="text-sm text-gray-600">/{getFieldValue(company.appSlug)}</p>
+              <Card key={company.id} padding="md" className="flex flex-col gap-ds-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <h4 className="truncate text-ds-body-lg font-semibold text-ds-content">{getFieldValue(company.companyName)}</h4>
+                  <p className="truncate text-ds-sm text-ds-content-secondary">/{getFieldValue(company.appSlug)}</p>
                 </div>
-                <div className="flex gap-2 justify-end shrink-0">
-                  <button onClick={() => onViewApps({ id: company.id, name: company.companyName })} className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-all flex items-center gap-2">
-                    <FileText size={14} /> View Apps
-                  </button>
-                  <button onClick={() => onEditCompany(company.id)} className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-all flex items-center gap-2">
-                    <Edit2 size={14} /> Edit
-                  </button>
+                <div className="flex shrink-0 justify-end gap-ds-2">
+                  <Button variant="secondary" size="sm" onClick={() => onViewApps({ id: company.id, name: company.companyName })}>
+                    <FileText size={14} aria-hidden="true" /> View Apps
+                    <span className="sr-only"> for {getFieldValue(company.companyName)}</span>
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => onEditCompany(company.id)}>
+                    <Edit2 size={14} aria-hidden="true" /> Edit
+                    <span className="sr-only"> {getFieldValue(company.companyName)}</span>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             ))
-          ) : <p className="text-gray-500 p-4 bg-white rounded-lg border">No companies found.</p>}
-        </div>
+          ) : <Card padding="md"><p className="text-ds-content-muted">No companies found.</p></Card>}
+        </Stack>
       </section>
-      
-      <section>
-        <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
-          <Users size={20} /> Users ({users.length})
-        </h2>
-        <div className="space-y-4">
+
+      <section aria-labelledby={usersId}>
+        <h3 id={usersId} className="mb-ds-4 flex items-center gap-ds-2 text-ds-heading-sm font-semibold text-ds-content-secondary">
+          <Users size={20} aria-hidden="true" /> Users ({users.length})
+        </h3>
+        <Stack gap="md">
           {users.length > 0 ? (
             users.map(user => (
-              <div key={user.id} className="p-4 border border-gray-200 rounded-lg bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                <div className="mb-3 sm:mb-0">
-                  <h3 className="font-semibold text-lg text-gray-900">{getFieldValue(user.name)}</h3>
-                  <p className="text-sm text-gray-600">{getFieldValue(user.email)}</p>
+              <Card key={user.id} padding="md" className="flex flex-col gap-ds-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <h4 className="truncate text-ds-body-lg font-semibold text-ds-content">{getFieldValue(user.name)}</h4>
+                  <p className="truncate text-ds-sm text-ds-content-secondary">{getFieldValue(user.email)}</p>
                 </div>
-                <div className="flex gap-2 justify-end shrink-0">
-                  <button onClick={() => onEditUser({ id: user.id })} className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-all flex items-center gap-2">
-                    <Edit2 size={14} /> Edit
-                  </button>
+                <div className="flex shrink-0 justify-end gap-ds-2">
+                  <Button variant="secondary" size="sm" onClick={() => onEditUser({ id: user.id })}>
+                    <Edit2 size={14} aria-hidden="true" /> Edit
+                    <span className="sr-only"> {getFieldValue(user.name)}</span>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             ))
-          ) : <p className="text-gray-500 p-4 bg-white rounded-lg border">No users found.</p>}
-        </div>
+          ) : <Card padding="md"><p className="text-ds-content-muted">No users found.</p></Card>}
+        </Stack>
       </section>
-      
-      <section>
-        <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
-          <FileText size={20} /> Driver Applications ({applications.length})
-        </h2>
-        <div className="space-y-4">
+
+      <section aria-labelledby={appsId}>
+        <h3 id={appsId} className="mb-ds-4 flex items-center gap-ds-2 text-ds-heading-sm font-semibold text-ds-content-secondary">
+          <FileText size={20} aria-hidden="true" /> Driver Applications ({applications.length})
+        </h3>
+        <Stack gap="md">
           {applications.length > 0 ? (
-            applications.map(app => (
-              <button 
-                key={app.id} 
-                className="w-full p-4 border border-gray-200 rounded-lg bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between text-left hover:border-blue-500 hover:shadow-md transition-all"
-                onClick={() => onAppClick(app)}
-              >
-                <div>
-                  <h3 className="font-semibold text-lg text-gray-900">{`${getFieldValue(app['firstName'])} ${getFieldValue(app['lastName'])}`}</h3>
-                  <p className="text-sm text-gray-600">{getFieldValue(app.email)}</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    From: <span className="font-medium text-gray-700">{allCompaniesMap.get(app.companyId) || 'Unknown Company'}</span>
-                  </p>
-                </div>
-                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(app.status || 'New Application')}`}>
-                  {app.status || 'New Application'}
-                </span>
-              </button>
-            ))
-          ) : <p className="text-gray-500 p-4 bg-white rounded-lg border">No driver applications found.</p>}
-        </div>
+            applications.map(app => {
+              const status = app.status || 'New Application';
+              return (
+                <Card
+                  key={app.id}
+                  as="button"
+                  type="button"
+                  padding="md"
+                  className="flex w-full flex-col gap-ds-3 text-left transition-all hover:border-ds-action-primary hover:shadow-ds-md focus-visible:outline-none focus-visible:shadow-ds-focus sm:flex-row sm:items-center sm:justify-between"
+                  onClick={() => onAppClick(app)}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-ds-body-lg font-semibold text-ds-content">
+                      {`${getFieldValue(app['firstName'])} ${getFieldValue(app['lastName'])}`}
+                    </span>
+                    <span className="block truncate text-ds-sm text-ds-content-secondary">{getFieldValue(app.email)}</span>
+                    <span className="mt-1 block truncate text-ds-sm text-ds-content-muted">
+                      From: <span className="font-medium text-ds-content-secondary">{allCompaniesMap.get(app.companyId) || 'Unknown Company'}</span>
+                    </span>
+                  </span>
+                  <span className="shrink-0">
+                    <Badge tone={STATUS_TONES[status] || 'neutral'}>{status}</Badge>
+                  </span>
+                </Card>
+              );
+            })
+          ) : <Card padding="md"><p className="text-ds-content-muted">No driver applications found.</p></Card>}
+        </Stack>
       </section>
-      
-    </div>
+    </Stack>
   );
 }
