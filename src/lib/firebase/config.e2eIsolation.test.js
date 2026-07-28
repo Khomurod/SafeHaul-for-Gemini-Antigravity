@@ -22,10 +22,12 @@ vi.mock('firebase/app', () => ({
   getApp: () => ({ __app: true }),
 }));
 vi.mock('firebase/auth', () => ({ getAuth: vi.fn(() => ({})) }));
+const connectFirestoreEmulator = vi.fn();
 vi.mock('firebase/firestore', () => ({
-  initializeFirestore: vi.fn(() => ({})),
+  connectFirestoreEmulator: (...args) => connectFirestoreEmulator(...args),
+  initializeFirestore: vi.fn(() => ({ __firestore: true })),
   memoryLocalCache: vi.fn(() => ({})),
-  getFirestore: vi.fn(() => ({})),
+  getFirestore: vi.fn(() => ({ __firestore: true })),
 }));
 vi.mock('firebase/storage', () => ({ getStorage: vi.fn(() => ({})) }));
 vi.mock('firebase/functions', () => ({ getFunctions: vi.fn(() => ({})) }));
@@ -49,6 +51,7 @@ function stubRealConfig() {
 async function loadConfig() {
   vi.resetModules();
   initializeApp.mockClear();
+  connectFirestoreEmulator.mockClear();
   await import('./config.js');
   return initializeApp.mock.calls[0][0];
 }
@@ -75,6 +78,33 @@ describe('firebase config — E2E isolation', () => {
     Object.values(REAL_CONFIG).forEach((realValue) => {
       expect(Object.values(config)).not.toContain(realValue);
     });
+  });
+
+  it('points Firestore at a closed local port so it is unreachable by construction', async () => {
+    stubRealConfig();
+    vi.stubEnv('VITE_E2E_TEST_MODE', '1');
+
+    await loadConfig();
+
+    // Placeholder credentials alone are not enough: on a runner with real
+    // internet the WebChannel reaches Google and retries the rejected request
+    // forever, so a listener never settles and any surface waiting on it hangs.
+    // Port 9 (discard) is never listening, so the connection is refused
+    // immediately and the SDK goes offline identically in every environment.
+    expect(connectFirestoreEmulator).toHaveBeenCalledWith(
+      expect.anything(),
+      '127.0.0.1',
+      9,
+    );
+  });
+
+  it('never redirects Firestore when E2E test mode is off', async () => {
+    stubRealConfig();
+    vi.stubEnv('VITE_E2E_TEST_MODE', '');
+
+    await loadConfig();
+
+    expect(connectFirestoreEmulator).not.toHaveBeenCalled();
   });
 
   it('uses the real credentials when E2E test mode is off', async () => {

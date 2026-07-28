@@ -6095,6 +6095,27 @@ Two fixes, both of which stand on their own merits:
    real key is present and per-key fallbacks would silently keep using the real
    project. E2E can no longer read or write production data.
 
+**Correction — the first attempt at (2) was incomplete and CI proved it.** After
+that fix the same six tests failed again, identically. Placeholder credentials
+are not sufficient: on a CI runner with real internet, `firestore.googleapis.com`
+is reachable even for a project that does not exist, so the WebChannel retries
+the rejected request indefinitely with backoff — neither the snapshot callback
+nor the error callback ever fires, and a surface waiting for its listener to
+settle hangs forever. On a sandbox with blocked egress the connection fails
+instantly, the SDK goes offline and raises a cached empty snapshot, and the same
+surface settles at once. That difference, not the credentials, is what made the
+spec pass locally and time out in CI.
+
+The working fix additionally points E2E Firestore at `127.0.0.1:9` (the reserved
+discard port, never listening) via `connectFirestoreEmulator`. The connection is
+refused immediately, so the SDK drops into offline mode the same way in every
+environment. This makes the specs' stated premise — "Firestore is deliberately
+unreachable under `VITE_E2E_TEST_MODE=1`" — true by construction rather than an
+accident of the sandbox's network policy.
+
+The lesson worth keeping: "unreachable" was assumed rather than enforced, and the
+assumption held in exactly one environment.
+
 Evidence: `NumberAssignmentManager.listener.test.jsx` (6 tests) fails 5/6
 against the pre-fix hook and passes 6/6 after, with a control test that passes
 both ways; `config.e2eIsolation.test.js` (3 tests) pins both directions; the

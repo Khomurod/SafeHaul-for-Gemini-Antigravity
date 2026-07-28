@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import {
+  connectFirestoreEmulator,
   initializeFirestore,
   memoryLocalCache,
   getFirestore
@@ -94,6 +95,28 @@ try {
 } catch {
   // If already initialized (HMR), use existing instance
   firestore = getFirestore(app);
+}
+
+// Point E2E Firestore at a closed local port so it is unreachable *by
+// construction*, in every environment.
+//
+// Placeholder credentials alone are not enough. On a CI runner with real
+// internet, `firestore.googleapis.com` is reachable even for a project that does
+// not exist, so the WebChannel retries the rejected request indefinitely with
+// backoff: neither the snapshot callback nor the error callback ever fires, and
+// any surface that waits for its listener to settle hangs forever. On a sandbox
+// with blocked egress the connection fails instantly, the SDK goes offline and
+// raises a cached empty snapshot, and the same surface settles immediately.
+// That difference is exactly what made `company-settings-sms-numbers` pass
+// locally and time out in CI.
+//
+// Port 9 is the reserved discard port and is never listening, so the connection
+// is refused immediately and the SDK drops into offline mode the same way in
+// both environments. This makes the E2E specs' stated premise — "Firestore is
+// deliberately unreachable under VITE_E2E_TEST_MODE=1" — actually true, rather
+// than an accident of the sandbox's network policy.
+if (forcePlaceholderForE2E) {
+  connectFirestoreEmulator(firestore, '127.0.0.1', 9);
 }
 
 export const db = firestore;
