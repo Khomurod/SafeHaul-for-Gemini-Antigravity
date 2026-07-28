@@ -99,7 +99,7 @@ describe('IntegrationsTab — preserved contracts', () => {
         window.fbAsyncInit();
 
         expect(initSpy).toHaveBeenCalledWith({
-            appId: undefined,
+            appId: import.meta.env.VITE_FACEBOOK_APP_ID,
             cookie: true,
             xfbml: true,
             version: 'v19.0',
