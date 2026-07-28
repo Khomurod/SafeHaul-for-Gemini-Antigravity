@@ -1,80 +1,115 @@
 // src/features/super-admin/views/UnifiedDriverList.jsx
-import React, { useState, useMemo, useCallback } from 'react';
+/**
+ * Unified Driver Database — combined company leads and applications.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the combined
+ * lead/application list, the `sourceType` values, the search across
+ * name/email/phone/company, the four filters, the sort keys, the 50-per-page
+ * client pagination, the docs-status rule (4 required docs), the 14-day stale
+ * rule, the relative-time buckets, the `companies/{id}/{applications|leads}/{id}`
+ * delete path and every toast string are unchanged.
+ *
+ * Defects fixed here:
+ *  1. **Load More was wired but never used.** `ViewRouter` passes `loadMore` and
+ *     `hasMore` from `useSuperAdminData`, and the hook fully supports
+ *     `loadMore('applications')` — but this view destructured both and ignored
+ *     them, so the Unified Driver DB could only ever page through the first
+ *     batch already in memory. There was no way to reach older records at all.
+ *     Now wired to the same "Load More from Database" control the sibling
+ *     `CompaniesView` already uses, so the presentation is consistent and no new
+ *     workflow is invented.
+ *  2. **Row actions were invisible until hover** (`opacity-0 group-hover:*`),
+ *     so keyboard users could not see View/Message/Delete at all. They now also
+ *     appear on focus.
+ *  3. Icon-only actions carried only a `title`, so they had no accessible name.
+ *  4. Blocking `window.confirm` on the destructive delete, replaced with an
+ *     accessible dialog. The SUPER ADMIN WARNING wording is preserved verbatim.
+ *  5. The search input and all four filter selects were unlabelled.
+ *  6. `SourceBadge` and the docs-status text were legacy-palette pills.
+ *  7. Dead `FilterChip` component removed (never rendered).
+ *
+ * PRODUCT BLOCKER — deliberately NOT changed: the bulk action bar's Message,
+ * Assign, Move Status and Archive buttons are **placeholders that do nothing but
+ * show a success toast**. Archiving 50 records reports success and archives
+ * nothing. Implementing them would be inventing a workflow, and the toast
+ * wording is a frozen contract, so the behaviour is preserved exactly and
+ * recorded in the roadmap for an owner decision.
+ */
+import React, { useId, useState, useMemo, useCallback } from 'react';
 import { db } from '@lib/firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
 import {
-    Search, Trash2, Filter, X, Eye, MessageSquare, UserPlus,
-    FileText, User, Briefcase, Share2, Loader2, Clock,
-    ChevronUp, ChevronDown, MapPin
+    Search, Trash2, Filter, Eye, MessageSquare, UserPlus,
+    FileText, User, Briefcase, Share2, Clock,
+    ChevronUp, MapPin
 } from 'lucide-react';
-import { getFieldValue, formatPhoneNumber } from '@shared/utils/helpers';
+import { formatPhoneNumber } from '@shared/utils/helpers';
 import { useToast } from '@shared/components/feedback';
 import { StatusBadge } from '@shared/components/badges';
 import { ModernDriverTable } from '@shared/components/table';
-
-// ========== FILTER CHIPS COMPONENT ==========
-const FilterChip = ({ label, active, onClick, onClear }) => (
-    <button
-        onClick={onClick}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full border transition-all ${active
-            ? 'bg-blue-100 text-blue-700 border-blue-300'
-            : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-            }`}
-    >
-        {label}
-        {active && onClear && (
-            <X
-                size={14}
-                className="ml-1 hover:text-blue-900 cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); onClear(); }}
-            />
-        )}
-    </button>
-);
+import { Badge, Button, Card, IconButton, Input, Select } from '@/design-system/components';
+import { Modal } from '@shared/components/modals/Modal';
 
 // ========== SOURCE BADGE COMPONENT ==========
-const SourceBadge = ({ type }) => {
-    const config = {
-        'Company App': { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', icon: FileText, label: 'Direct App' },
-        'Company Lead': { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200', icon: Share2, label: 'Company Lead' },
-        'Company Import': { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', icon: Briefcase, label: 'Import' },
-    };
-    const c = config[type] || { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200', icon: User, label: type };
-    const Icon = c.icon;
+/** Domain source type -> semantic tone/label. Feature-owned mapping. */
+const SOURCE_CONFIG = {
+    'Company App': { tone: 'info', icon: FileText, label: 'Direct App' },
+    'Company Lead': { tone: 'accent', icon: Share2, label: 'Company Lead' },
+    'Company Import': { tone: 'warning', icon: Briefcase, label: 'Import' },
+};
 
-    return (
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${c.bg} ${c.text} border ${c.border}`}>
-            <Icon size={12} />
-            {c.label}
-        </span>
-    );
+const SourceBadge = ({ type }) => {
+    const c = SOURCE_CONFIG[type] || { tone: 'neutral', icon: User, label: type };
+    return <Badge tone={c.tone} icon={c.icon}>{c.label}</Badge>;
 };
 
 // ========== BULK ACTION BAR ==========
 const BulkActionBar = ({ selectedCount, onMessage, onAssign, onMoveStatus, onArchive, onClearSelection }) => (
-    <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-xl">
-        <div className="flex items-center gap-3">
-            <span className="font-semibold">{selectedCount} selected</span>
-            <button onClick={onClearSelection} className="text-white/80 hover:text-white text-sm underline">
-                Clear
-            </button>
+    <div className="flex flex-wrap items-center justify-between gap-ds-3 rounded-t-ds-xl bg-ds-action-primary px-ds-4 py-ds-3 text-ds-content-inverse">
+        <div className="flex items-center gap-ds-3">
+            <span className="font-semibold" role="status">{selectedCount} selected</span>
+            <Button variant="ghost" size="sm" onClick={onClearSelection}>
+                Clear<span className="sr-only"> selection</span>
+            </Button>
         </div>
-        <div className="flex items-center gap-2">
-            <button onClick={onMessage} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition flex items-center gap-2">
-                <MessageSquare size={14} /> Message
-            </button>
-            <button onClick={onAssign} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition flex items-center gap-2">
-                <UserPlus size={14} /> Assign
-            </button>
-            <button onClick={onMoveStatus} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition flex items-center gap-2">
-                <ChevronUp size={14} /> Move Status
-            </button>
-            <button onClick={onArchive} className="px-3 py-1.5 bg-red-500/80 hover:bg-red-500 rounded-lg text-sm font-medium transition flex items-center gap-2">
-                <Trash2 size={14} /> Archive
-            </button>
+        <div className="flex flex-wrap items-center gap-ds-2">
+            <Button variant="secondary" size="sm" onClick={onMessage}>
+                <MessageSquare size={14} aria-hidden="true" /> Message
+                <span className="sr-only">{` ${selectedCount} selected records`}</span>
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onAssign}>
+                <UserPlus size={14} aria-hidden="true" /> Assign
+                <span className="sr-only">{` ${selectedCount} selected records`}</span>
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onMoveStatus}>
+                <ChevronUp size={14} aria-hidden="true" /> Move Status
+                <span className="sr-only">{` for ${selectedCount} selected records`}</span>
+            </Button>
+            <Button variant="danger" size="sm" onClick={onArchive}>
+                <Trash2 size={14} aria-hidden="true" /> Archive
+                <span className="sr-only">{` ${selectedCount} selected records`}</span>
+            </Button>
         </div>
     </div>
 );
+
+/** Filter definitions. Values and visible text preserved verbatim. */
+const FILTERS = [
+    { key: 'status', label: 'Filter by status', options: [
+        ['All', 'All Status'], ['New', 'New'], ['In Review', 'In Review'],
+        ['Qualified', 'Qualified'], ['Hold', 'Hold'], ['Approved', 'Approved'], ['Rejected', 'Rejected'],
+    ] },
+    { key: 'source', label: 'Filter by source', options: [
+        ['All', 'All Sources'], ['Company App', 'Direct Applications'],
+        ['Company Lead', 'Company Leads'], ['Company Import', 'Company Imports'],
+    ] },
+    { key: 'driverType', label: 'Filter by driver type', options: [
+        ['All', 'All Types'], ['OTR', 'OTR'], ['Regional', 'Regional'], ['Local', 'Local'], ['Team', 'Team'],
+    ] },
+    { key: 'docsStatus', label: 'Filter by documents status', options: [
+        ['All', 'All Docs'], ['Complete', 'Complete'], ['Partial', 'Partial'], ['Missing', 'Missing'],
+    ] },
+];
 
 // ========== MAIN COMPONENT ==========
 export function UnifiedDriverList({
@@ -87,6 +122,8 @@ export function UnifiedDriverList({
     isLoading = false
 }) {
     const { showSuccess, showError } = useToast();
+    const searchId = useId();
+    const filterIdBase = useId();
 
     // --- Search & Filters ---
     const [search, setSearch] = useState('');
@@ -103,6 +140,7 @@ export function UnifiedDriverList({
     // --- Selection & Bulk ---
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [deletingId, setDeletingId] = useState(null);
+    const [pendingDelete, setPendingDelete] = useState(null);
 
     // --- Pagination ---
     const [currentPage, setCurrentPage] = useState(1);
@@ -240,12 +278,10 @@ export function UnifiedDriverList({
     }, []);
 
     // --- Delete Handler ---
-    const handleDelete = async (e, item) => {
-        e.stopPropagation();
-        if (!window.confirm(`SUPER ADMIN WARNING:\n\nAre you sure you want to PERMANENTLY DELETE this record for ${item.firstName} ${item.lastName}?\n\nThis cannot be undone.`)) {
-            return;
-        }
-
+    // The blocking `window.confirm` guard moved to `<DeleteRecordDialog>`; the
+    // wording and the delete itself are unchanged.
+    const handleDelete = async (item) => {
+        setPendingDelete(null);
         setDeletingId(item.id);
         try {
             let docRef;
@@ -386,129 +422,97 @@ export function UnifiedDriverList({
             headerClassName: 'w-[100px]',
             cellClassName: 'w-[100px]',
             stopPropagation: true,
-            render: (item) => (
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <button
-                        onClick={() => onAppClick(item)}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="View"
-                    >
-                        <Eye size={15} />
-                    </button>
-                    <button
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                        title="Message"
-                    >
-                        <MessageSquare size={15} />
-                    </button>
-                    <button
-                        onClick={(e) => handleDelete(e, item)}
-                        disabled={deletingId === item.id}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete"
-                    >
-                        {deletingId === item.id
-                            ? <Loader2 size={15} className="animate-spin" />
-                            : <Trash2 size={15} />
-                        }
-                    </button>
-                </div>
-            ),
+            render: (item) => {
+                const who = `${item.firstName || ''} ${item.lastName || ''}`.trim() || 'this driver';
+                return (
+                    // `focus-within` so keyboard users can see the actions at all —
+                    // they were hover-only and therefore unreachable without a mouse.
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                        <IconButton
+                            label={`View ${who}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); onAppClick(item); }}
+                        >
+                            <Eye size={15} aria-hidden="true" />
+                        </IconButton>
+                        <IconButton
+                            label={`Message ${who}`}
+                            variant="ghost"
+                            size="sm"
+                        >
+                            <MessageSquare size={15} aria-hidden="true" />
+                        </IconButton>
+                        <IconButton
+                            label={`Delete ${who}`}
+                            variant="ghost"
+                            size="sm"
+                            loading={deletingId === item.id}
+                            onClick={(e) => { e.stopPropagation(); setPendingDelete(item); }}
+                        >
+                            <Trash2 size={15} aria-hidden="true" className="text-ds-status-danger-fg" />
+                        </IconButton>
+                    </div>
+                );
+            },
         },
-    ], [deletingId]);
+    ], [deletingId, onAppClick]);
 
     return (
         <div className="space-y-4 h-full flex flex-col">
 
             {/* Header / Search / Filters */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm shrink-0 space-y-4">
-                <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+            <Card padding="md" className="shrink-0 space-y-ds-4">
+                <div className="flex flex-col justify-between gap-ds-4 md:flex-row md:items-center">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-800">Unified Driver Database</h2>
-                        <p className="text-sm text-gray-500">{filteredData.length} records found across all systems</p>
+                        <h2 className="text-ds-heading-sm font-bold text-ds-content">Unified Driver Database</h2>
+                        <p className="text-ds-sm text-ds-content-muted" role="status">{filteredData.length} records found across all systems</p>
                     </div>
 
                     {/* Search */}
                     <div className="relative w-full md:w-80">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                            type="text"
+                        <label htmlFor={searchId} className="sr-only">Search drivers by name, email, phone or company</label>
+                        <Input
+                            id={searchId}
+                            type="search"
                             placeholder="Search by name, email, or phone..."
-                            className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                            className="pl-9"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
+                        <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ds-content-muted" />
                     </div>
                 </div>
 
-                {/* Filter Chips */}
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-                        <Filter size={12} /> Filters:
+                {/* Filters */}
+                <div className="flex flex-wrap items-center gap-ds-2">
+                    <span className="flex items-center gap-1 text-ds-xs font-semibold uppercase tracking-wide text-ds-content-muted">
+                        <Filter size={12} aria-hidden="true" /> Filters:
                     </span>
 
-                    {/* Status Filter */}
-                    <select
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={filters.status}
-                        onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
-                    >
-                        <option value="All">All Status</option>
-                        <option value="New">New</option>
-                        <option value="In Review">In Review</option>
-                        <option value="Qualified">Qualified</option>
-                        <option value="Hold">Hold</option>
-                        <option value="Approved">Approved</option>
-                        <option value="Rejected">Rejected</option>
-                    </select>
-
-                    {/* Source Filter */}
-                    <select
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={filters.source}
-                        onChange={(e) => setFilters(f => ({ ...f, source: e.target.value }))}
-                    >
-                        <option value="All">All Sources</option>
-                        <option value="Company App">Direct Applications</option>
-                        <option value="Company Lead">Company Leads</option>
-                        <option value="Company Import">Company Imports</option>
-                    </select>
-
-                    {/* Driver Type Filter */}
-                    <select
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={filters.driverType}
-                        onChange={(e) => setFilters(f => ({ ...f, driverType: e.target.value }))}
-                    >
-                        <option value="All">All Types</option>
-                        <option value="OTR">OTR</option>
-                        <option value="Regional">Regional</option>
-                        <option value="Local">Local</option>
-                        <option value="Team">Team</option>
-                    </select>
-
-                    {/* Docs Filter */}
-                    <select
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={filters.docsStatus}
-                        onChange={(e) => setFilters(f => ({ ...f, docsStatus: e.target.value }))}
-                    >
-                        <option value="All">All Docs</option>
-                        <option value="Complete">Complete</option>
-                        <option value="Partial">Partial</option>
-                        <option value="Missing">Missing</option>
-                    </select>
+                    {FILTERS.map(({ key, label, options }) => (
+                        <span key={key} className="flex items-center gap-1">
+                            <label htmlFor={`${filterIdBase}-${key}`} className="sr-only">{label}</label>
+                            <Select
+                                id={`${filterIdBase}-${key}`}
+                                className="w-auto py-1.5"
+                                value={filters[key]}
+                                onChange={(e) => setFilters(f => ({ ...f, [key]: e.target.value }))}
+                            >
+                                {options.map(([value, text]) => (
+                                    <option key={value} value={value}>{text}</option>
+                                ))}
+                            </Select>
+                        </span>
+                    ))}
 
                     {hasActiveFilters && (
-                        <button
-                            onClick={clearAllFilters}
-                            className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 font-medium"
-                        >
-                            Clear All
-                        </button>
+                        <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                            Clear All<span className="sr-only"> filters</span>
+                        </Button>
                     )}
                 </div>
-            </div>
+            </Card>
 
             {/* Table Container */}
             <div className="flex-1 overflow-hidden flex flex-col">
@@ -552,8 +556,61 @@ export function UnifiedDriverList({
                         label: `Showing ${paginatedData.length} of ${filteredData.length} records`,
                     }}
                 />
+
+                {/* Database pagination. `loadMore`/`hasMore` were passed by
+                    ViewRouter and ignored, so older records were unreachable.
+                    Same control the sibling CompaniesView already uses. */}
+                {hasMore && (
+                    <div className="shrink-0 border-t border-ds-border-subtle bg-ds-surface p-ds-4 text-center">
+                        <Button variant="secondary" onClick={() => loadMore('applications')}>
+                            Load More from Database
+                        </Button>
+                    </div>
+                )}
             </div>
+
+            {pendingDelete && (
+                <DeleteRecordDialog
+                    item={pendingDelete}
+                    onCancel={() => setPendingDelete(null)}
+                    onConfirm={() => handleDelete(pendingDelete)}
+                />
+            )}
         </div>
+    );
+}
+
+/**
+ * Replaces the blocking `window.confirm` on the permanent record delete. The
+ * SUPER ADMIN WARNING wording is preserved verbatim.
+ */
+function DeleteRecordDialog({ item, onCancel, onConfirm }) {
+    const titleId = useId();
+    const descriptionId = useId();
+    const who = `${item.firstName || ''} ${item.lastName || ''}`.trim();
+
+    return (
+        <Modal
+            onClose={onCancel}
+            labelledBy={titleId}
+            describedBy={descriptionId}
+            closeOnBackdrop={false}
+            className="w-full max-w-lg overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            <div className="p-ds-5">
+                <h2 id={titleId} className="text-ds-heading-sm font-bold text-ds-status-danger-fg">
+                    SUPER ADMIN WARNING
+                </h2>
+                <p id={descriptionId} className="mt-ds-3 text-ds-sm text-ds-content-secondary">
+                    Are you sure you want to PERMANENTLY DELETE this record for{' '}
+                    <strong className="text-ds-content">{who}</strong>? This cannot be undone.
+                </p>
+            </div>
+            <div className="flex justify-end gap-ds-3 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+                <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button variant="danger" onClick={onConfirm}>Permanently delete</Button>
+            </div>
+        </Modal>
     );
 }
 
