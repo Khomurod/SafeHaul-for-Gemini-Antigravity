@@ -1,5 +1,5 @@
 // E2E coverage for the envelope creator's left sidebar. The creator is opened
-// through the Documents Center "Send One-off" action under the e2eEdoc mock, so
+// through the Documents workspace New Document dialog under the e2eEdoc mock, so
 // no real recipient, document or signing data is involved and no send is
 // triggered — the spec stops at the pre-upload state.
 //
@@ -7,14 +7,13 @@
 // vitest suite in
 // src/features/signing/components/envelope-creator/EnvelopeSidebar.test.jsx.
 const { test, expect } = require('@playwright/test');
+const { openCreator: openEnvelopeCreator } = require('./helpers/edocHelpers.cjs');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 const URL = '/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock';
 
-async function openCreator(page) {
-  await page.goto(URL);
-  await expect(page.getByRole('heading', { level: 1, name: 'Documents Center' })).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'Send One-off' }).click();
+async function openSidebar(page) {
+  await openEnvelopeCreator(page, 'request', URL);
   await expect(page.getByRole('complementary', { name: 'Envelope setup' })).toBeVisible({ timeout: 20_000 });
 }
 
@@ -22,7 +21,7 @@ test.describe('E-Doc envelope creator sidebar', () => {
   test.describe.configure({ timeout: 90_000 });
 
   test('exposes the sidebar as a labelled region with labelled recipient inputs', async ({ page }) => {
-    await openCreator(page);
+    await openSidebar(page);
     const sidebar = page.getByRole('complementary', { name: 'Envelope setup' });
 
     await expect(sidebar.getByRole('heading', { name: 'Recipient' })).toBeVisible();
@@ -36,7 +35,7 @@ test.describe('E-Doc envelope creator sidebar', () => {
   });
 
   test('states the delivery selection without relying on colour', async ({ page }) => {
-    await openCreator(page);
+    await openSidebar(page);
     const group = page.getByRole('group', { name: 'Delivery' });
 
     await expect(group.getByRole('button', { name: 'Email' })).toHaveAttribute('aria-pressed', 'true');
@@ -46,7 +45,7 @@ test.describe('E-Doc envelope creator sidebar', () => {
   });
 
   test('keeps the upload trigger reachable from the keyboard', async ({ page }) => {
-    await openCreator(page);
+    await openSidebar(page);
     await expect(page.getByText('Upload a PDF first')).toBeVisible();
 
     const choose = page.getByRole('button', { name: 'Choose File' });
@@ -57,7 +56,7 @@ test.describe('E-Doc envelope creator sidebar', () => {
   test('does not overflow the document at desktop/tablet/mobile', async ({ page }, testInfo) => {
     const widths = testInfo.project.name.startsWith('mobile') ? [412] : [1440, 1024];
     await page.setViewportSize({ width: widths[0], height: widths[0] === 412 ? 915 : 900 });
-    await openCreator(page);
+    await openSidebar(page);
 
     for (const width of widths) {
       await page.setViewportSize({ width, height: width === 412 ? 915 : 900 });
@@ -71,7 +70,7 @@ test.describe('E-Doc envelope creator sidebar', () => {
   });
 
   test('has no serious/critical or contrast violations in the sidebar', async ({ page }) => {
-    await openCreator(page);
+    await openSidebar(page);
 
     const { violations } = await new AxeBuilder({ page })
       .include('aside[aria-label="Envelope setup"]')
