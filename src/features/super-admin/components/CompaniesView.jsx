@@ -1,24 +1,52 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useId } from 'react';
 import { getFieldValue } from '@shared/utils/helpers.js';
-import { Building, FileText, Edit2, Trash2, Search, ChevronLeft, ChevronRight, Loader2, Crown, Shield, MessageSquare, Phone, Database, CheckCircle, XCircle } from 'lucide-react';
+import { Building, FileText, Edit2, Trash2, Search, ChevronLeft, ChevronRight, Crown, Shield, MessageSquare, Phone, Database, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { db } from '@lib/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { SafeHaulLoader } from '@shared/components/SafeHaulLoader';
+import { Badge, Button, Card, IconButton, Input, Select } from '@/design-system/components';
+import { Modal } from '@shared/components/modals/Modal';
 
-function Card({ title, icon, children, className = '' }) {
-    return (
-        <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col ${className}`}>
-            <div className="p-5 border-b border-gray-200 shrink-0">
-                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                    {icon}
-                    {title}
-                </h2>
-            </div>
-            {children}
-        </div>
-    );
-}
-
+/**
+ * Super Admin companies table. Also serves the SMS Integrations hub via
+ * `isIntegrationMode`, where the row action selects a company for integration
+ * setup instead of opening the editor.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the
+ * `companies/{id}/integrations/sms_provider` enrichment read, the
+ * `updateDoc(companies/{id}, { isActive })` toggle, the name/slug/id search, the
+ * client-side 20/50/100 pagination, the `loadMore('companies')` database
+ * pagination, and every frozen string are unchanged.
+ *
+ * `DataTable` is deliberately not used, matching the exception already recorded
+ * for `CampaignResultsTable`, `AssignmentTable` and `ViewCompanyAppsModal`: this
+ * table carries per-row interactive controls (a status toggle and three actions)
+ * plus a row-level click target, which is outside `DataTable`'s proven
+ * display-table contract. The approved native-table pattern is used instead —
+ * semantic markup, `--ds-*` tokens, `Badge`, `Button`/`IconButton`.
+ *
+ * Defects fixed here:
+ *  1. **Stale derived data.** `filteredCompanyList`'s `useMemo` read `displayList`
+ *     (companies merged with their SMS enrichment) but listed only
+ *     `[companySearch, companyList]` as dependencies. When the async enrichment
+ *     resolved, `displayList` changed but the filtered list did not recompute, so
+ *     in Integrations mode the SMS numbers stayed blank until an unrelated
+ *     re-render. Now depends on `displayList`.
+ *  2. **Action clicks also triggered the row.** The row's `onClick` opened the
+ *     editor, and the per-row action buttons did not stop propagation, so
+ *     "View Applications" or "Delete" *also* opened the edit modal — two dialogs
+ *     stacked at once. Only the status toggle had guarded against it.
+ *  3. **The table was unusable by keyboard.** Opening a company was a click
+ *     handler on `<tr>` with no role, no `tabIndex` and no key handling, so
+ *     keyboard users could not open one at all. The company name is now a real
+ *     button; the row click is preserved for pointer users.
+ *  4. **Blocking `window.confirm` + `alert()`** on activate/deactivate, replaced
+ *     with an accessible confirmation dialog and an announced error. The
+ *     confirmation wording is preserved verbatim.
+ *  5. Icon-only actions carried only a `title`, so they had no accessible name.
+ *  6. `text-[10px]` provider label (below the 12px floor) removed.
+ *  7. Legacy palette throughout.
+ */
 export function CompaniesView({
     listLoading,
     statsError,
@@ -35,18 +63,16 @@ export function CompaniesView({
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [enrichedCompanies, setEnrichedCompanies] = useState({}); // ID -> { defaultPhoneNumber, smsProvider }
     const [togglingCompany, setTogglingCompany] = useState(null);
+    const [pendingToggle, setPendingToggle] = useState(null);
+    const [toggleError, setToggleError] = useState('');
+    const searchId = useId();
+    const perPageId = useId();
 
     // Toggle company active status
-    const toggleCompanyActive = async (e, companyId, companyName, currentStatus) => {
-        e.stopPropagation();
-        const action = currentStatus ? 'deactivate' : 'activate';
-        if (!window.confirm(`${action.toUpperCase()} "${companyName}"?\n\n${currentStatus
-            ? 'This company will be blocked from logging in and using the portal.'
-            : 'This company will regain access to the portal.'}`)) {
-            return;
-        }
-
+    const runToggleCompanyActive = async ({ companyId, action, currentStatus }) => {
+        setPendingToggle(null);
         setTogglingCompany(companyId);
+        setToggleError('');
         try {
             await updateDoc(doc(db, 'companies', companyId), {
                 isActive: !currentStatus
@@ -57,7 +83,7 @@ export function CompaniesView({
                 [companyId]: { ...prev[companyId], isActive: !currentStatus }
             }));
         } catch (err) {
-            alert(`Failed to ${action} company: ${err.message}`);
+            setToggleError(`Failed to ${action} company: ${err.message}`);
         } finally {
             setTogglingCompany(null);
         }
@@ -114,7 +140,9 @@ export function CompaniesView({
 
             return name.includes(searchTerm) || slug.includes(searchTerm) || id.includes(searchTerm);
         });
-    }, [companySearch, companyList]);
+        // `displayList`, not `companyList`: the SMS enrichment arrives later and
+        // must flow through to the rendered rows.
+    }, [companySearch, displayList]);
 
     const totalPages = Math.ceil(filteredCompanyList.length / itemsPerPage);
     const paginatedData = useMemo(() => {
@@ -126,214 +154,298 @@ export function CompaniesView({
         setCurrentPage(1);
     }, [companySearch, itemsPerPage]);
 
-    return (
-        <Card
-            title={isIntegrationMode ? "SMS Integrations Hub" : "Manage Companies"}
-            icon={isIntegrationMode ? <MessageSquare size={20} className="text-blue-600" /> : <Building size={20} className="text-blue-600" />}
-            className="h-full"
-        >
+    const openCompany = (company) => (isIntegrationMode ? onEdit(company) : onEdit(company.id));
 
-            <div className="p-4 border-b border-gray-200 bg-white flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
-                <div>
-                    <p className="text-sm text-gray-500">Registered Companies: <strong>{companyList.length}</strong></p>
-                </div>
+    /** Runs a row action without also firing the row's own click handler. */
+    const rowAction = (fn) => (event) => {
+        event.stopPropagation();
+        fn();
+    };
+
+    const title = isIntegrationMode ? "SMS Integrations Hub" : "Manage Companies";
+    const TitleIcon = isIntegrationMode ? MessageSquare : Building;
+
+    return (
+        <Card padding="none" className="flex h-full flex-col overflow-hidden">
+            <div className="shrink-0 border-b border-ds-border-subtle p-ds-5">
+                <h2 className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                    <TitleIcon size={20} className="text-ds-content-link" aria-hidden="true" />
+                    {title}
+                </h2>
+            </div>
+
+            <div className="flex shrink-0 flex-col items-center justify-between gap-ds-4 border-b border-ds-border-subtle bg-ds-surface p-ds-4 sm:flex-row">
+                <p className="text-ds-sm text-ds-content-muted">
+                    Registered Companies: <strong className="text-ds-content">{companyList.length}</strong>
+                </p>
                 <div className="relative w-full sm:w-72">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search size={16} className="text-gray-400" />
-                    </div>
-                    <input
-                        type="text"
+                    <label htmlFor={searchId} className="sr-only">Search companies by name, slug or ID</label>
+                    <Input
+                        id={searchId}
+                        type="search"
                         placeholder="Search companies..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="pl-10"
                         value={companySearch}
                         onChange={(e) => setCompanySearch(e.target.value)}
                     />
+                    <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ds-content-muted" />
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto min-h-0 bg-gray-50">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+            {toggleError && (
+                <p role="alert" className="border-b border-ds-status-danger-border bg-ds-status-danger-bg px-ds-4 py-ds-3 text-ds-sm text-ds-status-danger-fg">
+                    {toggleError}
+                </p>
+            )}
+
+            {/* Keyboard-focusable, named scroll region: below `sm` the table
+                    scrolls horizontally, and in the empty state it holds no
+                    focusable children, so keyboard users could not scroll it at
+                    all (axe `scrollable-region-focusable`). Same pattern already
+                    used by `EnvelopeHistory` and `CampaignResultsTable`. */}
+                <div
+                    role="region"
+                    aria-label="Companies table"
+                    tabIndex={0}
+                    className="min-h-0 flex-1 overflow-auto bg-ds-canvas focus-visible:outline-none focus-visible:shadow-ds-focus"
+                >
+                <table className="w-full border-collapse text-left">
+                    <caption className="sr-only">{title}</caption>
+                    <thead className="sticky top-0 z-10 bg-ds-surface-subtle shadow-ds-xs">
                         <tr>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">Company Name</th>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">Slug / ID</th>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">{isIntegrationMode ? "SMS Number" : "Plan"}</th>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center">Status</th>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-right">Actions</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">Company Name</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">Slug / ID</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">{isIntegrationMode ? "SMS Number" : "Plan"}</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-center text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">Status</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-right text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-ds-border-subtle bg-ds-surface">
                         {listLoading ? (
-                            <tr><td colSpan="5" className="p-10 text-center text-gray-500"><SafeHaulLoader size="h-10 w-10" className="mx-auto mb-2" />Loading companies...</td></tr>
+                            <tr><td colSpan="5" role="status" className="p-ds-10 text-center text-ds-content-muted"><SafeHaulLoader size="h-10 w-10" className="mx-auto mb-ds-2" />Loading companies...</td></tr>
                         ) : statsError.companies ? (
-                            <tr><td colSpan="5" className="p-10 text-center text-red-500">Error loading companies.</td></tr>
+                            <tr><td colSpan="5" role="alert" className="p-ds-10 text-center text-ds-status-danger-fg">Error loading companies.</td></tr>
                         ) : filteredCompanyList.length === 0 ? (
-                            <tr><td colSpan="5" className="p-10 text-center text-gray-400">No companies found.</td></tr>
+                            <tr><td colSpan="5" className="p-ds-10 text-center text-ds-content-muted">No companies found.</td></tr>
                         ) : (
-                            paginatedData.map(company => (
-                                <tr
-                                    key={company.id}
-                                    onClick={() => isIntegrationMode ? onEdit(company) : onEdit(company.id)}
-                                    className="hover:bg-gray-50 transition-colors cursor-pointer"
-                                >
-                                    <td className="px-6 py-4 align-middle">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-lg font-bold text-gray-500 shrink-0">
-                                                {company.companyLogoUrl ? (
-                                                    <img src={company.companyLogoUrl} alt="Logo" loading="lazy" className="w-full h-full object-contain rounded-lg" />
-                                                ) : (
-                                                    getFieldValue(company.companyName).charAt(0)
-                                                )}
-                                            </div>
-                                            <span className="font-semibold text-gray-900">{getFieldValue(company.companyName)}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 align-middle">
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded w-fit">/{getFieldValue(company.appSlug)}</span>
-                                            <span className="text-xs text-gray-400 mt-1 font-mono">{company.id}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 align-middle">
-                                        {isIntegrationMode ? (
-                                            <div className="flex flex-col">
-                                                {company.defaultPhoneNumber ? (
-                                                    <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded w-fit flex items-center gap-1">
-                                                        <Phone size={12} /> {company.defaultPhoneNumber}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-xs text-gray-400 italic">Not Provisioned</span>
-                                                )}
-                                                {company.smsProvider && (
-                                                    <span className="text-[10px] text-gray-500 uppercase mt-1 tracking-widest">{company.smsProvider}</span>
-                                                )}
-                                            </div>
-                                        ) : company.planType === 'paid' ? (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
-                                                <Crown size={12} fill="currentColor" /> Pro Plan
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
-                                                <Shield size={12} /> Free Plan
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4 align-middle text-center">
-                                        <button
-                                            onClick={(e) => toggleCompanyActive(e, company.id, company.companyName, company.isActive !== false)}
-                                            disabled={togglingCompany === company.id}
-                                            className="group"
-                                            title={`Click to ${company.isActive !== false ? 'deactivate' : 'activate'}`}
-                                        >
-                                            {togglingCompany === company.id ? (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-semibold">
-                                                    <Loader2 size={10} className="animate-spin" />
+                            paginatedData.map(company => {
+                                const isActive = company.isActive !== false;
+                                const companyName = getFieldValue(company.companyName);
+                                return (
+                                    <tr
+                                        key={company.id}
+                                        onClick={() => openCompany(company)}
+                                        className="cursor-pointer transition-colors hover:bg-ds-surface-subtle"
+                                    >
+                                        <th scope="row" className="px-ds-6 py-ds-4 text-left align-middle font-normal">
+                                            <div className="flex items-center gap-ds-3">
+                                                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-ds-md border border-ds-border-subtle bg-ds-surface-subtle text-lg font-bold text-ds-content-muted">
+                                                    {company.companyLogoUrl ? (
+                                                        <img src={company.companyLogoUrl} alt="" loading="lazy" className="h-full w-full rounded-ds-md object-contain" />
+                                                    ) : (
+                                                        companyName.charAt(0)
+                                                    )}
                                                 </span>
-                                            ) : company.isActive !== false ? (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold hover:bg-green-200 cursor-pointer">
-                                                    <CheckCircle size={10} /> Active
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-semibold hover:bg-red-200 cursor-pointer">
-                                                    <XCircle size={10} /> Inactive
-                                                </span>
-                                            )}
-                                        </button>
-                                    </td>
-                                    <td className="px-6 py-4 align-middle text-right">
-                                        <div className="flex justify-end gap-2">
-                                            {isIntegrationMode ? (
+                                                {/* A real button so keyboard users can open a company at all. */}
                                                 <button
-                                                    onClick={() => onEdit(company)}
-                                                    className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-all flex items-center gap-2"
+                                                    type="button"
+                                                    onClick={rowAction(() => openCompany(company))}
+                                                    className="truncate rounded-ds-sm text-left font-semibold text-ds-content hover:underline focus-visible:outline-none focus-visible:shadow-ds-focus"
                                                 >
-                                                    <Database size={14} /> Manage API
+                                                    {companyName}
                                                 </button>
+                                            </div>
+                                        </th>
+                                        <td className="px-ds-6 py-ds-4 align-middle">
+                                            <span className="flex flex-col">
+                                                <span className="w-fit rounded-ds-sm bg-ds-status-info-bg px-2 py-0.5 font-mono text-ds-sm text-ds-status-info-fg">/{getFieldValue(company.appSlug)}</span>
+                                                <span className="mt-1 font-mono text-ds-xs text-ds-content-muted">{company.id}</span>
+                                            </span>
+                                        </td>
+                                        <td className="px-ds-6 py-ds-4 align-middle">
+                                            {isIntegrationMode ? (
+                                                <span className="flex flex-col items-start gap-1">
+                                                    {company.defaultPhoneNumber ? (
+                                                        <Badge tone="success" icon={Phone}>{company.defaultPhoneNumber}</Badge>
+                                                    ) : (
+                                                        <span className="text-ds-xs italic text-ds-content-muted">Not Provisioned</span>
+                                                    )}
+                                                    {company.smsProvider && (
+                                                        <span className="text-ds-xs uppercase tracking-widest text-ds-content-muted">{company.smsProvider}</span>
+                                                    )}
+                                                </span>
+                                            ) : company.planType === 'paid' ? (
+                                                <Badge tone="warning" icon={Crown}>Pro Plan</Badge>
                                             ) : (
-                                                <>
-                                                    <button
-                                                        onClick={() => onViewApps({ id: company.id, name: company.companyName })}
-                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                        title="View Applications"
-                                                    >
-                                                        <FileText size={18} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => onEdit(company.id)}
-                                                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                                        title="Edit Company"
-                                                    >
-                                                        <Edit2 size={18} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => onDelete({ id: company.id, name: company.companyName })}
-                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                        title="Delete Company"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                </>
+                                                <Badge tone="neutral" icon={Shield}>Free Plan</Badge>
                                             )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
+                                        </td>
+                                        <td className="px-ds-6 py-ds-4 text-center align-middle">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                loading={togglingCompany === company.id}
+                                                onClick={rowAction(() => setPendingToggle({
+                                                    companyId: company.id,
+                                                    companyName: company.companyName,
+                                                    currentStatus: isActive,
+                                                }))}
+                                            >
+                                                {isActive
+                                                    ? <><CheckCircle size={12} aria-hidden="true" /> Active</>
+                                                    : <><XCircle size={12} aria-hidden="true" /> Inactive</>}
+                                                <span className="sr-only">
+                                                    {` — ${companyName}, click to ${isActive ? 'deactivate' : 'activate'}`}
+                                                </span>
+                                            </Button>
+                                        </td>
+                                        <td className="px-ds-6 py-ds-4 text-right align-middle">
+                                            <div className="flex justify-end gap-ds-2">
+                                                {isIntegrationMode ? (
+                                                    <Button variant="primary" size="sm" onClick={rowAction(() => onEdit(company))}>
+                                                        <Database size={14} aria-hidden="true" /> Manage API
+                                                        <span className="sr-only"> for {companyName}</span>
+                                                    </Button>
+                                                ) : (
+                                                    <>
+                                                        <IconButton
+                                                            label={`View applications for ${companyName}`}
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={rowAction(() => onViewApps({ id: company.id, name: company.companyName }))}
+                                                        >
+                                                            <FileText size={18} aria-hidden="true" />
+                                                        </IconButton>
+                                                        <IconButton
+                                                            label={`Edit ${companyName}`}
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={rowAction(() => onEdit(company.id))}
+                                                        >
+                                                            <Edit2 size={18} aria-hidden="true" />
+                                                        </IconButton>
+                                                        <IconButton
+                                                            label={`Delete ${companyName}`}
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={rowAction(() => onDelete({ id: company.id, name: company.companyName }))}
+                                                        >
+                                                            <Trash2 size={18} aria-hidden="true" className="text-ds-status-danger-fg" />
+                                                        </IconButton>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
             </div>
 
-            <div className="border-t border-gray-200 p-4 bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>Show</span>
-                    <select
+            <div className="flex shrink-0 flex-col items-center justify-between gap-ds-4 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4 sm:flex-row">
+                <div className="flex items-center gap-ds-2 text-ds-sm text-ds-content-secondary">
+                    <label htmlFor={perPageId}>Show</label>
+                    <Select
+                        id={perPageId}
                         value={itemsPerPage}
                         onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                        className="border-gray-300 rounded-md text-xs py-1.5 pl-2 pr-6 bg-white focus:ring-blue-500 focus:border-blue-500"
+                        className="w-auto py-1.5"
                     >
                         <option value={20}>20</option>
                         <option value={50}>50</option>
                         <option value={100}>100</option>
-                    </select>
+                    </Select>
                     <span>per page</span>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-600">
+                <div className="flex items-center gap-ds-4">
+                    <span className="text-ds-sm text-ds-content-secondary" role="status">
                         Page <strong>{currentPage}</strong> of <strong>{totalPages || 1}</strong>
                     </span>
                     <div className="flex gap-1">
-                        <button
+                        <IconButton
+                            label="Previous page"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             disabled={currentPage === 1}
-                            className="p-2 rounded-md bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-all"
                         >
-                            <ChevronLeft size={16} className="text-gray-600" />
-                        </button>
-                        <button
+                            <ChevronLeft size={16} aria-hidden="true" />
+                        </IconButton>
+                        <IconButton
+                            label="Next page"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             disabled={currentPage >= totalPages}
-                            className="p-2 rounded-md bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-all"
                         >
-                            <ChevronRight size={16} className="text-gray-600" />
-                        </button>
+                            <ChevronRight size={16} aria-hidden="true" />
+                        </IconButton>
                     </div>
                 </div>
             </div>
 
             {/* Database Pagination (Load More) */}
-            {
-                hasMore && (
-                    <div className="p-4 bg-white border-t border-gray-100 text-center">
-                        <button
-                            onClick={() => loadMore('companies')}
-                            className="px-6 py-2 text-sm font-bold text-blue-600 bg-blue-50 border border-blue-100 rounded-xl hover:bg-blue-100 transition-all"
-                        >
-                            Load More from Database
-                        </button>
-                    </div>
-                )
-            }
-        </Card >
+            {hasMore && (
+                <div className="shrink-0 border-t border-ds-border-subtle bg-ds-surface p-ds-4 text-center">
+                    <Button variant="secondary" onClick={() => loadMore('companies')}>
+                        Load More from Database
+                    </Button>
+                </div>
+            )}
+
+            {pendingToggle && (
+                <ToggleActiveDialog
+                    pending={pendingToggle}
+                    onCancel={() => setPendingToggle(null)}
+                    onConfirm={runToggleCompanyActive}
+                />
+            )}
+        </Card>
+    );
+}
+
+/**
+ * Replaces the blocking `window.confirm` that guarded activate/deactivate. The
+ * wording is preserved verbatim, including the ALL-CAPS action verb, because it
+ * is what Super Admins have been reading before a portal-access change.
+ */
+function ToggleActiveDialog({ pending, onCancel, onConfirm }) {
+    const titleId = useId();
+    const descriptionId = useId();
+    const { companyName, currentStatus } = pending;
+    const action = currentStatus ? 'deactivate' : 'activate';
+
+    return (
+        <Modal
+            onClose={onCancel}
+            labelledBy={titleId}
+            describedBy={descriptionId}
+            closeOnBackdrop={false}
+            className="w-full max-w-lg overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            <div className="p-ds-5">
+                <h2 id={titleId} className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                    <AlertTriangle className="text-ds-status-warning-fg" aria-hidden="true" />
+                    {action.toUpperCase()} "{companyName}"?
+                </h2>
+                <p id={descriptionId} className="mt-ds-3 text-ds-sm text-ds-content-secondary">
+                    {currentStatus
+                        ? 'This company will be blocked from logging in and using the portal.'
+                        : 'This company will regain access to the portal.'}
+                </p>
+            </div>
+            <div className="flex justify-end gap-ds-3 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+                <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button
+                    variant={currentStatus ? 'danger' : 'primary'}
+                    onClick={() => onConfirm({ companyId: pending.companyId, action, currentStatus })}
+                >
+                    {currentStatus ? 'Deactivate' : 'Activate'}
+                </Button>
+            </div>
+        </Modal>
     );
 }

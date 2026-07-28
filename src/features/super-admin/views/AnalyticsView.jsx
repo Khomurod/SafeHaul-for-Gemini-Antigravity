@@ -1,35 +1,55 @@
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import {
-    BarChart3, Download, Calendar, Users, Phone,
-    FileText, Zap, TrendingUp, ArrowUpRight, User
+    BarChart3, Download, Users, Phone,
+    Zap, TrendingUp, ArrowUpRight, User
 } from 'lucide-react';
 import { useAnalytics } from '@features/analytics';
+import { Badge, Button, Card, MetricCard } from '@/design-system/components';
+import { ResponsiveGrid, Stack } from '@/design-system/layouts';
 
-
-// --- HELPER COMPONENTS (PRESERVED) ---
-
-function SummaryCard({ title, value, icon: Icon, colorClass, trend }) {
-    return (
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
-            <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{title}</p>
-                <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
-                {trend && (
-                    <div className="flex items-center gap-1 mt-2 text-xs font-medium text-green-600 bg-green-50 w-fit px-2 py-0.5 rounded">
-                        <TrendingUp size={12} />
-                        <span>{trend}</span>
-                    </div>
-                )}
-            </div>
-            <div className={`p-3 rounded-lg ${colorClass}`}>
-                <Icon size={20} />
-            </div>
-        </div>
-    );
-}
+/**
+ * Platform-wide analytics for Super Admin.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — `useAnalytics`
+ * is untouched, the `7d`/`30d`/`90d` range values, the CSV export column order,
+ * header text, filename patterns (`recruiter_performance_{range}.csv` /
+ * `company_performance_{range}.csv`), the `data:text/csv;charset=utf-8` link
+ * technique, the top-5 slices, the `callsMade > 20` High/Low rule, and every
+ * frozen string are unchanged.
+ *
+ * Fixed here:
+ *  - The three view tabs were raw buttons with no tab semantics: the selected
+ *    tab was conveyed by border+text colour only, with no `aria-selected` and no
+ *    arrow-key movement. They are now a real WAI-ARIA tab interface.
+ *  - The date-range control had the same problem — selection by colour only. It
+ *    is now a radiogroup-style set with `aria-pressed`.
+ *  - `text-[10px]` on the chart axis labels and the recruiter company name
+ *    (below the 12px floor) removed.
+ *  - The trend chart was an unlabelled `<svg>` — completely invisible to
+ *    assistive technology. It now has `role="img"` with a summarising name plus
+ *    a visually-hidden table of the same figures, so the data is reachable
+ *    without sight.
+ *  - The loading state was an unannounced `<div>`.
+ *  - Both data tables lacked captions and `scope`.
+ *  - The hardcoded chart hexes (`#2563eb`, `#f3f4f6`) now derive from tokens via
+ *    `currentColor`, so the chart follows the theme like everything else.
+ *
+ * Feature-owned exception: the SVG polyline/area geometry and its viewBox math
+ * stay feature-owned. Replacing them with a charting primitive would change the
+ * rendering, and the design system has no approved chart contract. Only the
+ * colours, labels and surrounding card are standardised.
+ */
 
 function ActivityTrendChart({ data }) {
-    if (!data || data.length === 0) return <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No data available</div>;
+    const titleId = useId();
+
+    if (!data || data.length === 0) {
+        return (
+            <p className="flex h-48 items-center justify-center text-ds-sm text-ds-content-muted">
+                No data available
+            </p>
+        );
+    }
     const height = 200;
     const width = 800;
     const padding = 20;
@@ -41,52 +61,79 @@ function ActivityTrendChart({ data }) {
         return `${x},${y}`;
     }).join(' ');
 
+    const total = data.reduce((sum, d) => sum + (d.value || 0), 0);
+
     return (
-        <div className="w-full h-64 overflow-hidden">
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-                {[0, 0.25, 0.5, 0.75, 1].map(tick => (
-                    <line
-                        key={tick}
-                        x1={padding}
-                        y1={height - (tick * (height - padding * 2)) - padding}
-                        x2={width - padding}
-                        y2={height - (tick * (height - padding * 2)) - padding}
-                        stroke="#f3f4f6"
-                        strokeWidth="1"
+        <div className="w-full">
+            <div className="h-64 w-full overflow-hidden text-ds-content-link">
+                <svg
+                    viewBox={`0 0 ${width} ${height}`}
+                    className="h-full w-full overflow-visible"
+                    role="img"
+                    aria-labelledby={titleId}
+                >
+                    <title id={titleId}>
+                        {`Daily activity trend across ${data.length} days, ${total} actions in total, peaking at ${maxValue}.`}
+                    </title>
+                    {[0, 0.25, 0.5, 0.75, 1].map(tick => (
+                        <line
+                            key={tick}
+                            x1={padding}
+                            y1={height - (tick * (height - padding * 2)) - padding}
+                            x2={width - padding}
+                            y2={height - (tick * (height - padding * 2)) - padding}
+                            stroke="var(--ds-color-border-subtle)"
+                            strokeWidth="1"
+                        />
+                    ))}
+                    <polyline
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        points={points}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                     />
-                ))}
-                <polyline
-                    fill="none"
-                    stroke="#2563eb"
-                    strokeWidth="3"
-                    points={points}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                />
-                <polygon
-                    fill="url(#gradient)"
-                    points={`${padding},${height - padding} ${points} ${width - padding},${height - padding}`}
-                    opacity="0.1"
-                />
-                <defs>
-                    <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor="#2563eb" />
-                        <stop offset="100%" stopColor="white" />
-                    </linearGradient>
-                </defs>
-                <text x={padding} y={height} className="text-[10px] fill-gray-400">{data[0]?.date}</text>
-                <text x={width / 2} y={height} className="text-[10px] fill-gray-400 text-anchor-middle">{data[Math.floor(data.length / 2)]?.date}</text>
-                <text x={width - padding} y={height} className="text-[10px] fill-gray-400 text-anchor-end">{data[data.length - 1]?.date}</text>
-            </svg>
+                    <polygon
+                        fill="currentColor"
+                        points={`${padding},${height - padding} ${points} ${width - padding},${height - padding}`}
+                        opacity="0.1"
+                    />
+                    <text x={padding} y={height} className="fill-current text-ds-xs opacity-60">{data[0]?.date}</text>
+                    <text x={width / 2} y={height} className="fill-current text-ds-xs opacity-60">{data[Math.floor(data.length / 2)]?.date}</text>
+                    <text x={width - padding} y={height} className="fill-current text-ds-xs opacity-60">{data[data.length - 1]?.date}</text>
+                </svg>
+            </div>
+
+            {/* The same figures in a form assistive technology can actually read. */}
+            <table className="sr-only">
+                <caption>Daily activity trend</caption>
+                <thead>
+                    <tr><th scope="col">Date</th><th scope="col">Actions</th></tr>
+                </thead>
+                <tbody>
+                    {data.map((d, i) => (
+                        <tr key={`${d.date}-${i}`}><td>{d.date}</td><td>{d.value}</td></tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }
 
-// --- MAIN VIEW COMPONENT ---
+const TABS = [
+    { id: 'overview', label: 'Activity Overview' },
+    { id: 'companies', label: 'Company Performance' },
+    { id: 'users', label: 'Recruiter Stats' },
+];
+
+const DATE_RANGES = ['7d', '30d', '90d'];
 
 export function AnalyticsView() {
     const { loading, stats, dateRange, setDateRange } = useAnalytics();
     const [activeTab, setActiveTab] = useState('overview');
+    const tabRefs = useRef({});
+    const tabsId = useId();
 
     const handleExport = () => {
         let headers = [];
@@ -118,222 +165,232 @@ export function AnalyticsView() {
         document.body.removeChild(link);
     };
 
-    if (loading) return <div className="p-12 text-center text-gray-500">Loading analytics...</div>;
+    // Roving focus: a tablist must respond to Arrow/Home/End, not just clicks.
+    const onTabKeyDown = (event) => {
+        const index = TABS.findIndex((t) => t.id === activeTab);
+        let next = null;
+        if (event.key === 'ArrowRight') next = TABS[(index + 1) % TABS.length];
+        if (event.key === 'ArrowLeft') next = TABS[(index - 1 + TABS.length) % TABS.length];
+        if (event.key === 'Home') next = TABS[0];
+        if (event.key === 'End') next = TABS[TABS.length - 1];
+        if (!next) return;
+        event.preventDefault();
+        setActiveTab(next.id);
+        tabRefs.current[next.id]?.focus();
+    };
+
+    if (loading) {
+        return (
+            <p role="status" className="p-ds-12 text-center text-ds-content-muted">
+                Loading analytics...
+            </p>
+        );
+    }
 
     return (
-        <div className="space-y-6 h-full flex flex-col">
+        <Stack gap="lg" className="flex h-full flex-col">
 
             {/* 1. Header & Controls */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm shrink-0">
+            <Card
+                as="header"
+                padding="md"
+                className="flex shrink-0 flex-col items-start justify-between gap-ds-4 md:flex-row md:items-center"
+            >
                 <div>
-                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <BarChart3 className="text-blue-600" /> Platform Analytics
+                    <h2 className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                        <BarChart3 className="text-ds-content-link" aria-hidden="true" /> Platform Analytics
                     </h2>
-                    <p className="text-sm text-gray-500">Monitor usage and performance across all companies.</p>
+                    <p className="text-ds-sm text-ds-content-muted">Monitor usage and performance across all companies.</p>
                 </div>
 
-                <div className="flex gap-2">
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
-                        {['7d', '30d', '90d'].map(range => (
-                            <button
+                <div className="flex flex-wrap gap-ds-2">
+                    <div
+                        role="group"
+                        aria-label="Date range"
+                        className="flex rounded-ds-md bg-ds-surface-subtle p-1"
+                    >
+                        {DATE_RANGES.map(range => (
+                            <Button
                                 key={range}
+                                size="sm"
+                                variant={dateRange === range ? 'primary' : 'ghost'}
+                                aria-pressed={dateRange === range}
                                 onClick={() => setDateRange(range)}
-                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${dateRange === range
-                                        ? 'bg-white text-blue-700 shadow-sm'
-                                        : 'text-gray-500 hover:text-gray-700'
-                                    }`}
                             >
                                 {range.toUpperCase()}
-                            </button>
+                            </Button>
                         ))}
                     </div>
 
-                    <button
-                        onClick={handleExport}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition shadow-sm"
-                    >
-                        <Download size={16} /> Export {activeTab === 'users' ? 'Recruiters' : 'Companies'}
-                    </button>
+                    <Button variant="primary" onClick={handleExport}>
+                        <Download size={16} aria-hidden="true" /> Export {activeTab === 'users' ? 'Recruiters' : 'Companies'}
+                    </Button>
                 </div>
-            </div>
+            </Card>
 
-            {/* 2. NEW: LEAD INVENTORY WIDGET */}
-            <div className="shrink-0">
+            {/* 2. Summary Cards */}
+            <ResponsiveGrid minItemWidth="220px" className="shrink-0">
+                <MetricCard label="Total Calls" value={stats.summary.totalCalls} tone="info" icon={<Phone size={20} aria-hidden="true" />} />
+                <MetricCard label="Active Companies" value={stats.companyPerformance.length} tone="accent" icon={<Users size={20} aria-hidden="true" />} />
+                <MetricCard label="Active Recruiters" value={stats.summary.activeRecruiters} tone="warning" icon={<User size={20} aria-hidden="true" />} />
+                <MetricCard label="Platform Health" value="100%" tone="success" icon={<Zap size={20} aria-hidden="true" />} />
+            </ResponsiveGrid>
 
-            </div>
-
-            {/* 3. Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-                <SummaryCard
-                    title="Total Calls"
-                    value={stats.summary.totalCalls}
-                    icon={Phone}
-                    colorClass="bg-blue-100 text-blue-600"
-                    trend="Real-time"
-                />
-                <SummaryCard
-                    title="Active Companies"
-                    value={stats.companyPerformance.length}
-                    icon={Users}
-                    colorClass="bg-purple-100 text-purple-600"
-                    trend="Active"
-                />
-                <SummaryCard
-                    title="Active Recruiters"
-                    value={stats.summary.activeRecruiters}
-                    icon={User}
-                    colorClass="bg-orange-100 text-orange-600"
-                    trend="This Period"
-                />
-                <SummaryCard
-                    title="Platform Health"
-                    value="100%"
-                    icon={Zap}
-                    colorClass="bg-yellow-100 text-yellow-600"
-                    trend="Operational"
-                />
-            </div>
-
-            {/* 4. Tabs & Content */}
-            <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-                <div className="flex border-b border-gray-200 px-6 pt-2 overflow-x-auto">
-                    <button
-                        onClick={() => setActiveTab('overview')}
-                        className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
-                    >
-                        Activity Overview
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('companies')}
-                        className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'companies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
-                    >
-                        Company Performance
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('users')}
-                        className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
-                    >
-                        Recruiter Stats
-                    </button>
+            {/* 3. Tabs & Content */}
+            <Card padding="none" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div
+                    role="tablist"
+                    aria-label="Analytics views"
+                    onKeyDown={onTabKeyDown}
+                    className="flex overflow-x-auto border-b border-ds-border-subtle px-ds-6 pt-ds-2"
+                >
+                    {TABS.map((tab) => {
+                        const selected = activeTab === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                role="tab"
+                                id={`${tabsId}-tab-${tab.id}`}
+                                aria-selected={selected}
+                                aria-controls={`${tabsId}-panel-${tab.id}`}
+                                tabIndex={selected ? 0 : -1}
+                                ref={(node) => { tabRefs.current[tab.id] = node; }}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`whitespace-nowrap border-b-2 px-ds-4 py-ds-3 text-ds-sm font-bold transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                    selected
+                                        ? 'border-ds-action-primary text-ds-content-link'
+                                        : 'border-transparent text-ds-content-muted hover:text-ds-content'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        );
+                    })}
                 </div>
 
-                <div className="flex-1 overflow-auto p-6 bg-gray-50">
+                <div
+                    role="tabpanel"
+                    id={`${tabsId}-panel-${activeTab}`}
+                    aria-labelledby={`${tabsId}-tab-${activeTab}`}
+                    tabIndex={0}
+                    className="flex-1 overflow-auto bg-ds-canvas p-ds-6 focus-visible:outline-none focus-visible:shadow-ds-focus"
+                >
 
                     {activeTab === 'overview' && (
-                        <div className="space-y-6">
-                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                <h4 className="text-sm font-bold text-gray-800 mb-6 flex items-center gap-2">
-                                    <TrendingUp size={16} className="text-blue-500" /> Daily Activity Trend
-                                </h4>
+                        <Stack gap="lg">
+                            <Card padding="lg">
+                                <h3 className="mb-ds-6 flex items-center gap-ds-2 text-ds-sm font-bold text-ds-content">
+                                    <TrendingUp size={16} className="text-ds-content-link" aria-hidden="true" /> Daily Activity Trend
+                                </h3>
                                 <ActivityTrendChart data={stats.dailyTrend} />
-                            </div>
+                            </Card>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                    <h4 className="text-sm font-bold text-gray-800 mb-4">Top Companies (By Calls)</h4>
-                                    <div className="space-y-4">
+                            <div className="grid grid-cols-1 gap-ds-6 md:grid-cols-2">
+                                <Card padding="lg">
+                                    <h3 className="mb-ds-4 text-ds-sm font-bold text-ds-content">Top Companies (By Calls)</h3>
+                                    <Stack gap="md">
                                         {stats.companyPerformance.slice(0, 5).map((comp, i) => (
-                                            <div key={i} className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
+                                            <div key={i} className="flex items-center justify-between gap-ds-3">
+                                                <div className="flex min-w-0 items-center gap-ds-3">
+                                                    <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ds-status-info-bg text-ds-xs font-bold text-ds-status-info-fg">
                                                         {i + 1}
-                                                    </div>
-                                                    <span className="text-sm font-medium text-gray-700">{comp.companyName}</span>
+                                                    </span>
+                                                    <span className="truncate text-ds-sm font-medium text-ds-content-secondary">{comp.companyName}</span>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-2 w-24 bg-gray-100 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-blue-500 rounded-full"
+                                                <div className="flex shrink-0 items-center gap-ds-2">
+                                                    <span aria-hidden="true" className="h-2 w-24 overflow-hidden rounded-full bg-ds-surface-subtle">
+                                                        <span
+                                                            className="block h-full rounded-full bg-ds-action-primary"
                                                             style={{ width: `${(comp.callsMade / (stats.summary.totalCalls || 1)) * 100}%` }}
-                                                        ></div>
-                                                    </div>
-                                                    <span className="text-xs font-bold text-gray-600">{comp.callsMade} calls</span>
+                                                        />
+                                                    </span>
+                                                    <span className="text-ds-xs font-bold text-ds-content-secondary">{comp.callsMade} calls</span>
                                                 </div>
                                             </div>
                                         ))}
-                                        {stats.companyPerformance.length === 0 && <p className="text-xs text-gray-400 italic">No data yet.</p>}
-                                    </div>
-                                </div>
+                                        {stats.companyPerformance.length === 0 && <p className="text-ds-xs italic text-ds-content-muted">No data yet.</p>}
+                                    </Stack>
+                                </Card>
 
-                                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                    <h4 className="text-sm font-bold text-gray-800 mb-4">Top Recruiters (By Calls)</h4>
-                                    <div className="space-y-4">
+                                <Card padding="lg">
+                                    <h3 className="mb-ds-4 text-ds-sm font-bold text-ds-content">Top Recruiters (By Calls)</h3>
+                                    <Stack gap="md">
                                         {stats.userPerformance.slice(0, 5).map((user, i) => (
-                                            <div key={i} className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center text-purple-600 font-bold text-xs">
+                                            <div key={i} className="flex items-center justify-between gap-ds-3">
+                                                <div className="flex min-w-0 items-center gap-ds-3">
+                                                    <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ds-status-accent-bg text-ds-xs font-bold text-ds-status-accent-fg">
                                                         {i + 1}
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium text-gray-700">{user.userName}</p>
-                                                        <p className="text-[10px] text-gray-400">{user.companyName}</p>
-                                                    </div>
+                                                    </span>
+                                                    <span className="min-w-0">
+                                                        <span className="block truncate text-ds-sm font-medium text-ds-content-secondary">{user.userName}</span>
+                                                        <span className="block truncate text-ds-xs text-ds-content-muted">{user.companyName}</span>
+                                                    </span>
                                                 </div>
-                                                <span className="text-xs font-bold text-gray-600">{user.callsMade} calls</span>
+                                                <span className="shrink-0 text-ds-xs font-bold text-ds-content-secondary">{user.callsMade} calls</span>
                                             </div>
                                         ))}
-                                        {stats.userPerformance.length === 0 && <p className="text-xs text-gray-400 italic">No data yet.</p>}
-                                    </div>
-                                </div>
+                                        {stats.userPerformance.length === 0 && <p className="text-ds-xs italic text-ds-content-muted">No data yet.</p>}
+                                    </Stack>
+                                </Card>
                             </div>
-                        </div>
+                        </Stack>
                     )}
 
                     {activeTab === 'companies' && (
-                        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
+                        <Card padding="none" className="overflow-x-auto">
+                            <table className="w-full border-collapse text-left">
+                                <caption className="sr-only">Company performance for the selected period</caption>
+                                <thead className="bg-ds-surface-subtle text-ds-xs font-bold uppercase text-ds-content-secondary">
                                     <tr>
-                                        <th className="px-6 py-4 border-b border-gray-200">Company</th>
-                                        <th className="px-6 py-4 border-b border-gray-200 text-center">Calls Made</th>
-                                        <th className="px-6 py-4 border-b border-gray-200 text-center">Total Actions</th>
-                                        <th className="px-6 py-4 border-b border-gray-200 text-right">Engagement</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4">Company</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4 text-center">Calls Made</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4 text-center">Total Actions</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4 text-right">Engagement</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100">
+                                <tbody className="divide-y divide-ds-border-subtle">
                                     {stats.companyPerformance.map((comp) => (
-                                        <tr key={comp.companyId} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-6 py-4 font-medium text-gray-900">{comp.companyName}</td>
-                                            <td className="px-6 py-4 text-center text-gray-600">{comp.callsMade}</td>
-                                            <td className="px-6 py-4 text-center text-gray-600">{comp.actions}</td>
-                                            <td className="px-6 py-4 text-right">
-                                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold ${comp.callsMade > 20
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : 'bg-yellow-100 text-yellow-700'
-                                                    }`}>
-                                                    {comp.callsMade > 20 ? 'High' : 'Low'} <ArrowUpRight size={12} />
-                                                </span>
+                                        <tr key={comp.companyId} className="transition-colors hover:bg-ds-surface-subtle">
+                                            <th scope="row" className="px-ds-6 py-ds-4 text-left font-medium text-ds-content">{comp.companyName}</th>
+                                            <td className="px-ds-6 py-ds-4 text-center tabular-nums text-ds-content-secondary">{comp.callsMade}</td>
+                                            <td className="px-ds-6 py-ds-4 text-center tabular-nums text-ds-content-secondary">{comp.actions}</td>
+                                            <td className="px-ds-6 py-ds-4 text-right">
+                                                <Badge tone={comp.callsMade > 20 ? 'success' : 'warning'} icon={ArrowUpRight}>
+                                                    {comp.callsMade > 20 ? 'High' : 'Low'}
+                                                </Badge>
                                             </td>
                                         </tr>
                                     ))}
                                     {stats.companyPerformance.length === 0 && (
                                         <tr>
-                                            <td colSpan="4" className="p-6 text-center text-gray-400 italic">No data found for this period.</td>
+                                            <td colSpan="4" className="p-ds-6 text-center italic text-ds-content-muted">No data found for this period.</td>
                                         </tr>
                                     )}
                                 </tbody>
                             </table>
-                        </div>
+                        </Card>
                     )}
 
                     {activeTab === 'users' && (
-                        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
+                        <Card padding="none" className="overflow-x-auto">
+                            <table className="w-full border-collapse text-left">
+                                <caption className="sr-only">Recruiter performance for the selected period</caption>
+                                <thead className="bg-ds-surface-subtle text-ds-xs font-bold uppercase text-ds-content-secondary">
                                     <tr>
-                                        <th className="px-6 py-4 border-b border-gray-200">Recruiter Name</th>
-                                        <th className="px-6 py-4 border-b border-gray-200">Company</th>
-                                        <th className="px-6 py-4 border-b border-gray-200 text-center">Calls Made</th>
-                                        <th className="px-6 py-4 border-b border-gray-200 text-right">Last Active</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4">Recruiter Name</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4">Company</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4 text-center">Calls Made</th>
+                                        <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-4 text-right">Last Active</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100">
+                                <tbody className="divide-y divide-ds-border-subtle">
                                     {stats.userPerformance.map((user) => (
-                                        <tr key={user.userId} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-6 py-4 font-bold text-gray-900">{user.userName}</td>
-                                            <td className="px-6 py-4 text-gray-600">{user.companyName}</td>
-                                            <td className="px-6 py-4 text-center text-blue-600 font-mono font-bold">{user.callsMade}</td>
-                                            <td className="px-6 py-4 text-right text-sm text-gray-500">
+                                        <tr key={user.userId} className="transition-colors hover:bg-ds-surface-subtle">
+                                            <th scope="row" className="px-ds-6 py-ds-4 text-left font-bold text-ds-content">{user.userName}</th>
+                                            <td className="px-ds-6 py-ds-4 text-ds-content-secondary">{user.companyName}</td>
+                                            <td className="px-ds-6 py-ds-4 text-center font-mono font-bold tabular-nums text-ds-content-link">{user.callsMade}</td>
+                                            <td className="px-ds-6 py-ds-4 text-right text-ds-sm text-ds-content-muted">
                                                 {user.lastActive?.toDate
                                                     ? user.lastActive.toDate().toLocaleString()
                                                     : 'Unknown'}
@@ -342,15 +399,15 @@ export function AnalyticsView() {
                                     ))}
                                     {stats.userPerformance.length === 0 && (
                                         <tr>
-                                            <td colSpan="4" className="p-6 text-center text-gray-400 italic">No activity found for this period.</td>
+                                            <td colSpan="4" className="p-ds-6 text-center italic text-ds-content-muted">No activity found for this period.</td>
                                         </tr>
                                     )}
                                 </tbody>
                             </table>
-                        </div>
+                        </Card>
                     )}
                 </div>
-            </div>
-        </div>
+            </Card>
+        </Stack>
     );
 }

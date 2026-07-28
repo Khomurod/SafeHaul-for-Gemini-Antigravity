@@ -1,21 +1,34 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useId } from 'react';
 import { getFieldValue } from '@shared/utils/helpers.js';
-import { Users, Briefcase, Edit2, Trash2, Search, ChevronLeft, ChevronRight, Loader2, ShieldCheck } from 'lucide-react';
+import { Users, Briefcase, Edit2, Trash2, Search, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
+import { Badge, Button, Card, IconButton, Input, Select } from '@/design-system/components';
+import { SafeHaulLoader } from '@shared/components/SafeHaulLoader';
 
-function Card({ title, icon, children, className = '' }) {
-    return (
-        <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col ${className}`}>
-            <div className="p-5 border-b border-gray-200 shrink-0">
-                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                    {icon}
-                    {title}
-                </h2>
-            </div>
-            {children}
-        </div>
-    );
-}
-
+/**
+ * Super Admin users table.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the
+ * name/email search, the client-side 20/50/100 pagination, the
+ * `globalRole === 'super_admin'` precedence over memberships, the
+ * `mem.role === 'company_admin' ? 'Admin' : 'User'` label rule, the
+ * `allCompaniesMap.get(...) || "Unknown"` fallback, the `{ id }` /
+ * `{ id, name }` callback shapes and every frozen string are unchanged.
+ *
+ * `DataTable` is deliberately not used, for the same reason recorded on
+ * `CompaniesView`: per-row interactive actions sit outside its proven
+ * display-table contract. The approved native-table pattern is used instead.
+ *
+ * Defects fixed here:
+ *  - Icon-only Edit/Delete actions carried only a `title`, so they had no
+ *    accessible name and every row announced identically.
+ *  - The Super Admin role and membership chips were legacy-palette pills; role
+ *    is now a `Badge` whose text carries the meaning, never colour alone.
+ *  - The search input had no label.
+ *  - Loading and error states were not announced.
+ *  - The loading spinner was a bare `Loader2`; it now uses the shared loader
+ *    like the sibling companies table.
+ *  - Legacy palette throughout, including the `bg-purple-100` avatar.
+ */
 export function UsersView({
     listLoading,
     statsError,
@@ -27,6 +40,8 @@ export function UsersView({
     const [userSearch, setUserSearch] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
+    const searchId = useId();
+    const perPageId = useId();
 
     const filteredUserList = useMemo(() => {
         const searchTerm = userSearch.toLowerCase();
@@ -49,137 +64,160 @@ export function UsersView({
     }, [userSearch, itemsPerPage]);
 
     return (
-        <Card title="Manage All Users" icon={<Users size={20} className="text-blue-600" />} className="h-full">
+        <Card padding="none" className="flex h-full flex-col overflow-hidden">
+            <div className="shrink-0 border-b border-ds-border-subtle p-ds-5">
+                <h2 className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                    <Users size={20} className="text-ds-content-link" aria-hidden="true" />
+                    Manage All Users
+                </h2>
+            </div>
 
-            <div className="p-4 border-b border-gray-200 bg-white flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
-                <div>
-                    <p className="text-sm text-gray-500">Total Users: <strong>{userList.length}</strong></p>
-                </div>
+            <div className="flex shrink-0 flex-col items-center justify-between gap-ds-4 border-b border-ds-border-subtle bg-ds-surface p-ds-4 sm:flex-row">
+                <p className="text-ds-sm text-ds-content-muted">
+                    Total Users: <strong className="text-ds-content">{userList.length}</strong>
+                </p>
                 <div className="relative w-full sm:w-72">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search size={16} className="text-gray-400" />
-                    </div>
-                    <input
-                        type="text"
+                    <label htmlFor={searchId} className="sr-only">Search users by name or email</label>
+                    <Input
+                        id={searchId}
+                        type="search"
                         placeholder="Search users..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="pl-10"
                         value={userSearch}
                         onChange={(e) => setUserSearch(e.target.value)}
                     />
+                    <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ds-content-muted" />
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto min-h-0 bg-gray-50">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+            {/* Keyboard-focusable, named scroll region: below `sm` the table
+                    scrolls horizontally, and in the empty state it holds no
+                    focusable children, so keyboard users could not scroll it at
+                    all (axe `scrollable-region-focusable`). Same pattern already
+                    used by `EnvelopeHistory` and `CampaignResultsTable`. */}
+                <div
+                    role="region"
+                    aria-label="Users table"
+                    tabIndex={0}
+                    className="min-h-0 flex-1 overflow-auto bg-ds-canvas focus-visible:outline-none focus-visible:shadow-ds-focus"
+                >
+                <table className="w-full border-collapse text-left">
+                    <caption className="sr-only">All platform users</caption>
+                    <thead className="sticky top-0 z-10 bg-ds-surface-subtle shadow-ds-xs">
                         <tr>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">User</th>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">Role & Access</th>
-                            <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-right">Actions</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">User</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">Role &amp; Access</th>
+                            <th scope="col" className="border-b border-ds-border-subtle px-ds-6 py-ds-3 text-right text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-ds-border-subtle bg-ds-surface">
                         {listLoading ? (
-                            <tr><td colSpan="3" className="p-10 text-center text-gray-500"><Loader2 className="animate-spin mx-auto mb-2" />Loading users...</td></tr>
+                            <tr><td colSpan="3" role="status" className="p-ds-10 text-center text-ds-content-muted"><SafeHaulLoader size="h-10 w-10" className="mx-auto mb-ds-2" />Loading users...</td></tr>
                         ) : statsError.users ? (
-                            <tr><td colSpan="3" className="p-10 text-center text-red-500">Error loading users.</td></tr>
+                            <tr><td colSpan="3" role="alert" className="p-ds-10 text-center text-ds-status-danger-fg">Error loading users.</td></tr>
                         ) : filteredUserList.length === 0 ? (
-                            <tr><td colSpan="3" className="p-10 text-center text-gray-400">No users found.</td></tr>
+                            <tr><td colSpan="3" className="p-ds-10 text-center text-ds-content-muted">No users found.</td></tr>
                         ) : (
-                            paginatedData.map(user => (
-                                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4 align-middle">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-full bg-purple-100 border border-purple-200 flex items-center justify-center text-sm font-bold text-purple-700 shrink-0">
-                                                {getFieldValue(user.name).charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-gray-900">{getFieldValue(user.name)}</p>
-                                                <p className="text-xs text-gray-500">{getFieldValue(user.email)}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 align-middle">
-                                        <div className="flex flex-wrap gap-2">
-                                            {user.globalRole === 'super_admin' ? (
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">
-                                                    <ShieldCheck size={12} /> Super Admin
+                            paginatedData.map(user => {
+                                const userName = getFieldValue(user.name);
+                                return (
+                                    <tr key={user.id} className="transition-colors hover:bg-ds-surface-subtle">
+                                        <th scope="row" className="px-ds-6 py-ds-4 text-left align-middle font-normal">
+                                            <div className="flex items-center gap-ds-3">
+                                                <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-ds-status-accent-border bg-ds-status-accent-bg text-ds-sm font-bold text-ds-status-accent-fg">
+                                                    {userName.charAt(0).toUpperCase()}
                                                 </span>
-                                            ) : (user.memberships?.length || 0) > 0 ? (
-                                                user.memberships.map(mem => (
-                                                    <div key={mem.companyId} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                                                        <Briefcase size={12} />
-                                                        {mem.role === 'company_admin' ? 'Admin' : 'User'} at {allCompaniesMap.get(mem.companyId) || "Unknown"}
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <span className="text-xs text-gray-400 italic">No active memberships</span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 align-middle text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <button
-                                                onClick={() => onEdit({ id: user.id })}
-                                                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                                title="Edit User"
-                                            >
-                                                <Edit2 size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => onDelete({ id: user.id, name: user.name })}
-                                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                title="Delete User"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-ds-sm font-bold text-ds-content">{userName}</span>
+                                                    <span className="block truncate text-ds-xs text-ds-content-muted">{getFieldValue(user.email)}</span>
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <td className="px-ds-6 py-ds-4 align-middle">
+                                            <div className="flex flex-wrap gap-ds-2">
+                                                {user.globalRole === 'super_admin' ? (
+                                                    <Badge tone="danger" icon={ShieldCheck}>Super Admin</Badge>
+                                                ) : (user.memberships?.length || 0) > 0 ? (
+                                                    user.memberships.map(mem => (
+                                                        <Badge key={mem.companyId} tone="info" icon={Briefcase}>
+                                                            {mem.role === 'company_admin' ? 'Admin' : 'User'} at {allCompaniesMap.get(mem.companyId) || "Unknown"}
+                                                        </Badge>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-ds-xs italic text-ds-content-muted">No active memberships</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-ds-6 py-ds-4 text-right align-middle">
+                                            <div className="flex justify-end gap-ds-2">
+                                                <IconButton
+                                                    label={`Edit ${userName}`}
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => onEdit({ id: user.id })}
+                                                >
+                                                    <Edit2 size={18} aria-hidden="true" />
+                                                </IconButton>
+                                                <IconButton
+                                                    label={`Delete ${userName}`}
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => onDelete({ id: user.id, name: user.name })}
+                                                >
+                                                    <Trash2 size={18} aria-hidden="true" className="text-ds-status-danger-fg" />
+                                                </IconButton>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
             </div>
 
-            <div className="border-t border-gray-200 p-4 bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>Show</span>
-                    <select
+            <div className="flex shrink-0 flex-col items-center justify-between gap-ds-4 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4 sm:flex-row">
+                <div className="flex items-center gap-ds-2 text-ds-sm text-ds-content-secondary">
+                    <label htmlFor={perPageId}>Show</label>
+                    <Select
+                        id={perPageId}
                         value={itemsPerPage}
                         onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                        className="border-gray-300 rounded-md text-xs py-1.5 pl-2 pr-6 bg-white focus:ring-blue-500 focus:border-blue-500"
+                        className="w-auto py-1.5"
                     >
                         <option value={20}>20</option>
                         <option value={50}>50</option>
                         <option value={100}>100</option>
-                    </select>
+                    </Select>
                     <span>per page</span>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-600">
+                <div className="flex items-center gap-ds-4">
+                    <span className="text-ds-sm text-ds-content-secondary" role="status">
                         Page <strong>{currentPage}</strong> of <strong>{totalPages || 1}</strong>
                     </span>
                     <div className="flex gap-1">
-                        <button
+                        <IconButton
+                            label="Previous page"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             disabled={currentPage === 1}
-                            className="p-2 rounded-md bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-all"
                         >
-                            <ChevronLeft size={16} className="text-gray-600" />
-                        </button>
-                        <button
+                            <ChevronLeft size={16} aria-hidden="true" />
+                        </IconButton>
+                        <IconButton
+                            label="Next page"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             disabled={currentPage >= totalPages}
-                            className="p-2 rounded-md bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-all"
                         >
-                            <ChevronRight size={16} className="text-gray-600" />
-                        </button>
+                            <ChevronRight size={16} aria-hidden="true" />
+                        </IconButton>
                     </div>
                 </div>
             </div>
-
         </Card>
     );
 }

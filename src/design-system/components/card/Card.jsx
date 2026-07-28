@@ -1,7 +1,7 @@
 import React, { forwardRef } from 'react';
 import './Card.css';
 
-const TONES = new Set(['neutral', 'info', 'success', 'warning', 'accent']);
+const TONES = new Set(['neutral', 'info', 'success', 'warning', 'danger', 'accent']);
 const PADDINGS = new Set(['none', 'sm', 'md', 'lg']);
 
 export const Card = forwardRef(function Card({

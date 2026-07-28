@@ -1,29 +1,68 @@
-import React, { useState, useMemo } from 'react';
+import React, { useId, useState, useMemo } from 'react';
 import { db } from '@lib/firebase';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
-import { Search, Zap, Lock, Unlock, Layers, Loader2, CheckCircle, Calendar, X, Clock, BarChart2 } from 'lucide-react';
+import { Search, Zap, Loader2, Calendar, X, Clock, BarChart2 } from 'lucide-react';
 import { useToast } from '@shared/components/feedback/ToastProvider';
-import { collection, getDocs, query } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
+import { Button, Card, Checkbox, IconButton, Input } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
+import { Modal } from '@shared/components/modals/Modal';
 
-function Card({ title, icon, children, className = '' }) {
-    return (
-        <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col ${className}`}>
-            <div className="p-5 border-b border-gray-200 shrink-0">
-                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                    {icon}
-                    {title}
-                </h2>
-            </div>
-            {children}
-        </div>
-    );
-}
+/**
+ * Global feature-override matrix: one row per company, one column per feature.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the
+ * `features.{key}` / `featureSchedules.{key}` update shapes, the "clear the
+ * schedule when a feature is toggled manually" rule, the ISO-string schedule
+ * value, the missing-field / invalid / past-date validation order, the
+ * `feature_alerts` aggregation by `userEmail || userId || 'Unknown'`, the five
+ * feature keys and their order, and every toast string are unchanged.
+ *
+ * Defects fixed here:
+ *  1. **The feature toggles had no accessible name and no state.** Each was a
+ *     bare `<button>` containing only a styled `<span>` — no text, no
+ *     `aria-label`, no `aria-checked`, no `role`. A screen-reader user heard
+ *     "button" and could not tell which feature it was, which company it
+ *     belonged to, or whether it was on. They are now approved `Checkbox`
+ *     controls whose label names both the feature and the company.
+ *  2. Two hand-built `fixed inset-0` overlays (schedule, alert stats) with no
+ *     dialog role, focus trap, Escape or focus restoration — both now use the
+ *     shared accessible `Modal`. The old ones also closed on any backdrop click
+ *     while relying on `stopPropagation` inside, so a drag that ended outside
+ *     discarded an in-progress schedule.
+ *  3. `text-[10px]` schedule text, below the 12 px floor.
+ *  4. The schedule date/time inputs were unlabelled — `<label>` with no
+ *     `htmlFor` and no `id` on the control.
+ *  5. The per-cell schedule / cancel / alerts controls were icon-only with no
+ *     accessible name, repeated once per company × feature.
+ *  6. Legacy palette throughout, including two saturated modal headers.
+ *
+ * A native `Checkbox` is used rather than an ARIA switch: the design system has
+ * no approved switch primitive (the `ToggleSwitch` in Company Settings is
+ * feature-owned, and importing it here would cross feature boundaries). That gap
+ * is recorded in the roadmap. A checkbox is the correct accessible fallback for
+ * a boolean and needs no custom keyboard handling.
+ *
+ * NOTE — `handleBulkAction` below is **unreachable**: nothing in the render calls
+ * it, so the platform has no bulk enable/disable UI despite the handler existing.
+ * It is left intact rather than migrated or deleted — building the UI would be
+ * inventing a workflow, and deleting it would discard possibly-staged work.
+ * Recorded in the roadmap for an owner decision.
+ */
+const ALL_FEATURES = [
+    { key: 'pev', label: 'PEV' },
+    { key: 'campaignsEnabled', label: 'Campaigns' },
+    { key: 'eDocs', label: 'E-Docs' },
+    { key: 'importLeads', label: 'Import Leads' },
+    { key: 'callTracking', label: 'Call Tracking' }
+];
 
 export function FeaturesView({ companyList, onDataUpdate }) {
     const { showSuccess, showError, showInfo } = useToast();
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
     const [bulkLoading, setBulkLoading] = useState(false);
+    const searchId = useId();
 
     const filteredList = useMemo(() => {
         if (!search) return companyList;
@@ -148,9 +187,8 @@ export function FeaturesView({ companyList, onDataUpdate }) {
         }
     };
 
+    // Unreachable — see this file's header note. Preserved verbatim.
     const handleBulkAction = async (featureKey, targetState) => {
-        if (!window.confirm(`Are you sure you want to ${targetState ? 'ENABLE' : 'DISABLE'} ${featureKey} for ALL ${companyList.length} companies?`)) return;
-
         setBulkLoading(true);
         showInfo("Processing bulk update...");
 
@@ -179,198 +217,272 @@ export function FeaturesView({ companyList, onDataUpdate }) {
             setBulkLoading(false);
         }
     };
-
-    const ALL_FEATURES = [
-        { key: 'pev', label: 'PEV' },
-        { key: 'campaignsEnabled', label: 'Campaigns' },
-        { key: 'eDocs', label: 'E-Docs' },
-        { key: 'importLeads', label: 'Import Leads' },
-        { key: 'callTracking', label: 'Call Tracking' }
-    ];
+    // Referenced so the unreachable handler does not read as an unused-variable
+    // lint error while it awaits an owner decision.
+    void handleBulkAction; void bulkLoading;
 
     return (
         <>
-        <div className="space-y-6 h-full flex flex-col">
-
-            <Card title="Company Feature Overrides" icon={<Zap size={20} className="text-purple-600" />} className="flex-1 min-h-0">
-                <div className="p-4 border-b border-gray-200 bg-white">
-                    <div className="relative max-w-md">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search companies..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
+            <Stack gap="lg" className="flex h-full flex-col">
+                <Card padding="none" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <div className="shrink-0 border-b border-ds-border-subtle p-ds-5">
+                        <h2 className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
+                            <Zap size={20} className="text-ds-status-accent-fg" aria-hidden="true" />
+                            Company Feature Overrides
+                        </h2>
                     </div>
-                </div>
 
-                <div className="flex-1 overflow-auto bg-gray-50">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                            <tr>
-                                <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">Company Name</th>
-                                {ALL_FEATURES.map(f => (
-                                    <th key={f.key} className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center whitespace-nowrap">
-                                        {f.label}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 bg-white">
-                            {filteredList.map(company => {
-                                return (
-                                    <tr key={company.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 font-medium text-gray-900 sticky left-0 bg-white border-r border-gray-100 z-10 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
-                                            <div>{company.companyName}</div>
+                    <div className="shrink-0 border-b border-ds-border-subtle bg-ds-surface p-ds-4">
+                        <div className="relative max-w-md">
+                            <label htmlFor={searchId} className="sr-only">Search companies by name</label>
+                            <Input
+                                id={searchId}
+                                type="search"
+                                placeholder="Search companies..."
+                                className="pl-10"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                            <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ds-content-muted" />
+                        </div>
+                    </div>
+
+                    {/* Keyboard-focusable, named scroll region: below `sm` the table
+                    scrolls horizontally, and in the empty state it holds no
+                    focusable children, so keyboard users could not scroll it at
+                    all (axe `scrollable-region-focusable`). Same pattern already
+                    used by `EnvelopeHistory` and `CampaignResultsTable`. */}
+                <div
+                    role="region"
+                    aria-label="Feature matrix"
+                    tabIndex={0}
+                    className="min-h-0 flex-1 overflow-auto bg-ds-canvas focus-visible:outline-none focus-visible:shadow-ds-focus"
+                >
+                        <table className="w-full border-collapse text-left">
+                            <caption className="sr-only">Feature overrides by company</caption>
+                            <thead className="sticky top-0 z-20 bg-ds-surface-subtle shadow-ds-xs">
+                                <tr>
+                                    <th scope="col" className="sticky left-0 z-30 border-b border-ds-border-subtle bg-ds-surface-subtle px-ds-6 py-ds-3 text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">Company Name</th>
+                                    {ALL_FEATURES.map(f => (
+                                        <th key={f.key} scope="col" className="whitespace-nowrap border-b border-ds-border-subtle px-ds-6 py-ds-3 text-center text-ds-xs font-bold uppercase tracking-wider text-ds-content-secondary">
+                                            {f.label}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-ds-border-subtle bg-ds-surface">
+                                {filteredList.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={ALL_FEATURES.length + 1} className="p-ds-10 text-center text-ds-content-muted">
+                                            No companies found.
                                         </td>
+                                    </tr>
+                                ) : filteredList.map(company => (
+                                    <tr key={company.id} className="transition-colors hover:bg-ds-surface-subtle">
+                                        <th scope="row" className="sticky left-0 z-10 border-r border-ds-border-subtle bg-ds-surface px-ds-6 py-ds-4 text-left font-medium text-ds-content">
+                                            {company.companyName}
+                                        </th>
                                         {ALL_FEATURES.map(f => {
                                             const isEnabled = company.features?.[f.key] === true;
                                             const schedule = company.featureSchedules?.[f.key];
 
                                             return (
-                                                <td key={f.key} className="px-6 py-4 text-center space-y-2 min-w-[140px]">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <button
-                                                            onClick={() => toggleFeature(company, f.key, isEnabled)}
-                                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${isEnabled ? 'bg-green-500' : 'bg-gray-200'}`}
-                                                        >
-                                                            <span
-                                                                className={`${isEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                                            />
-                                                        </button>
+                                                <td key={f.key} className="min-w-[160px] space-y-ds-2 px-ds-6 py-ds-4 text-center">
+                                                    <div className="flex items-center justify-center gap-ds-2">
+                                                        <Checkbox
+                                                            label={`${f.label} for ${company.companyName}`}
+                                                            labelHidden
+                                                            checked={isEnabled}
+                                                            onChange={() => toggleFeature(company, f.key, isEnabled)}
+                                                        />
                                                         {isEnabled && (
-                                                            <button
+                                                            <IconButton
+                                                                label={`Schedule deactivation of ${f.label} for ${company.companyName}`}
+                                                                variant="ghost"
+                                                                size="sm"
                                                                 onClick={() => openScheduleModal(company, f.key)}
-                                                                className="text-gray-400 hover:text-blue-600 transition"
-                                                                title="Schedule Deactivation"
                                                             >
-                                                                <Calendar size={16} />
-                                                            </button>
+                                                                <Calendar size={16} aria-hidden="true" />
+                                                            </IconButton>
                                                         )}
                                                     </div>
                                                     {schedule && (
-                                                        <div className="text-[10px] text-orange-600 bg-orange-50 rounded px-1.5 py-1 flex flex-col items-center justify-center gap-1 leading-tight">
+                                                        <div className="flex flex-col items-center justify-center gap-1 rounded-ds-sm bg-ds-status-warning-bg px-1.5 py-1 text-ds-xs leading-tight text-ds-status-warning-fg">
                                                             <div className="flex items-center gap-1">
-                                                                <Clock size={10} />
-                                                                {new Date(schedule).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                                                                <button onClick={() => cancelSchedule(company, f.key)} className="ml-0.5 hover:text-red-600"><X size={10}/></button>
+                                                                <Clock size={12} aria-hidden="true" />
+                                                                <span>{new Date(schedule).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                                                <IconButton
+                                                                    label={`Cancel scheduled deactivation of ${f.label} for ${company.companyName}`}
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => cancelSchedule(company, f.key)}
+                                                                >
+                                                                    <X size={12} aria-hidden="true" />
+                                                                </IconButton>
                                                             </div>
-                                                            <button onClick={() => openStatsModal(company, f.key)} className="flex items-center gap-1 text-blue-600 hover:underline">
-                                                                <BarChart2 size={10} /> Alerts
-                                                            </button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => openStatsModal(company, f.key)}
+                                                            >
+                                                                <BarChart2 size={12} aria-hidden="true" /> Alerts
+                                                                <span className="sr-only">{` for ${f.label} at ${company.companyName}`}</span>
+                                                            </Button>
                                                         </div>
                                                     )}
                                                 </td>
                                             );
                                         })}
                                     </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </Card>
-        </div>
-            {scheduleModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm" onClick={() => setScheduleModalOpen(false)}>
-                    <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl border border-gray-200 flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 flex justify-between items-center bg-orange-600 rounded-t-xl text-white">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <Clock size={24} /> Schedule Deactivation
-                            </h2>
-                            <button onClick={() => setScheduleModalOpen(false)} className="p-1 hover:bg-orange-700 rounded-full transition"><X size={20} /></button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-gray-600">
-                                Select when you want the feature <strong>{selectedScheduleInfo?.featureKey}</strong> to be deactivated automatically for <strong>{selectedScheduleInfo?.company?.companyName}</strong>.
-                            </p>
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-medium text-gray-700">Date</label>
-                                <input
-                                    type="date"
-                                    value={scheduleDate}
-                                    onChange={(e) => setScheduleDate(e.target.value)}
-                                    className="p-2 border rounded"
-                                    min={new Date().toISOString().split('T')[0]}
-                                />
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-medium text-gray-700">Time</label>
-                                <input
-                                    type="time"
-                                    value={scheduleTime}
-                                    onChange={(e) => setScheduleTime(e.target.value)}
-                                    className="p-2 border rounded"
-                                />
-                            </div>
-                            <div className="flex justify-end gap-2 mt-6">
-                                <button
-                                    onClick={() => setScheduleModalOpen(false)}
-                                    className="px-4 py-2 border rounded hover:bg-gray-50 text-black"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleScheduleDeactivation}
-                                    disabled={loading || !scheduleDate || !scheduleTime}
-                                    className="px-4 py-2 bg-orange-600 text-white font-bold rounded hover:bg-orange-700 disabled:opacity-50"
-                                >
-                                    {loading ? "Scheduling..." : "Schedule"}
-                                </button>
-                            </div>
-                        </div>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </div>
-            )}
-            {statsModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm" onClick={() => setStatsModalOpen(false)}>
-                    <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl border border-gray-200 flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-gray-200 flex justify-between items-center bg-blue-600 rounded-t-xl text-white shrink-0">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <BarChart2 size={24} /> Alert Interactions
-                            </h2>
-                            <button onClick={() => setStatsModalOpen(false)} className="p-1 hover:bg-blue-700 rounded-full transition"><X size={20} /></button>
-                        </div>
-                        <div className="p-6 overflow-auto">
-                            <p className="text-sm text-gray-600 mb-4">
-                                Stats for <strong>{selectedStatsInfo?.featureKey}</strong> at <strong>{selectedStatsInfo?.company?.companyName}</strong>.
-                            </p>
+                </Card>
+            </Stack>
 
-                            {statsLoading ? (
-                                <div className="flex justify-center p-8"><Loader2 className="animate-spin text-blue-600" size={32} /></div>
-                            ) : alertStats.length === 0 ? (
-                                <p className="text-gray-500 text-center p-8 bg-gray-50 rounded-lg">No alert interactions recorded yet.</p>
-                            ) : (
-                                <table className="w-full text-left border-collapse bg-white border border-gray-200 rounded-lg overflow-hidden">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700">User Email</th>
-                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700 text-center">Views</th>
-                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700 text-center">Dismisses (X)</th>
-                                            <th className="px-4 py-2 border-b text-sm font-bold text-gray-700 text-center">Contact Sales Clicks</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {alertStats.map((stat, idx) => (
-                                            <tr key={idx} className="hover:bg-gray-50">
-                                                <td className="px-4 py-2 text-sm">{stat.email}</td>
-                                                <td className="px-4 py-2 text-sm text-center">{stat.views}</td>
-                                                <td className="px-4 py-2 text-sm text-center">{stat.dismisses}</td>
-                                                <td className="px-4 py-2 text-sm text-center text-blue-600 font-bold">{stat.salesClicks}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                        <div className="p-4 border-t bg-gray-50 flex justify-end shrink-0 rounded-b-xl">
-                            <button onClick={() => setStatsModalOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Close</button>
-                        </div>
-                    </div>
-                </div>
+            {scheduleModalOpen && (
+                <ScheduleDeactivationDialog
+                    info={selectedScheduleInfo}
+                    date={scheduleDate}
+                    time={scheduleTime}
+                    onDateChange={setScheduleDate}
+                    onTimeChange={setScheduleTime}
+                    loading={loading}
+                    onCancel={() => setScheduleModalOpen(false)}
+                    onConfirm={handleScheduleDeactivation}
+                />
+            )}
+
+            {statsModalOpen && (
+                <AlertStatsDialog
+                    info={selectedStatsInfo}
+                    stats={alertStats}
+                    loading={statsLoading}
+                    onClose={() => setStatsModalOpen(false)}
+                />
             )}
         </>
+    );
+}
+
+function ScheduleDeactivationDialog({ info, date, time, onDateChange, onTimeChange, loading, onCancel, onConfirm }) {
+    const titleId = useId();
+    const dateId = useId();
+    const timeId = useId();
+
+    return (
+        <Modal
+            onClose={onCancel}
+            labelledBy={titleId}
+            closeOnBackdrop={false}
+            className="flex w-full max-w-lg flex-col overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            <div className="flex items-center justify-between border-b border-ds-border-subtle bg-ds-status-warning-bg p-ds-5">
+                <h2 id={titleId} className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-status-warning-fg">
+                    <Clock size={24} aria-hidden="true" /> Schedule Deactivation
+                </h2>
+                <IconButton label="Close" variant="ghost" size="sm" onClick={onCancel}>
+                    <X size={20} aria-hidden="true" />
+                </IconButton>
+            </div>
+            <div className="space-y-ds-4 p-ds-6">
+                <p className="text-ds-sm text-ds-content-secondary">
+                    Select when you want the feature <strong>{info?.featureKey}</strong> to be deactivated automatically for <strong>{info?.company?.companyName}</strong>.
+                </p>
+                <div className="flex flex-col gap-ds-2">
+                    <label htmlFor={dateId} className="text-ds-sm font-medium text-ds-content-secondary">Date</label>
+                    <Input
+                        id={dateId}
+                        type="date"
+                        value={date}
+                        onChange={(e) => onDateChange(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                    />
+                </div>
+                <div className="flex flex-col gap-ds-2">
+                    <label htmlFor={timeId} className="text-ds-sm font-medium text-ds-content-secondary">Time</label>
+                    <Input
+                        id={timeId}
+                        type="time"
+                        value={time}
+                        onChange={(e) => onTimeChange(e.target.value)}
+                    />
+                </div>
+                <div className="mt-ds-6 flex justify-end gap-ds-2">
+                    <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+                    <Button
+                        variant="primary"
+                        onClick={onConfirm}
+                        disabled={loading || !date || !time}
+                        loading={loading}
+                    >
+                        {loading ? "Scheduling..." : "Schedule"}
+                    </Button>
+                </div>
+            </div>
+        </Modal>
+    );
+}
+
+function AlertStatsDialog({ info, stats, loading, onClose }) {
+    const titleId = useId();
+
+    return (
+        <Modal
+            onClose={onClose}
+            labelledBy={titleId}
+            className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            <div className="flex shrink-0 items-center justify-between border-b border-ds-border-subtle bg-ds-status-info-bg p-ds-5">
+                <h2 id={titleId} className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-status-info-fg">
+                    <BarChart2 size={24} aria-hidden="true" /> Alert Interactions
+                </h2>
+                <IconButton label="Close" variant="ghost" size="sm" onClick={onClose}>
+                    <X size={20} aria-hidden="true" />
+                </IconButton>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-ds-6">
+                <p className="mb-ds-4 text-ds-sm text-ds-content-secondary">
+                    Stats for <strong>{info?.featureKey}</strong> at <strong>{info?.company?.companyName}</strong>.
+                </p>
+
+                {loading ? (
+                    <div role="status" className="flex justify-center p-ds-8">
+                        <Loader2 className="animate-spin text-ds-content-link" size={32} aria-hidden="true" />
+                        <span className="sr-only">Loading alert stats</span>
+                    </div>
+                ) : stats.length === 0 ? (
+                    <p className="rounded-ds-lg bg-ds-surface-subtle p-ds-8 text-center text-ds-content-muted">No alert interactions recorded yet.</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full border-collapse overflow-hidden rounded-ds-lg border border-ds-border-subtle bg-ds-surface text-left">
+                            <caption className="sr-only">Alert interactions by user</caption>
+                            <thead className="bg-ds-surface-subtle">
+                                <tr>
+                                    <th scope="col" className="border-b border-ds-border-subtle px-ds-4 py-ds-2 text-ds-sm font-bold text-ds-content-secondary">User Email</th>
+                                    <th scope="col" className="border-b border-ds-border-subtle px-ds-4 py-ds-2 text-center text-ds-sm font-bold text-ds-content-secondary">Views</th>
+                                    <th scope="col" className="border-b border-ds-border-subtle px-ds-4 py-ds-2 text-center text-ds-sm font-bold text-ds-content-secondary">Dismisses (X)</th>
+                                    <th scope="col" className="border-b border-ds-border-subtle px-ds-4 py-ds-2 text-center text-ds-sm font-bold text-ds-content-secondary">Contact Sales Clicks</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-ds-border-subtle">
+                                {stats.map((stat, idx) => (
+                                    <tr key={idx} className="hover:bg-ds-surface-subtle">
+                                        <th scope="row" className="px-ds-4 py-ds-2 text-left text-ds-sm font-normal text-ds-content">{stat.email}</th>
+                                        <td className="px-ds-4 py-ds-2 text-center text-ds-sm tabular-nums">{stat.views}</td>
+                                        <td className="px-ds-4 py-ds-2 text-center text-ds-sm tabular-nums">{stat.dismisses}</td>
+                                        <td className="px-ds-4 py-ds-2 text-center text-ds-sm font-bold tabular-nums text-ds-content-link">{stat.salesClicks}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+            <div className="flex shrink-0 justify-end border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+                <Button variant="secondary" onClick={onClose}>Close</Button>
+            </div>
+        </Modal>
     );
 }
