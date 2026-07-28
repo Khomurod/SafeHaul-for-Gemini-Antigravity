@@ -1,18 +1,51 @@
 import React from 'react';
 import { Clock, Calendar, ExternalLink, Check, X } from 'lucide-react';
 import { updateNotificationStatus } from '@lib/notificationService';
+import { Badge, IconButton } from '@/design-system/components';
 
+/**
+ * One row in the notification dropdown.
+ *
+ * Migrated to the design system 2026-07-28 as part of the "Toast/notification"
+ * roadmap row, alongside `ToastProvider` and `NotificationBell`.
+ *
+ * Presentation only. Frozen and unchanged: the `type === 'callback' &&
+ * scheduledFor` rule, the `status === 'completed'` rule, the overdue rule
+ * (`now > scheduledFor`) and the "due soon" 5-minute window, the
+ * `updateNotificationStatus(id, 'completed' | 'dismissed')` calls, the
+ * `createdAt.seconds` → local-time formatting with its `'Just now'` fallback, the
+ * `scheduledFor` date/time formats, the `onClick` row behaviour, and every
+ * user-facing string.
+ *
+ * Defects fixed:
+ *  1. **The row was a `<li onClick>`** — no role, no `tabIndex`, no key handling.
+ *     Opening a notification, the component's whole purpose, was mouse-only. The
+ *     title is now a real button (pointer row-click is preserved), matching the
+ *     pattern already used for the Super Admin company rows.
+ *  2. **Both actions were hover-only *and* named by `title` alone.**
+ *     `opacity-0 group-hover:opacity-100` meant a keyboard user could not see
+ *     them, and a `title` is not a reliable accessible name. They are now
+ *     `IconButton`s revealed on focus as well as hover, named with the
+ *     notification they act on.
+ *  3. **`text-[10px]` twice** — the callback time chip and the meta line.
+ *  4. **`text-gray-400` on white = 2.56:1** on that same meta line, and
+ *     `opacity-50` on the external-link marker took it lower.
+ *  5. **Unread was communicated by a coloured dot alone**, with no text
+ *     equivalent, so a screen-reader user could not tell read from unread.
+ *  6. Legacy palette throughout (blue-50/500, orange-50/100/500/600, red-100/500/600,
+ *     green-100/200/600, gray-50/100/300/500/700/900).
+ */
 export function NotificationItem({ notification, onClick }) {
-    const { 
+    const {
         id,
-        title, 
-        message, 
-        isRead, 
+        title,
+        message,
+        isRead,
         status,
-        createdAt, 
-        scheduledFor, 
-        type, 
-        link 
+        createdAt,
+        scheduledFor,
+        type,
+        link
     } = notification;
 
     const isCallback = type === 'callback' && scheduledFor;
@@ -26,15 +59,15 @@ export function NotificationItem({ notification, onClick }) {
         isSoon = now > new Date(scheduledDate.getTime() - 5 * 60000) && !isCompleted;
     }
 
-    let containerClass = "p-4 hover:bg-gray-50 transition-colors cursor-pointer flex gap-3 group relative border-b border-gray-100 last:border-0";
-    
+    let containerClass = "group relative flex gap-ds-3 border-b border-ds-border-subtle p-ds-4 transition-colors last:border-0 hover:bg-ds-surface-subtle";
+
     if (isCompleted) {
-        containerClass += " bg-gray-50 opacity-75";
+        containerClass += " bg-ds-surface-subtle";
     } else if (!isRead) {
-        if (isCallback) containerClass += " bg-orange-50/40";
-        else containerClass += " bg-blue-50/40";
+        if (isCallback) containerClass += " bg-ds-status-warning-bg";
+        else containerClass += " bg-ds-status-info-bg";
     } else {
-        containerClass += " bg-white";
+        containerClass += " bg-ds-surface";
     }
 
     const handleAction = async (e, actionStatus) => {
@@ -45,82 +78,113 @@ export function NotificationItem({ notification, onClick }) {
     const renderIcon = () => {
         if (isCompleted) {
             return (
-                <div className="mt-1 w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-green-100 text-green-600">
+                <span aria-hidden="true" className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ds-status-success-bg text-ds-status-success-fg">
                     <Check size={16} />
-                </div>
+                </span>
             );
         }
         if (isCallback) {
-            let iconBg = isOverdue ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600';
+            const iconTone = isOverdue
+                ? 'bg-ds-status-danger-bg text-ds-status-danger-fg'
+                : 'bg-ds-status-warning-bg text-ds-status-warning-fg';
             return (
-                <div className={`mt-1 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${iconBg}`}>
+                <span aria-hidden="true" className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconTone}`}>
                     <Clock size={16} />
-                </div>
-            );
-        } else {
-            return (
-                <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${!isRead ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                </span>
             );
         }
+        return (
+            <span
+                aria-hidden="true"
+                className={`mt-1 h-2 w-2 shrink-0 rounded-full ${!isRead ? 'bg-ds-action-primary' : 'bg-ds-border'}`}
+            />
+        );
     };
 
     return (
         <li onClick={onClick} className={containerClass}>
             {renderIcon()}
-            
-            <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                    <h4 className={`text-sm truncate pr-6 ${!isRead ? 'font-bold text-gray-900' : 'font-medium text-gray-700'} ${isCompleted ? 'line-through text-gray-500' : ''}`}>
-                        {title}
+
+            <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between">
+                    {/*
+                      Was a plain `<h4>` inside a click-only `<li>`. Making the
+                      title the actionable control is what gives this row a
+                      keyboard path at all.
+                    */}
+                    <h4 className="min-w-0 pr-6">
+                        <button
+                            type="button"
+                            onClick={onClick}
+                            className={`truncate text-left text-ds-sm focus-visible:outline-none focus-visible:shadow-ds-focus ${
+                                !isRead ? 'font-bold text-ds-content' : 'font-medium text-ds-content-secondary'
+                            } ${isCompleted ? 'text-ds-content-muted line-through' : ''}`}
+                        >
+                            {title}
+                            {/* Unread was a coloured dot with no text equivalent. */}
+                            {!isRead && !isCompleted && <span className="sr-only"> (unread)</span>}
+                            {isCompleted && <span className="sr-only"> (completed)</span>}
+                        </button>
                     </h4>
-                    
+
                     {isCallback && !isCompleted && (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
-                            {scheduledDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </span>
+                        <Badge tone={isOverdue ? 'danger' : 'neutral'}>
+                            {scheduledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Badge>
                     )}
                 </div>
 
-                <p className={`text-xs text-gray-500 mt-1 line-clamp-2 ${isCompleted ? 'line-through opacity-70' : ''}`}>{message}</p>
+                <p className={`mt-1 line-clamp-2 text-ds-xs text-ds-content-secondary ${isCompleted ? 'line-through' : ''}`}>{message}</p>
 
-                <div className="mt-2 flex items-center gap-2 text-[10px] text-gray-400">
+                <div className="mt-ds-2 flex items-center gap-ds-2 text-ds-xs text-ds-content-secondary">
                     {isCallback ? (
                         <>
-                            <Calendar size={10}/> {scheduledDate.toLocaleDateString()}
-                            {isOverdue && !isCompleted && <span className="text-red-500 font-bold ml-auto">Overdue</span>}
-                            {!isOverdue && isSoon && !isCompleted && <span className="text-orange-500 font-bold ml-auto">Due Soon</span>}
+                            <Calendar size={12} aria-hidden="true" /> {scheduledDate.toLocaleDateString()}
+                            {isOverdue && !isCompleted && <span className="ml-auto font-bold text-ds-status-danger-fg">Overdue</span>}
+                            {!isOverdue && isSoon && !isCompleted && <span className="ml-auto font-bold text-ds-status-warning-fg">Due Soon</span>}
                         </>
                     ) : (
                         <span>
-                            {createdAt?.seconds 
-                                ? new Date(createdAt.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+                            {createdAt?.seconds
+                                ? new Date(createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                 : 'Just now'}
                         </span>
                     )}
                 </div>
             </div>
 
-            <div className="absolute right-2 top-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/*
+              `focus-within` as well as `group-hover`: these were invisible to
+              keyboard users, so the actions could be reached but never seen.
+            */}
+            <div className="absolute right-2 top-2 flex flex-col gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 {!isCompleted && (
-                    <button 
+                    <IconButton
+                        label={`Mark "${title}" as complete`}
+                        variant="ghost"
+                        size="sm"
                         onClick={(e) => handleAction(e, 'completed')}
-                        className="p-1.5 bg-green-100 text-green-600 rounded-full hover:bg-green-200 shadow-sm"
-                        title="Mark as Complete"
                     >
-                        <Check size={12} />
-                    </button>
+                        <Check size={12} aria-hidden="true" className="text-ds-status-success-fg" />
+                    </IconButton>
                 )}
-                
-                <button 
+
+                <IconButton
+                    label={`Dismiss "${title}"`}
+                    variant="ghost"
+                    size="sm"
                     onClick={(e) => handleAction(e, 'dismissed')}
-                    className="p-1.5 bg-gray-100 text-gray-500 rounded-full hover:bg-red-100 hover:text-red-600 shadow-sm"
-                    title="Dismiss"
                 >
-                    <X size={12} />
-                </button>
+                    <X size={12} aria-hidden="true" />
+                </IconButton>
             </div>
 
-            {link && <div className="absolute bottom-2 right-2 opacity-50"><ExternalLink size={12} /></div>}
+            {link && (
+                <span className="absolute bottom-2 right-2 text-ds-content-secondary">
+                    <ExternalLink size={12} aria-hidden="true" />
+                    <span className="sr-only">Opens a linked page</span>
+                </span>
+            )}
         </li>
     );
 }

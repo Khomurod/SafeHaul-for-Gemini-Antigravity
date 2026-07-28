@@ -1,23 +1,68 @@
-import React, { useState, useEffect } from 'react';
+import React, { useId, useRef, useState, useEffect } from 'react';
 import { db, auth } from '@lib/firebase';
 import { collection, query, orderBy, getDocs, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { getPortalUser } from '@features/auth/services/userService';
-import { Send, MessageSquare, Clock, Loader2, History } from 'lucide-react';
+import { Send, MessageSquare, Clock, History } from 'lucide-react';
 import { logActivity } from '@shared/utils/activityLogger';
 import { sanitizeUserContent } from '@shared/utils/sanitizeUserContent';
+import { Badge, Button, Card, FieldMessage, FormField, Textarea } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
 
-function ShieldIcon({ size }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M12 11h.01" /></svg>
-    )
-}
-
+/**
+ * Internal notes for one application or lead, plus anonymised shared history from
+ * previous companies.
+ *
+ * Migrated to the design system 2026-07-28. This was one of the four dossier tab
+ * bodies deliberately left unmigrated by the 2026-07-27 dossier foundation slice
+ * and recorded as residual debt since.
+ *
+ * Presentation only. Frozen and unchanged: the
+ * `companies/{companyId}/{collectionName}/{applicationId}/internal_notes` path and
+ * its `orderBy('createdAt', 'desc')`; the parent-document `sharedHistory` read and
+ * its anonymisation to `"Previous Recruiter"`; `sanitizeUserContent` on every
+ * stored and displayed note; the merge-and-sort rule and its three timestamp
+ * shapes (Firestore `seconds`, `Date`, ISO string); the written note shape
+ * (`text`, `author`, `serverTimestamp()`, `type: 'note'`); the
+ * `logActivity(companyId, collectionName, applicationId, "Note Added", <first 100
+ * chars + ellipsis>, "note")` call; the optimistic-append shape; the
+ * `getPortalUser` → `'Admin'` fallback; the empty-note no-op; and every
+ * user-facing string.
+ *
+ * Defects fixed:
+ *  1. **`alert("Failed to save note.")`** — a blocking dialog for a routine save
+ *     failure. Now an announced in-place message with the wording preserved.
+ *  2. **The note composer had no accessible name.** The `<label>` had no
+ *     `htmlFor` and the `<textarea>` had no `id`, so a screen reader announced an
+ *     unnamed multiline field. `FormField` owns the association, and the
+ *     "Visible only to your team" line is now its accessible description rather
+ *     than unrelated text below it.
+ *  3. **Sub-12px functional text** — `text-[9px]` on the "Shared History" badge
+ *     and `text-[10px]` on every timestamp.
+ *  4. **`text-gray-400` on white = 2.56:1** on the privacy note and all
+ *     timestamps, and `text-gray-300` on the empty-state icon.
+ *  5. **The loading state was an unannounced bare spinner.**
+ *  6. **Duplicate submission was possible** — `sending` is React state, so two
+ *     activations inside one render both passed it.
+ *  7. **A `title` attribute was the only marker on the shared-history avatar**,
+ *     duplicating the visible badge; it is removed rather than relied on.
+ *  8. Legacy palette throughout (purple-50/100/200/600/800, gray-*, blue-600) and
+ *     a hand-rolled inline `<svg>` shield replaced by the approved Lucide icon.
+ */
 export function NotesTab({ companyId, applicationId, collectionName = 'applications' }) {
     const [notes, setNotes] = useState([]);
     const [newNote, setNewNote] = useState('');
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    /** Replaces `alert("Failed to save note.")`. */
+    const [sendError, setSendError] = useState('');
+
+    const noteFieldId = useId();
+    /**
+     * Ref, not state: `sending` only takes effect on the next render, so two
+     * activations dispatched before React re-renders would both get past it.
+     */
+    const submittingRef = useRef(false);
 
     useEffect(() => {
         async function init() {
@@ -84,8 +129,11 @@ export function NotesTab({ companyId, applicationId, collectionName = 'applicati
     const handleSend = async (e) => {
         e.preventDefault();
         if (!newNote.trim()) return;
+        if (submittingRef.current) return;
 
+        submittingRef.current = true;
         setSending(true);
+        setSendError('');
         try {
             const sanitizedNote = sanitizeUserContent(newNote);
             const notesRef = collection(db, "companies", companyId, collectionName, applicationId, "internal_notes");
@@ -112,77 +160,103 @@ export function NotesTab({ companyId, applicationId, collectionName = 'applicati
             setNewNote('');
         } catch (error) {
             console.error("Failed to add note:", error);
-            alert("Failed to save note.");
+            setSendError("Failed to save note.");
         } finally {
+            submittingRef.current = false;
             setSending(false);
         }
     };
 
     return (
-        <div className="space-y-6">
+        <Stack gap="lg">
             {/* Input Area */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Internal Note (Private)</label>
+            <Card padding="md">
                 <form onSubmit={handleSend}>
-                    <textarea
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm outline-none"
-                        rows="3"
-                        placeholder="Log a call, interview notes, or reason for rejection..."
-                        value={newNote}
-                        onChange={(e) => setNewNote(e.target.value)}
-                    ></textarea>
-                    <div className="flex justify-between items-center mt-3">
-                        <p className="text-xs text-gray-400 flex items-center gap-1">
-                            <ShieldIcon size={12} /> Visible only to your team
-                        </p>
-                        <button
+                    <FormField
+                        id={noteFieldId}
+                        label="Internal Note (Private)"
+                        description="Visible only to your team"
+                    >
+                        <Textarea
+                            rows="3"
+                            placeholder="Log a call, interview notes, or reason for rejection..."
+                            value={newNote}
+                            onChange={(e) => setNewNote(e.target.value)}
+                        />
+                    </FormField>
+                    <div className="mt-ds-3 flex flex-wrap items-center justify-end gap-ds-3">
+                        <Button
                             type="submit"
+                            variant="primary"
+                            size="sm"
                             disabled={!newNote.trim() || sending}
-                            className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 transition-all"
+                            loading={sending}
                         >
-                            {sending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                            {!sending && <Send size={16} aria-hidden="true" />}
                             Add Note
-                        </button>
+                        </Button>
+                    </div>
+                    {/* Replaces the blocking `alert()`. */}
+                    <div role="alert">
+                        {sendError && <FieldMessage tone="error">{sendError}</FieldMessage>}
                     </div>
                 </form>
-            </div>
+            </Card>
 
             {/* Notes List */}
-            <div className="space-y-4">
+            <Stack gap="md">
                 {loading ? (
-                    <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-gray-400" /></div>
+                    <p role="status" className="py-ds-10 text-center text-ds-sm text-ds-content-secondary">
+                        Loading notes...
+                    </p>
                 ) : notes.length === 0 ? (
-                    <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                        <MessageSquare className="mx-auto text-gray-300 mb-2" size={32} />
-                        <p className="text-gray-500 text-sm">No notes yet.</p>
+                    <div className="rounded-ds-lg border border-dashed border-ds-border py-ds-10 text-center">
+                        <MessageSquare className="mx-auto mb-ds-2 text-ds-content-secondary" size={32} aria-hidden="true" />
+                        <p className="text-ds-sm text-ds-content-secondary">No notes yet.</p>
                     </div>
                 ) : (
                     notes.map(note => (
-                        <div key={note.id} className="flex gap-3">
-                            <div className="mt-1 flex-shrink-0">
+                        <article key={note.id} className="flex gap-ds-3">
+                            <div className="mt-1 shrink-0">
                                 {note.isShared ? (
-                                    <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-bold border border-purple-200" title="Shared History">
+                                    <span
+                                        aria-hidden="true"
+                                        className="flex h-8 w-8 items-center justify-center rounded-full border border-ds-status-accent-border bg-ds-status-accent-bg text-ds-status-accent-fg"
+                                    >
                                         <History size={14} />
-                                    </div>
+                                    </span>
                                 ) : (
-                                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 text-xs font-bold">
+                                    <span
+                                        aria-hidden="true"
+                                        className="flex h-8 w-8 items-center justify-center rounded-full bg-ds-surface-subtle text-ds-xs font-bold text-ds-content-secondary"
+                                    >
                                         {note.author ? note.author.charAt(0).toUpperCase() : 'A'}
-                                    </div>
+                                    </span>
                                 )}
                             </div>
 
-                            <div className={`flex-1 p-3 rounded-lg rounded-tl-none border ${note.isShared ? 'bg-purple-50 border-purple-100' : 'bg-gray-50 border-gray-200'}`}>
-                                <div className="flex justify-between items-center mb-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-xs font-bold ${note.isShared ? 'text-purple-800' : 'text-gray-700'}`}>
+                            <div
+                                className={`flex-1 rounded-ds-md rounded-tl-none border p-ds-3 ${
+                                    note.isShared
+                                        ? 'border-ds-status-accent-border bg-ds-status-accent-bg'
+                                        : 'border-ds-border-subtle bg-ds-surface-subtle'
+                                }`}
+                            >
+                                <div className="mb-1 flex flex-wrap items-center justify-between gap-ds-2">
+                                    <div className="flex flex-wrap items-center gap-ds-2">
+                                        <span
+                                            className={`text-ds-xs font-bold ${
+                                                note.isShared ? 'text-ds-status-accent-fg' : 'text-ds-content-secondary'
+                                            }`}
+                                        >
                                             {note.author || 'Unknown'}
                                         </span>
                                         {note.isShared && (
-                                            <span className="text-[9px] uppercase font-bold bg-purple-200 text-purple-800 px-1.5 py-0.5 rounded">Shared History</span>
+                                            <Badge tone="accent">Shared History</Badge>
                                         )}
                                     </div>
-                                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                                        <Clock size={10} />
+                                    <span className="flex items-center gap-1 text-ds-xs text-ds-content-secondary">
+                                        <Clock size={12} aria-hidden="true" />
                                         {note.createdAt?.seconds
                                             ? new Date(note.createdAt.seconds * 1000).toLocaleString()
                                             : new Date(note.createdAt).toLocaleString() !== 'Invalid Date'
@@ -190,12 +264,14 @@ export function NotesTab({ companyId, applicationId, collectionName = 'applicati
                                                 : 'Just now'}
                                     </span>
                                 </div>
-                                <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{note.text}</p>
+                                <p className="whitespace-pre-wrap break-words text-ds-sm leading-relaxed text-ds-content">
+                                    {note.text}
+                                </p>
                             </div>
-                        </div>
+                        </article>
                     ))
                 )}
-            </div>
-        </div>
+            </Stack>
+        </Stack>
     );
 }

@@ -1,82 +1,91 @@
-import React from 'react';
-import { X, Lock, Zap, ArrowRight, Database } from 'lucide-react';
+import React, { useId } from 'react';
+import { X, Lock, Zap, Database } from 'lucide-react';
+import { Badge, Button, IconButton, StatusMedallion } from '@/design-system/components';
 import { Modal } from './Modal';
 
-export function FeatureLockedModal({ onClose, onGoToLeads, featureName = "Search For Drivers" }) {
+/**
+ * "Feature not enabled" interstitial for feature-flagged areas (Import Leads,
+ * E-Docs, driver search).
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — `onClose`, the
+ * `featureName` default of `"Search For Drivers"`, the Telegram sales URL and its
+ * `_blank` target, and every user-facing string are unchanged.
+ *
+ * Defects fixed:
+ *  1. **The close control's `aria-label` was the bare word "Close"** on a dialog
+ *     that also has a "Close" button in the action row, so a screen-reader user
+ *     heard two identically-named controls. It now names what it closes.
+ *  2. **Legacy palette and unapproved type throughout** — a `bg-gray-900/70`
+ *     backdrop, `bg-white rounded-2xl shadow-2xl border-white/20` chrome,
+ *     `text-3xl font-extrabold`, a `from-blue-600 to-indigo-600` gradient pill,
+ *     `text-gray-600 text-lg` body copy and two `bg-blue-600` / `bg-white`
+ *     hand-built buttons.
+ *  3. **Four purely decorative animated blur orbs and a `ring-4` lock badge** ran
+ *     `animate-pulse` and `animate-bounce` indefinitely with no reduced-motion
+ *     guard, on a dialog whose whole purpose is to deliver one sentence. The
+ *     decoration is removed rather than tokenised: it carried no meaning, and
+ *     keeping it would have meant inventing approved values for it.
+ *  4. **A dead `<style>` block** defined a `shimmer` keyframe animation that
+ *     nothing referenced.
+ *  5. The unused `onGoToLeads` prop and `ArrowRight` import are removed — no
+ *     caller ever passed the prop and nothing rendered the icon.
+ */
+export function FeatureLockedModal({ onClose, featureName = "Search For Drivers" }) {
+    const titleId = useId();
+    const descriptionId = useId();
+
     return (
         <Modal
             onClose={onClose}
-            labelledBy="feature-locked-title"
-            overlayClassName="fixed inset-0 bg-gray-900/70 flex items-center justify-center p-4 z-[60] backdrop-blur-sm animate-in fade-in duration-300"
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-white/20 overflow-hidden relative"
+            labelledBy={titleId}
+            describedBy={descriptionId}
+            overlayClassName="fixed inset-0 z-[60] flex items-center justify-center bg-ds-overlay p-4 backdrop-blur-sm"
+            className="relative w-full max-w-2xl overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
         >
-                <button
-                    onClick={onClose}
-                    aria-label="Close"
-                    className="absolute top-4 right-4 p-2 bg-white/80 hover:bg-white rounded-full transition-colors z-30 text-gray-500 hover:text-gray-800 shadow-sm"
-                >
-                    <X size={20} />
-                </button>
+            <div className="absolute right-ds-4 top-ds-4 z-10">
+                <IconButton label={`Close the ${featureName} notice`} variant="ghost" size="sm" onClick={onClose}>
+                    <X size={20} aria-hidden="true" />
+                </IconButton>
+            </div>
 
-                <div className="relative bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-12 text-center overflow-hidden">
-
-                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                        <div className="absolute top-[-10%] left-[-10%] w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" style={{ animationDuration: '8s' }} />
-                        <div className="absolute bottom-[-10%] right-[-10%] w-64 h-64 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" style={{ animationDuration: '10s' }} />
-                        <div className="absolute top-[40%] left-[30%] w-32 h-32 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDuration: '12s' }} />
-                    </div>
-
-                    <div className="relative z-10 flex flex-col items-center">
-
-                        <div className="relative mb-8 group cursor-default">
-                            <div className="absolute inset-0 bg-blue-500 rounded-full blur opacity-20 group-hover:opacity-30 transition-opacity duration-500"></div>
-                            <div className="relative bg-white p-6 rounded-full shadow-xl border border-blue-100 ring-4 ring-blue-50">
-                                <Lock size={40} className="text-blue-600" />
-                                <div className="absolute -bottom-2 -right-2 bg-yellow-400 p-1.5 rounded-full border-2 border-white shadow-sm animate-bounce" style={{ animationDuration: '3s' }}>
-                                    <Database size={14} className="text-yellow-900" />
-                                </div>
-                            </div>
-                        </div>
-
-                        <h2 id="feature-locked-title" className="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">
-                            {featureName}
-                        </h2>
-
-                        <div className="mb-6">
-                            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md uppercase tracking-wider">
-                                <Zap size={12} fill="currentColor" /> Coming Soon
-                            </span>
-                        </div>
-
-                        <p className="text-gray-600 text-lg max-w-md mx-auto mb-8 leading-relaxed">
-                            This feature is currently turned off for your company. Please contact our Sales Team to enable it.
-                        </p>
-
-                        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center">
-                            <button
-                                onClick={() => window.open('https://t.me/tomr_robins0n', '_blank')}
-                                className="flex-1 px-6 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-200 hover:-translate-y-0.5 flex items-center justify-center gap-2 group"
-                            >
-                                Contact Sales
-                            </button>
-
-                            <button
-                                onClick={onClose}
-                                className="px-6 py-3.5 bg-white text-gray-700 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-                            >
-                                Close
-                            </button>
-                        </div>
-
-                    </div>
+            <div className="flex flex-col items-center bg-ds-surface-subtle p-ds-12 text-center">
+                <div className="relative mb-ds-8">
+                    <StatusMedallion tone="info" size="lg"><Lock size={40} /></StatusMedallion>
+                    <span
+                        aria-hidden="true"
+                        className="absolute -bottom-1 -right-1 rounded-full border-2 border-ds-surface bg-ds-status-warning-bg p-1.5 text-ds-status-warning-fg"
+                    >
+                        <Database size={14} />
+                    </span>
                 </div>
 
-                <style>{`
-          @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-          }
-        `}</style>
+                <h2 id={titleId} className="mb-ds-3 text-ds-heading-xl font-bold tracking-tight text-ds-content">
+                    {featureName}
+                </h2>
+
+                <div className="mb-ds-6">
+                    <Badge tone="info" icon={Zap}>Coming Soon</Badge>
+                </div>
+
+                <p id={descriptionId} className="mx-auto mb-ds-8 max-w-md text-ds-body-lg leading-relaxed text-ds-content-secondary">
+                    This feature is currently turned off for your company. Please contact our Sales Team to enable it.
+                </p>
+
+                <div className="flex w-full max-w-md flex-col justify-center gap-ds-4 sm:flex-row">
+                    <Button
+                        variant="primary"
+                        size="lg"
+                        className="flex-1"
+                        onClick={() => window.open('https://t.me/tomr_robins0n', '_blank')}
+                    >
+                        Contact Sales
+                    </Button>
+
+                    <Button variant="secondary" size="lg" onClick={onClose}>
+                        Close
+                    </Button>
+                </div>
+            </div>
         </Modal>
     );
 }

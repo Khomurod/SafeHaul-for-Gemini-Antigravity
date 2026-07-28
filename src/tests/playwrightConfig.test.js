@@ -40,7 +40,19 @@ const projectsByName = (config) =>
 
 const execPathOf = (project) => project?.use?.launchOptions?.executablePath;
 
-describe('playwright.config.cjs — PW_CHROMIUM_EXECUTABLE override', () => {
+/**
+ * `require(playwright.config.cjs)` pulls in `@playwright/test`, and the first
+ * call in a worker pays that cold CommonJS load: ~330 ms on an idle machine, but
+ * measured at 12.9 s in a full-suite run where every worker is competing for CPU
+ * — past the 5 s default and reported as a failure of a test that has no timing
+ * behaviour at all. These four cases only assert the *shape* of the exported
+ * config, so the budget is raised to take module-load cost out of the result.
+ * This is not masking a slow code path: nothing here is on any hot path, and the
+ * cost is a one-time dependency load, not app behaviour.
+ */
+const CONFIG_LOAD_TIMEOUT_MS = 60_000;
+
+describe('playwright.config.cjs — PW_CHROMIUM_EXECUTABLE override', { timeout: CONFIG_LOAD_TIMEOUT_MS }, () => {
   it('exposes the expected browser projects', () => {
     const byName = projectsByName(loadConfig(undefined));
     for (const name of [...CHROMIUM_PROJECTS, ...NON_CHROMIUM_PROJECTS]) {

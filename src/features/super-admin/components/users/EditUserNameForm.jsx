@@ -1,10 +1,43 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { updateUser } from '@features/auth/services/userService';
 import { auth, functions } from '@lib/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
-import { KeyRound, Trash2, Loader2 } from 'lucide-react';
+import { KeyRound, Trash2, AlertTriangle } from 'lucide-react';
+import { Button, Card, FieldMessage, FormField, Input, StatusMedallion } from '@/design-system/components';
+import { Stack } from '@/design-system/layouts';
+import { Modal } from '@shared/components/modals/Modal';
 
+/**
+ * User profile editor inside the Super Admin Edit User dialog.
+ *
+ * Migrated to the design system 2026-07-28. This file was missed by the Super
+ * Admin dialog pass: `EditUserModal`'s own shell was migrated, but the two
+ * bodies it renders — this form and `UserMembershipsManager` — were still fully
+ * legacy.
+ *
+ * Presentation only. Frozen and unchanged: the
+ * `updateUser(userId, { name, email }, companyId)` call and argument order, the
+ * `sendPasswordResetEmail(auth, userEmail)` call, the
+ * `deletePortalUser({ userId, companyId })` payload, the `onSave` callback
+ * points (after a successful save and after a successful delete), the 2-second
+ * save-message reset, the `!userEmail` early return on reset, and every
+ * user-facing string including the `Error: ` prefix.
+ *
+ * Defects fixed:
+ *  1. **Two blocking `window.confirm` guards** (password reset, delete user) →
+ *     shared accessible dialogs, wording preserved verbatim.
+ *  2. **Four blocking `alert()` calls** carried the reset and delete outcomes →
+ *     announced in-page messages, wording preserved verbatim. A destructive
+ *     delete previously reported success only through a modal alert.
+ *  3. **The save message was colour-only** — red or green text with no role, so
+ *     a screen-reader user got no confirmation that a save succeeded or failed.
+ *     It is now a `FieldMessage` in a live region, and the tone is secondary to
+ *     the text.
+ *  4. Raw inputs with `focus:ring-blue-500`, raw buttons, `bg-orange-50` /
+ *     `bg-red-50` action tints and a hand-built `Loader2` spinner replaced by
+ *     `FormField`/`Input`/`Button` and the primitives' own loading state.
+ */
 export function EditUserNameForm({ userId, initialName, email, companyId, onSave }) {
     const [userName, setUserName] = useState(initialName || '');
     const [userEmail, setUserEmail] = useState(email || '');
@@ -13,6 +46,13 @@ export function EditUserNameForm({ userId, initialName, email, companyId, onSave
     const [saveMessage, setSaveMessage] = useState('');
     const [resetLoading, setResetLoading] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    /** Replaces the four `alert()`s: `{ tone, message }`. */
+    const [actionMessage, setActionMessage] = useState(null);
+    // Replace the two blocking `window.confirm` guards.
+    const [pendingAction, setPendingAction] = useState(null); // 'reset' | 'delete'
+
+    const nameId = useId();
+    const emailId = useId();
 
     const handleSave = async () => {
       setSaveLoading(true);
@@ -32,113 +72,180 @@ export function EditUserNameForm({ userId, initialName, email, companyId, onSave
       }
     };
 
-    const handleResetPassword = async () => {
+    const confirmResetPassword = async () => {
+        setPendingAction(null);
+        setActionMessage(null);
+        // Preserved guard: reset was always a no-op without an address.
         if (!userEmail) return;
-        if (!window.confirm(`Send password reset email to ${userEmail}?`)) return;
-
         setResetLoading(true);
         try {
             await sendPasswordResetEmail(auth, userEmail);
-            alert(`Password reset email sent to ${userEmail}`);
+            setActionMessage({ tone: 'success', message: `Password reset email sent to ${userEmail}` });
         } catch (error) {
             console.error("Reset Password Error:", error);
-            alert("Failed to send reset email: " + error.message);
+            setActionMessage({ tone: 'error', message: "Failed to send reset email: " + error.message });
         } finally {
             setResetLoading(false);
         }
     };
 
-    const handleDeleteUser = async () => {
-        if (!window.confirm(`Are you sure you want to delete this user? This action cannot be undone.`)) return;
+    const confirmDeleteUser = async () => {
+        setPendingAction(null);
+        setActionMessage(null);
         setDeleteLoading(true);
         try {
             const deleteFn = httpsCallable(functions, 'deletePortalUser');
             await deleteFn({ userId, companyId });
-            alert("User deleted/removed successfully.");
+            setActionMessage({ tone: 'success', message: "User deleted/removed successfully." });
             if (onSave) onSave(); // Triggers refresh in parent
         } catch (error) {
             console.error("Delete User Error:", error);
-            alert("Failed to delete user: " + error.message);
+            setActionMessage({ tone: 'error', message: "Failed to delete user: " + error.message });
         } finally {
             setDeleteLoading(false);
         }
     };
 
     return (
-        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm space-y-6">
+        <Card padding="md">
+            <Stack gap="lg">
 
-            {/* Header */}
-            <div>
-                <h3 className="text-lg font-semibold text-gray-700">User Profile</h3>
-                <p className="text-sm text-gray-500">Update basic information.</p>
-            </div>
-
-            {/* Form Fields */}
-            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+                {/* Header */}
                 <div>
-                    <label htmlFor="edit-user-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                    <input 
-                        type="text" 
-                        id="edit-user-name" 
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-shadow" 
-                        required 
-                        value={userName} 
-                        onChange={(e) => setUserName(e.target.value)} 
-                    />
-                </div>
-                <div>
-                    <label htmlFor="edit-user-email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <input 
-                        type="email" 
-                        id="edit-user-email" 
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-shadow" 
-                        required
-                        value={userEmail} 
-                        onChange={(e) => setUserEmail(e.target.value)}
-                    />
+                    <h3 className="text-ds-heading-sm font-semibold text-ds-content">User Profile</h3>
+                    <p className="text-ds-sm text-ds-content-secondary">Update basic information.</p>
                 </div>
 
-                {/* Save Button */}
-                <div className="flex items-center gap-4 pt-2">
-                    <button 
-                        type="submit" 
-                        className="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-2" 
-                        disabled={saveLoading}
-                    >
-                        {saveLoading && <Loader2 size={16} className="animate-spin" />}
-                        {saveLoading ? 'Saving...' : 'Save Changes'}
-                    </button>
-                    <p className={`text-sm font-medium ${saveMessage.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
-                        {saveMessage}
-                    </p>
-                </div>
-            </form>
+                {/* Form Fields */}
+                <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+                    <Stack gap="md">
+                        <FormField id={nameId} label="Full Name" required>
+                            <Input
+                                type="text"
+                                value={userName}
+                                onChange={(e) => setUserName(e.target.value)}
+                                autoComplete="off"
+                            />
+                        </FormField>
+                        <FormField id={emailId} label="Email Address" required>
+                            <Input
+                                type="email"
+                                value={userEmail}
+                                onChange={(e) => setUserEmail(e.target.value)}
+                                autoComplete="off"
+                            />
+                        </FormField>
 
-            {/* Account Actions Section */}
-            <div className="pt-6 border-t border-gray-100">
-                <h4 className="text-sm font-bold text-gray-900 mb-4">Account Actions</h4>
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <button 
-                        type="button"
-                        onClick={handleResetPassword}
-                        disabled={resetLoading}
-                        className="flex-1 px-4 py-2 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-                    >
-                        {resetLoading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
-                        Send Password Reset
-                    </button>
+                        {/* Save Button */}
+                        <div className="flex flex-wrap items-center gap-ds-4 pt-ds-2">
+                            <Button type="submit" variant="primary" disabled={saveLoading} loading={saveLoading}>
+                                {saveLoading ? 'Saving...' : 'Save Changes'}
+                            </Button>
+                            {/* Always mounted so the live region can announce into it. */}
+                            <div role="status" className="min-w-0">
+                                {saveMessage && (
+                                    <FieldMessage tone={saveMessage.startsWith('Error') ? 'error' : 'success'}>
+                                        {saveMessage}
+                                    </FieldMessage>
+                                )}
+                            </div>
+                        </div>
+                    </Stack>
+                </form>
 
-                    <button 
-                        type="button"
-                        onClick={handleDeleteUser}
-                        disabled={deleteLoading}
-                        className="flex-1 px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-                    >
-                        {deleteLoading ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                        Delete User
-                    </button>
+                {/* Account Actions Section */}
+                <div className="border-t border-ds-border-subtle pt-ds-6">
+                    <h4 className="mb-ds-4 text-ds-sm font-bold text-ds-content">Account Actions</h4>
+                    <div className="flex flex-col gap-ds-3 sm:flex-row">
+                        <Button
+                            variant="secondary"
+                            className="flex-1"
+                            onClick={() => { setActionMessage(null); setPendingAction('reset'); }}
+                            disabled={resetLoading}
+                            loading={resetLoading}
+                        >
+                            {!resetLoading && <KeyRound size={16} aria-hidden="true" />}
+                            Send Password Reset
+                        </Button>
+
+                        <Button
+                            variant="danger"
+                            className="flex-1"
+                            onClick={() => { setActionMessage(null); setPendingAction('delete'); }}
+                            disabled={deleteLoading}
+                            loading={deleteLoading}
+                        >
+                            {!deleteLoading && <Trash2 size={16} aria-hidden="true" />}
+                            Delete User
+                        </Button>
+                    </div>
+
+                    {/* Outcomes that were previously four blocking `alert()`s. */}
+                    <div role="status" className="mt-ds-3">
+                        {actionMessage?.tone === 'success' && (
+                            <FieldMessage tone="success">{actionMessage.message}</FieldMessage>
+                        )}
+                    </div>
+                    <div role="alert">
+                        {actionMessage?.tone === 'error' && (
+                            <FieldMessage tone="error">{actionMessage.message}</FieldMessage>
+                        )}
+                    </div>
                 </div>
+            </Stack>
+
+            {pendingAction === 'reset' && (
+                <ConfirmDialog
+                    tone="warning"
+                    title="Send a password reset email?"
+                    description={`Send password reset email to ${userEmail}?`}
+                    confirmLabel="Send reset email"
+                    confirmVariant="primary"
+                    onCancel={() => setPendingAction(null)}
+                    onConfirm={confirmResetPassword}
+                />
+            )}
+
+            {pendingAction === 'delete' && (
+                <ConfirmDialog
+                    tone="danger"
+                    title="Delete this user?"
+                    description="Are you sure you want to delete this user? This action cannot be undone."
+                    confirmLabel="Delete user"
+                    confirmVariant="danger"
+                    onCancel={() => setPendingAction(null)}
+                    onConfirm={confirmDeleteUser}
+                />
+            )}
+        </Card>
+    );
+}
+
+/**
+ * Replaces the two blocking `window.confirm` guards. Each description keeps the
+ * original confirm wording verbatim.
+ */
+function ConfirmDialog({ tone, title, description, confirmLabel, confirmVariant, onCancel, onConfirm }) {
+    const titleId = useId();
+    const descriptionId = useId();
+
+    return (
+        <Modal
+            onClose={onCancel}
+            labelledBy={titleId}
+            describedBy={descriptionId}
+            closeOnBackdrop={false}
+            className="w-full max-w-lg overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            <div className="p-ds-5 text-center">
+                <StatusMedallion tone={tone} className="mx-auto mb-ds-3"><AlertTriangle /></StatusMedallion>
+                <h2 id={titleId} className="text-ds-heading-sm font-bold text-ds-content">{title}</h2>
+                <p id={descriptionId} className="mt-ds-3 text-ds-sm text-ds-content-secondary">{description}</p>
             </div>
-        </div>
+            <div className="flex justify-end gap-ds-3 border-t border-ds-border-subtle bg-ds-surface-subtle p-ds-4">
+                <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button variant={confirmVariant} onClick={onConfirm}>{confirmLabel}</Button>
+            </div>
+        </Modal>
     );
 }

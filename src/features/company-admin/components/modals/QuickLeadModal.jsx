@@ -1,13 +1,69 @@
-import React, { useState } from 'react';
-import { X, UserPlus, Loader2, Phone, Mail, User } from 'lucide-react';
+import React, { useId, useRef, useState } from 'react';
+import { X, UserPlus } from 'lucide-react';
 import { db, auth } from '@lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@shared/components/feedback/ToastProvider';
 import { LEAD_DEFAULT_STATUS } from '@shared/constants/atsStatus';
+import { Button, FormField, IconButton, Input } from '@/design-system/components';
+import { ResponsiveGrid, Stack } from '@/design-system/layouts';
+import { Modal } from '@shared/components/modals/Modal';
 
 /**
  * Modal for quickly adding a new lead with basic information.
  * Used by recruiters to manually add leads they've contacted.
+ *
+ * Launched from the company dashboard. This is a *different* surface from
+ * `QuickAddLeadPage` (the full-page form migrated 2026-07-27): it has its own
+ * four-field set, its own phone-or-email rule and its own payload, and it was
+ * explicitly left out of that campaign's scope. Migrated 2026-07-28.
+ *
+ * Presentation only. Frozen and unchanged: the
+ * `companies/{companyId}/leads` collection path; the exact payload — tenant
+ * `companyId`, trimmed `firstName`/`lastName`, `phone`/`email` trimmed or
+ * `null`, `LEAD_DEFAULT_STATUS`, `source: 'Manual Entry'`, `serverTimestamp()`
+ * `createdAt`, and the `createdBy`/`createdByName` fallbacks to `'unknown'` /
+ * `'Unknown'`; the name-required and phone-or-email rules; all four toast
+ * strings; the `onSuccess?.()`-then-`onClose()` ordering; and every placeholder.
+ *
+ * Defects fixed:
+ *  1. **The overlay was a hand-built `fixed inset-0` div** with no
+ *     `role="dialog"`, no `aria-modal`, no focus move on open, no focus trap, no
+ *     Escape handling and no focus restoration — a keyboard user could Tab
+ *     straight out into the page behind it. It now uses the shared accessible
+ *     `Modal`.
+ *  2. **None of the four inputs had an accessible name.** Every `<label>` was a
+ *     bare element with no `htmlFor` and no input carried an `id`, so a screen
+ *     reader announced four unnamed edit boxes. `FormField` owns the association.
+ *  3. **The close control had no accessible name** — an icon-only `<button>`
+ *     containing only an `<X>` svg.
+ *  4. **Both application-level validation messages could not both be reached.**
+ *     First/last name carried the native `required` attribute, so the browser
+ *     blocked submission with its own bubble and the frozen "Please provide first
+ *     and last name" toast was dead code in any real browser. The form is now
+ *     `noValidate` so the app owns validation — the same rules, the same two
+ *     messages, plus `aria-invalid` with an associated error on the offending
+ *     fields and focus moved to the first one. This matches the fix already
+ *     applied to `QuickAddLeadPage`.
+ *  5. **Duplicate submission was possible** — `saving` is React state, so two
+ *     activations dispatched inside one render both passed it. A ref guard closes
+ *     that window.
+ *  6. **`text-xs text-gray-400` on white = 2.56:1** on the "at least phone or
+ *     email" hint, plus a gradient green header, `shadow-green-100`, `rounded-2xl`
+ *     and `focus:ring-green-500` — all replaced by `--ds-*` tokens.
+ *
+ * One deliberate one-character copy change: the contact hint was
+ * `"* At least phone or email is required"`. The leading `*` existed because the
+ * old labels spelled their own required marker (`"First Name *"`). `FormField`
+ * now renders the marker itself, so a stray bare asterisk in the middle of the
+ * form would point at nothing. The hint is now
+ * `"At least phone or email is required"` and is wired as the accessible
+ * description of both contact fields, which it never was before.
+ *
+ * Documented feature-owned decision: the three decorative icons that were
+ * absolutely positioned inside the inputs are dropped. The design system has no
+ * approved input-adornment contract, and re-creating the absolute positioning
+ * locally would be exactly the kind of independent visual decision this migration
+ * removes. The labels carry the meaning.
  */
 export function QuickLeadModal({ companyId, onClose, onSuccess }) {
     const { showSuccess, showError } = useToast();
@@ -16,20 +72,46 @@ export function QuickLeadModal({ companyId, onClose, onSuccess }) {
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [saving, setSaving] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState({});
+
+    const titleId = useId();
+    const descriptionId = useId();
+    const contactHintId = useId();
+    const formRef = useRef(null);
+    /**
+     * Ref, not state: `saving` only takes effect on the next render, so two
+     * activations dispatched before React re-renders would both get past it.
+     */
+    const submittingRef = useRef(false);
+
+    const focusField = (name) => {
+        formRef.current?.querySelector(`[name="${name}"]`)?.focus();
+    };
 
     const handleSave = async (e) => {
         e.preventDefault();
 
+        if (submittingRef.current) return;
+
         if (!firstName.trim() || !lastName.trim()) {
+            setFieldErrors({
+                firstName: !firstName.trim() ? 'First Name is required.' : undefined,
+                lastName: !lastName.trim() ? 'Last Name is required.' : undefined,
+            });
             showError("Please provide first and last name");
+            focusField(!firstName.trim() ? 'firstName' : 'lastName');
             return;
         }
 
         if (!phone.trim() && !email.trim()) {
+            setFieldErrors({ phone: 'Provide a phone number or an email address.' });
             showError("Please provide at least a phone number or email");
+            focusField('phone');
             return;
         }
 
+        setFieldErrors({});
+        submittingRef.current = true;
         setSaving(true);
         try {
             const leadsRef = collection(db, 'companies', companyId, 'leads');
@@ -54,132 +136,127 @@ export function QuickLeadModal({ companyId, onClose, onSuccess }) {
             console.error("Error adding lead:", error);
             showError("Failed to add lead: " + error.message);
         } finally {
+            submittingRef.current = false;
             setSaving(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div
-                className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
-                onClick={e => e.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="px-6 py-4 bg-gradient-to-r from-green-600 to-green-500 flex justify-between items-center">
-                    <div className="flex items-center gap-3 text-white">
-                        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                            <UserPlus size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-bold">Quick Add Lead</h2>
-                            <p className="text-xs text-green-100">Add a new lead to your pipeline</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
+        <Modal
+            onClose={onClose}
+            labelledBy={titleId}
+            describedBy={descriptionId}
+            overlayClassName="fixed inset-0 z-[100] flex items-center justify-center bg-ds-overlay p-4 backdrop-blur-sm"
+            className="w-full max-w-md overflow-hidden rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-ds-3 border-b border-ds-border-subtle bg-ds-surface-subtle px-ds-6 py-ds-4">
+                <div className="flex min-w-0 items-center gap-ds-3">
+                    <span
+                        aria-hidden="true"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ds-lg bg-ds-status-success-bg text-ds-status-success-fg"
                     >
-                        <X size={20} />
-                    </button>
+                        <UserPlus size={20} />
+                    </span>
+                    <div className="min-w-0">
+                        <h2 id={titleId} className="text-ds-heading-sm font-bold text-ds-content">
+                            Quick Add Lead
+                        </h2>
+                        <p id={descriptionId} className="text-ds-xs text-ds-content-secondary">
+                            Add a new lead to your pipeline
+                        </p>
+                    </div>
                 </div>
+                <IconButton label="Close quick add lead" variant="ghost" size="sm" onClick={onClose}>
+                    <X size={20} aria-hidden="true" />
+                </IconButton>
+            </div>
 
-                {/* Form */}
-                <form onSubmit={handleSave} className="p-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                                First Name *
-                            </label>
-                            <div className="relative">
-                                <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="text"
-                                    value={firstName}
-                                    onChange={e => setFirstName(e.target.value)}
-                                    placeholder="John"
-                                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
-                                    required
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                                Last Name *
-                            </label>
-                            <div className="relative">
-                                <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="text"
-                                    value={lastName}
-                                    onChange={e => setLastName(e.target.value)}
-                                    placeholder="Doe"
-                                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
-                                    required
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                            Phone Number
-                        </label>
-                        <div className="relative">
-                            <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="tel"
-                                value={phone}
-                                onChange={e => setPhone(e.target.value)}
-                                placeholder="(555) 123-4567"
-                                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+            {/* Form */}
+            <form ref={formRef} onSubmit={handleSave} noValidate className="p-ds-6">
+                <Stack gap="md">
+                    <ResponsiveGrid minItemWidth="150px">
+                        <FormField label="First Name" required error={fieldErrors.firstName}>
+                            <Input
+                                name="firstName"
+                                type="text"
+                                value={firstName}
+                                onChange={e => {
+                                    setFirstName(e.target.value);
+                                    setFieldErrors(prev => (prev.firstName ? { ...prev, firstName: undefined } : prev));
+                                }}
+                                placeholder="John"
+                                autoComplete="given-name"
                             />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                            Email Address
-                        </label>
-                        <div className="relative">
-                            <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={e => setEmail(e.target.value)}
-                                placeholder="john.doe@email.com"
-                                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                        </FormField>
+                        <FormField label="Last Name" required error={fieldErrors.lastName}>
+                            <Input
+                                name="lastName"
+                                type="text"
+                                value={lastName}
+                                onChange={e => {
+                                    setLastName(e.target.value);
+                                    setFieldErrors(prev => (prev.lastName ? { ...prev, lastName: undefined } : prev));
+                                }}
+                                placeholder="Doe"
+                                autoComplete="family-name"
                             />
-                        </div>
-                    </div>
+                        </FormField>
+                    </ResponsiveGrid>
 
-                    <p className="text-xs text-gray-400 text-center">
-                        * At least phone or email is required
+                    <FormField label="Phone Number" error={fieldErrors.phone}>
+                        <Input
+                            name="phone"
+                            type="tel"
+                            value={phone}
+                            onChange={e => {
+                                setPhone(e.target.value);
+                                setFieldErrors(prev => (prev.phone ? { ...prev, phone: undefined } : prev));
+                            }}
+                            placeholder="(555) 123-4567"
+                            autoComplete="tel"
+                            aria-describedby={contactHintId}
+                        />
+                    </FormField>
+
+                    <FormField label="Email Address">
+                        <Input
+                            name="email"
+                            type="email"
+                            value={email}
+                            onChange={e => {
+                                setEmail(e.target.value);
+                                setFieldErrors(prev => (prev.phone ? { ...prev, phone: undefined } : prev));
+                            }}
+                            placeholder="john.doe@email.com"
+                            autoComplete="email"
+                            aria-describedby={contactHintId}
+                        />
+                    </FormField>
+
+                    <p id={contactHintId} className="text-center text-ds-xs text-ds-content-secondary">
+                        At least phone or email is required
                     </p>
 
                     {/* Actions */}
-                    <div className="flex gap-3 pt-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition"
-                        >
+                    <div className="flex gap-ds-3 pt-ds-2">
+                        <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
                             Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             type="submit"
+                            variant="primary"
+                            tone="success"
+                            className="flex-1"
                             disabled={saving}
-                            className="flex-1 px-4 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-100 flex items-center justify-center gap-2 disabled:opacity-50"
+                            loading={saving}
                         >
-                            {saving ? (
-                                <Loader2 className="animate-spin" size={18} />
-                            ) : (
-                                <UserPlus size={18} />
-                            )}
+                            {!saving && <UserPlus size={18} aria-hidden="true" />}
                             {saving ? 'Adding...' : 'Add Lead'}
-                        </button>
+                        </Button>
                     </div>
-                </form>
-            </div>
-        </div>
+                </Stack>
+            </form>
+        </Modal>
     );
 }

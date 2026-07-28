@@ -40,8 +40,13 @@ export function Modal({
     closeOnBackdrop = true,
     closeOnEscape = true,
     initialFocusRef,
-    overlayClassName = 'fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4',
-    className = 'bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden',
+    // Defaults migrated to `--ds-*` tokens 2026-07-28: the raw `bg-slate-900/60`
+    // and `bg-white` / `rounded-2xl` / `shadow-2xl` values were design decisions
+    // baked into the shared dialog, so every caller that did not override them
+    // inherited an unapproved surface. `--ds-color-overlay` is the same
+    // `rgb(15 23 42 / 0.6)` this used, so there is no visual change.
+    overlayClassName = 'fixed inset-0 z-50 flex items-center justify-center bg-ds-overlay backdrop-blur-sm p-4',
+    className = 'bg-ds-surface rounded-ds-xl shadow-ds-lg w-full max-w-lg overflow-hidden',
     children,
 }) {
     const panelRef = useRef(null);
