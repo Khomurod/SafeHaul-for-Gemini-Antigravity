@@ -25,6 +25,7 @@
  */
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const toastMocks = vi.hoisted(() => ({
@@ -115,8 +116,10 @@ describe('IntegrationManager — load + read path', () => {
         expect(container.innerHTML).not.toContain('encrypted-cipher');
         expect(container.innerHTML).not.toContain('encrypted-secret');
 
-        // Instead, existing credentials are flagged and the fields stay blank.
-        expect(screen.getAllByText('✓ Saved').length).toBeGreaterThan(0);
+        // Instead, existing credentials are flagged (a "Saved" badge) and the
+        // fields stay blank with the keep-existing placeholder.
+        expect(screen.getAllByText('Saved').length).toBeGreaterThan(0);
+        expect(screen.getAllByPlaceholderText('(Leave blank to keep existing)')).toHaveLength(2);
     });
 });
 
@@ -228,5 +231,26 @@ describe('IntegrationManager — test SMS contract', () => {
             testPhoneNumber: '+15551234567',
         }));
         await waitFor(() => expect(toastMocks.showSuccess).toHaveBeenCalledWith('Test Message Sent!'));
+    });
+});
+
+describe('IntegrationManager — accessibility (jsdom baseline)', () => {
+    // jsdom axe cannot see real-browser contrast; a real-browser axe pass on the
+    // running Super Admin surface is still required before the roadmap row moves.
+    it('has no violations in the RingCentral form', async () => {
+        const { container } = await renderManager();
+        expect((await axe(container)).violations).toEqual([]);
+    });
+
+    it('has no violations in the 8x8 form', async () => {
+        const { container } = await renderManager();
+        fireEvent.click(screen.getByRole('button', { name: '8x8' }));
+        expect((await axe(container)).violations).toEqual([]);
+    });
+
+    it('has no violations while showing existing credentials', async () => {
+        getDoc.mockResolvedValue(EXISTING_RC_DOC);
+        const { container } = await renderManager();
+        expect((await axe(container)).violations).toEqual([]);
     });
 });

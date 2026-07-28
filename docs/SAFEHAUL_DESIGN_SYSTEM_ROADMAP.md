@@ -6444,10 +6444,10 @@ four remaining views, so the figure does not move. Base: `origin/main` at
    that the polyline coordinates still use the floored maximum while the summary
    always reports the true peak.
 
-#### Integration contract freeze (Phase 2 first step — presentation NOT yet migrated)
+#### Integration contract freeze (Phase 2 — first step)
 
-`IntegrationManager.contract.test.jsx` (new, 11 tests) locks the
-security-sensitive SMS contracts before any presentation change: the
+`IntegrationManager.contract.test.jsx` (new, 11 contract tests + 3 jsdom axe)
+locks the security-sensitive SMS contracts before any presentation change: the
 `companies/{id}/integrations/sms_provider` read path; initial `ringcentral` /
 `isSandbox: true`; **encrypted credentials never loaded into form fields** and
 never rendered into the DOM; `hasExistingCredentials` detection via the `:`
@@ -6455,10 +6455,81 @@ separator; the `__PRESERVE__` sentinel for blank-but-existing credentials and
 typed-value override; RingCentral / 8x8 required-credential validation; phone
 sanitisation and string coercion of every config value; `saveIntegrationConfig({
 companyId, provider, config })` and `sendTestSMS({ companyId, testPhoneNumber })`
-payloads; and the exact save/verify/test toast wording. The component's
-presentation is **still legacy (0 design-system imports)** — the migration of
-`IntegrationManager`, `LineManager`, `AddLineModal`, `GlobalQuestionsManager`,
-`SystemHealthView` and `CreateView` remains open.
+payloads; and the exact save/verify/test toast wording.
+
+#### SMS integration group migrated (Phase 2 — COMPLETE for the three components)
+
+All three SMS-integration components are now migrated to the design system with
+their contracts frozen by test first:
+
+- **`IntegrationManager.jsx`** → `Card`, `Button`, `FormField`, `Input`,
+  `Checkbox`, `Badge`, `--ds-*` tokens. Defects fixed: legacy palette/hex focus
+  rings removed; `text-[10px]`/`text-[11px]` notes removed (8x8 sender hint moved
+  into an accessible `FormField` description); the colour-only blue/orange
+  provider selector is now a `role="group"` of `Button`s with `aria-pressed`;
+  the colour-only "✓ Saved" span is now a `Badge`; credential inputs have wired
+  labels/required via `FormField`.
+- **`LineManager.jsx`** → `Card`, `Button`, `IconButton`, `Badge`, plus the
+  shared accessible `Modal` and `SafeHaulLoader`. Defects fixed: the blocking
+  `window.confirm` on the destructive remove replaced with the shared dialog
+  (wording preserved); gradient header + legacy palette → tokens; colour-only
+  status/default pills → `Badge`s with text + icon; the icon-only remove control
+  now has an accessible name (`Remove line {number}`); `text-[10px]` on the
+  usage-type chip and the security notice removed; the table now sits in a named,
+  focusable scroll region for mobile keyboard access.
+- **`AddLineModal.jsx`** → the hand-built `fixed inset-0` overlay (no focus trap,
+  no Escape, no focus restore) replaced with the shared accessible `Modal`;
+  `FormField`/`Input`/`Textarea`/`Checkbox`/`Button` with wired labels;
+  gradient/palette → tokens; `text-[10px]` help text moved into accessible
+  descriptions.
+
+Frozen contracts unchanged: the `sms_provider` read path and real-time listener,
+`ringcentral`/`isSandbox:true` defaults, no-credential-prefill, `:`-separator
+detection, `__PRESERVE__` sentinel, RC/8x8 validation, phone sanitisation, string
+coercion, and every callable payload — `saveIntegrationConfig`, `sendTestSMS`,
+`removePhoneLine({ companyId, phoneNumber })`, `testLineConnection`,
+`addPhoneLine` (including the `label || phoneNumber` fallback and credential
+omission when not needed) — plus every toast string. The phone number remains the
+stable line identity used for removal; no raw-token substitution was introduced.
+
+**The Super Admin row still stays `In progress` at 18/19**: Phases 3–5
+(`GlobalQuestionsManager`, `SystemHealthView`, `CreateView`) remain unmigrated,
+and the row's real-browser axe / E2E bar has not been re-run for these views.
+
+Verification for this group: `vitest run src/features/super-admin/` **214 passed
+/ 0 failed** across 14 files, including 3 new integration test files (36 tests:
+IntegrationManager 11 contract + 3 axe, LineManager 6 contract + 3 remove-flow +
+2 axe, AddLineModal 10 contract + 1 axe); `npm run build` succeeds; eslint 0
+errors (2 pre-existing unused-var warnings in IntegrationManager's untouched
+fetch logic); tsc clean; `git diff --check` clean. **Not run**: real-browser axe
+(these views sit behind super-admin auth + company selection and are not
+reachable from the dev preview here) and Playwright E2E.
+
+#### GlobalQuestionsManager migrated (Phase 3 — COMPLETE for this view)
+
+`GlobalQuestionsManager.jsx` is a thin wrapper: the question list, create/edit,
+type/required/active controls, reordering, per-field validation and delete
+confirmation all live in the shared **already-migrated** `CustomQuestionsBuilder`
+(a settings-feature primitive this view reuses — the "already shares a proven
+presentation primitive" case, so no re-implementation or merge with Company
+Settings questions was done). This migration touches only the wrapper's own
+presentation: the spinner is now `SafeHaulLoader`; the error block is a `Card`
+with a `role="alert"` message and a danger `Button` retry; the version and legend
+pills are `Badge`s (was legacy amber/gray/blue palette); the save-success block
+is announced (`role="status"`); container spacing on `--ds-*` tokens.
+
+Frozen (by `GlobalQuestionsManager.contract.test.jsx`, 11 tests incl. 2 jsdom
+axe): the schema flatten (`field.key → id`, `sectionId`, `sectionTitle`,
+`stepNumber`, `order = sectionIndex*100 + fieldIndex`); the save rebuild
+(`sanitizeQuestionPayload` per question, group by `sectionId`, strip
+`sectionId`/`sectionTitle`/`order`, `Custom Questions`/step 8/order 99 defaults,
+`{ ...schema, sections }` shape, `saveSchema` call); the success/clear/3s-reset
+behaviour; the `useGlobalSchema` interface; and every user-facing string. The
+hook's `system_settings/application_schema` path, version increment and document
+shape are owned by `useGlobalSchema` and untouched.
+
+Phases 4–5 (`SystemHealthView`, `CreateView`) remain; the Super Admin row stays
+`In progress` at 18/19.
 
 #### Contracts preserved (frozen by test)
 

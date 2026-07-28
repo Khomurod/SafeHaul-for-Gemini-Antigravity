@@ -1,18 +1,36 @@
-import React, { useState } from 'react';
-import { X, Key, Phone, Tag, Loader2, CheckCircle, AlertCircle, Plug } from 'lucide-react';
+import React, { useId, useState } from 'react';
+import { X, Key, CheckCircle, AlertCircle, Plug } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { Button, Checkbox, FormField, IconButton, Input, Textarea } from '@/design-system/components';
+import { Modal } from '@shared/components/modals/Modal';
 
 /**
- * Modal for Super Admins to add a new phone line to the Digital Wallet
- * Supports both global credentials (shared) and per-line credentials (multi-tenant)
+ * Modal for Super Admins to add a new phone line to the Digital Wallet.
+ * Supports both global (shared) credentials and per-line credentials.
+ *
+ * Migrated to the design system 2026-07-28. Presentation only — the
+ * `usePerLineCredentials` / `needsCredentials` logic, the initial
+ * `isSandbox: true`, the `testLineConnection` and `addPhoneLine` callable names
+ * and payload shapes (including omitting credentials when not needed and the
+ * `label || phoneNumber` fallback), every validation guard and its wording, and
+ * the success/verify toasts are unchanged (frozen in
+ * `AddLineModal.contract.test.jsx`).
+ *
+ * Presentation defects fixed: the hand-built `fixed inset-0` overlay (no focus
+ * trap, no Escape, no focus restore) is replaced with the shared accessible
+ * `Modal`; the legacy palette/gradient becomes `--ds-*` tokens; the inputs are
+ * `FormField`/`Input`/`Textarea` with wired labels; the two checkboxes use the
+ * `Checkbox` primitive; `text-[10px]` help text moved into accessible
+ * `FormField` descriptions.
  */
 export function AddLineModal({ companyId, onClose, onSuccess, sharedCredentials }) {
     const { showSuccess, showError } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
     const [testResult, setTestResult] = useState(null); // { success, message, accountId }
+    const titleId = useId();
 
     // Form state
     const [phoneNumber, setPhoneNumber] = useState('');
@@ -120,223 +138,161 @@ export function AddLineModal({ companyId, onClose, onSuccess, sharedCredentials 
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-in fade-in">
-            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden max-h-[90vh] overflow-y-auto">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex justify-between items-center">
-                    <h3 className="font-bold text-white flex items-center gap-2">
-                        <Phone size={18} />
-                        Add Phone Line
-                    </h3>
-                    <button
-                        onClick={onClose}
-                        className="text-white/80 hover:text-white transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* Body */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                    {/* Phone Number */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
-                            Phone Number *
-                        </label>
-                        <div className="relative">
-                            <input
-                                type="tel"
-                                placeholder="+1 (555) 123-4567"
-                                className="w-full p-2.5 pl-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={phoneNumber}
-                                onChange={(e) => setPhoneNumber(e.target.value)}
-                                required
-                            />
-                            <Phone size={16} className="absolute left-3 top-3 text-gray-400" />
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-1">
-                            E.164 format preferred (e.g., +15551234567)
-                        </p>
-                    </div>
-
-                    {/* Label */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
-                            Label (Optional)
-                        </label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                placeholder="Recruitment Hotline"
-                                className="w-full p-2.5 pl-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={label}
-                                onChange={(e) => setLabel(e.target.value)}
-                            />
-                            <Tag size={16} className="absolute left-3 top-3 text-gray-400" />
-                        </div>
-                    </div>
-
-                    {/* JWT Token */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
-                            JWT Token for This Line *
-                        </label>
-                        <div className="relative">
-                            <textarea
-                                placeholder="eyJ0..."
-                                className="w-full p-2.5 pl-10 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                                rows={3}
-                                value={jwt}
-                                onChange={(e) => setJwt(e.target.value)}
-                                required
-                            />
-                            <Key size={16} className="absolute left-3 top-3 text-gray-400" />
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-1">
-                            Generate this in RingCentral Developer Portal for the user who owns this number.
-                        </p>
-                    </div>
-
-                    {/* Per-Line Credentials Toggle */}
-                    {sharedCredentials?.hasCredentials && (
-                        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer p-3 bg-gray-50 rounded-lg border border-gray-200">
-                            <input
-                                type="checkbox"
-                                checked={usePerLineCredentials}
-                                onChange={(e) => setUsePerLineCredentials(e.target.checked)}
-                                className="rounded text-blue-600 focus:ring-blue-500"
-                            />
-                            <div>
-                                <span className="font-medium">Use per-line credentials</span>
-                                <p className="text-[10px] text-gray-400 mt-0.5">
-                                    Enable if this line belongs to a different RingCentral app/account
-                                </p>
-                            </div>
-                        </label>
-                    )}
-
-                    {/* Credentials Section */}
-                    {needsCredentials && (
-                        <div className="border-t border-gray-200 pt-5 mt-5 space-y-4">
-                            <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 p-2 rounded-lg">
-                                <Key size={14} />
-                                <span className="font-medium">
-                                    {sharedCredentials?.hasCredentials
-                                        ? 'Per-Line Credentials (Multi-Tenant Mode)'
-                                        : 'Enter RingCentral App Credentials'}
-                                </span>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
-                                    Client ID *
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="Enter RingCentral Client ID"
-                                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={clientId}
-                                    onChange={(e) => setClientId(e.target.value)}
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">
-                                    Client Secret *
-                                </label>
-                                <input
-                                    type="password"
-                                    placeholder="••••••••••••"
-                                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={clientSecret}
-                                    onChange={(e) => setClientSecret(e.target.value)}
-                                    required
-                                />
-                            </div>
-
-                            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={isSandbox}
-                                    onChange={(e) => setIsSandbox(e.target.checked)}
-                                    className="rounded text-blue-600 focus:ring-blue-500"
-                                />
-                                Use Sandbox Environment (for testing)
-                            </label>
-                        </div>
-                    )}
-
-                    {/* Test Result */}
-                    {testResult && (
-                        <div className={`p-3 rounded-lg text-sm ${testResult.success
-                            ? 'bg-green-50 border border-green-200 text-green-700'
-                            : 'bg-red-50 border border-red-200 text-red-700'
-                            }`}>
-                            <div className="flex items-center gap-2">
-                                {testResult.success ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                                <span className="font-medium">
-                                    {testResult.success ? 'Connection Successful!' : 'Connection Failed'}
-                                </span>
-                            </div>
-                            <p className="text-xs mt-1">{testResult.message}</p>
-                            {testResult.availableNumbers?.length > 0 && (
-                                <div className="mt-2 text-xs">
-                                    <span className="font-medium">Available Numbers: </span>
-                                    {testResult.availableNumbers.slice(0, 3).map(n => n.phoneNumber).join(', ')}
-                                    {testResult.availableNumbers.length > 3 && ` +${testResult.availableNumbers.length - 3} more`}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="pt-3 space-y-2">
-                        {/* Test Connection Button */}
-                        <button
-                            type="button"
-                            onClick={handleTestConnection}
-                            disabled={isTesting || !jwt.trim()}
-                            className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 border border-gray-300"
-                        >
-                            {isTesting ? (
-                                <>
-                                    <Loader2 size={16} className="animate-spin" />
-                                    Testing Connection...
-                                </>
-                            ) : (
-                                <>
-                                    <Plug size={16} />
-                                    Test Connection
-                                </>
-                            )}
-                        </button>
-
-                        {/* Submit Button */}
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-70 shadow-md"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 size={18} className="animate-spin" />
-                                    Verifying & Adding...
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle size={18} />
-                                    Verify & Add Line
-                                </>
-                            )}
-                        </button>
-                        <p className="text-[10px] text-gray-400 text-center">
-                            Credentials will be verified before the line is provisioned
-                        </p>
-                    </div>
-                </form>
+        <Modal
+            onClose={onClose}
+            labelledBy={titleId}
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-ds-xl border border-ds-border-subtle bg-ds-surface shadow-ds-lg"
+        >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-ds-border-subtle bg-ds-surface-subtle px-ds-6 py-ds-4">
+                <h3 id={titleId} className="flex items-center gap-ds-2 font-bold text-ds-content">
+                    <Plug size={18} aria-hidden="true" className="text-ds-content-link" />
+                    Add Phone Line
+                </h3>
+                <IconButton label="Close" variant="ghost" size="sm" onClick={onClose}>
+                    <X size={20} aria-hidden="true" />
+                </IconButton>
             </div>
-        </div>
+
+            {/* Body */}
+            <form onSubmit={handleSubmit} className="space-y-ds-5 p-ds-6">
+                <FormField
+                    label="Phone Number"
+                    required
+                    description="E.164 format preferred (e.g., +15551234567)"
+                >
+                    <Input
+                        type="tel"
+                        placeholder="+1 (555) 123-4567"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                    />
+                </FormField>
+
+                <FormField label="Label (Optional)">
+                    <Input
+                        type="text"
+                        placeholder="Recruitment Hotline"
+                        value={label}
+                        onChange={(e) => setLabel(e.target.value)}
+                    />
+                </FormField>
+
+                <FormField
+                    label="JWT Token for This Line"
+                    required
+                    description="Generate this in RingCentral Developer Portal for the user who owns this number."
+                >
+                    <Textarea
+                        placeholder="eyJ0..."
+                        className="font-mono"
+                        rows={3}
+                        value={jwt}
+                        onChange={(e) => setJwt(e.target.value)}
+                    />
+                </FormField>
+
+                {/* Per-Line Credentials Toggle */}
+                {sharedCredentials?.hasCredentials && (
+                    <div className="rounded-ds-md border border-ds-border-subtle bg-ds-surface-subtle p-ds-3">
+                        <Checkbox
+                            label="Use per-line credentials"
+                            description="Enable if this line belongs to a different RingCentral app/account"
+                            checked={usePerLineCredentials}
+                            onChange={(e) => setUsePerLineCredentials(e.target.checked)}
+                        />
+                    </div>
+                )}
+
+                {/* Credentials Section */}
+                {needsCredentials && (
+                    <div className="mt-ds-5 space-y-ds-4 border-t border-ds-border-subtle pt-ds-5">
+                        <div className="flex items-center gap-ds-2 rounded-ds-md bg-ds-status-info-bg p-ds-2 text-ds-sm text-ds-status-info-fg">
+                            <Key size={14} aria-hidden="true" />
+                            <span className="font-medium">
+                                {sharedCredentials?.hasCredentials
+                                    ? 'Per-Line Credentials (Multi-Tenant Mode)'
+                                    : 'Enter RingCentral App Credentials'}
+                            </span>
+                        </div>
+
+                        <FormField label="Client ID" required>
+                            <Input
+                                type="text"
+                                placeholder="Enter RingCentral Client ID"
+                                value={clientId}
+                                onChange={(e) => setClientId(e.target.value)}
+                            />
+                        </FormField>
+
+                        <FormField label="Client Secret" required>
+                            <Input
+                                type="password"
+                                placeholder="••••••••••••"
+                                value={clientSecret}
+                                onChange={(e) => setClientSecret(e.target.value)}
+                            />
+                        </FormField>
+
+                        <Checkbox
+                            label="Use Sandbox Environment (for testing)"
+                            checked={isSandbox}
+                            onChange={(e) => setIsSandbox(e.target.checked)}
+                        />
+                    </div>
+                )}
+
+                {/* Test Result */}
+                {testResult && (
+                    <div
+                        role="status"
+                        className={`rounded-ds-md border p-ds-3 text-ds-sm ${testResult.success
+                            ? 'border-ds-status-success-border bg-ds-status-success-bg text-ds-status-success-fg'
+                            : 'border-ds-status-danger-border bg-ds-status-danger-bg text-ds-status-danger-fg'
+                            }`}
+                    >
+                        <div className="flex items-center gap-ds-2">
+                            {testResult.success ? <CheckCircle size={16} aria-hidden="true" /> : <AlertCircle size={16} aria-hidden="true" />}
+                            <span className="font-medium">
+                                {testResult.success ? 'Connection Successful!' : 'Connection Failed'}
+                            </span>
+                        </div>
+                        <p className="mt-1 text-ds-xs">{testResult.message}</p>
+                        {testResult.availableNumbers?.length > 0 && (
+                            <div className="mt-ds-2 text-ds-xs">
+                                <span className="font-medium">Available Numbers: </span>
+                                {testResult.availableNumbers.slice(0, 3).map(n => n.phoneNumber).join(', ')}
+                                {testResult.availableNumbers.length > 3 && ` +${testResult.availableNumbers.length - 3} more`}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="space-y-ds-2 pt-ds-3">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        fullWidth
+                        onClick={handleTestConnection}
+                        loading={isTesting}
+                        disabled={!jwt.trim()}
+                    >
+                        <Plug size={16} aria-hidden="true" />
+                        Test Connection
+                    </Button>
+
+                    <Button type="submit" variant="primary" fullWidth loading={isSubmitting}>
+                        <CheckCircle size={18} aria-hidden="true" />
+                        Verify &amp; Add Line
+                    </Button>
+                    <p className="text-center text-ds-xs text-ds-content-muted">
+                        Credentials will be verified before the line is provisioned
+                    </p>
+                </div>
+            </form>
+        </Modal>
     );
 }
 
+export default AddLineModal;
