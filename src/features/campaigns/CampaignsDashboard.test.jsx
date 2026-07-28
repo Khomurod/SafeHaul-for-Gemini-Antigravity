@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { CampaignsDashboard } from './CampaignsDashboard';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -187,6 +187,14 @@ describe('CampaignsDashboard cancel vs delete', () => {
 
             fireEvent.click(screen.getByText('cancel s1'));
 
+            // The blocking `window.confirm` is gone: the guard is now the shared
+            // accessible dialog, and nothing fires until it is confirmed.
+            const dialog = await screen.findByRole('dialog', { name: 'Cancel "Live One"?' });
+            expect(window.confirm).not.toHaveBeenCalled();
+            expect(mockCancelCallable).not.toHaveBeenCalled();
+
+            fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel campaign' }));
+
             await waitFor(() => {
                 expect(mockCancelCallable).toHaveBeenCalledWith({ companyId: 'co1', sessionId: 's1' });
             });
@@ -201,6 +209,10 @@ describe('CampaignsDashboard cancel vs delete', () => {
 
         fireEvent.click(screen.getByText('delete s1'));
 
+        // The live-session backstop runs before the dialog opens, so a live
+        // campaign never reaches a destructive confirmation at all.
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
         await waitFor(() => {
             expect(mockDeleteDoc).not.toHaveBeenCalled();
         });
@@ -213,6 +225,12 @@ describe('CampaignsDashboard cancel vs delete', () => {
         ]);
 
         fireEvent.click(screen.getByText('delete s2'));
+
+        const dialog = await screen.findByRole('dialog', { name: 'Delete "Old One"?' });
+        expect(window.confirm).not.toHaveBeenCalled();
+        expect(mockDeleteDoc).not.toHaveBeenCalled();
+
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Delete record' }));
 
         await waitFor(() => {
             expect(mockDeleteDoc).toHaveBeenCalledTimes(1);

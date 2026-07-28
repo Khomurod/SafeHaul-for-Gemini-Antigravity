@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
@@ -183,48 +183,74 @@ describe('CampaignDetails — callables & outcomes', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
+    const failedCampaign = () => makeCampaign({
+        status: 'completed',
+        progress: { processedCount: 10, totalCount: 10, successCount: 6, failedCount: 4 },
+    });
+
     it('cancels only after confirmation, with the exact payload', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => false));
+        const confirmSpy = vi.fn(() => true);
+        vi.stubGlobal('confirm', confirmSpy);
         const { onClose } = renderDetails();
+
         fireEvent.click(screen.getByRole('button', { name: 'Details & Cancel' }));
+
+        // The bare `confirm(...)` is gone; nothing fires until the dialog is confirmed.
+        const dialog = await screen.findByRole('dialog', { name: 'Cancel this campaign?' });
+        expect(confirmSpy).not.toHaveBeenCalled();
         expect(callables.cancelBulkSession).not.toHaveBeenCalled();
 
-        vi.stubGlobal('confirm', vi.fn(() => true));
-        fireEvent.click(screen.getByRole('button', { name: 'Details & Cancel' }));
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel campaign' }));
         await waitFor(() => expect(callables.cancelBulkSession).toHaveBeenCalledWith({ companyId: 'company123', sessionId: '123' }));
         await waitFor(() => expect(toastMocks.showSuccess).toHaveBeenCalledWith('Campaign cancelled.'));
         expect(onClose).toHaveBeenCalled();
     });
 
+    it('does not cancel when the confirmation is dismissed', async () => {
+        renderDetails();
+        fireEvent.click(screen.getByRole('button', { name: 'Details & Cancel' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Cancel this campaign?' });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Keep sending' }));
+        expect(callables.cancelBulkSession).not.toHaveBeenCalled();
+    });
+
     it('retries failed recipients with the exact payload and reports the target count', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
         callables.retryFailedAttempts.mockResolvedValue({ data: { success: true, targetCount: 9 } });
-        const { onClose } = renderDetails(makeCampaign({ status: 'completed', progress: { processedCount: 10, totalCount: 10, successCount: 6, failedCount: 4 } }));
+        const { onClose } = renderDetails(failedCampaign());
+
         fireEvent.click(screen.getByRole('button', { name: 'Retry Failed' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Start a new campaign for failed recipients?' });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Start retry campaign' }));
+
         await waitFor(() => expect(callables.retryFailedAttempts).toHaveBeenCalledWith({ companyId: 'company123', originalSessionId: '123' }));
         await waitFor(() => expect(toastMocks.showSuccess).toHaveBeenCalledWith('Retry session started with 9 targets.'));
         expect(onClose).toHaveBeenCalled();
     });
 
-    it('does not retry when the confirmation is cancelled', () => {
-        vi.stubGlobal('confirm', vi.fn(() => false));
-        renderDetails(makeCampaign({ status: 'completed', progress: { processedCount: 10, totalCount: 10, successCount: 6, failedCount: 4 } }));
+    it('does not retry when the confirmation is cancelled', async () => {
+        renderDetails(failedCampaign());
         fireEvent.click(screen.getByRole('button', { name: 'Retry Failed' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Start a new campaign for failed recipients?' });
+        fireEvent.click(within(dialog).getByRole('button', { name: "Don't retry" }));
         expect(callables.retryFailedAttempts).not.toHaveBeenCalled();
     });
 
     it('surfaces retry failure branches (success:false and thrown)', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         callables.retryFailedAttempts.mockResolvedValueOnce({ data: { success: false } });
-        const failed = makeCampaign({ status: 'completed', progress: { processedCount: 10, totalCount: 10, successCount: 6, failedCount: 4 } });
-        renderDetails(failed);
+        renderDetails(failedCampaign());
+
         fireEvent.click(screen.getByRole('button', { name: 'Retry Failed' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Start a new campaign for failed recipients?' });
+        const confirm = within(dialog).getByRole('button', { name: 'Start retry campaign' });
+
+        fireEvent.click(confirm);
         await waitFor(() => expect(toastMocks.showError).toHaveBeenCalledWith('Retry failed to start.'));
 
         toastMocks.showError.mockClear();
         callables.retryFailedAttempts.mockRejectedValueOnce(new Error('callable exploded'));
-        fireEvent.click(screen.getByRole('button', { name: 'Retry Failed' }));
+        // The dialog stays open on failure, so the retry is reachable again.
+        fireEvent.click(confirm);
         await waitFor(() => expect(toastMocks.showError).toHaveBeenCalledWith('callable exploded'));
         consoleError.mockRestore();
     });

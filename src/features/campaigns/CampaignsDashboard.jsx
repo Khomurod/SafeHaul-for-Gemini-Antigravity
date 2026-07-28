@@ -12,6 +12,7 @@ import { CampaignEditor } from './CampaignEditor';
 import { CampaignDetails } from './components/CampaignDetails';
 import DetailedReportModal from './components/DetailedReportModal';
 import { useToast } from '@shared/components/feedback/ToastProvider';
+import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { useData } from '@/context/DataContext';
 import { PaywallMessage } from '@shared/components/feedback/PaywallMessage';
 import { getE2EQueryParam, isE2ETestMode } from '@lib/runtime/e2eMode';
@@ -36,6 +37,13 @@ export function CampaignsDashboard({ companyId }) {
     const [selectedCampaignId, setSelectedCampaignId] = useState(null);
     const [viewingSession, setViewingSession] = useState(null);
     const [selectedReportSessionId, setSelectedReportSessionId] = useState(null);
+    // Replace the two blocking `window.confirm` guards. Each holds the target
+    // captured at the moment its dialog opened, so a tab switch or a live
+    // `onSnapshot` update cannot retarget an open confirmation.
+    const [pendingCancel, setPendingCancel] = useState(null);
+    const [cancelling, setCancelling] = useState(false);
+    const [pendingDelete, setPendingDelete] = useState(null);
+    const [deleting, setDeleting] = useState(false);
     const tablistRef = useRef(null);
     const { showSuccess, showError } = useToast();
     const isE2ECampaignMock = isE2ETestMode && getE2EQueryParam('e2eCampaign', '') === 'mock';
@@ -170,47 +178,78 @@ export function CampaignsDashboard({ companyId }) {
         }
     };
 
+    /**
+     * Cancel and delete both used to be guarded by a blocking `window.confirm`.
+     * They now open the shared accessible `ConfirmDialog`.
+     *
+     * Both handlers capture the **target and the branch at open time** into
+     * `pendingCancel` / `pendingDelete`. That matters: the delete path chooses its
+     * Firestore collection from `activeTab`, and the live-session backstop reads
+     * `campaign.status`. Reading either of those again at confirm time would let a
+     * tab switch or an incoming `onSnapshot` update retarget an in-flight
+     * confirmation at a different document.
+     *
+     * On failure the existing toast wording is preserved exactly and the dialog is
+     * left open so the operator can retry. The toast is already a `role="alert"`
+     * live region, so the failure is announced once rather than twice.
+     */
+
     // Cancel a live (active/queued/scheduled/paused) session through the supported
     // backend flow. The worker checks session status at claim time, mid-batch, and
     // post-batch, so a cancelled session stops sending; the record is kept for
     // reporting/audit. cancelBulkSession is idempotent — re-cancelling is harmless.
-    const handleCancelCampaign = async (campaign) => {
+    const requestCancelCampaign = (campaign) => {
         if (!companyId || !campaign.id) return;
-        if (!window.confirm(`Cancel "${campaign.name}"? Sending stops and the campaign record is kept for reporting.`)) return;
+        setPendingCancel({ id: campaign.id, name: campaign.name });
+    };
 
+    const confirmCancelCampaign = async () => {
+        if (!pendingCancel) return;
+        setCancelling(true);
         try {
             const cancelFn = httpsCallable(functions, 'cancelBulkSession');
-            await cancelFn({ companyId, sessionId: campaign.id });
+            await cancelFn({ companyId, sessionId: pendingCancel.id });
             showSuccess('Campaign cancelled. No further messages will be sent.');
+            setPendingCancel(null);
         } catch (err) {
             showError('Failed to cancel campaign: ' + err.message);
+        } finally {
+            setCancelling(false);
         }
     };
 
-    const handleDeleteCampaign = async (campaign) => {
+    const requestDeleteCampaign = (campaign) => {
         if (!companyId || !campaign.id) return;
 
         // Never delete a live session outright: the worker must observe the
         // cancelled status and stop through the supported path, and reporting
         // history must be preserved. (The card menu offers Cancel instead, so
-        // this is a defensive backstop.)
+        // this is a defensive backstop.) This runs *before* the dialog opens, so a
+        // live campaign never reaches a destructive confirmation at all.
         if (activeTab !== 'drafts' && isCancellableSessionStatus(campaign.status)) {
             showError('This campaign is still live. Cancel it first — it can be deleted once it has stopped.');
             return;
         }
 
-        if (!window.confirm(`Are you sure you want to delete "${campaign.name}"?`)) return;
+        setPendingDelete({ id: campaign.id, name: campaign.name, isDraft: activeTab === 'drafts' });
+    };
 
+    const confirmDeleteCampaign = async () => {
+        if (!pendingDelete) return;
+        setDeleting(true);
         try {
-            if (activeTab === 'drafts') {
-                await deleteDoc(doc(db, 'companies', companyId, 'campaign_drafts', campaign.id));
+            if (pendingDelete.isDraft) {
+                await deleteDoc(doc(db, 'companies', companyId, 'campaign_drafts', pendingDelete.id));
                 showSuccess("Campaign draft deleted");
             } else {
-                await deleteDoc(doc(db, 'companies', companyId, 'bulk_sessions', campaign.id));
+                await deleteDoc(doc(db, 'companies', companyId, 'bulk_sessions', pendingDelete.id));
                 showSuccess("Campaign record deleted");
             }
+            setPendingDelete(null);
         } catch (err) {
             showError("Failed to delete campaign: " + err.message);
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -341,8 +380,8 @@ export function CampaignsDashboard({ companyId }) {
                                             key={campaign.id}
                                             campaign={campaign}
                                             onClick={() => activeTab === 'drafts' ? setSelectedCampaignId(campaign.id) : setViewingSession(campaign)}
-                                            onDelete={handleDeleteCampaign}
-                                            onCancel={activeTab === 'drafts' ? undefined : handleCancelCampaign}
+                                            onDelete={requestDeleteCampaign}
+                                            onCancel={activeTab === 'drafts' ? undefined : requestCancelCampaign}
                                             onViewReport={() => setSelectedReportSessionId(campaign.id)}
                                         />
                                     ))}
@@ -358,6 +397,33 @@ export function CampaignsDashboard({ companyId }) {
                 sessionId={selectedReportSessionId}
                 isOpen={!!selectedReportSessionId}
                 onClose={() => setSelectedReportSessionId(null)}
+            />
+
+            {/* Replaces `window.confirm("Cancel \"{name}\"? …")`. */}
+            <ConfirmDialog
+                isOpen={!!pendingCancel}
+                tone="warning"
+                title={`Cancel "${pendingCancel?.name ?? ''}"?`}
+                description="Sending stops and the campaign record is kept for reporting."
+                confirmLabel="Cancel campaign"
+                cancelLabel="Keep sending"
+                loading={cancelling}
+                onConfirm={confirmCancelCampaign}
+                onCancel={() => setPendingCancel(null)}
+            />
+
+            {/* Replaces `window.confirm("Are you sure you want to delete \"{name}\"?")`. */}
+            <ConfirmDialog
+                isOpen={!!pendingDelete}
+                tone="danger"
+                title={`Delete "${pendingDelete?.name ?? ''}"?`}
+                description={pendingDelete?.isDraft
+                    ? 'This campaign draft will be permanently deleted. This cannot be undone.'
+                    : 'This campaign record and its reporting history will be permanently deleted. This cannot be undone.'}
+                confirmLabel={pendingDelete?.isDraft ? 'Delete draft' : 'Delete record'}
+                loading={deleting}
+                onConfirm={confirmDeleteCampaign}
+                onCancel={() => setPendingDelete(null)}
             />
         </div>
     );

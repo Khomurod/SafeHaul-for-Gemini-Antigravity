@@ -152,20 +152,46 @@ describe('DetailedReportModal — retry', () => {
         expect(screen.queryByRole('button', { name: 'Retry Failed Requests' })).not.toBeInTheDocument();
     });
 
-    it('cancels via the confirm prompt without calling the callable', async () => {
-        const confirmMock = vi.fn(() => false);
+    /** Opens the retry confirmation and returns it. */
+    async function openRetryConfirmation() {
+        fireEvent.click(screen.getByRole('button', { name: 'Retry Failed Requests' }));
+        return screen.findByRole('dialog', { name: 'Start a new campaign for failed recipients?' });
+    }
+
+    it('asks for confirmation in an accessible dialog, not window.confirm, and does nothing until confirmed', async () => {
+        const confirmMock = vi.fn(() => true);
         vi.stubGlobal('confirm', confirmMock);
         await renderWithFailure();
-        fireEvent.click(screen.getByRole('button', { name: 'Retry Failed Requests' }));
-        expect(confirmMock).toHaveBeenCalledWith('Start a new campaign for FAILED recipients only? This will retry permanent errors too.');
+
+        const dialog = await openRetryConfirmation();
+        // The costly nature of the action must be spelled out.
+        expect(dialog).toHaveTextContent(/creates a new campaign/i);
+        expect(dialog).toHaveTextContent(/permanent errors/i);
+        expect(confirmMock).not.toHaveBeenCalled();
+        expect(retryFn).not.toHaveBeenCalled();
+    });
+
+    it('does not retry when the confirmation is cancelled', async () => {
+        await renderWithFailure();
+        const dialog = await openRetryConfirmation();
+        fireEvent.click(within(dialog).getByRole('button', { name: "Don't retry" }));
+
+        expect(retryFn).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog', { name: 'Start a new campaign for failed recipients?' })).not.toBeInTheDocument();
+    });
+
+    it('does not retry when the confirmation is dismissed with Escape', async () => {
+        await renderWithFailure();
+        const dialog = await openRetryConfirmation();
+        fireEvent.keyDown(dialog, { key: 'Escape' });
         expect(retryFn).not.toHaveBeenCalled();
     });
 
     it('calls retryFailedAttempts with the exact payload and closes after success', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
         retryFn.mockResolvedValue({ data: { success: true, targetCount: 7 } });
         const onClose = await renderWithFailure();
-        fireEvent.click(screen.getByRole('button', { name: 'Retry Failed Requests' }));
+        const dialog = await openRetryConfirmation();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Start retry campaign' }));
 
         await waitFor(() => {
             expect(fnMocks.httpsCallable).toHaveBeenCalledWith({}, 'retryFailedAttempts');
@@ -177,30 +203,52 @@ describe('DetailedReportModal — retry', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it('invokes the retry once even when confirmed twice in the same tick', async () => {
+        let release;
+        retryFn.mockImplementation(() => new Promise((resolve) => {
+            release = () => resolve({ data: { success: true, targetCount: 3 } });
+        }));
+        await renderWithFailure();
+        const dialog = await openRetryConfirmation();
+        const confirm = within(dialog).getByRole('button', { name: 'Start retry campaign' });
+
+        fireEvent.click(confirm);
+        fireEvent.click(confirm);
+        expect(retryFn).toHaveBeenCalledTimes(1);
+
+        release();
+        await waitFor(() => expect(toastMocks.showSuccess).toHaveBeenCalled());
+    });
+
     it('shows the failure message and keeps the modal open when success is false', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
         retryFn.mockResolvedValue({ data: { success: false, message: 'Nothing to retry.' } });
         const onClose = await renderWithFailure();
-        fireEvent.click(screen.getByRole('button', { name: 'Retry Failed Requests' }));
+        const dialog = await openRetryConfirmation();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Start retry campaign' }));
 
         await waitFor(() => {
             expect(toastMocks.showError).toHaveBeenCalledWith('Nothing to retry.');
         });
         expect(onClose).not.toHaveBeenCalled();
+        // The confirmation stays open so the operator can retry.
+        expect(screen.getByRole('dialog', { name: 'Start a new campaign for failed recipients?' })).toBeInTheDocument();
     });
 
     it('falls back to a generic failure message and surfaces thrown errors', async () => {
-        vi.stubGlobal('confirm', vi.fn(() => true));
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
         retryFn.mockResolvedValueOnce({ data: { success: false } });
         await renderWithFailure();
-        fireEvent.click(screen.getByRole('button', { name: 'Retry Failed Requests' }));
+        const dialog = await openRetryConfirmation();
+        const confirm = within(dialog).getByRole('button', { name: 'Start retry campaign' });
+
+        fireEvent.click(confirm);
         await waitFor(() => expect(toastMocks.showError).toHaveBeenCalledWith('Retry failed to start.'));
 
         toastMocks.showError.mockClear();
         retryFn.mockRejectedValueOnce(new Error('network down'));
-        fireEvent.click(screen.getByRole('button', { name: 'Retry Failed Requests' }));
+        // Retrying from the still-open dialog must work.
+        fireEvent.click(confirm);
         await waitFor(() => expect(toastMocks.showError).toHaveBeenCalledWith('network down'));
         consoleError.mockRestore();
     });
