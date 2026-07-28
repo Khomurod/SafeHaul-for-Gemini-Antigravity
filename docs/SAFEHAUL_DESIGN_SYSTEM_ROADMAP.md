@@ -2031,16 +2031,18 @@ Status `Not started` means audited but not migrated.
 — 100% of the screen inventory.** The Super Admin row closed with the
 true-100% closeout campaign (see its completion log in section 6).
 
-> **IMPORTANT — 19/19 on this table is NOT the same as "the repository is
-> finished".** This table counts *screen/area rows*. The true-100% closeout
-> campaign audited the whole repository, not just these rows, and found real debt
-> inside rows this table already marked complete. All of it was fixed **except one
-> precisely enumerated item**, recorded in section 5.5 "Remaining active debt":
-> **six blocking `window.confirm` sites** in Campaigns, E-Docs and one
-> applications hook. Until those are closed, the honest repository-wide figure is
-> **not** 100%. Do not delete section 5.5 to make this number look better — the
-> three campaigns before this one each found a stale claim that overstated
-> progress, and this note exists to stop a fourth.
+> **Repository-wide 100% reached 2026-07-28** by the final-six-confirmations
+> campaign, which closed the last item section 5.5 had left open. This table counts
+> *screen/area rows*; the true-100% closeout before it audited the whole repository
+> and fixed everything except six blocking `window.confirm` guards, and that
+> campaign removed those — plus three bare `confirm(...)` calls and three live
+> `alert()` calls that the `window.confirm`-only scan had missed.
+>
+> The claim is now **machine-checked, not narrative**:
+> `src/tests/noBlockingBrowserDialogs.test.js` fails the build if any reachable
+> `confirm(` / `alert(` returns. Keep section 5.5 — it records what was found and
+> the approved exceptions that are *not* debt. Three campaigns in a row each found
+> a stale claim that overstated progress; the ratchet exists so a fourth cannot.
 
 > **Super Admin closeout — COMPLETE 2026-07-28.** Migrated across three passes:
 > the shell, navigation and all five dialogs; then seven views (`DashboardView`,
@@ -2168,29 +2170,21 @@ true-100% closeout campaign scanned **all** active production code, not just the
 19 screen rows, and everything it found was fixed **except the following**. This
 list is exhaustive as of the scan date; keep it that way.
 
-#### OPEN — six blocking `window.confirm` guards
+#### CLOSED 2026-07-28 — all blocking browser dialogs removed
 
-Each is a real, reachable destructive or costly confirmation still using the
-browser's blocking dialog instead of the shared accessible `Modal`. Every other
-`window.confirm` and `alert()` in active production code has been replaced. These
-six sit inside rows section 5.1 already marks **Complete**, and earlier campaigns
-recorded them as deliberately *preserved* behaviour — which is why they survived.
-That reasoning is no longer consistent with the rest of the repository:
+The six `window.confirm` guards recorded here are gone, **and so are three bare
+`confirm(...)` calls and three live `alert()` calls that the original
+`window.confirm`-only scan had missed.** See the final-six-confirmations completion
+log in section 6 for the full list and evidence.
 
-| Site | Guard |
-|---|---|
-| `campaigns/CampaignsDashboard.jsx:179` | Cancel a sending campaign |
-| `campaigns/CampaignsDashboard.jsx:202` | Delete a campaign |
-| `campaigns/components/DetailedReportModal.jsx:43` | Retry failed recipients (starts a new campaign) |
-| `company-admin/views/DocumentsManager.jsx:358` | Delete an e-doc template |
-| `signing/components/EnvelopeHistory.jsx:38` | Void a signing envelope |
-| `applications/hooks/useAppActions.js:108` | Remove an uploaded application file |
+A permanent ratchet now prevents regression:
+`src/tests/noBlockingBrowserDialogs.test.js` walks every non-test file under
+`src/`, strips comments and string literals, and fails on `confirm(` / `alert(`
+with or without a `window.` prefix. It is proven to catch a real call, not just
+pass vacuously. **This is what makes the repository-wide claim checkable rather
+than narrative** — the earlier scans missed the bare form three separate times.
 
-Why they were not done in this campaign: each needs its own `Modal`-based dialog
-plus contract tests, and `useAppActions` is a hook, so its guard has to be lifted
-into whichever component renders it — a genuine design decision, not a mechanical
-swap. Doing six of those without tests would breach this roadmap's own completion
-rules, so they are recorded rather than half-done. **Nothing else is open.**
+**Nothing is open.**
 
 #### Approved, evidenced exceptions (not debt)
 
@@ -6772,6 +6766,149 @@ regression. **Run local Playwright batches with `--workers=1`.**
   nothing in this campaign touches rules.
 - The Cloud Functions Jest suite was not run — no backend file changed.
 
+### Final-six-confirmations completion log (GO) — 2026-07-28
+
+Base: `main` / `origin/main` at `113a118fc9fc241975ce4a8bf660f394985bd572`
+(verified equal to local `main` before branching). Branch:
+`claude/final-six-confirmation-dialogs`.
+
+**This closes the last open item in section 5.5, so the repository-wide figure is
+now 100%.**
+
+#### CI regression repaired first
+
+PR #128 merged with a failing `frontend-quality` lane:
+`DriverProfileModal.behavior.test.jsx > leaves focus on a real element after a
+successful delete` — `document.activeElement` was `<body>`.
+
+Root cause was a real latent bug in the shared `Modal`, not a flaky test. Its
+cleanup restored focus **unconditionally**, including to a node that had already
+left the document. When a nested confirmation and the dialog that owns it unmount
+in the same commit, the inner dialog's restore target is a control *inside* the
+outer dialog. Focusing a detached node cannot succeed: depending on the DOM
+implementation it is either a silent no-op or it clears `activeElement` to
+`<body>`. That is why it passed locally and failed on the runner — the outcome
+depended on cleanup order and on happy-dom's detached-`focus()` behaviour, neither
+of which a component may rely on.
+
+`Modal` now skips a restore target that is not `isConnected`, which makes the
+result identical whichever order runs. Two new tests in `Modal.test.jsx` pin it:
+one asserts the detached target's `focus()` is **never called** (deterministic, and
+verified to fail without the fix), the other reproduces the dossier's shape and
+asserts focus lands on the original trigger.
+
+#### Shared architecture
+
+`src/shared/components/modals/ConfirmDialog.jsx` (new) — one business-neutral
+confirmation built on the shared `Modal`. Before it there were **eight**
+separately hand-written dialogs re-deriving the same medallion / heading /
+description / Cancel-Confirm structure, plus the blocking guards. It owns:
+`isOpen`, `title`, `description`, `children`, `tone`
+(`danger` | `warning` | `info`), `confirmLabel`, `cancelLabel`, `loading`,
+`error`, `onConfirm`, `onCancel`, `closeOnBackdrop`. It knows nothing about
+campaigns, templates, envelopes or files.
+
+Guarantees: initial focus on **Cancel** (the safe action); Escape and backdrop
+inert while `loading`; backdrop dismissal off by default; a **synchronous ref
+guard** on confirm so two activations in one render cannot both fire (visually
+disabling the button is not sufficient — `loading` only lands on the next render);
+`error` in a live region that leaves the dialog open for retry; long and untrusted
+names rendered as text with `overflow-wrap: anywhere`.
+
+It sits beside `Modal` rather than in `design-system/patterns` because the design
+system must not depend on `shared` — that is the inversion the migration is
+removing. Both move together later. **Gap recorded.**
+
+#### The six recorded flows
+
+| Flow | File | Preserved exactly |
+|---|---|---|
+| Cancel a sending campaign | `campaigns/CampaignsDashboard.jsx` | `cancelBulkSession`, `{ companyId, sessionId }`, idempotent cancel, record kept for reporting, `Campaign cancelled. No further messages will be sent.`, `Failed to cancel campaign: ` |
+| Delete a campaign or draft | `campaigns/CampaignsDashboard.jsx` | live-session backstop **and its wording**, `campaign_drafts/{id}` vs `bulk_sessions/{id}`, `Campaign draft deleted` / `Campaign record deleted`, `Failed to delete campaign: ` |
+| Retry failed recipients | `campaigns/components/DetailedReportModal.jsx` | `retryFailedAttempts`, `{ companyId, originalSessionId }`, failed-only + permanent-error semantics, `Retry session started with {targetCount} targets.`, `onClose()` only after success |
+| Delete an e-doc template | `company-admin/views/DocumentsManager.jsx` | template document path, `postSubmitTemplateIds` pruning, immediate `postApplicationTemplates` persistence, the stale-reference warning, `TemplatesPanel`'s frozen `handleDeleteTemplate(id)` callback shape |
+| Void a signing envelope | `signing/components/EnvelopeHistory.jsx` | `signing_requests/{id}`, `{ status: 'voided', voidedAt: serverTimestamp() }`, `voidingId` per-row busy state, `Document voided successfully.`, `Failed to void document.` |
+| Remove an uploaded application file | `applications/hooks/useAppActions.js` | Storage delete, `{ [fieldKey]: null }`, `File Deleted` activity log, `File removed` / `File deletion failed.`, `canEdit` and missing-path guards |
+
+**Stale-target safety.** Campaign delete chooses its collection from `activeTab`,
+and the envelope list is driven by a live `onSnapshot`. Both now capture the target
+**at open time**, so a tab switch or an incoming snapshot cannot retarget an open
+confirmation at a different document.
+
+#### The hook one, in detail
+
+`handleAdminFileDelete` had the confirmation *inside* the hook. Two problems, both
+fixed: a hook must not own a dialog, and **the guard was unreachable anyway** —
+`handleAdminFileDelete` is exported through `useApplicationDetails` and
+`useApplicationView`, but a repository-wide search found **no call site**. It was
+dead code in a live API, waiting to surprise whoever wired it up.
+
+The Firebase work stays in the hook. Confirmation ownership moved out through an
+**additive** API — `pendingFileRemoval`, `requestAdminFileDelete`,
+`confirmAdminFileDelete`, `cancelAdminFileDelete` — which holds the pending target
+as *state* (a hook's job) and never renders (not a hook's job).
+`handleAdminFileDelete` keeps its name and `(fieldKey, storagePath)` signature so
+the public contract is unchanged; it now returns a boolean, which is additive
+because it previously returned `undefined` in every branch, and which lets a
+failed removal keep the dialog open for retry. No consumer changed.
+
+#### Three bare `confirm(` and three `alert()` the original scan missed
+
+The mission scoped "six", derived from a `window.confirm` scan. Scanning for the
+**bare** form as well found more, all reachable:
+
+- `campaigns/components/CampaignDetails.jsx` — `confirm(...)` on retry **and** on
+  cancel. Both callables, payloads, toasts and `onClose()` timings unchanged.
+- `driver-app/components/application/UploadField.jsx` — `confirm(...)` on removing
+  an uploaded document, on the most mobile-heavy surface in the product.
+- `company-admin/hooks/useApplicationView.js` — `alert("PDF Generation failed.
+  Please try again.")` → the toast live region, wording verbatim.
+- `driver-app/.../steps/Step9_Consent.jsx` — `alert("Please draw your signature
+  first.")` → an announced inline `FieldMessage`, wording verbatim.
+- `shared/hooks/useBulkImport.js` — the `onError` default was `alert(message)`, and
+  **`AudienceBuilder` was the one consumer passing no handler**, so every CSV/Sheet
+  import failure there froze the tab. `AudienceBuilder` now passes the toast; both
+  hook defaults (`useBulkImport`, `useCompanyLeadUpload`) log instead of blocking
+  and are unreachable in the app.
+
+#### Verification
+
+- `npx vitest run` — **190 files, 2655 passed, 48 skipped, 0 failed** (2600 at this
+  branch's base; **+55**).
+- New/updated focused suites: `ConfirmDialog.test.jsx` (26),
+  `useAppActions.fileRemoval.test.jsx` (16), `Modal.test.jsx` (+2),
+  `noBlockingBrowserDialogs.test.js` (2), plus rewritten confirmation coverage in
+  `CampaignsDashboard`, `CampaignDetails`, `DetailedReportModal`,
+  `EnvelopeHistory`, `UploadField`, `AudienceBuilder`, `useBulkImport` and
+  `useCompanyLeadUpload`. Every one of those now also asserts the blocking API was
+  **not** called.
+- `npx eslint .` — 0 errors (105 pre-existing warnings). `tsc --noEmit` clean.
+  `npm run build` succeeds. `check-callable-contract` 56 callables.
+  `check:function-exports` 101/101. `git diff --check` clean.
+- **Functions Jest:** `59 suites, 354 tests passed` (no backend file changed).
+- **Chromium E2E:** `confirmation-dialogs.spec.cjs` (new) **10 passed**; regression
+  batch (`lead-intake`, `campaigns-dashboard`, `campaign-details`,
+  `campaign-report-modal`, `edoc-documents-tabs-and-templates`,
+  `edoc-envelope-history`) **50 passed**. 0 failed, `--workers=1`.
+- **Mobile Chrome E2E:** `confirmation-dialogs` + `public-application`
+  **13 passed**.
+- **Real-browser axe** on the open dialog: zero serious/critical.
+- **Responsive:** 1440 / 1024 / 412 px with the dialog open, no document overflow;
+  mobile device lane verified.
+
+#### Honest gaps
+
+- The five operator-side confirmations (campaign cancel/delete, retry, template
+  delete, envelope void) are **not** driven in a real browser: they need seeded
+  Firestore data that is unreachable under `VITE_E2E_TEST_MODE=1`. Their contracts
+  are covered by focused unit suites that can supply data deterministically, and
+  the *dialog* behaviour they all share is verified in a real browser through the
+  driver-application flow. This is the same limitation already recorded for the PEV
+  tab.
+- Firefox / WebKit / mobile-Safari lanes not run (CI does not run them either).
+- `npm run test:rules:stress` not run — needs the Firebase emulators, and nothing
+  here touches rules.
+
 ---
 
 ## 7. Decisions and blockers
@@ -6793,13 +6930,20 @@ regression. **Run local Playwright batches with `--workers=1`.**
   Carried forward from 2026-07-28: `StatsBackfillPanel`'s All-Companies help text
   reads "Only run after verifying Ray Star LLC results." Still preserved verbatim;
   the repository establishes no generic replacement.
-- `[!]` **Decide whether the six remaining `window.confirm` guards should become
-  shared dialogs.** Recorded 2026-07-28, enumerated in section 5.5. Every other
-  blocking browser dialog in active production code is gone. These six were
-  previously recorded as deliberately preserved behaviour, which is no longer
-  consistent. `useAppActions.js` is the only one that is not a mechanical swap: it
-  is a hook, so its guard must be lifted into a rendering component, which is a
-  design decision about where that dialog lives.
+- `[x]` **RESOLVED 2026-07-28 — the six remaining `window.confirm` guards are now
+  shared dialogs.** All six were replaced with `ConfirmDialog`, along with three
+  bare `confirm(...)` calls and three `alert()` calls the original scan had missed.
+  `useAppActions` was resolved by moving confirmation *ownership* out of the hook
+  through an additive request/confirm/cancel API while the Firebase work stayed
+  put — and the guard turned out to be unreachable dead code, since nothing calls
+  `handleAdminFileDelete`. A ratchet test now enforces the end state. See the
+  final-six-confirmations completion log.
+- `[!]` **Move `Modal` and `ConfirmDialog` into `design-system/patterns`.**
+  Recorded 2026-07-28. `ConfirmDialog` belongs in `patterns/` per the
+  design-system README, but it composes `Modal`, which still lives in
+  `shared/components/modals`, and the design system must not depend on `shared`.
+  Both should move together; that is a dependency-direction change worth doing
+  deliberately rather than as a side effect of this campaign.
 - `[!]` **Promote a `Switch` primitive to the design system.** Carried forward:
   `FeaturesView` uses a native `Checkbox` because there is no approved ARIA switch,
   while Company Settings has a feature-owned `ToggleSwitch` that cannot be imported
