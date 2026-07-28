@@ -1,8 +1,7 @@
 import React, { useId, useState, useEffect, useMemo } from 'react';
 import { loadApplications } from '@features/applications/services/applicationService';
-import { getStatusColor } from '@shared/utils/helpers';
 import { X, Search, FileText, Calendar, User, AlertCircle } from 'lucide-react';
-import { Button, IconButton, Input, StatusMedallion } from '@/design-system/components';
+import { Badge, Button, IconButton, Input, StatusMedallion } from '@/design-system/components';
 import { SafeHaulLoader } from '@shared/components/SafeHaulLoader';
 import { Modal } from '@shared/components/modals/Modal';
 
@@ -28,15 +27,33 @@ import { Modal } from '@shared/components/modals/Modal';
  *    now).
  *  - **Status was communicated by colour alone.** The old markup passed the
  *    status through `getStatusColor(...).replace('bg-', ...).replace('text-', ...)`,
- *    a brittle string rewrite that produced a colour-only pill. The status text
- *    is the label now, and it keeps its `getStatusColor` tone alongside a border
- *    so it does not depend on hue.
+ *    a brittle string rewrite that produced a colour-only pill built from legacy
+ *    palette classes. Status is now an approved `Badge` whose text carries the
+ *    meaning, with the domain→tone mapping owned by this feature.
  *
  * `DataTable` is deliberately not used: this is a display-only table nested
  * inside a dialog with its own scroll container and sticky header, and the
  * approved `DataTable` contract has not yet been proven inside a dialog. Recorded
  * in the roadmap's raw-table inventory rather than forcing the reuse.
  */
+/**
+ * Domain status → semantic `Badge` tone.
+ *
+ * This mapping is feature-owned on purpose: the design system must not know what
+ * "Background Check" means, and the feature must not invent colours. It replaces
+ * `getStatusColor`, which returned legacy palette classes (`bg-green-100`,
+ * `text-red-800`, ...) — arbitrary colours that have no business inside a
+ * surface declared migrated. The keys are the exact frozen status strings.
+ */
+const STATUS_TONES = {
+  'Approved': 'success',
+  'Rejected': 'danger',
+  'Background Check': 'accent',
+  'Awaiting Documents': 'warning',
+  'Pending Review': 'info',
+  'New Application': 'neutral',
+};
+
 export function ViewCompanyAppsModal({ companyId, companyName, onClose }) {
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState([]);
@@ -205,9 +222,9 @@ export function ViewCompanyAppsModal({ companyId, companyName, onClose }) {
                                 <div className="text-ds-xs text-ds-content-muted">{getDriverPhone(app)}</div>
                             </td>
                             <td className="px-ds-6 py-ds-4 text-center">
-                                <span className={`inline-flex rounded-full border border-current px-2.5 py-1 text-ds-xs font-bold ${getStatusColor(app.status || 'New Application')}`}>
+                                <Badge tone={STATUS_TONES[app.status] || 'neutral'}>
                                     {app.status || 'New Application'}
-                                </span>
+                                </Badge>
                             </td>
                             <td className="px-ds-6 py-ds-4 text-right text-ds-sm text-ds-content-muted">
                                 <div className="flex items-center justify-end gap-1">
