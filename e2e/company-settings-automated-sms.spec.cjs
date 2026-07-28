@@ -3,12 +3,13 @@ const AxeBuilder = require('@axe-core/playwright').default;
 
 const SETTINGS_URL = '/company/settings?e2eAuth=company_admin';
 
-// The tab gates its whole render behind a Firestore read. In the offline E2E
-// environment (placeholder project, no emulator) that read rejects with
-// `unavailable` only after the SDK's offline-detection delay, which then clears
-// the loading state and renders the form. That settle can take ~20s, so the
-// wait for the loaded form is intentionally generous. This gating is the
-// existing, preserved behavior — not introduced by the design-system migration.
+// The tab gates its whole render behind a Firestore read. Under
+// `VITE_E2E_TEST_MODE=1` the SDK is pointed at a closed local port, so that read
+// now fails immediately and the form renders promptly — previously it depended
+// on the SDK's offline-detection delay (~20s) and the timeout below had to be
+// generous to absorb it. The generous timeout is kept as headroom; the gating
+// itself is existing, preserved behavior, not introduced by the design-system
+// migration.
 const FORM_TIMEOUT = 90_000;
 
 async function selectAutomatedSms(page) {
@@ -26,10 +27,21 @@ async function openLoadedForm(page) {
 test.describe('Company Settings Automated SMS compatibility slice', () => {
   test.describe.configure({ timeout: 120_000 });
 
-  test('announces an accessible loading status while templates load', async ({ page }) => {
-    await selectAutomatedSms(page);
-    await expect(page.getByRole('status')).toContainText('Loading');
-  });
+  // The "announces an accessible loading status while templates load" check that
+  // used to live here has moved to `AutomatedSmsTab.test.jsx`.
+  //
+  // A loading state is transient by definition, and this spec could only observe
+  // it because the offline Firestore SDK happened to take ~20s to give up — an
+  // accident of network timing, not a property of the component. It was already
+  // recorded as a known flake. Once E2E Firestore was made to fail immediately
+  // (`connectFirestoreEmulator` at a closed port, so "unreachable" is true by
+  // construction rather than by luck) the state resolved too fast to catch and
+  // the check failed deterministically.
+  //
+  // The unit test holds the read promise open and asserts both that `role="status"`
+  // announces "Loading" and that the announcement is removed once the read settles
+  // — strictly more than this ever verified, with no race. Deleted rather than
+  // given a longer timeout: no timeout makes an unobservable state observable.
 
   test('shows three labelled templates and the save action on desktop', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name.startsWith('mobile'), 'Desktop presentation check.');
