@@ -41,6 +41,7 @@ export function NumberAssignmentManager({ companyId }) {
     const {
         loading,
         configDoc,
+        configError,
         users,
         saving,
         verifyingLine,
@@ -67,6 +68,26 @@ export function NumberAssignmentManager({ companyId }) {
             <p role="status" data-testid="number-assignment-manager" className="p-ds-8 text-center text-ds-sm text-ds-content-muted">
                 Loading inventory...
             </p>
+        );
+    }
+
+    // Distinct from the "not active" branch below: that one means Firestore answered
+    // and there is no `sms_provider` doc; this one means the listen itself failed, so
+    // we genuinely do not know the company's SMS state and must not imply it is off.
+    if (configError) {
+        return (
+            <Card
+                data-testid="number-assignment-manager"
+                padding="lg"
+                className="border-ds-status-danger-border bg-ds-status-danger-bg text-center"
+            >
+                <StatusMedallion tone="danger" className="mx-auto mb-ds-2"><AlertCircle /></StatusMedallion>
+                <h3 className="font-bold text-ds-status-danger-fg">Couldn't Load SMS Settings</h3>
+                <p role="alert" className="mt-ds-1 text-ds-sm text-ds-status-danger-fg">
+                    We couldn't reach your SMS configuration. Check your connection and try again, or
+                    contact a Super Admin if this keeps happening.
+                </p>
+            </Card>
         );
     }
 
