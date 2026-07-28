@@ -14,11 +14,19 @@ const AxeBuilder = require('@axe-core/playwright').default;
 
 const SETTINGS_URL = '/company/settings?e2eAuth=company_admin';
 
+// The tab gates its render behind a Firestore read that, in the offline E2E
+// environment (placeholder project, no emulator), only settles once the SDK's
+// offline-detection delay elapses. company-settings-automated-sms.spec.cjs
+// documents that same gate taking up to ~90s under CI load; a 20s wait here
+// was too tight for the shared CI runner (passed locally, failed consistently
+// in CI) and is not a real product regression.
+const NOT_ACTIVE_TIMEOUT = 90_000;
+
 async function openSmsTab(page) {
   await page.goto(SETTINGS_URL);
   await expect(page.getByRole('button', { name: 'SMS Settings' })).toBeVisible();
   await page.getByRole('button', { name: 'SMS Settings' }).click();
-  await expect(page.getByText('SMS Integration Not Active')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('SMS Integration Not Active')).toBeVisible({ timeout: NOT_ACTIVE_TIMEOUT });
 }
 
 async function expectNoHorizontalOverflow(page, label) {
@@ -30,7 +38,7 @@ async function expectNoHorizontalOverflow(page, label) {
 }
 
 test.describe('Company Settings SMS Settings — Number Assignments', () => {
-  test.describe.configure({ timeout: 90_000 });
+  test.describe.configure({ timeout: 180_000 });
 
   test('shows the frozen not-active message with an accessible status medallion', async ({ page }) => {
     await openSmsTab(page);
