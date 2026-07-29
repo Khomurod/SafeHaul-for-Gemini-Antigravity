@@ -1,5 +1,5 @@
 import React, { useId, useRef } from 'react';
-import { X, Mail, MessageSquare, Copy, Send, Check } from 'lucide-react';
+import { X, Mail, MessageSquare, Copy, Send, Check, Sparkles } from 'lucide-react';
 import { Button, IconButton } from '@/design-system/components';
 import { FormField, Input } from '@/design-system/components';
 import { Stack } from '@/design-system/layouts';
@@ -59,8 +59,11 @@ export function EnvelopeSidebar({
     setSelectedFieldId,
     removeField,
     getIcon,
+    onOpenAiAssistant,
+    aiAssistantBusy = false,
 }) {
     const rawId = useId().replace(/:/g, '');
+    const aiHelpId = `envelope-ai-help-${rawId}`;
     const recipientHeadingId = `envelope-recipient-heading-${rawId}`;
     const deliveryLabelId = `envelope-delivery-label-${rawId}`;
     const paletteHeadingId = `envelope-palette-heading-${rawId}`;
@@ -147,6 +150,30 @@ export function EnvelopeSidebar({
                 >
                     {creatorMode === 'request' ? 'Fields' : 'Setup Fields'}
                 </h3>
+                {/* AI Field Assistant entry point. Always rendered so the capability
+                    is discoverable, but disabled until a PDF is loaded — there is
+                    nothing to scan before then, and the helper text says so. */}
+                {onOpenAiAssistant && (
+                    <div className="mb-ds-3 rounded-ds-lg border border-ds-status-accent-border bg-ds-status-accent-bg p-ds-3">
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            fullWidth
+                            disabled={!file || aiAssistantBusy}
+                            aria-describedby={aiHelpId}
+                            onClick={onOpenAiAssistant}
+                        >
+                            <Sparkles size={14} aria-hidden="true" />
+                            Auto-place fields
+                        </Button>
+                        <p id={aiHelpId} className="mt-ds-2 text-ds-xs leading-snug text-ds-content-secondary">
+                            {file
+                                ? 'AI will scan your PDF and suggest signature, initials, dates, checkboxes and text fields. Review all suggestions before applying them.'
+                                : 'Upload a PDF to use the AI Field Assistant. AI will scan your PDF and suggest signature, initials, dates, checkboxes and text fields. Review all suggestions before applying them.'}
+                        </p>
+                    </div>
+                )}
+
                 {file && (
                     <p className="mb-ds-3 text-ds-xs leading-snug text-ds-content-secondary">
                         Duplicate a placed field: select it on the PDF, then{' '}

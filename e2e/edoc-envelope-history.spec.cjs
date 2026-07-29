@@ -19,7 +19,9 @@ const URL = '/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock';
 
 async function openHistory(page) {
   await page.goto(URL);
-  await expect(page.getByText(/Documents Center/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { level: 1, name: 'Documents' })).toBeVisible({ timeout: 20_000 });
+  // The workspace opens on Overview; the history table lives in Sent Documents.
+  await page.getByRole('tab', { name: /^Sent Documents/ }).click();
   await expect(page.getByRole('region', { name: /^Document history\./ })).toBeVisible({
     timeout: 20_000,
   });

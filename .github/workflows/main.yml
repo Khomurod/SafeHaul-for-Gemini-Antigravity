@@ -365,6 +365,7 @@ jobs:
           printf '%s\n' \
             "GROQ_API_KEY=$GROQ_API_KEY" \
             "GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct" \
+            "GROQ_DOCUMENT_VISION_MODEL=meta-llama/llama-4-maverick-17b-128e-instruct" \
             "PROCESS_BULK_BATCH_URL=$PROCESS_BULK_BATCH_URL" \
             "BULK_WORKER_SECRET=$BULK_WORKER_SECRET" \
             > functions/.env
@@ -389,7 +390,7 @@ jobs:
           GITHUB_PUSH_BEFORE: ${{ github.event.before }}
           GITHUB_SHA: ${{ github.sha }}
           DEPLOY_FUNCTIONS_SLEEP_SEC: '0'
-          DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: parseCdlWithGroq,initBulkSession,processBulkBatch
+          DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: parseCdlWithGroq,analyzeEdocFieldPlacement,initBulkSession,processBulkBatch
         run: |
           max_attempts=3
           attempt=1

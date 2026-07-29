@@ -7,6 +7,7 @@
 // used. Field geometry, drag/resize, zoom and the PDF workbench itself are out
 // of scope for this slice and are not exercised.
 const { test, expect } = require('@playwright/test');
+const { openCreator } = require('./helpers/edocHelpers.cjs');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { pdfFile } = require('./helpers/wizardHelpers.cjs');
 
@@ -26,9 +27,7 @@ const DESKTOP_ONLY = 'Creator rail is clipped below ~600px — open E-Docs respo
 const rail = (page) => page.locator('.overflow-y-auto.border-l');
 
 async function openPropertiesFor(page, paletteField) {
-  await page.goto(URL);
-  await expect(page.getByText(/Documents Center/i)).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: /Send One-off/ }).click();
+  await openCreator(page, 'request', URL);
   await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
 
   // Artificial file only — the palette unlocks as soon as a PDF is attached.

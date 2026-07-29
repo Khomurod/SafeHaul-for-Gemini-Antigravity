@@ -3,6 +3,7 @@
 // below ~600px. Uses the e2eEdoc mock and an inline artificial PDF; nothing is
 // sent and no real document or recipient data is involved.
 const { test, expect } = require('@playwright/test');
+const { openCreator } = require('./helpers/edocHelpers.cjs');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 const URL = '/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock';
@@ -19,9 +20,7 @@ function pdfFile(name) {
 }
 
 async function openWorkbench(page) {
-  await page.goto(URL);
-  await expect(page.getByText(/Documents Center/i)).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: /Send One-off/ }).click();
+  await openCreator(page, 'request', URL);
   await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
   await page.setInputFiles('#pdf-upload', pdfFile('artificial-agreement.pdf'));
   await expect(page.getByRole('group', { name: 'PDF zoom' })).toBeVisible({ timeout: 20_000 });

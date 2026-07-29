@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { db } from '@lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { FileText, CheckCircle, Clock, Download, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Edit3 } from 'lucide-react';
+import { FileText, CheckCircle, Clock, Download, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Edit3, Info } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
 import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { Badge, Button, DataTable, defineTableColumns } from '@/design-system/components';
+import { useSigningRequests } from '@features/signing/hooks/useSigningRequests';
+import { SentDocumentDetailsDialog } from '@features/company-admin/components/documents/SentDocumentDetailsDialog';
 
 /**
  * Feature-owned domain → visual mapping for a signing-request status.
@@ -26,15 +28,37 @@ const STATUS_PRESENTATION = {
     processing: { tone: 'warning', label: 'Processing', icon: Loader2, spin: true },
 };
 
-export default function EnvelopeHistory({ companyId, onCorrect }) {
-    const [docs, setDocs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState(null);
+/**
+ * Company-side sent-documents table.
+ *
+ * The live subscription is unchanged — it now lives in `useSigningRequests`,
+ * which this component uses when no `documents` prop is supplied. The Documents
+ * workspace passes its already-filtered documents in instead, so the workspace
+ * and this table never open two listeners on the same collection.
+ */
+export default function EnvelopeHistory({
+    companyId,
+    onCorrect,
+    documents,
+    isLoading,
+    loadError: loadErrorProp,
+    onRetry,
+    emptyState,
+}) {
     const [copyingId, setCopyingId] = useState(null);
     const [voidingId, setVoidingId] = useState(null);
     // Replaces the blocking `window.confirm` on the destructive void.
     const [pendingVoid, setPendingVoid] = useState(null);
+    const [detailsDocument, setDetailsDocument] = useState(null);
     const { showSuccess, showError } = useToast();
+
+    // Only subscribes when the parent is not already supplying the data.
+    const ownSubscription = useSigningRequests(documents ? null : companyId);
+
+    const docs = documents ?? ownSubscription.documents;
+    const loading = documents ? Boolean(isLoading) : ownSubscription.isLoading;
+    const loadError = documents ? loadErrorProp : ownSubscription.loadError;
+    const retry = documents ? onRetry : ownSubscription.retry;
 
     // PHASE 4: Void a signing request
     /**
@@ -86,29 +110,6 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
             setCopyingId(null);
         }
     };
-
-    useEffect(() => {
-        if (!companyId) return;
-        setLoading(true);
-        // MED-1 FIX: Use onSnapshot for real-time status updates
-        const q = query(
-            collection(db, 'companies', companyId, 'signing_requests'),
-            orderBy('createdAt', 'desc')
-        );
-        const unsub = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setDocs(data);
-            setLoadError(null);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error loading history:", error);
-            // Surface the failure visibly instead of showing an empty history.
-            // The subscription itself is unchanged; only the rendered state is.
-            setLoadError('Could not load document history. Please try again.');
-            setLoading(false);
-        });
-        return () => unsub();
-    }, [companyId]);
 
     // Secure download via Cloud Function signed URL (bypasses Storage rules)
     const handleDownload = async (storagePath) => {
@@ -183,28 +184,48 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
         </div>
     );
 
+    const detailsButton = (docItem) => (
+        <Button
+            variant="secondary"
+            size="sm"
+            aria-label={`Details for ${docItem.title || 'Untitled'}`}
+            title="Open document details"
+            onClick={() => setDetailsDocument(docItem)}
+        >
+            <Info size={12} aria-hidden="true" /> Details
+        </Button>
+    );
+
     const renderActions = (docItem) => {
         const title = docItem.title || 'Untitled';
 
         if (docItem.status === 'signed') {
             return (
-                <Button
-                    variant="secondary"
-                    size="sm"
-                    aria-label={`Download ${title}`}
-                    onClick={() => handleDownload(docItem.signedPdfUrl || docItem.storagePath)}
-                >
-                    <Download size={14} aria-hidden="true" /> Download
-                </Button>
+                <div className="flex flex-wrap items-center justify-end gap-ds-2">
+                    {detailsButton(docItem)}
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        aria-label={`Download ${title}`}
+                        onClick={() => handleDownload(docItem.signedPdfUrl || docItem.storagePath)}
+                    >
+                        <Download size={14} aria-hidden="true" /> Download
+                    </Button>
+                </div>
             );
         }
 
         if (docItem.status === 'voided') {
-            return <span className="text-ds-xs italic text-ds-content-muted">No actions</span>;
+            return (
+                <div className="flex flex-wrap items-center justify-end gap-ds-2">
+                    {detailsButton(docItem)}
+                </div>
+            );
         }
 
         return (
             <div className="flex flex-wrap items-center justify-end gap-ds-2">
+                {detailsButton(docItem)}
                 <Button
                     variant="secondary"
                     size="sm"
@@ -307,9 +328,24 @@ export default function EnvelopeHistory({ companyId, onCorrect }) {
                 columns={columns}
                 isLoading={loading}
                 loadingLabel="Loading document history"
-                error={loadError ? { message: loadError } : undefined}
-                empty={{ title: 'No documents sent yet.' }}
+                error={loadError ? { message: loadError, onRetry: retry } : undefined}
+                empty={emptyState || { title: 'No documents sent yet.' }}
                 getRowLabel={(docItem) => docItem.title || 'Untitled'}
+            />
+
+            {/*
+              Row-level details. Read-only summary plus the same actions the row
+              offers — the signing token is never rendered, only copied to the
+              clipboard through the authenticated callable.
+            */}
+            <SentDocumentDetailsDialog
+                document={detailsDocument}
+                copying={Boolean(detailsDocument) && copyingId === detailsDocument.id}
+                onClose={() => setDetailsDocument(null)}
+                onCopyLink={handleCopyLink}
+                onCorrect={onCorrect ? (docItem) => { setDetailsDocument(null); onCorrect(docItem); } : undefined}
+                onVoid={(docItem) => { setDetailsDocument(null); requestVoid(docItem); }}
+                onDownload={(path) => { setDetailsDocument(null); handleDownload(path); }}
             />
 
             {/*

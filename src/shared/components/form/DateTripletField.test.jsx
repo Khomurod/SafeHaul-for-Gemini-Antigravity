@@ -1,6 +1,6 @@
 // Focused coverage for the shared DateTripletField. The date logic is the
 // contract seven consumers depend on (six driver-application steps plus
-// SendTemplateModal), so every emit, clamp and cap rule is pinned here. All
+// SendTemplateWizard), so every emit, clamp and cap rule is pinned here. All
 // fixtures are artificial dates.
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
