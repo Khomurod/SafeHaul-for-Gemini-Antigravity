@@ -74,54 +74,35 @@ beforeEach(() => {
     fs.getDoc.mockResolvedValue({ exists: () => false });
 });
 
-describe('EnvelopeCreator shell — heading matrix', () => {
+describe('EnvelopeCreator shell — mode and title', () => {
+    // The old bare heading is now the top bar: an editable document title plus
+    // a badge stating the FIXED mode. The mode still cannot change here.
     it.each([
-        ['New Envelope', {}],
-        ['Create Template', { initialMode: 'template' }],
+        ['One-off send', {}],
+        ['Reusable template', { initialMode: 'template' }],
         ['Correct Document', { editRequestId: 'req-1' }],
         ['Edit Template', { editTemplateId: 'tpl-1' }],
-    ])('renders the %s heading', async (heading, overrides) => {
+    ])('states the %s mode', async (label, overrides) => {
         setup(overrides);
-        expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+        expect(await screen.findByText(label)).toBeInTheDocument();
     });
-});
 
-describe('EnvelopeCreator shell — fixed creator mode', () => {
-    // The One-off Send / Save Template toggle is gone. The mode is chosen in the
-    // Documents workspace before the creator opens and cannot change here, so a
-    // half-built envelope can no longer silently become a template (or vice
-    // versa). These tests are the guardrail against the toggle coming back.
     it('never offers a control that switches the creator mode', async () => {
         setup();
-        await screen.findByRole('heading', { name: 'New Envelope' });
+        await screen.findByText('One-off send');
         expect(screen.queryByRole('group', { name: 'Creator mode' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'One-off Send' })).not.toBeInTheDocument();
     });
 
-    it.each([
-        ['One-off send', {}],
-        ['Reusable template', { initialMode: 'template' }],
-    ])('states the fixed mode as %s', async (label, overrides) => {
-        setup(overrides);
-        await screen.findByRole('heading');
-        expect(screen.getByText(label)).toBeInTheDocument();
-    });
-
-    it('states no mode when correcting a request or editing a template', async () => {
-        const { unmount } = setup({ editRequestId: 'req-1' });
-        await screen.findByRole('heading', { name: 'Correct Document' });
-        expect(screen.queryByText('One-off send')).not.toBeInTheDocument();
-        unmount();
-
-        setup({ editTemplateId: 'tpl-1' });
-        await screen.findByRole('heading', { name: 'Edit Template' });
-        expect(screen.queryByText('Reusable template')).not.toBeInTheDocument();
+    it('exposes the document title for editing', async () => {
+        setup();
+        expect(await screen.findByLabelText('Document title')).toBeInTheDocument();
     });
 });
 
 describe('EnvelopeCreator shell — primary actions', () => {
     const findSaveAction = async (label) => {
-        await screen.findByRole('heading');
+        await screen.findByLabelText('Document title');
         const action = screen.getByRole('button', { name: label });
         expect(action).toBeDefined();
         return action;
@@ -137,9 +118,9 @@ describe('EnvelopeCreator shell — primary actions', () => {
         expect(await findSaveAction(label)).toBeInTheDocument();
     });
 
-    it('closes through the exact onClose callback', () => {
+    it('leaves immediately through the exact onClose callback when nothing is unsaved', () => {
         const { props } = setup();
-        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Back to Documents' }));
         expect(props.onClose).toHaveBeenCalledTimes(1);
     });
 
@@ -175,7 +156,7 @@ describe('EnvelopeCreator shell — layout and child contracts', () => {
         // it is a full-width sheet below `md` and the original `md:w-80` column
         // above it. The behaviour asserted here is unchanged.
         const { container } = setup();
-        const collapsed = container.querySelector('.overflow-y-auto');
+        const collapsed = container.querySelector('.overflow-y-auto.bg-ds-surface');
         expect(collapsed.className).toContain('md:w-0');
         expect(collapsed.className).toContain('hidden');
         expect(screen.queryByTestId('properties-panel')).not.toBeInTheDocument();
@@ -198,7 +179,7 @@ describe('EnvelopeCreator shell — layout and child contracts', () => {
 
         fireEvent.click(close);
         expect(screen.queryByTestId('properties-panel')).not.toBeInTheDocument();
-        expect(container.querySelector('.overflow-y-auto').className).toContain('hidden');
+        expect(container.querySelector('.overflow-y-auto.bg-ds-surface').className).toContain('hidden');
     });
 
     it('passes the frozen prop sets to the sidebar and workbench', () => {

@@ -6,6 +6,7 @@ import { axe } from 'vitest-axe';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-pdf', () => ({
+    Document: ({ children }) => <div data-testid="pdf-document">{children}</div>,
     Page: ({ pageNumber, width }) => <div data-testid="pdf-thumb" data-page={pageNumber} data-width={width} />,
 }));
 
@@ -254,6 +255,7 @@ describe('EditorCanvasToolbar', () => {
 describe('PageThumbnailRail', () => {
     const renderRail = (overrides = {}) => {
         const props = {
+            file: { name: 'artificial.pdf' },
             numPages: 3,
             activePage: 2,
             onSelectPage: vi.fn(),
@@ -303,9 +305,9 @@ describe('PageThumbnailRail', () => {
         }
     });
 
-    it('renders nothing until the document has pages', () => {
-        const { container } = renderRail({ numPages: 0 });
-        expect(container).toBeEmptyDOMElement();
+    it('renders nothing until there is a document with pages', () => {
+        expect(renderRail({ numPages: 0 }).container).toBeEmptyDOMElement();
+        expect(renderRail({ file: null }).container).toBeEmptyDOMElement();
     });
 
     it('rasterises only a handful of a long document, not every page', () => {

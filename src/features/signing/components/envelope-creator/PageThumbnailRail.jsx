@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Page } from 'react-pdf';
+import { Document, Page } from 'react-pdf';
 import { Sparkles } from 'lucide-react';
 
 /** Rendered width of a thumbnail, in px. Small on purpose — see below. */
@@ -18,6 +18,7 @@ const THUMBNAIL_WIDTH = 96;
  * page is marked with `aria-current` — never by the highlight alone.
  */
 export function PageThumbnailRail({
+    file,
     numPages = 0,
     activePage = 1,
     onSelectPage,
@@ -80,7 +81,7 @@ export function PageThumbnailRail({
         if (node?.scrollIntoView) node.scrollIntoView({ block: 'nearest' });
     }, [activePage]);
 
-    if (total === 0) return null;
+    if (total === 0 || !file) return null;
 
     return (
         <nav
@@ -91,6 +92,9 @@ export function PageThumbnailRail({
             <h2 id={headingId} className="mb-ds-2 px-ds-1 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">
                 Pages
             </h2>
+            {/* The rail owns its own Document: react-pdf's `Page` needs one in
+                context, and the canvas's Document is a separate subtree. */}
+            <Document file={file} loading="" error="" noData="">
             <ul className="flex flex-col gap-ds-2">
                 {Array.from({ length: total }, (_, index) => index + 1).map((page) => {
                     const isCurrent = page === activePage;
@@ -156,6 +160,7 @@ export function PageThumbnailRail({
                     );
                 })}
             </ul>
+            </Document>
         </nav>
     );
 }
