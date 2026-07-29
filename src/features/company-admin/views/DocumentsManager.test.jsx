@@ -147,6 +147,14 @@ describe('DocumentsManager header', () => {
         expect(navigateMock).toHaveBeenCalledWith('/company/dashboard');
     });
 
+    it('outdents the back control by its own padding so the label aligns with the heading', () => {
+        renderManager();
+        // -ml-ds-3 cancels the sm button's ds-space-3 inline padding: the
+        // visible arrow/label lines up with the Documents heading while the
+        // padded hit area and focus ring keep their full size.
+        expect(screen.getByRole('button', { name: 'Back to Dashboard' })).toHaveClass('-ml-ds-3', 'self-start');
+    });
+
     it('sends Manage Templates to the Templates view without opening the creator', () => {
         renderManager();
         fireEvent.click(screen.getByRole('button', { name: 'Manage Templates' }));
