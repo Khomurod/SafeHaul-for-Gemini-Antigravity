@@ -69,6 +69,26 @@ vi.mock('@features/signing/utils/pdfFieldInspector', async (importOriginal) => (
 }));
 // The PDF canvas itself is out of scope here — recording its props proves the
 // suggestion layer receives exactly what the review rail is showing.
+// The page navigator owns its own react-pdf `Document`, which is out of scope
+// here for the same reason the workbench is stubbed: this suite is about the
+// creator's behaviour, not PDF rendering. It also keeps pdf.js — which needs
+// `Promise.withResolvers` — out of a Node 20 test run.
+vi.mock('./components/envelope-creator/PageThumbnailRail', () => ({
+    PageThumbnailRail: ({ numPages = 0, activePage, onSelectPage }) => (
+        <nav aria-label="Pages">
+            {Array.from({ length: numPages }, (_, index) => index + 1).map((page) => (
+                <button
+                    key={page}
+                    type="button"
+                    aria-current={page === activePage ? 'page' : undefined}
+                    onClick={() => onSelectPage(page)}
+                >
+                    {`Page ${page}`}
+                </button>
+            ))}
+        </nav>
+    ),
+}));
 vi.mock('./components/envelope-creator/PdfFieldWorkbench', () => ({
     PdfFieldWorkbench: (props) => {
         workbenchProps.push(props);
