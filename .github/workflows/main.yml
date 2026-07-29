@@ -103,6 +103,64 @@ jobs:
         # Exclude the @a11y axe lane here; it runs in the non-blocking e2e-a11y job.
         run: npm run test:e2e -- --project=chromium --grep-invert "@a11y"
 
+  storybook-build:
+    name: Build the design-system catalog
+    runs-on: ubuntu-latest
+    # The Storybook catalog documents the design system and business-neutral page
+    # patterns only. It imports no Firebase, no application context and no domain
+    # services, and every value it renders comes from hand-written local fixtures.
+    #
+    # So this job is deliberately given NO credentials: the workflow-level VITE_*
+    # secrets are blanked below rather than inherited. That is the guarantee, not
+    # a precaution — if this build ever starts needing a secret, something has
+    # been imported into the catalog that does not belong there, and this job
+    # failing is the correct outcome.
+    env:
+      VITE_FIREBASE_API_KEY: ''
+      VITE_FIREBASE_AUTH_DOMAIN: ''
+      VITE_FIREBASE_PROJECT_ID: ''
+      VITE_FIREBASE_STORAGE_BUCKET: ''
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ''
+      VITE_FIREBASE_APP_ID: ''
+      VITE_FACEBOOK_APP_ID: ''
+      VITE_SENTRY_DSN: ''
+      VITE_SUPER_ADMIN_EMAIL: ''
+      VITE_DRIVER_APP_URL: ''
+      VITE_SOCRATA_APP_TOKEN: ''
+      PROCESS_BULK_BATCH_URL: ''
+      BULK_WORKER_SECRET: ''
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      # `npm ci` (not `npm install`) so the catalog is built from the committed
+      # lockfile and cannot drift from what was reviewed.
+      - name: Install Dependencies
+        run: npm ci
+
+      # `storybook build` bundles stories but does not execute them, so a story
+      # that throws at render would still produce a green build. This step renders
+      # every story and runs axe over it, and guards against the story glob
+      # silently resolving to nothing.
+      - name: Story render + accessibility checks
+        run: npm run test:stories
+
+      - name: Build Storybook
+        run: npm run build-storybook
+
+      - name: Upload the static catalog
+        uses: actions/upload-artifact@v4
+        with:
+          name: storybook-static
+          path: storybook-static
+          retention-days: 14
+          if-no-files-found: error
+
   e2e-a11y:
     runs-on: ubuntu-latest
     # E3: automated accessibility gate (@axe-core/playwright) on the mobile-critical
@@ -209,6 +267,7 @@ jobs:
       - test-functions
       - frontend-build
       - frontend-quality
+      - storybook-build
       - callable-contract
       - rules-emulator
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
@@ -299,6 +358,7 @@ jobs:
       - test-functions
       - frontend-build
       - frontend-quality
+      - storybook-build
       - callable-contract
       - rules-emulator
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
