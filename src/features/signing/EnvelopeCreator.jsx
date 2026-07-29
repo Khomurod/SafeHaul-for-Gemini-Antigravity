@@ -56,7 +56,17 @@ import {
     hasUnsavedWork,
     resolveEditorMode,
 } from '@features/signing/utils/editorSaveState';
-import { countFieldsByPage } from '@features/signing/utils/fieldGeometry';
+import {
+    alignFields,
+    allPages,
+    copyFieldsToPages,
+    countFieldsByPage,
+    duplicateField,
+    matchFieldSize,
+    snapFieldPosition,
+    toggleSelection,
+} from '@features/signing/utils/fieldGeometry';
+import { FieldToolsPanel } from './components/envelope-creator/FieldToolsPanel';
 
 /**
  * EnvelopeCreator — one-off signing request + template editor.
@@ -91,8 +101,25 @@ export default function EnvelopeCreator({
     const [creatorMode, setCreatorMode] = useState(editTemplateId ? 'template' : initialMode); // 'request' or 'template'
     const [existingStoragePath, setExistingStoragePath] = useState('');
 
-    // PHASE 1: Selected field state
-    const [selectedFieldId, setSelectedFieldId] = useState(null);
+    /**
+     * Selection.
+     *
+     * The array is the source of truth and its FIRST entry is the anchor: the
+     * field the inspector edits and the one alignment and size-matching measure
+     * against. `setSelectedFieldId(id)` replaces the selection,
+     * `setSelectedFieldId(id, { additive: true })` toggles membership, and
+     * `setSelectedFieldId(null)` clears it — so every existing caller keeps
+     * working unchanged.
+     */
+    const [selectedFieldIds, setSelectedFieldIds] = useState([]);
+    // Guides for the field currently under the pointer. Purely visual — it is
+    // never part of the document and never enters the undo history.
+    const [dragGuides, setDragGuides] = useState(null);
+    const selectedFieldId = selectedFieldIds[0] ?? null;
+
+    const setSelectedFieldId = useCallback((id, options = {}) => {
+        setSelectedFieldIds((previous) => toggleSelection(previous, id, options?.additive === true));
+    }, []);
 
     // FEAT-1: Track the currently visible page for multi-page field placement
     const [activePage, setActivePage] = useState(1);
@@ -139,6 +166,7 @@ export default function EnvelopeCreator({
     const pdfWorkbenchRef = useRef(null);
     const fieldsRef = useRef([]);
     const selectedFieldIdRef = useRef(null);
+    const selectedFieldIdsRef = useRef([]);
     const fileRef = useRef(null);
     const envelopeClipboardRef = useRef(null);
 
@@ -148,7 +176,8 @@ export default function EnvelopeCreator({
 
     useEffect(() => {
         selectedFieldIdRef.current = selectedFieldId;
-    }, [selectedFieldId]);
+        selectedFieldIdsRef.current = selectedFieldIds;
+    }, [selectedFieldId, selectedFieldIds]);
 
     useEffect(() => {
         fileRef.current = file;
@@ -237,7 +266,7 @@ export default function EnvelopeCreator({
                     page: rect.page,
                 };
                 commitFieldsRef.current((prev) => [...prev, newField], { label: 'Paste field' });
-                setSelectedFieldId(newField.id);
+                setSelectedFieldIds([newField.id]);
                 envelopeClipboardRef.current = {
                     ...clip,
                     lastPlaced: {
@@ -301,8 +330,9 @@ export default function EnvelopeCreator({
         fieldsRef.current = restored;
         setFields(restored);
         setSaveState(SAVE_STATES.UNSAVED);
-        // Keep the selection only if the field it points at still exists.
-        setSelectedFieldId((prev) => (restored.some((field) => field.id === prev) ? prev : null));
+        // Keep only the selected fields that still exist.
+        const alive = new Set(restored.map((field) => field.id));
+        setSelectedFieldIds((previous) => previous.filter((id) => alive.has(id)));
     }, []);
 
     const handleUndo = useCallback(() => stepHistory(undoHistory), [stepHistory]);
@@ -408,7 +438,7 @@ export default function EnvelopeCreator({
         const undoIds = new Set(aiUndoFieldIds);
         commitFields((prev) => prev.filter((field) => !undoIds.has(field.id)), { label: 'Undo AI placement' });
         setAiUndoFieldIds([]);
-        setSelectedFieldId((prev) => (prev && undoIds.has(prev) ? null : prev));
+        setSelectedFieldIds((previous) => previous.filter((id) => !undoIds.has(id)));
         showSuccess('Last AI placement undone.');
     }, [aiUndoFieldIds, showSuccess, commitFields]);
 
@@ -614,14 +644,48 @@ export default function EnvelopeCreator({
 
     const removeField = useCallback((id) => {
         commitFields(prev => prev.filter(f => f.id !== id), { label: 'Remove field' });
-        if (selectedFieldId === id) setSelectedFieldId(null);
-    }, [selectedFieldId, commitFields]);
+        setSelectedFieldIds((previous) => previous.filter((value) => value !== id));
+    }, [commitFields]);
+
+    /**
+     * Live alignment guides while a field is under the pointer.
+     *
+     * Read-only: it computes what the drop *would* snap to and shows it. No
+     * field is touched, so a drag that is abandoned changes nothing and adds no
+     * history entry.
+     */
+    const handleFieldDragMove = useCallback((id, pageNum, xPercent, yPercent) => {
+        const current = fieldsRef.current;
+        const moving = current.find((f) => f.id === id);
+        if (!moving) return;
+        const others = current.filter((f) => f.id !== id && f.page === pageNum);
+        const { guides } = snapFieldPosition({ ...moving, x: xPercent, y: yPercent, page: pageNum }, others);
+        setDragGuides(guides.length > 0 ? { page: pageNum, guides } : null);
+    }, []);
 
     // One completed drag is one history entry: react-draggable commits once on
     // `onStop`, and the coalesce key merges a run of keyboard nudges.
-    const updateFieldPosition = useCallback((id, pageNum, xPercent, yPercent) => {
+    //
+    // Snapping applies to pointer drags only (`options.snap`). Arrow-key
+    // placement stays exact to the percent, because the keyboard is the
+    // precision path — silently pulling a nudge onto a guide would make it
+    // impossible to sit a field just off centre.
+    const updateFieldPosition = useCallback((id, pageNum, xPercent, yPercent, options = {}) => {
+        setDragGuides(null);
         commitFields(
-            prev => prev.map(f => f.id === id ? { ...f, x: xPercent, y: yPercent, page: pageNum } : f),
+            (prev) => {
+                const moving = prev.find((f) => f.id === id);
+                if (!moving) return prev;
+                let x = xPercent;
+                let y = yPercent;
+                if (options?.snap) {
+                    const others = prev.filter((f) => f.id !== id && f.page === pageNum);
+                    const snapped = snapFieldPosition({ ...moving, x, y, page: pageNum }, others);
+                    x = snapped.x;
+                    y = snapped.y;
+                }
+                return prev.map((f) => (f.id === id ? { ...f, x, y, page: pageNum } : f));
+            },
             { label: 'Move field', coalesceKey: `move:${id}` },
         );
     }, [commitFields]);
@@ -648,6 +712,64 @@ export default function EnvelopeCreator({
             { label: 'Change field property', coalesceKey: `prop:${selectedFieldId}:${key}` },
         );
     }, [selectedFieldId, commitFields]);
+
+    /**
+     * Bulk field tools.
+     *
+     * All of them go through `commitFields`, so each one is exactly one undo
+     * step, and all of them are pure geometry on the local field array — no
+     * Firestore, no Storage, no callable.
+     *
+     * Copies get their own ids. The suffix guarantees uniqueness even where the
+     * id source repeats within a tick, which matters because a copy that shared
+     * an id with its source would silently overwrite it on save.
+     */
+    const copySequenceRef = useRef(0);
+    const nextCopyId = useCallback(() => {
+        copySequenceRef.current += 1;
+        return `${uuidv4()}_${copySequenceRef.current}`;
+    }, []);
+
+    const handleAlignFields = useCallback((mode) => {
+        commitFields(
+            (prev) => alignFields(prev, selectedFieldIdsRef.current, mode),
+            { label: `Align ${mode}` },
+        );
+    }, [commitFields]);
+
+    const handleMatchFieldSize = useCallback((dimension) => {
+        commitFields(
+            (prev) => matchFieldSize(prev, selectedFieldIdsRef.current, dimension),
+            { label: `Match ${dimension}` },
+        );
+    }, [commitFields]);
+
+    const handleDuplicateSelection = useCallback(() => {
+        const ids = selectedFieldIdsRef.current;
+        if (ids.length === 0) return;
+        const created = [];
+        commitFields((prev) => {
+            const copies = prev
+                .filter((field) => ids.includes(field.id))
+                .map((field) => duplicateField(field, nextCopyId))
+                .filter(Boolean);
+            if (copies.length === 0) return prev;
+            created.push(...copies.map((copy) => copy.id));
+            return [...prev, ...copies];
+        }, { label: `Duplicate ${ids.length} field${ids.length === 1 ? '' : 's'}` });
+        // The copies become the selection, so the next nudge moves them and not
+        // the originals underneath.
+        if (created.length > 0) setSelectedFieldIds(created);
+    }, [commitFields, nextCopyId]);
+
+    const handleCopyToPages = useCallback((targetPages, label) => {
+        const ids = selectedFieldIdsRef.current;
+        if (ids.length === 0 || targetPages.length === 0) return;
+        commitFields(
+            (prev) => copyFieldsToPages(prev, ids, targetPages, nextCopyId).fields,
+            { label },
+        );
+    }, [commitFields, nextCopyId]);
 
     const onPageLoadSuccess = (page) => {
         setPageDimensions(prev => ({ ...prev, [page.pageNumber]: { width: page.width, height: page.height } }));
@@ -856,7 +978,7 @@ export default function EnvelopeCreator({
     const inspectorOpen = Boolean(selectedFieldId) || aiPanelOpen;
 
     const dismissInspector = useCallback(() => {
-        setSelectedFieldId(null);
+        setSelectedFieldIds([]);
         setAiPanelOpen(false);
     }, []);
 
@@ -945,6 +1067,20 @@ export default function EnvelopeCreator({
                     getIcon={getIcon}
                     onOpenAiAssistant={openAiAssistant}
                     aiAssistantBusy={aiAssistant.isScanning}
+                    fieldTools={
+                        <FieldToolsPanel
+                            selectedCount={selectedFieldIds.length}
+                            numPages={numPages || 1}
+                            activePage={activePage}
+                            onAlign={handleAlignFields}
+                            onMatchSize={handleMatchFieldSize}
+                            onDuplicate={handleDuplicateSelection}
+                            onCopyToPage={(page) => handleCopyToPages([page], `Copy to page ${page}`)}
+                            onCopyToAllPages={() =>
+                                handleCopyToPages(allPages(numPages || 1), 'Copy to all pages')
+                            }
+                        />
+                    }
                 />
 
                 <PageThumbnailRail
@@ -990,8 +1126,11 @@ export default function EnvelopeCreator({
                         setPdfViewportWidth={setPdfViewportWidth}
                         fields={fields}
                         selectedFieldId={selectedFieldId}
+                        selectedFieldIds={selectedFieldIds}
                         setSelectedFieldId={setSelectedFieldId}
                         updateFieldPosition={updateFieldPosition}
+                        onFieldDragMove={handleFieldDragMove}
+                        dragGuides={dragGuides}
                         updateFieldSize={updateFieldSize}
                         removeField={removeField}
                         updateFieldLabel={updateFieldLabel}

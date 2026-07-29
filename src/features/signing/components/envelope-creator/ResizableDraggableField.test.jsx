@@ -131,19 +131,21 @@ describe('ResizableDraggableField — drag contract', () => {
         renderField();
         draggableProps.current.onStop({}, { x: 400, y: 500 });
         expect(handlers.onStop).toHaveBeenCalledTimes(1);
-        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, 50, 50);
+        // The trailing options object is additive: the four positional
+        // arguments are unchanged, and `snap` marks this as a pointer gesture.
+        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, 50, 50, { snap: true });
     });
 
     it('uses the page-height fallback in the drop conversion too', () => {
         renderField({}, { pageHeight: undefined });
         draggableProps.current.onStop({}, { x: 200, y: 400 });
-        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, 25, 50);
+        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 1, 25, 50, { snap: true });
     });
 
     it('reports the page it was dropped on', () => {
         renderField({}, { pageNum: 3 });
         draggableProps.current.onStop({}, { x: 0, y: 0 });
-        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 3, 0, 0);
+        expect(handlers.onStop).toHaveBeenCalledWith('f-1', 3, 0, 0, { snap: true });
     });
 });
 

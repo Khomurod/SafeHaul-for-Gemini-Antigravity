@@ -41,7 +41,7 @@ const FIELD_TONE = {
 };
 const FIELD_TONE_FALLBACK = { fill: 'bg-ds-status-accent-bg', border: 'border-ds-status-accent-border' };
 
-export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, isMultiSelected = false, onSelect }) => {
+export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, isMultiSelected = false, onSelect, onDragMove }) => {
     const nodeRef = useRef(null);
     const hintId = `placed-field-hint-${useId().replace(/:/g, '')}`;
     const safePageHeight = pageHeight || 800;
@@ -87,8 +87,17 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
         window.addEventListener('mouseup', stopDrag);
     };
 
+    // The percentages are unchanged; the trailing options object is additive.
+    // `snap: true` marks this as a pointer gesture, where snapping to guides is
+    // wanted. Keyboard placement below deliberately does not set it, so arrow
+    // keys stay exact to the percent.
     const handleDragStop = (e, data) => {
-        onStop(field.id, pageNum, (data.x / pageWidth) * 100, (data.y / safePageHeight) * 100);
+        onStop(field.id, pageNum, (data.x / pageWidth) * 100, (data.y / safePageHeight) * 100, { snap: true });
+    };
+
+    const handleDrag = (e, data) => {
+        if (!onDragMove) return;
+        onDragMove(field.id, pageNum, (data.x / pageWidth) * 100, (data.y / safePageHeight) * 100);
     };
 
     const tone = FIELD_TONE[field.type] || FIELD_TONE_FALLBACK;
@@ -133,6 +142,7 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
             nodeRef={nodeRef}
             bounds="parent"
             position={{ x: xPx, y: yPx }}
+            onDrag={handleDrag}
             onStop={handleDragStop}
             cancel=".resize-handle, .label-input"
         >

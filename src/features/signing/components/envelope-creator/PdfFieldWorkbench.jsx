@@ -46,8 +46,11 @@ export function PdfFieldWorkbench({
     setPdfViewportWidth,
     fields,
     selectedFieldId,
+    selectedFieldIds = [],
     setSelectedFieldId,
     updateFieldPosition,
+    onFieldDragMove,
+    dragGuides = null,
     updateFieldSize,
     removeField,
     updateFieldLabel,
@@ -160,15 +163,42 @@ export function PdfFieldWorkbench({
                                             pageWidth={pdfViewportWidth}
                                             pageHeight={dims ? dims.height : 900}
                                             onStop={updateFieldPosition}
+                                            onDragMove={onFieldDragMove}
                                             onResize={updateFieldSize}
                                             onRemove={removeField}
                                             getIcon={getIcon}
                                             onLabelChange={updateFieldLabel}
                                             isSelected={selectedFieldId === field.id}
+                                            isMultiSelected={
+                                                selectedFieldId !== field.id && selectedFieldIds.includes(field.id)
+                                            }
                                             onSelect={setSelectedFieldId}
                                         />
                                     ))}
                                 </div>
+                                {/* Alignment guides for the field being dragged.
+                                    Decorative: what they mean is the snapped
+                                    position itself, which is announced by the
+                                    field's own accessible name. */}
+                                {dragGuides?.page === pageNum && dragGuides.guides.length > 0 && (
+                                    <div className="pointer-events-none absolute inset-0 z-30" aria-hidden="true">
+                                        {dragGuides.guides.map((guide) => (
+                                            guide.axis === 'x' ? (
+                                                <span
+                                                    key={`x-${guide.at}`}
+                                                    className="absolute inset-y-0 w-px bg-ds-action-primary"
+                                                    style={{ left: `${guide.at}%` }}
+                                                />
+                                            ) : (
+                                                <span
+                                                    key={`y-${guide.at}`}
+                                                    className="absolute inset-x-0 h-px bg-ds-action-primary"
+                                                    style={{ top: `${guide.at}%` }}
+                                                />
+                                            )
+                                        ))}
+                                    </div>
+                                )}
                                 {aiSuggestions.length > 0 && (
                                     <div
                                         className="absolute inset-0 z-20 pointer-events-none"
