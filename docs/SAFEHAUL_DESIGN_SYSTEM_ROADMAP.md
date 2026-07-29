@@ -1863,6 +1863,23 @@ The reverse directions are prohibited.
       detail stays in the details dialog. Stored titles/recipients are never
       mutated — long values clamp visually with the full text on the cell
       tooltip and in the dialog.
+    - Alignment polish (2026-07-29, PR #134): two token-based local offsets,
+      no behaviour change. (1) The Back to Dashboard ghost button gets
+      `-ml-ds-3`, cancelling its own `ds-space-3` inline padding so the
+      visible arrow/label sits flush with the Documents heading while the
+      padded hit area and focus ring stay full size. (2) The Actions heading
+      and quick-action wrapper both get `-mr-ds-4`: the scroll region's
+      reserved scrollbar gutter plus the shared `ds-space-5` cell padding
+      left the right-aligned actions ~36px from the table border versus
+      ~21px on the left; the offset restores symmetry (~20px) without
+      touching the DataTable padding/scrollbar-gutter contracts other
+      tables rely on. Verified: 203 focused unit tests (two new
+      class-contract regressions), 36 Chromium + Mobile Chrome E2E checks
+      incl. real-browser axe and the column contract, lint, typecheck,
+      production build, `git diff --check`, and measured in-browser review
+      at 1440/1024/768/412 (rows 74px, single-line quick actions, 44px
+      touch controls below 768px, no horizontal overflow). Before/after
+      screenshots: `docs/screenshots/sent-documents-table/polish-*.png`.
   - [x] Migrate the Documents Center page header (`DocumentsManager` header area
     only) — page canvas, Back to Dashboard, Create Template, Send One-off.
     - Complete when: back navigation and both creator transitions keep their
