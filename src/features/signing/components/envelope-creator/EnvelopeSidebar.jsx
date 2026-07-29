@@ -129,6 +129,12 @@ export function EnvelopeSidebar({
     onOpenAiAssistant,
     aiAssistantBusy = false,
     fieldTools = null,
+    // Which sections start open, and how the rail presents itself. The compact
+    // editor mounts this inside a bottom sheet for one section at a time, so it
+    // opens that section only and drops the fixed-width bordered rail chrome.
+    initialOpenSections = null,
+    className = 'z-10 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-ds-border bg-ds-surface shadow-ds-lg',
+    label = 'Envelope setup',
 }) {
     const rawId = useId().replace(/:/g, '');
     const aiHelpId = `envelope-ai-help-${rawId}`;
@@ -140,17 +146,16 @@ export function EnvelopeSidebar({
 
     // All three start open: the rail is a workflow, and collapsing by default
     // would hide the upload control that everything else depends on.
-    const [openSections, setOpenSections] = useState({ setup: true, add: true, placed: true });
+    const [openSections, setOpenSections] = useState(
+        () => initialOpenSections || { setup: true, add: true, placed: true },
+    );
     const toggleSection = (key) =>
         setOpenSections((previous) => ({ ...previous, [key]: !previous[key] }));
 
     const showRecipient = creatorMode === 'request' && !isEditingTemplate;
 
     return (
-        <aside
-            aria-label="Envelope setup"
-            className="z-10 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-ds-border bg-ds-surface shadow-ds-lg"
-        >
+        <aside aria-label={label} className={className}>
             <RailSection
                 id={`rail-setup-${rawId}`}
                 title="Setup"

@@ -67,6 +67,9 @@ import {
     toggleSelection,
 } from '@features/signing/utils/fieldGeometry';
 import { FieldToolsPanel } from './components/envelope-creator/FieldToolsPanel';
+import { EditorBottomSheet } from './components/envelope-creator/EditorBottomSheet';
+import { EditorMobileBar } from './components/envelope-creator/EditorMobileBar';
+import { useCompactEditor } from './hooks/useCompactEditor';
 
 /**
  * EnvelopeCreator — one-off signing request + template editor.
@@ -141,6 +144,10 @@ export default function EnvelopeCreator({
     const [aiScanDialogOpen, setAiScanDialogOpen] = useState(false);
     const [aiPanelOpen, setAiPanelOpen] = useState(false);
     const [inspectorTab, setInspectorTab] = useState(INSPECTOR_TABS.PROPERTIES);
+    // Compact editor: the desktop rails are replaced by a bottom toolbar and one
+    // bottom sheet at a time, so the PDF keeps the screen.
+    const isCompact = useCompactEditor();
+    const [mobileSheet, setMobileSheet] = useState(null);
     const [selectedSuggestionId, setSelectedSuggestionId] = useState(null);
     // One-level undo for the last "apply". Holds the ids of the fields that
     // apply appended — not a whole snapshot — so undoing removes exactly those
@@ -1012,6 +1019,123 @@ export default function EnvelopeCreator({
         if (onClose) onClose();
     }, [saveState, onClose]);
 
+    /**
+     * Prop bundles shared by the desktop rails and the compact bottom sheets.
+     *
+     * The same components render in both layouts with the same props — the
+     * compact editor is a different arrangement, not a different editor.
+     */
+    const sidebarProps = {
+        creatorMode,
+        isEditingTemplate,
+        recipientName,
+        setRecipientName,
+        recipientEmail,
+        setRecipientEmail,
+        recipientPhone,
+        setRecipientPhone,
+        deliveryMethod,
+        setDeliveryMethod,
+        file,
+        handleFileChange,
+        addField,
+        fields,
+        selectedFieldId,
+        setSelectedFieldId,
+        removeField,
+        getIcon,
+        onOpenAiAssistant: openAiAssistant,
+        aiAssistantBusy: aiAssistant.isScanning,
+        fieldTools: (
+            <FieldToolsPanel
+                selectedCount={selectedFieldIds.length}
+                numPages={numPages || 1}
+                activePage={activePage}
+                onAlign={handleAlignFields}
+                onMatchSize={handleMatchFieldSize}
+                onDuplicate={handleDuplicateSelection}
+                onCopyToPage={(page) => handleCopyToPages([page], `Copy to page ${page}`)}
+                onCopyToAllPages={() => handleCopyToPages(allPages(numPages || 1), 'Copy to all pages')}
+            />
+        ),
+    };
+
+    /** One rail section at a time, inside a sheet rather than a fixed column. */
+    const sheetSidebarProps = (section) => ({
+        ...sidebarProps,
+        initialOpenSections: { setup: section === 'setup', add: section === 'add', placed: section === 'fields' },
+        className: 'flex w-full flex-col',
+        label: 'Envelope setup',
+    });
+
+    const pageRailProps = {
+        file,
+        numPages: numPages || 0,
+        activePage,
+        fieldCountsByPage,
+        suggestionCountsByPage,
+        reviewPages,
+    };
+
+    const inspectorElement = (
+        <EditorInspector
+            tab={inspectorTab}
+            onTabChange={setInspectorTab}
+            suggestionCount={aiSuggestions.length}
+            hasSelection={Boolean(activeField)}
+            onDismiss={!isCompact && inspectorOpen ? dismissInspector : undefined}
+            propertiesPanel={
+                <FieldPropertiesPanel
+                    activeField={activeField}
+                    updateActiveField={updateActiveField}
+                    getIcon={getIcon}
+                />
+            }
+            aiPanel={
+                aiPanelOpen ? (
+                    <AiSuggestionReviewPanel
+                        status={aiAssistant.status}
+                        progress={aiAssistant.progress}
+                        suggestions={aiSuggestions}
+                        manualReview={aiAssistant.manualReview}
+                        stats={aiAssistant.stats}
+                        error={aiAssistant.error}
+                        partial={aiAssistant.partial}
+                        truncatedPages={aiAssistant.truncatedPages}
+                        selectedSuggestionId={selectedSuggestionId}
+                        onSelectSuggestion={setSelectedSuggestionId}
+                        onUpdateSuggestion={updateAiSuggestion}
+                        onToggleAccepted={toggleSuggestionAccepted}
+                        onApplySelected={handleApplySelected}
+                        onApplyHighConfidence={handleApplyHighConfidence}
+                        onDiscardAll={handleAiDiscardAll}
+                        onRescan={() => setAiScanDialogOpen(true)}
+                        onUndo={handleAiUndo}
+                        canUndo={aiUndoFieldIds.length > 0}
+                        onCancel={aiAssistant.cancelScan}
+                        onClose={closeAiPanel}
+                    />
+                ) : null
+            }
+        />
+    );
+
+    /** Opening the AI sheet also selects the tab it is meant to show. */
+    const openMobileSheet = (key) => {
+        if (key === 'ai') setInspectorTab(INSPECTOR_TABS.AI);
+        if (key === 'inspector') setInspectorTab(INSPECTOR_TABS.PROPERTIES);
+        setMobileSheet((previous) => (previous === key ? null : key));
+    };
+
+    const MOBILE_SHEET_TITLES = {
+        setup: 'Setup',
+        add: 'Add Field',
+        fields: 'Fields',
+        inspector: 'Properties',
+        ai: 'AI Suggestions',
+        pages: 'Pages',
+    };
+
     // Show loading state while hydrating for Correct flow
     if (hydrating) {
         return (
@@ -1040,58 +1164,20 @@ export default function EnvelopeCreator({
                 onBack={requestClose}
                 onSave={handleSave}
                 saving={loading}
+                compact={isCompact}
             />
 
             {/* 3-COLUMN LAYOUT */}
             <div className="flex flex-1 overflow-hidden">
 
-                {/* LEFT SIDEBAR: Recipient + Semantic Field Palette */}
-                <EnvelopeSidebar
-                    creatorMode={creatorMode}
-                    isEditingTemplate={isEditingTemplate}
-                    recipientName={recipientName}
-                    setRecipientName={setRecipientName}
-                    recipientEmail={recipientEmail}
-                    setRecipientEmail={setRecipientEmail}
-                    recipientPhone={recipientPhone}
-                    setRecipientPhone={setRecipientPhone}
-                    deliveryMethod={deliveryMethod}
-                    setDeliveryMethod={setDeliveryMethod}
-                    file={file}
-                    handleFileChange={handleFileChange}
-                    addField={addField}
-                    fields={fields}
-                    selectedFieldId={selectedFieldId}
-                    setSelectedFieldId={setSelectedFieldId}
-                    removeField={removeField}
-                    getIcon={getIcon}
-                    onOpenAiAssistant={openAiAssistant}
-                    aiAssistantBusy={aiAssistant.isScanning}
-                    fieldTools={
-                        <FieldToolsPanel
-                            selectedCount={selectedFieldIds.length}
-                            numPages={numPages || 1}
-                            activePage={activePage}
-                            onAlign={handleAlignFields}
-                            onMatchSize={handleMatchFieldSize}
-                            onDuplicate={handleDuplicateSelection}
-                            onCopyToPage={(page) => handleCopyToPages([page], `Copy to page ${page}`)}
-                            onCopyToAllPages={() =>
-                                handleCopyToPages(allPages(numPages || 1), 'Copy to all pages')
-                            }
-                        />
-                    }
-                />
+                {/* LEFT RAIL: Setup / Add Fields / Fields.
 
-                <PageThumbnailRail
-                    file={file}
-                    numPages={numPages || 0}
-                    activePage={activePage}
-                    onSelectPage={goToPage}
-                    fieldCountsByPage={fieldCountsByPage}
-                    suggestionCountsByPage={suggestionCountsByPage}
-                    reviewPages={reviewPages}
-                />
+                    Desktop only. On a phone the same sections are reachable
+                    from the bottom bar, one sheet at a time, instead of being
+                    compressed into a column that leaves no room for the PDF. */}
+                {!isCompact && <EnvelopeSidebar {...sidebarProps} />}
+
+                {!isCompact && <PageThumbnailRail {...pageRailProps} onSelectPage={goToPage} />}
 
                 {/* CENTER: canvas toolbar + PDF viewer with the field overlays */}
                 <div ref={canvasRef} className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -1150,60 +1236,57 @@ export default function EnvelopeCreator({
                     A permanent 320px column from `lg` up, so selecting or
                     deselecting a field never resizes the canvas under the
                     pointer. Below that breakpoint there is no room for a third
-                    column, so it presents as a full-width sheet with its own
-                    close control — the usual way to dismiss it, clicking the
-                    canvas, sits underneath the sheet. */}
-                <div
-                    role="complementary"
-                    aria-label="Document inspector"
-                    className={`shrink-0 overflow-hidden border-l border-ds-border-subtle bg-ds-surface shadow-ds-lg ${
-                        inspectorOpen
-                            ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm lg:static lg:z-auto lg:w-80 lg:max-w-none'
-                            : 'hidden lg:block lg:w-80'
-                    }`}
-                >
-                    <EditorInspector
-                        tab={inspectorTab}
-                        onTabChange={setInspectorTab}
-                        suggestionCount={aiSuggestions.length}
-                        hasSelection={Boolean(activeField)}
-                        onDismiss={inspectorOpen ? dismissInspector : undefined}
-                        propertiesPanel={
-                            <FieldPropertiesPanel
-                                activeField={activeField}
-                                updateActiveField={updateActiveField}
-                                getIcon={getIcon}
-                            />
-                        }
-                        aiPanel={
-                            aiPanelOpen ? (
-                                <AiSuggestionReviewPanel
-                                    status={aiAssistant.status}
-                                    progress={aiAssistant.progress}
-                                    suggestions={aiSuggestions}
-                                    manualReview={aiAssistant.manualReview}
-                                    stats={aiAssistant.stats}
-                                    error={aiAssistant.error}
-                                    partial={aiAssistant.partial}
-                                    truncatedPages={aiAssistant.truncatedPages}
-                                    selectedSuggestionId={selectedSuggestionId}
-                                    onSelectSuggestion={setSelectedSuggestionId}
-                                    onUpdateSuggestion={updateAiSuggestion}
-                                    onToggleAccepted={toggleSuggestionAccepted}
-                                    onApplySelected={handleApplySelected}
-                                    onApplyHighConfidence={handleApplyHighConfidence}
-                                    onDiscardAll={handleAiDiscardAll}
-                                    onRescan={() => setAiScanDialogOpen(true)}
-                                    onUndo={handleAiUndo}
-                                    canUndo={aiUndoFieldIds.length > 0}
-                                    onCancel={aiAssistant.cancelScan}
-                                    onClose={closeAiPanel}
-                                />
-                            ) : null
-                        }
-                    />
-                </div>
+                    column and it moves into the Properties / AI Suggestions
+                    bottom sheets instead. */}
+                {!isCompact && (
+                    <div
+                        role="complementary"
+                        aria-label="Document inspector"
+                        className={`shrink-0 overflow-hidden border-l border-ds-border-subtle bg-ds-surface shadow-ds-lg ${
+                            inspectorOpen
+                                ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm lg:static lg:z-auto lg:w-80 lg:max-w-none'
+                                : 'hidden lg:block lg:w-80'
+                        }`}
+                    >
+                        {inspectorElement}
+                    </div>
+                )}
             </div>
+
+            {/* Compact editor: a bottom toolbar that opens one sheet at a time.
+                Each sheet is the shared accessible dialog, so focus moves in,
+                Tab is trapped, Escape and the backdrop close it, and focus
+                returns to the button that opened it. */}
+            {isCompact && (
+                <EditorMobileBar
+                    openSheet={mobileSheet}
+                    onOpenSheet={openMobileSheet}
+                    fieldCount={fields.length}
+                    suggestionCount={aiSuggestions.length}
+                />
+            )}
+
+            {isCompact && mobileSheet && (
+                <EditorBottomSheet
+                    title={MOBILE_SHEET_TITLES[mobileSheet]}
+                    onClose={() => setMobileSheet(null)}
+                >
+                    {(mobileSheet === 'setup' || mobileSheet === 'add' || mobileSheet === 'fields') && (
+                        <EnvelopeSidebar {...sheetSidebarProps(mobileSheet)} />
+                    )}
+                    {(mobileSheet === 'inspector' || mobileSheet === 'ai') && inspectorElement}
+                    {mobileSheet === 'pages' && (
+                        <PageThumbnailRail
+                            {...pageRailProps}
+                            variant="sheet"
+                            onSelectPage={(page) => {
+                                goToPage(page);
+                                setMobileSheet(null);
+                            }}
+                        />
+                    )}
+                </EditorBottomSheet>
+            )}
 
             {previewOpen && (
                 <SignerPreviewDialog

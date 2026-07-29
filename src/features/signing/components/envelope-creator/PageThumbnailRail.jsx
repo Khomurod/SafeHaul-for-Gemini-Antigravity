@@ -25,6 +25,9 @@ export function PageThumbnailRail({
     fieldCountsByPage = {},
     suggestionCountsByPage = {},
     reviewPages = [],
+    // 'rail' is the desktop column; 'sheet' is the compact page navigator, which
+    // is already inside a labelled dialog and lays its pages out in a grid.
+    variant = 'rail',
 }) {
     const rawId = useId().replace(/:/g, '');
     const headingId = `page-rail-heading-${rawId}`;
@@ -87,15 +90,24 @@ export function PageThumbnailRail({
         <nav
             ref={containerRef}
             aria-labelledby={headingId}
-            className="hidden w-28 shrink-0 overflow-y-auto border-r border-ds-border bg-ds-surface-subtle p-ds-2 lg:block"
+            className={
+                variant === 'sheet'
+                    ? 'w-full overflow-y-auto p-ds-3'
+                    : 'hidden w-28 shrink-0 overflow-y-auto border-r border-ds-border bg-ds-surface-subtle p-ds-2 lg:block'
+            }
         >
-            <h2 id={headingId} className="mb-ds-2 px-ds-1 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">
+            <h2
+                id={headingId}
+                className={`mb-ds-2 px-ds-1 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary ${
+                    variant === 'sheet' ? 'ds-visually-hidden' : ''
+                }`}
+            >
                 Pages
             </h2>
             {/* The rail owns its own Document: react-pdf's `Page` needs one in
                 context, and the canvas's Document is a separate subtree. */}
             <Document file={file} loading="" error="" noData="">
-            <ul className="flex flex-col gap-ds-2">
+            <ul className={variant === 'sheet' ? 'grid grid-cols-3 gap-ds-2 sm:grid-cols-4' : 'flex flex-col gap-ds-2'}>
                 {Array.from({ length: total }, (_, index) => index + 1).map((page) => {
                     const isCurrent = page === activePage;
                     const fieldCount = fieldCountsByPage[page] || 0;
