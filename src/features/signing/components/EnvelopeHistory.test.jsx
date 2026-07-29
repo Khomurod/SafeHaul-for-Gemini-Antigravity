@@ -674,6 +674,20 @@ describe('EnvelopeHistory — pagination', () => {
         expect(screen.getAllByRole('row')).toHaveLength(4);
         expect(screen.queryByRole('navigation', { name: /pagination/ })).not.toBeInTheDocument();
     });
+
+    it('does not resurrect a stale page after the list shrinks and grows again', () => {
+        renderHistory();
+        emit(manyDocs(30));
+        fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+        expect(screen.getByText('Showing 26–30 of 30 documents')).toBeInTheDocument();
+
+        // A filter narrows the list below one page, then is cleared again. The
+        // clamp must persist, or the restored list would silently open on page
+        // 2 and hide the first 25 documents.
+        emit(manyDocs(10));
+        emit(manyDocs(30));
+        expect(screen.getByText('Showing 1–25 of 30 documents')).toBeInTheDocument();
+    });
 });
 
 describe('EnvelopeHistory — accessibility', () => {

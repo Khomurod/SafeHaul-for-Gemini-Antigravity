@@ -348,6 +348,11 @@ export default function EnvelopeHistory({
      */
     const totalPages = Math.max(1, Math.ceil(docs.length / PAGE_SIZE));
     const currentPage = Math.min(page, totalPages);
+    // Persist the clamp (render-time state adjustment, not an effect): if it
+    // only derived `currentPage`, a list that shrinks below a page and later
+    // grows again would resurrect the stale page and silently skip the first
+    // 25 documents.
+    if (currentPage !== page) setPage(currentPage);
     const paged = docs.length > PAGE_SIZE;
     const visibleDocs = paged ? docs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE) : docs;
     const pagination = paged
