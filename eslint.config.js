@@ -7,7 +7,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 export default [
   // .claude/ holds local agent worktrees (full repo copies) — linting them
   // double-reports every file and trips on their vendored public/*.min.mjs.
-  { ignores: ['**/dist/**', '**/functions/**', '**/public/*.min.mjs', '.claude/**', '**/playwright-report/**', '**/test-results/**'] },
+  // `storybook-static/` is the Storybook build output (gitignored, like `dist/`).
+  // Linting a minified bundle reports thousands of meaningless errors.
+  { ignores: ['**/dist/**', '**/storybook-static/**', '**/functions/**', '**/public/*.min.mjs', '.claude/**', '**/playwright-report/**', '**/test-results/**'] },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx,cjs,mjs}'],
