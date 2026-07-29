@@ -79,3 +79,9 @@ export function resolveEditorMode({ creatorMode, isEditingTemplate, isEditingReq
 export function modePresentation(mode) {
     return MODE_PRESENTATION[mode] || MODE_PRESENTATION[EDITOR_MODES.REQUEST];
 }
+
+/**
+ * The inspector's two tabs. Lives with the other editor UI-state constants so
+ * the component file exports only its component.
+ */
+export const INSPECTOR_TABS = { PROPERTIES: 'properties', AI: 'ai' };

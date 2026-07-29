@@ -149,37 +149,54 @@ describe('EnvelopeCreator shell — hydrating state', () => {
 });
 
 describe('EnvelopeCreator shell — layout and child contracts', () => {
-    it('collapses the properties rail until a field is selected', () => {
-        // The rail became responsive in the sub-slice F close-out: it collapses to
-        // `md:w-0` and is `hidden` below the breakpoint (where a 320px column had
-        // nowhere to go and was clipped off-screen), and when a field is selected
-        // it is a full-width sheet below `md` and the original `md:w-80` column
-        // above it. The behaviour asserted here is unchanged.
+    it('keeps the inspector column present whether or not a field is selected', () => {
+        // The rail used to collapse to `md:w-0` and reappear, resizing the canvas
+        // under the pointer on every selection. It is now a permanent 320px
+        // column from `lg` up.
         const { container } = setup();
-        const collapsed = container.querySelector('.overflow-y-auto.bg-ds-surface');
-        expect(collapsed.className).toContain('md:w-0');
-        expect(collapsed.className).toContain('hidden');
+        const inspector = container.querySelector('[aria-label="Document inspector"]');
+        expect(inspector.className).toContain('lg:w-80');
+        expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute('aria-selected', 'true');
         expect(screen.queryByTestId('properties-panel')).not.toBeInTheDocument();
+        expect(screen.getByText(/Select a field on the document/)).toBeInTheDocument();
 
+        // Selecting an id that matches no placed field leaves the empty state
+        // rather than an empty panel. The panel itself is covered where fields
+        // can actually be placed, in EnvelopeCreator.editor.test.jsx.
         fireEvent.click(screen.getByRole('button', { name: 'select field' }));
-        const rail = container.querySelector('.overflow-y-auto.border-l');
-        expect(rail.className).toContain('md:w-80');
-        expect(rail).toHaveAccessibleName('Field properties');
-        expect(screen.getByTestId('properties-panel')).toBeInTheDocument();
+        expect(container.querySelector('[aria-label="Document inspector"]').className).toContain('lg:w-80');
+        expect(screen.getByText(/Select a field on the document/)).toBeInTheDocument();
     });
 
-    it('offers a dismiss control only in the mobile sheet presentation', () => {
-        const { container } = setup();
-        fireEvent.click(screen.getByRole('button', { name: 'select field' }));
+    it('offers both inspector tabs and switches between them', () => {
+        setup();
+        const properties = screen.getByRole('tab', { name: 'Properties' });
+        const ai = screen.getByRole('tab', { name: /AI Suggestions/ });
 
-        const close = screen.getByRole('button', { name: 'Close field properties' });
-        // Present in the DOM but scoped to below the md breakpoint, because on
-        // mobile the sheet covers the canvas that would otherwise deselect.
-        expect(close.closest('div').className).toContain('md:hidden');
+        expect(properties).toHaveAttribute('aria-selected', 'true');
+        expect(ai).toHaveAttribute('aria-selected', 'false');
+
+        fireEvent.click(ai);
+        expect(ai).toHaveAttribute('aria-selected', 'true');
+        expect(properties).toHaveAttribute('aria-selected', 'false');
+        // Suggestions live in their own tab and are never mixed into Properties.
+        expect(screen.getByText(/Suggestions never become part of your document/)).toBeInTheDocument();
+    });
+
+    it('offers a dismiss control only in the sheet presentation', () => {
+        const { container } = setup();
+        // Nothing selected: no sheet, so nothing to dismiss.
+        expect(screen.queryByRole('button', { name: 'Close inspector' })).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'select field' }));
+        const close = screen.getByRole('button', { name: 'Close inspector' });
+        // Present in the DOM but scoped below the desktop breakpoint, because
+        // there the sheet covers the canvas that would otherwise deselect.
+        expect(close.closest('div').className).toContain('lg:hidden');
 
         fireEvent.click(close);
-        expect(screen.queryByTestId('properties-panel')).not.toBeInTheDocument();
-        expect(container.querySelector('.overflow-y-auto.bg-ds-surface').className).toContain('hidden');
+        expect(screen.queryByRole('button', { name: 'Close inspector' })).not.toBeInTheDocument();
+        expect(container.querySelector('[aria-label="Document inspector"]').className).toContain('hidden');
     });
 
     it('passes the frozen prop sets to the sidebar and workbench', () => {

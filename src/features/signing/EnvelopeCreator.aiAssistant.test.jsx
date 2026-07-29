@@ -341,6 +341,9 @@ describe('applying suggestions', () => {
         await runScan();
         await screen.findByRole('checkbox', { name: 'Apply Sign here' });
 
+        // The review list is compact: the editing controls belong to the
+        // suggestion you open, so select it first.
+        fireEvent.click(screen.getByRole('button', { name: /^Sign here/ }));
         fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Driver signature' } });
         fireEvent.click(screen.getByRole('checkbox', { name: 'Apply Driver signature' }));
         fireEvent.click(screen.getByRole('button', { name: /Apply selected \(1\)/ }));
@@ -355,6 +358,7 @@ describe('applying suggestions', () => {
         await runScan();
         await screen.findByRole('checkbox', { name: 'Apply Sign here' });
 
+        fireEvent.click(screen.getByRole('button', { name: /^Sign here/ }));
         fireEvent.change(screen.getByLabelText('Field type'), { target: { value: 'email' } });
         fireEvent.click(screen.getByRole('checkbox', { name: 'Apply Sign here' }));
         fireEvent.click(screen.getByRole('button', { name: /Apply selected \(1\)/ }));
@@ -486,6 +490,9 @@ describe('safe undo and manual-field preservation', () => {
         });
         await runScan();
 
+        // The compact row flags the overlap; the full explanation is in the detail.
+        const row = await screen.findByRole('button', { name: /overlaps an existing field/ });
+        fireEvent.click(row);
         expect(await screen.findByText(/Overlaps your existing field/)).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('checkbox', { name: 'Apply Sign here' }));

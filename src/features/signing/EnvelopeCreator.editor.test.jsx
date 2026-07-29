@@ -341,6 +341,55 @@ describe('page navigation and counts', () => {
     });
 });
 
+describe('inspector', () => {
+    it('opens the Properties tab on the selected field', async () => {
+        setup();
+        await loadPdf();
+        fireEvent.click(screen.getByRole('button', { name: 'add text field' }));
+        expect(screen.getByText(/Select a field on the document/)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'select first' }));
+        expect(screen.getByTestId('properties-panel')).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('keeps the AI tab reachable without disturbing the placed fields', async () => {
+        setup();
+        await loadPdf();
+        fireEvent.click(screen.getByRole('button', { name: 'add text field' }));
+        fireEvent.click(screen.getByRole('button', { name: 'select first' }));
+
+        fireEvent.click(screen.getByRole('tab', { name: /AI Suggestions/ }));
+        expect(screen.getByRole('tab', { name: /AI Suggestions/ })).toHaveAttribute('aria-selected', 'true');
+        // Switching tabs is a view change, not an edit: no field is touched and
+        // nothing is added to the undo history.
+        expect(currentFields()).toHaveLength(1);
+
+        fireEvent.click(screen.getAllByRole('button', { name: 'Undo' })[0]);
+        expect(currentFields()).toHaveLength(0);
+        expect(screen.getAllByRole('button', { name: 'Undo' })[0]).toBeDisabled();
+    });
+
+    it('moves between tabs with the arrow keys', async () => {
+        setup();
+        await loadPdf();
+        const properties = screen.getByRole('tab', { name: 'Properties' });
+
+        fireEvent.keyDown(properties, { key: 'ArrowRight' });
+        expect(screen.getByRole('tab', { name: /AI Suggestions/ })).toHaveAttribute('aria-selected', 'true');
+
+        fireEvent.keyDown(screen.getByRole('tab', { name: /AI Suggestions/ }), { key: 'ArrowLeft' });
+        expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('takes only the selected tab out of the tab order', async () => {
+        setup();
+        await loadPdf();
+        expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute('tabindex', '0');
+        expect(screen.getByRole('tab', { name: /AI Suggestions/ })).toHaveAttribute('tabindex', '-1');
+    });
+});
+
 describe('preview as signer', () => {
     it('is disabled until a PDF is loaded', () => {
         setup();

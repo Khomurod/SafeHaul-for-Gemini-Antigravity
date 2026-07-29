@@ -22,10 +22,10 @@ import {
     adjustPdfViewportWidth,
     clampPdfViewportWidth,
 } from '@features/signing/utils/envelopePdfZoom';
-import { Button } from '@/design-system/components';
 import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { FIELD_TEMPLATES, getFieldIcon } from './components/envelope-creator/fieldDefinitions';
 import { FieldPropertiesPanel } from './components/envelope-creator/FieldPropertiesPanel';
+import { EditorInspector } from './components/envelope-creator/EditorInspector';
 import { EnvelopeSidebar } from './components/envelope-creator/EnvelopeSidebar';
 import { PdfFieldWorkbench } from './components/envelope-creator/PdfFieldWorkbench';
 import { AiScanOptionsDialog } from './components/envelope-creator/AiScanOptionsDialog';
@@ -51,6 +51,7 @@ import {
     undoHistory,
 } from '@features/signing/utils/editorHistory';
 import {
+    INSPECTOR_TABS,
     SAVE_STATES,
     hasUnsavedWork,
     resolveEditorMode,
@@ -112,6 +113,7 @@ export default function EnvelopeCreator({
     // them; nothing here can save a template or send a document.
     const [aiScanDialogOpen, setAiScanDialogOpen] = useState(false);
     const [aiPanelOpen, setAiPanelOpen] = useState(false);
+    const [inspectorTab, setInspectorTab] = useState(INSPECTOR_TABS.PROPERTIES);
     const [selectedSuggestionId, setSelectedSuggestionId] = useState(null);
     // One-level undo for the last "apply". Holds the ids of the fields that
     // apply appended — not a whole snapshot — so undoing removes exactly those
@@ -331,6 +333,7 @@ export default function EnvelopeCreator({
 
     const openAiAssistant = useCallback(() => {
         setAiPanelOpen(true);
+        setInspectorTab(INSPECTOR_TABS.AI);
         setAiScanDialogOpen(true);
     }, []);
 
@@ -338,6 +341,7 @@ export default function EnvelopeCreator({
         ({ scope, selectedPages }) => {
             setAiScanDialogOpen(false);
             setAiPanelOpen(true);
+            setInspectorTab(INSPECTOR_TABS.AI);
             setSelectedSuggestionId(null);
             startAiScan({ scope, selectedPages });
         },
@@ -416,6 +420,7 @@ export default function EnvelopeCreator({
     const closeAiPanel = useCallback(() => {
         setAiPanelOpen(false);
         setSelectedSuggestionId(null);
+        setInspectorTab(INSPECTOR_TABS.PROPERTIES);
     }, []);
 
     const moveSuggestion = useCallback(
@@ -844,11 +849,16 @@ export default function EnvelopeCreator({
     const getIcon = getFieldIcon;
 
     /**
-     * The right rail holds one panel at a time. The assistant wins while it is
-     * open, because a reviewer working through suggestions should not lose the
-     * list by touching a placed field.
+     * The inspector is a permanent column on wide screens, so the canvas never
+     * resizes under the pointer. Below that breakpoint it is a sheet, shown only
+     * when it has something to say.
      */
-    const rightRailContent = aiPanelOpen ? 'ai' : selectedFieldId ? 'field' : null;
+    const inspectorOpen = Boolean(selectedFieldId) || aiPanelOpen;
+
+    const dismissInspector = useCallback(() => {
+        setSelectedFieldId(null);
+        setAiPanelOpen(false);
+    }, []);
 
     const editorMode = resolveEditorMode({ creatorMode, isEditingTemplate, isEditingRequest });
     const fieldCountsByPage = useMemo(() => countFieldsByPage(fields), [fields]);
@@ -996,65 +1006,63 @@ export default function EnvelopeCreator({
                     />
                 </div>
 
-                {/* RIGHT SIDEBAR: Field Properties Editor.
+                {/* RIGHT: the inspector.
 
-                    Desktop is unchanged: a shrink-0 column that animates between
-                    w-80 and w-0. Below `md` the fixed three-column row had no room
-                    left for a 320px rail, so it was clipped off-screen and its
-                    controls were unreachable. There it now presents as a full-width
-                    sheet with its own close control, because the usual way to
-                    dismiss it — clicking the canvas — sits underneath the sheet. */}
+                    A permanent 320px column from `lg` up, so selecting or
+                    deselecting a field never resizes the canvas under the
+                    pointer. Below that breakpoint there is no room for a third
+                    column, so it presents as a full-width sheet with its own
+                    close control — the usual way to dismiss it, clicking the
+                    canvas, sits underneath the sheet. */}
                 <div
-                    role={rightRailContent ? 'group' : undefined}
-                    aria-label={rightRailContent === 'ai' ? 'AI field suggestions' : rightRailContent ? 'Field properties' : undefined}
-                    className={`overflow-y-auto bg-ds-surface shadow-ds-lg transition-all duration-200 motion-reduce:transition-none ${
-                        rightRailContent
-                            ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm border-l border-ds-border-subtle md:static md:z-auto md:w-80 md:max-w-none md:shrink-0'
-                            : 'hidden md:block md:w-0 md:shrink-0'
+                    role="complementary"
+                    aria-label="Document inspector"
+                    className={`shrink-0 overflow-hidden border-l border-ds-border-subtle bg-ds-surface shadow-ds-lg ${
+                        inspectorOpen
+                            ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm lg:static lg:z-auto lg:w-80 lg:max-w-none'
+                            : 'hidden lg:block lg:w-80'
                     }`}
                 >
-                    {rightRailContent === 'ai' && (
-                        <AiSuggestionReviewPanel
-                            status={aiAssistant.status}
-                            progress={aiAssistant.progress}
-                            suggestions={aiSuggestions}
-                            manualReview={aiAssistant.manualReview}
-                            stats={aiAssistant.stats}
-                            error={aiAssistant.error}
-                            partial={aiAssistant.partial}
-                            truncatedPages={aiAssistant.truncatedPages}
-                            selectedSuggestionId={selectedSuggestionId}
-                            onSelectSuggestion={setSelectedSuggestionId}
-                            onUpdateSuggestion={updateAiSuggestion}
-                            onToggleAccepted={toggleSuggestionAccepted}
-                            onApplySelected={handleApplySelected}
-                            onApplyHighConfidence={handleApplyHighConfidence}
-                            onDiscardAll={handleAiDiscardAll}
-                            onRescan={() => setAiScanDialogOpen(true)}
-                            onUndo={handleAiUndo}
-                            canUndo={aiUndoFieldIds.length > 0}
-                            onCancel={aiAssistant.cancelScan}
-                            onClose={closeAiPanel}
-                        />
-                    )}
-                    {rightRailContent === 'field' && (
-                        <>
-                            <div className="flex justify-end p-ds-2 md:hidden">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setSelectedFieldId(null)}
-                                >
-                                    Close field properties
-                                </Button>
-                            </div>
+                    <EditorInspector
+                        tab={inspectorTab}
+                        onTabChange={setInspectorTab}
+                        suggestionCount={aiSuggestions.length}
+                        hasSelection={Boolean(activeField)}
+                        onDismiss={inspectorOpen ? dismissInspector : undefined}
+                        propertiesPanel={
                             <FieldPropertiesPanel
                                 activeField={activeField}
                                 updateActiveField={updateActiveField}
                                 getIcon={getIcon}
                             />
-                        </>
-                    )}
+                        }
+                        aiPanel={
+                            aiPanelOpen ? (
+                                <AiSuggestionReviewPanel
+                                    status={aiAssistant.status}
+                                    progress={aiAssistant.progress}
+                                    suggestions={aiSuggestions}
+                                    manualReview={aiAssistant.manualReview}
+                                    stats={aiAssistant.stats}
+                                    error={aiAssistant.error}
+                                    partial={aiAssistant.partial}
+                                    truncatedPages={aiAssistant.truncatedPages}
+                                    selectedSuggestionId={selectedSuggestionId}
+                                    onSelectSuggestion={setSelectedSuggestionId}
+                                    onUpdateSuggestion={updateAiSuggestion}
+                                    onToggleAccepted={toggleSuggestionAccepted}
+                                    onApplySelected={handleApplySelected}
+                                    onApplyHighConfidence={handleApplyHighConfidence}
+                                    onDiscardAll={handleAiDiscardAll}
+                                    onRescan={() => setAiScanDialogOpen(true)}
+                                    onUndo={handleAiUndo}
+                                    canUndo={aiUndoFieldIds.length > 0}
+                                    onCancel={aiAssistant.cancelScan}
+                                    onClose={closeAiPanel}
+                                />
+                            ) : null
+                        }
+                    />
                 </div>
             </div>
 
