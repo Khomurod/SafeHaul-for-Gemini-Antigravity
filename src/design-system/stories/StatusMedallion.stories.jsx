@@ -133,7 +133,7 @@ export const InStatusScreens = {
         {
           tone: 'success',
           Icon: Check,
-          title: 'Everything is signed',
+          title: 'Everything is complete',
           body: 'A copy has been sent to the address on the record.',
           action: 'Close',
         },
@@ -192,7 +192,7 @@ export const NarrowViewport = {
     <Card>
       <Stack gap="sm">
         <StatusMedallion tone="success" size="lg"><Check /></StatusMedallion>
-        <h2 style={{ margin: 0 }}>Everything is signed</h2>
+        <h2 style={{ margin: 0 }}>Everything is complete</h2>
         <p style={{ margin: 0 }}>A copy has been sent to the address on the record.</p>
       </Stack>
     </Card>

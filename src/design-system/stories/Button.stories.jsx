@@ -62,8 +62,9 @@ const meta = {
           '| `danger` | Destructive, hard-to-reverse actions. |',
           '',
           'Sizes are `sm`, `md` (default) and `lg`. `tone="success"` is an *additional*',
-          'colour meaning for actions the domain reads as affirmative (a signing submit);',
-          'it never replaces the text label.',
+          'colour meaning available to actions a feature reads as affirmative; it never',
+          'replaces the text label, and the catalog does not decide which actions qualify —',
+          'that mapping belongs to the feature.',
           '',
           'Unsupported values throw at render time rather than falling back silently, so a',
           'typo surfaces in review instead of shipping a differently-coloured button.',
@@ -137,8 +138,8 @@ export const Sizes = {
 export const SuccessTone = {
   render: (args) => (
     <div className="sb-row">
-      <Button {...args} variant="primary" tone="success">Finish signing</Button>
-      <Button {...args} variant="secondary" tone="success">Approve</Button>
+      <Button {...args} variant="primary" tone="success">Approve and continue</Button>
+      <Button {...args} variant="secondary" tone="success">Mark as complete</Button>
     </div>
   ),
 };
@@ -147,7 +148,7 @@ export const SuccessTone = {
 export const WithIcons = {
   render: (args) => (
     <div className="sb-row">
-      <Button {...args} variant="primary"><Plus size={16} aria-hidden="true" />Add driver</Button>
+      <Button {...args} variant="primary"><Plus size={16} aria-hidden="true" />Add record</Button>
       <Button {...args} variant="secondary"><Download size={16} aria-hidden="true" />Export</Button>
       <Button {...args} variant="ghost"><Check size={16} aria-hidden="true" />Mark reviewed</Button>
       <Button {...args} variant="danger"><Trash2 size={16} aria-hidden="true" />Delete</Button>
@@ -186,10 +187,10 @@ export const LongLabel = {
   render: (args) => (
     <div className="sb-measure sb-column">
       <Button {...args} variant="primary">
-        Send the pre-employment verification request to every listed employer
+        Send a verification request to every organisation listed on this record
       </Button>
       <Button {...args} variant="secondary" fullWidth justify="start">
-        Download the complete driver qualification file as a single PDF
+        Download the complete record file, with every attachment, as a single PDF
       </Button>
     </div>
   ),
