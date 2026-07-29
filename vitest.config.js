@@ -28,6 +28,13 @@ export default defineConfig({
                 'src/tests/**',
                 '**/*.config.*',
                 'src/main.jsx',
+                // Storybook catalog examples and their fixtures. They document the
+                // design system and ship nowhere; counting them as application code
+                // would move the coverage baseline without changing what is tested.
+                // They are exercised directly by
+                // `src/tests/designSystemStories.a11y.test.jsx`.
+                'src/**/*.stories.jsx',
+                'src/design-system/stories/fixtures.js',
             ],
             thresholds: {
                 // Baseline measured 2026-06 (stmts 17.5 / br 14.8 / fns 14.9 /
@@ -46,6 +53,9 @@ export default defineConfig({
             '@app': path.resolve(__dirname, './src/app'),
             '@features': path.resolve(__dirname, './src/features'),
             '@shared': path.resolve(__dirname, './src/shared'),
+            // Present in `vite.config.js` and `jsconfig.json` but previously missing
+            // here, because no test imported it by alias until the story catalog did.
+            '@design-system': path.resolve(__dirname, './src/design-system'),
             '@lib': path.resolve(__dirname, './src/lib'),
         },
     },
