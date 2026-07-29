@@ -43,6 +43,15 @@ const FIELD_TONE_FALLBACK = { fill: 'bg-ds-status-accent-bg', border: 'border-ds
 
 export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, isMultiSelected = false, onSelect, onDragMove }) => {
     const nodeRef = useRef(null);
+    /**
+     * A pointer press focuses the field before the click is dispatched. If the
+     * focus handler also selected, a Shift-click would select the field on focus
+     * and then toggle it straight back out on click, leaving an empty selection
+     * and making the multi-select tools unreachable by pointer. So the click
+     * owns pointer selection, and focus only selects when it did not come from a
+     * pointer — which is exactly the keyboard case it exists for.
+     */
+    const pointerFocusRef = useRef(false);
     const hintId = `placed-field-hint-${useId().replace(/:/g, '')}`;
     const safePageHeight = pageHeight || 800;
     const wPx = (field.width / 100) * pageWidth;
@@ -157,12 +166,21 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
                 // `aria-selected` is not allowed on role="group", so the name carries it.
                 aria-label={`${fieldName}, ${field.type} field on page ${pageNum}${inSelection ? ', selected' : ''}`}
                 aria-describedby={hintId}
-                onFocus={() => onSelect(field.id)}
+                onMouseDown={() => { pointerFocusRef.current = true; }}
+                onFocus={() => {
+                    if (pointerFocusRef.current) return;
+                    onSelect(field.id);
+                }}
+                onBlur={() => { pointerFocusRef.current = false; }}
                 onKeyDown={handleKeyDown}
                 // Shift adds to the selection rather than replacing it. The second
                 // argument is additive metadata: callers that ignore it behave
                 // exactly as before.
-                onClick={(e) => { e.stopPropagation(); onSelect(field.id, { additive: e.shiftKey === true }); }}
+                onClick={(e) => {
+                    pointerFocusRef.current = false;
+                    e.stopPropagation();
+                    onSelect(field.id, { additive: e.shiftKey === true });
+                }}
                 className={`group absolute flex cursor-move flex-col rounded-ds-sm border pointer-events-auto transition-shadow motion-reduce:transition-none focus-visible:outline-none focus-visible:shadow-ds-focus
                     ${isSelected
                         ? 'z-[60] border-ds-action-primary shadow-ds-md ring-2 ring-ds-focus ring-offset-1'

@@ -63,6 +63,20 @@ const renderPreview = (overrides = {}) =>
 
 beforeEach(() => vi.clearAllMocks());
 
+describe('SignerPreviewDialog — overlay geometry', () => {
+    it('sizes the field layer from the page it rendered, not the editor zoom', () => {
+        // The layer used to take an explicit height from the editor's
+        // `pageDimensions`, measured at the editor's own zoom. The preview
+        // always renders at 560px wide, so any other editor zoom displaced every
+        // field vertically. `inset-0` is the only correct sizing here.
+        const { container } = renderPreview();
+        const layer = container.querySelector('[data-testid="signer-preview-layer"]');
+        expect(layer).not.toBeNull();
+        expect(layer.style.height).toBe('');
+        expect(layer.className).toContain('inset-0');
+    });
+});
+
 describe('dialog semantics', () => {
     it('names itself and says it changes nothing', () => {
         renderPreview();

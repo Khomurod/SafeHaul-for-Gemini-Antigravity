@@ -52,6 +52,10 @@ vi.mock('./components/envelope-creator/EnvelopeSidebar', () => ({
                 >
                     add second to selection
                 </button>
+                <button type="button" onClick={() => props.setRecipientName('Pat Example')}>
+                    set recipient name
+                </button>
+                <button type="button" onClick={() => props.setDeliveryMethod('sms')}>choose sms</button>
                 {props.fieldTools}
             </div>
         );
@@ -167,6 +171,33 @@ describe('save state', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Send Document' }));
         await waitFor(() => expect(toast.showError).toHaveBeenCalled());
         expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+    });
+});
+
+describe('recipient and delivery edits', () => {
+    it.each([
+        ['set recipient name', 'recipientName', 'Pat Example'],
+        ['choose sms', 'deliveryMethod', 'sms'],
+    ])('marks the document unsaved after %s', (control, prop, value) => {
+        // No PDF is loaded, so the recipient edit is the ONLY change — uploading
+        // already marks the document unsaved on its own.
+        setup();
+        expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: control }));
+        expect(sidebarProps.at(-1)[prop]).toBe(value);
+        expectSaveStateAnnounced('Unsaved changes');
+    });
+
+    it('guards a recipient-only edit on the way out', () => {
+        // Recipient details are part of the document being built, so leaving
+        // must ask before discarding them — even with nothing else changed.
+        const { props } = setup();
+        fireEvent.click(screen.getByRole('button', { name: 'set recipient name' }));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Back to Documents' }));
+        expect(props.onClose).not.toHaveBeenCalled();
+        expect(screen.getByRole('dialog', { name: 'Leave without saving?' })).toBeInTheDocument();
     });
 });
 
