@@ -170,6 +170,33 @@ describe('save state', () => {
     });
 });
 
+describe('save state on a failed save', () => {
+    it('reports the work as unsaved when a template save bails out before writing', async () => {
+        // Editing a template whose storagePath never hydrated: the existing
+        // guard refuses to write. The editor must not sit on "Saving…".
+        fs.getDoc.mockResolvedValue({
+            exists: () => true,
+            data: () => ({ title: 'Artificial Template', fields: [], storagePath: '' }),
+        });
+        setup({ editTemplateId: 'tpl-1' });
+        await screen.findByLabelText('Document title');
+        await loadPdf();
+        fireEvent.click(screen.getByRole('button', { name: 'add text field' }));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save Template Changes' }));
+
+        await waitFor(() =>
+            expect(toast.showError).toHaveBeenCalledWith(
+                'Template file reference is missing. Please re-upload the PDF as a new template.',
+            ),
+        );
+        expect(fs.updateDoc).not.toHaveBeenCalled();
+        expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+        expect(screen.queryByText('Saving…')).not.toBeInTheDocument();
+        expectSaveStateAnnounced('Unsaved changes');
+    });
+});
+
 describe('unsaved-change protection', () => {
     it('leaves immediately when there is nothing to lose', () => {
         const { props } = setup();

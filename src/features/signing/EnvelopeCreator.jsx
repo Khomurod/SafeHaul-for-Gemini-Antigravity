@@ -875,6 +875,9 @@ export default function EnvelopeCreator({
             if (isEditingTemplate) {
                 if (!existingStoragePath) {
                     showError('Template file reference is missing. Please re-upload the PDF as a new template.');
+                    // Nothing was written, so the work is still unsaved. Leaving
+                    // the state at SAVING would show "Saving…" forever.
+                    setSaveState(SAVE_STATES.UNSAVED);
                     return;
                 }
                 const docRef = doc(db, 'companies', companyId, 'templates', editTemplateId);
