@@ -1,14 +1,7 @@
-import React, { useId } from 'react';
+import React from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ZoomIn, ZoomOut } from 'lucide-react';
-import { IconButton, Button } from '@/design-system/components';
 import { ResizableDraggableField } from './ResizableDraggableField';
 import { AiSuggestionOverlay } from './AiSuggestionOverlay';
-import {
-    PDF_VIEWPORT_WIDTH_DEFAULT,
-    clampPdfViewportWidth,
-    zoomPercentLabel,
-} from '@features/signing/utils/envelopePdfZoom';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -19,15 +12,20 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 /**
- * Center column of the envelope creator: PDF viewer with zoom controls and the
- * draggable field overlay per page.
+ * Center column of the envelope creator: the PDF viewer and the draggable field
+ * overlay per page.
+ *
+ * The floating zoom widget that used to sit over the top-right corner of the
+ * canvas is gone: `EditorCanvasToolbar` above the canvas now owns paging, zoom,
+ * Fit Width, Fit Page, undo/redo and preview, and two controls with the same
+ * accessible name in the same view is an ambiguity, not a convenience. The zoom
+ * contract itself — the ±48px steps, the clamp, the reset and the Ctrl/⌘+wheel
+ * gesture — is unchanged and still owned by the creator.
  *
  * Presentation only. Everything the rest of the creator depends on is frozen:
  * the `workbenchRef` the Ctrl/⌘+wheel listener tests with `el.contains(e.target)`,
- * the canvas click that deselects, the toolbar's `stopPropagation` so its own
- * clicks do not deselect, the exact ±48 px zoom steps through
- * `clampPdfViewportWidth`, the `PDF_VIEWPORT_WIDTH_DEFAULT` reset,
- * `zoomPercentLabel`, `onLoadSuccess({ numPages })`, the `pageRefs` registration,
+ * the canvas click that deselects, `onLoadSuccess({ numPages })`, the
+ * `pageRefs` registration,
  * the `data-page-num` attribute, the `Page {n} / {total}` badge text, the
  * `renderAnnotationLayer`/`renderTextLayer` flags, the `pointer-events-none`
  * overlay layer, the `f.page === pageNum` filter and the
@@ -43,7 +41,6 @@ export function PdfFieldWorkbench({
     pageDimensions,
     onPageLoadSuccess,
     pdfViewportWidth,
-    setPdfViewportWidth,
     fields,
     selectedFieldId,
     selectedFieldIds = [],
@@ -65,59 +62,12 @@ export function PdfFieldWorkbench({
     onAcceptSuggestion,
     onRejectSuggestion,
 }) {
-    const rawId = useId().replace(/:/g, '');
-    const zoomLabelId = `pdf-zoom-label-${rawId}`;
-    const zoomPercent = zoomPercentLabel(pdfViewportWidth);
-
     return (
         <div
             ref={workbenchRef}
             className="relative flex flex-1 justify-center overflow-y-auto bg-ds-canvas p-ds-8 scroll-smooth"
             onClick={() => setSelectedFieldId(null)}
         >
-            {file && (
-                <div
-                    role="group"
-                    aria-labelledby={zoomLabelId}
-                    className="absolute right-6 top-3 z-30 flex flex-wrap items-center gap-ds-1 rounded-ds-xl border border-ds-border bg-ds-surface px-ds-2 py-ds-1 text-ds-xs shadow-ds-md"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <span id={zoomLabelId} className="pr-0.5 font-bold text-ds-content-secondary">PDF zoom</span>
-                    <IconButton
-                        label="Zoom out"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setPdfViewportWidth((w) => clampPdfViewportWidth(w - 48))}
-                    >
-                        <ZoomOut size={14} aria-hidden="true" />
-                    </IconButton>
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        aria-label={`Reset zoom to 100 percent, currently ${zoomPercent} percent`}
-                        className="min-w-[3rem] font-mono"
-                        onClick={() => setPdfViewportWidth(PDF_VIEWPORT_WIDTH_DEFAULT)}
-                    >
-                        {zoomPercent}%
-                    </Button>
-                    <IconButton
-                        label="Zoom in"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setPdfViewportWidth((w) => clampPdfViewportWidth(w + 48))}
-                    >
-                        <ZoomIn size={14} aria-hidden="true" />
-                    </IconButton>
-                    <span className="ml-0.5 hidden border-l border-ds-border-subtle pl-2 text-ds-content-secondary md:inline">
-                        Ctrl/⌘ + scroll
-                    </span>
-                    {/* Announce the level so keyboard and screen-reader users get the
-                        same feedback the visible percentage gives everyone else. */}
-                    <span role="status" className="ds-visually-hidden">
-                        {`Zoom ${zoomPercent} percent`}
-                    </span>
-                </div>
-            )}
             {file && (
                 <Document
                     file={file}

@@ -152,7 +152,7 @@ export function PageThumbnailRail({
                                 </span>
 
                                 <span aria-hidden="true" className="flex w-full items-center justify-center gap-ds-1 text-ds-xs">
-                                    <span className={isCurrent ? 'font-bold text-ds-action-primary' : 'text-ds-content-secondary'}>
+                                    <span className={isCurrent ? 'font-bold text-ds-status-info-fg' : 'text-ds-content-secondary'}>
                                         {page}
                                     </span>
                                     {fieldCount > 0 && (

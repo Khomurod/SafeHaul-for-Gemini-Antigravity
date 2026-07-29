@@ -52,7 +52,10 @@ export function EditorMobileBar({ openSheet = null, onOpenSheet, fieldCount = 0,
                         onClick={() => onOpenSheet(key)}
                         className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-ds-1 py-ds-1 transition-colors focus-visible:outline-none focus-visible:shadow-ds-focus ${
                             openSheet === key
-                                ? 'bg-ds-status-info-bg text-ds-action-primary'
+                                // `--ds-color-status-info-fg` rather than the
+                                // primary action colour: on the info surface the
+                                // latter measures 4.23:1, under the 4.5:1 minimum.
+                                ? 'bg-ds-status-info-bg text-ds-status-info-fg'
                                 : 'text-ds-content-secondary hover:bg-ds-surface-subtle'
                         }`}
                     >

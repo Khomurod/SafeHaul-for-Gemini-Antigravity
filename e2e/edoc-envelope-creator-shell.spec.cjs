@@ -1,5 +1,5 @@
-// E2E coverage for the EnvelopeCreator *shell* migration (sub-slice A): the top
-// bar heading matrix, the FIXED creator mode, Cancel and the save action.
+// E2E coverage for the EnvelopeCreator *shell*: the top bar's editable title,
+// the FIXED creator mode, leaving the editor and the save action.
 //
 // The creator is opened through the Documents workspace's New Document dialog,
 // which needs no PDF, so
@@ -15,24 +15,39 @@ const { openCreator } = require('./helpers/edocHelpers.cjs');
 test.describe('E-Doc envelope creator shell slice', () => {
   test.describe.configure({ timeout: 90_000 });
 
-  test('opens in one-off mode with the frozen heading and save label', async ({ page }) => {
+  test('opens in one-off mode with an editable title and the frozen save label', async ({ page }) => {
     await openCreator(page, 'request');
 
-    await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: 'Send Document' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Back to Documents' })).toBeVisible();
   });
 
-  test('opens in template mode with the frozen heading', async ({ page }) => {
+  test('opens in template mode with the frozen save label', async ({ page }) => {
     await openCreator(page, 'template');
 
-    await expect(page.getByRole('heading', { name: 'Create Template' })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Reusable template')).toBeVisible();
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Save Template', exact: true })).toBeVisible();
   });
 
-  test('states the chosen mode and offers no control that changes it', async ({ page }) => {
+  test('renames the document from the top bar', async ({ page }) => {
     await openCreator(page, 'request');
-    await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+    const title = page.getByLabel('Document title');
+    await expect(title).toBeVisible({ timeout: 15_000 });
+
+    await title.fill('Artificial Agreement');
+    await title.blur();
+    await expect(title).toHaveValue('Artificial Agreement');
+    // Editing the title is a change, and the editor says so rather than
+    // implying the work is safe.
+    await expect(page.getByText('Unsaved changes').first()).toBeVisible();
+  });
+
+  test('states the chosen mode and offers no control that changes it', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.startsWith('mobile'), 'The mode badges belong to the wide top bar.');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openCreator(page, 'request');
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
 
     // The mode is decided in the New Document dialog and is fixed here, so a
     // half-built envelope can never silently become a template.
@@ -42,27 +57,43 @@ test.describe('E-Doc envelope creator shell slice', () => {
     await expect(page.getByRole('button', { name: 'Save Template', exact: true })).toHaveCount(0);
   });
 
-  test('cancel returns to the Documents workspace', async ({ page }) => {
+  test('leaving with nothing unsaved returns to the Documents workspace', async ({ page }) => {
     await openCreator(page, 'request');
-    await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('button', { name: 'Back to Documents' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Documents' })).toBeVisible();
+  });
+
+  test('asks before discarding unsaved work, and keeps it when told to', async ({ page }) => {
+    await openCreator(page, 'request');
+    const title = page.getByLabel('Document title');
+    await expect(title).toBeVisible({ timeout: 15_000 });
+    await title.fill('Artificial Agreement');
+    await title.blur();
+
+    await page.getByRole('button', { name: 'Back to Documents' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Leave without saving?' });
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByLabel('Document title')).toHaveValue('Artificial Agreement');
   });
 
   test('keeps the top bar keyboard reachable with visible focus', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name.startsWith('mobile'), 'Desktop keyboard behavior.');
     await page.setViewportSize({ width: 1440, height: 900 });
     await openCreator(page, 'request');
-    await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
 
-    const cancel = page.getByRole('button', { name: 'Cancel' });
-    await cancel.focus();
+    const back = page.getByRole('button', { name: 'Back to Documents' });
+    await back.focus();
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
-    await expect(cancel).toBeFocused();
+    await expect(back).toBeFocused();
 
-    const focus = await cancel.evaluate((el) => {
+    const focus = await back.evaluate((el) => {
       const s = getComputedStyle(el);
       return { boxShadow: s.boxShadow, outline: s.outlineStyle };
     });
@@ -73,7 +104,7 @@ test.describe('E-Doc envelope creator shell slice', () => {
     const widths = testInfo.project.name.startsWith('mobile') ? [412] : [1440, 1024];
     await page.setViewportSize({ width: widths[0], height: widths[0] === 412 ? 915 : 900 });
     await openCreator(page, 'request');
-    await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
 
     for (const width of widths) {
       await page.setViewportSize({ width, height: width === 412 ? 915 : 900 });
@@ -87,11 +118,10 @@ test.describe('E-Doc envelope creator shell slice', () => {
 
   test('has no serious/critical or contrast violations in the top bar', async ({ page }) => {
     await openCreator(page, 'request');
-    await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
 
-    // Scoped to the migrated shell top bar. The sidebar, PDF workbench and
-    // properties rail are later sub-slices and still carry legacy markup.
-    const { violations } = await new AxeBuilder({ page }).include('.z-20').analyze();
+    // Scoped to the editor top bar.
+    const { violations } = await new AxeBuilder({ page }).include('.z-30').analyze();
     const serious = violations
       .filter((v) => v.impact === 'serious' || v.impact === 'critical')
       .map((v) => `${v.id} [${v.impact}] x${v.nodes.length}`);
