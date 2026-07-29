@@ -20,7 +20,9 @@ Before changing UI code, read:
   presentation, forms, empty states, and dialog structure.
 - `layouts/` contains business-neutral page and region composition.
 - `icons/` documents and exports the approved icon contract.
-- `stories/` is the future component-catalog entry point.
+- `stories/` is the component catalog, built with Storybook 10 and configured in
+  `.storybook/`. Run it with `npm run storybook`; `npm run test:stories` renders
+  every story and runs axe over it. See `stories/README.md`.
 - `tests/` enforces token and dependency boundaries.
 
 Feature screens remain in `src/features`. Features own content, available
@@ -127,3 +129,24 @@ verified.
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
 durable visual baselines are owner-approved.
+
+## Component catalog
+
+`npm run storybook` opens the catalog. It documents sixteen subjects — Button,
+IconButton, Input, Select, Textarea, Checkbox/Radio/ChoiceGroup, Badge,
+Card/MetricCard, DataTable, the page layout primitives, ProgressBar,
+StatusMedallion, SectionNavigation, the form-structure primitives, Modal and
+ConfirmDialog — plus six business-neutral page patterns.
+
+Each page records an explicit **Approved** / **Needs review** / **Temporary**
+status and names what is unresolved. Read that status before reusing something:
+the catalog is deliberately not a list of things that are all finished, and the
+`Introduction` page lists the primitives that do **not** exist yet (Tabs, Link,
+Combobox, file input, Switch, segmented control, filter chip, overflow menu,
+disclosure, split panel, sticky footer). Do not hand-roll those — record the need
+in the roadmap.
+
+Catalog stories may not import features, Firebase, application context or domain
+services, and may not use domain vocabulary. `tests/architecture.test.js`
+enforces the import half of that rule, and `storybook-build` in CI builds the
+catalog with no credentials at all.
