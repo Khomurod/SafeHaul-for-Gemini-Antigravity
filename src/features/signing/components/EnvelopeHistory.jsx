@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { db } from '@lib/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { FileText, CheckCircle, Clock, Download, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Edit3, Info } from 'lucide-react';
+import { FileText, CheckCircle, Clock, Download, Loader2, AlertCircle, Copy, MessageSquare, Mail, Ban, Info } from 'lucide-react';
 import { useToast } from '@shared/components/feedback';
+import { useIsMobile } from '@shared/hooks/useIsMobile';
 import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { Badge, Button, DataTable, defineTableColumns } from '@/design-system/components';
 import { useSigningRequests } from '@features/signing/hooks/useSigningRequests';
@@ -29,12 +30,26 @@ const STATUS_PRESENTATION = {
 };
 
 /**
+ * Rows per page. The live subscription regularly returns 100+ documents; the
+ * table stays a single live list, sliced for display only, so real-time
+ * updates keep flowing into whichever page is visible.
+ */
+const PAGE_SIZE = 25;
+
+/**
  * Company-side sent-documents table.
  *
- * The live subscription is unchanged — it now lives in `useSigningRequests`,
+ * The live subscription is unchanged — it lives in `useSigningRequests`,
  * which this component uses when no `documents` prop is supplied. The Documents
  * workspace passes its already-filtered documents in instead, so the workspace
  * and this table never open two listeners on the same collection.
+ *
+ * Action hierarchy (2026-07-29 redesign): every row is activatable and opens
+ * the details dialog, and the Actions column holds exactly one status-specific
+ * quick action — Download when signed, Copy Link when sent, Review/View
+ * details otherwise. Correct and Void moved out of the rows into the details
+ * dialog; their callable/Firestore contracts, confirmation dialog, toasts and
+ * per-document busy states are unchanged.
  */
 export default function EnvelopeHistory({
     companyId,
@@ -50,7 +65,13 @@ export default function EnvelopeHistory({
     // Replaces the blocking `window.confirm` on the destructive void.
     const [pendingVoid, setPendingVoid] = useState(null);
     const [detailsDocument, setDetailsDocument] = useState(null);
+    const [page, setPage] = useState(1);
     const { showSuccess, showError } = useToast();
+    // Quick actions stay `sm` on desktop for row density but grow to the 44px
+    // `lg` control on touch layouts, where the row is reached by horizontal
+    // scroll and a 36px target is too small.
+    const isMobile = useIsMobile();
+    const quickActionSize = isMobile ? 'lg' : 'sm';
 
     // Only subscribes when the parent is not already supplying the data.
     const ownSubscription = useSigningRequests(documents ? null : companyId);
@@ -146,8 +167,9 @@ export default function EnvelopeHistory({
                     <span title={docItem.emailError || "Email Delivery Failed"}>
                         <Badge tone="danger" icon={AlertCircle}>Delivery Failed</Badge>
                     </span>
+                    {/* One clamped line; the complete safe detail lives in the details dialog. */}
                     <span
-                        className="max-w-[220px] text-ds-xs text-ds-status-danger-fg [overflow-wrap:anywhere]"
+                        className="line-clamp-1 max-w-[220px] text-ds-xs text-ds-status-danger-fg [overflow-wrap:anywhere]"
                         title={docItem.emailError || ''}
                     >
                         {errorDetail}
@@ -175,94 +197,76 @@ export default function EnvelopeHistory({
     };
 
     const renderDeliveryMethods = (docItem) => (
-        <div className="mt-ds-1 flex flex-wrap gap-ds-1">
+        <span className="inline-flex flex-wrap items-center gap-ds-1">
             {docItem.sendEmail && <Badge tone="info" icon={Mail}>Email</Badge>}
             {docItem.sendSms && <Badge tone="success" icon={MessageSquare}>SMS</Badge>}
             {docItem.sendEmail === false && docItem.sendSms !== true && (
                 <Badge tone="neutral">Manual</Badge>
             )}
-        </div>
+        </span>
     );
 
-    const detailsButton = (docItem) => (
-        <Button
-            variant="secondary"
-            size="sm"
-            aria-label={`Details for ${docItem.title || 'Untitled'}`}
-            title="Open document details"
-            onClick={() => setDetailsDocument(docItem)}
-        >
-            <Info size={12} aria-hidden="true" /> Details
-        </Button>
-    );
-
-    const renderActions = (docItem) => {
+    /**
+     * Exactly one status-specific quick action per row. The row itself opens the
+     * details dialog, where every other permitted operation (Copy Link, Correct,
+     * Void, Download) remains available with its original contract.
+     */
+    const renderQuickAction = (docItem) => {
         const title = docItem.title || 'Untitled';
 
-        if (docItem.status === 'signed') {
-            return (
-                <div className="flex flex-wrap items-center justify-end gap-ds-2">
-                    {detailsButton(docItem)}
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        aria-label={`Download ${title}`}
-                        onClick={() => handleDownload(docItem.signedPdfUrl || docItem.storagePath)}
-                    >
-                        <Download size={14} aria-hidden="true" /> Download
-                    </Button>
-                </div>
-            );
-        }
-
-        if (docItem.status === 'voided') {
-            return (
-                <div className="flex flex-wrap items-center justify-end gap-ds-2">
-                    {detailsButton(docItem)}
-                </div>
-            );
-        }
-
-        return (
-            <div className="flex flex-wrap items-center justify-end gap-ds-2">
-                {detailsButton(docItem)}
+        let action;
+        if (docItem.emailStatus === 'failed' || docItem.status === 'error_sealing') {
+            action = (
                 <Button
                     variant="secondary"
-                    size="sm"
+                    size={quickActionSize}
+                    aria-label={`Review details for ${title}`}
+                    title="Review the delivery or sealing failure"
+                    onClick={() => setDetailsDocument(docItem)}
+                >
+                    <AlertCircle size={14} aria-hidden="true" /> Review
+                </Button>
+            );
+        } else if (docItem.status === 'signed') {
+            action = (
+                <Button
+                    variant="secondary"
+                    size={quickActionSize}
+                    aria-label={`Download ${title}`}
+                    title="Download the signed document"
+                    onClick={() => handleDownload(docItem.signedPdfUrl || docItem.storagePath)}
+                >
+                    <Download size={14} aria-hidden="true" /> Download
+                </Button>
+            );
+        } else if (docItem.status === 'sent') {
+            action = (
+                <Button
+                    variant="secondary"
+                    size={quickActionSize}
                     loading={copyingId === docItem.id}
                     aria-label={`Link for ${title}`}
                     title="Copy full signing link"
                     onClick={() => handleCopyLink(docItem)}
                 >
-                    {copyingId !== docItem.id && <Copy size={12} aria-hidden="true" />} Link
+                    {copyingId !== docItem.id && <Copy size={14} aria-hidden="true" />} Copy link
                 </Button>
-                {docItem.status === 'sent' && (
-                    <>
-                        {onCorrect && (
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                aria-label={`Correct ${title}`}
-                                title="Correct this document"
-                                onClick={() => onCorrect(docItem)}
-                            >
-                                <Edit3 size={12} aria-hidden="true" /> Correct
-                            </Button>
-                        )}
-                        <Button
-                            variant="danger"
-                            size="sm"
-                            loading={voidingId === docItem.id}
-                            aria-label={`Void ${title}`}
-                            title="Void this document"
-                            onClick={() => requestVoid(docItem)}
-                        >
-                            {voidingId !== docItem.id && <Ban size={12} aria-hidden="true" />} Void
-                        </Button>
-                    </>
-                )}
-            </div>
-        );
+            );
+        } else {
+            action = (
+                <Button
+                    variant="secondary"
+                    size={quickActionSize}
+                    aria-label={`View details for ${title}`}
+                    title="Open document details"
+                    onClick={() => setDetailsDocument(docItem)}
+                >
+                    <Info size={14} aria-hidden="true" /> View details
+                </Button>
+            );
+        }
+
+        return <div className="flex items-center justify-end gap-ds-2">{action}</div>;
     };
 
     const columns = defineTableColumns([
@@ -270,26 +274,38 @@ export default function EnvelopeHistory({
             key: 'title',
             header: 'Document Title',
             rowHeader: true,
-            width: 'lg',
-            render: (docItem) => (
-                <span className="flex items-center gap-ds-2 font-medium text-ds-content [overflow-wrap:anywhere]">
-                    <FileText size={16} className="shrink-0 text-ds-action-primary" aria-hidden="true" />
-                    {docItem.title || 'Untitled'}
-                </span>
-            ),
+            // 'auto' lets the document name take the width the fixed columns leave.
+            render: (docItem) => {
+                const title = docItem.title || 'Untitled';
+                return (
+                    <span className="flex items-start gap-ds-2 font-medium text-ds-content" title={title}>
+                        <FileText size={16} className="mt-0.5 shrink-0 text-ds-action-primary" aria-hidden="true" />
+                        <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">{title}</span>
+                    </span>
+                );
+            },
         },
         {
             key: 'recipient',
             header: 'Recipient',
-            width: 'lg',
+            // 'auto', like the title: the two identity columns share the spare
+            // width, so a typical email plus its delivery badge stays on one
+            // line and the row stays compact.
             render: (docItem) => (
                 <div className="min-w-0">
-                    <div className="font-medium text-ds-content [overflow-wrap:anywhere]">{docItem.recipientName}</div>
-                    <div className="text-ds-xs text-ds-content-muted [overflow-wrap:anywhere]">
-                        {docItem.recipientEmail || docItem.recipientPhone || '—'}
+                    <div
+                        className="line-clamp-1 font-medium text-ds-content [overflow-wrap:anywhere]"
+                        title={docItem.recipientName || undefined}
+                    >
+                        {docItem.recipientName}
                     </div>
-                    {/* FEAT-4: Delivery method badge */}
-                    {renderDeliveryMethods(docItem)}
+                    <div className="mt-ds-1 flex flex-wrap items-center gap-ds-2">
+                        <span className="text-ds-xs text-ds-content-muted [overflow-wrap:anywhere]">
+                            {docItem.recipientEmail || docItem.recipientPhone || 'No email or phone'}
+                        </span>
+                        {/* FEAT-4: Delivery method badge */}
+                        {renderDeliveryMethods(docItem)}
+                    </div>
                 </div>
             ),
         },
@@ -314,28 +330,61 @@ export default function EnvelopeHistory({
             key: 'actions',
             header: 'Actions',
             align: 'end',
-            width: 'actions',
+            // 'lg', not 'actions': one labelled quick action needs a real column,
+            // and the old 64px 'actions' width is what stacked buttons vertically.
+            width: 'lg',
             priority: 'actions',
-            render: renderActions,
+            // A quick action must never also activate the row.
+            stopPropagation: true,
+            render: renderQuickAction,
         },
     ]);
+
+    /**
+     * Display-only pagination over the live list. The page is clamped against
+     * the current document count, so a filter change or live deletion that
+     * shrinks the list can never leave the table on a page that no longer
+     * exists. 25 or fewer documents render exactly as before, unpaged.
+     */
+    const totalPages = Math.max(1, Math.ceil(docs.length / PAGE_SIZE));
+    const currentPage = Math.min(page, totalPages);
+    // Persist the clamp (render-time state adjustment, not an effect): if it
+    // only derived `currentPage`, a list that shrinks below a page and later
+    // grows again would resurrect the stale page and silently skip the first
+    // 25 documents.
+    if (currentPage !== page) setPage(currentPage);
+    const paged = docs.length > PAGE_SIZE;
+    const visibleDocs = paged ? docs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE) : docs;
+    const pagination = paged
+        ? {
+            label: `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, docs.length)} of ${docs.length} documents`,
+            currentPage,
+            totalPages,
+            hasPrev: currentPage > 1,
+            hasNext: currentPage < totalPages,
+            onPrev: () => setPage(Math.max(1, currentPage - 1)),
+            onNext: () => setPage(Math.min(totalPages, currentPage + 1)),
+        }
+        : undefined;
 
     return (
         <>
             <DataTable
                 ariaLabel="Document history"
-                data={docs}
+                data={visibleDocs}
                 columns={columns}
                 isLoading={loading}
                 loadingLabel="Loading document history"
                 error={loadError ? { message: loadError, onRetry: retry } : undefined}
                 empty={emptyState || { title: 'No documents sent yet.' }}
-                getRowLabel={(docItem) => docItem.title || 'Untitled'}
+                getRowLabel={(docItem) => `Details for ${docItem.title || 'Untitled'}`}
+                onRowActivate={setDetailsDocument}
+                pagination={pagination}
             />
 
             {/*
-              Row-level details. Read-only summary plus the same actions the row
-              offers — the signing token is never rendered, only copied to the
+              Row-level details. Read-only summary plus every permitted secondary
+              action — the signing token is never rendered, only copied to the
               clipboard through the authenticated callable.
             */}
             <SentDocumentDetailsDialog

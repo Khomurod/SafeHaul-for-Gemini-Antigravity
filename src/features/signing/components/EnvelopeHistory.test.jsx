@@ -76,6 +76,12 @@ function renderHistory(props = {}) {
     return { onCorrect, ...utils };
 }
 
+/** Activates a row (the generic details action) and returns its details dialog. */
+async function openDetails(rowName = 'Details for Offer Letter') {
+    fireEvent.click(screen.getByRole('row', { name: rowName }));
+    return screen.findByRole('dialog');
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     unsubSpy = vi.fn();
@@ -216,11 +222,12 @@ describe('EnvelopeHistory — delivery method and fallbacks', () => {
         expect(screen.getByText('SMS')).toBeInTheDocument();
     });
 
-    it('falls back to Untitled, the em dash contact, and -- for a missing date', () => {
+    it('falls back to Untitled, plain contact-missing wording, and -- for a missing date', () => {
         renderHistory();
         emit([makeDoc({ title: undefined, recipientEmail: undefined, recipientPhone: undefined, createdAt: undefined })]);
         expect(screen.getByText('Untitled')).toBeInTheDocument();
-        expect(screen.getByText('—')).toBeInTheDocument();
+        // A bare dash reads as an accident; the fallback says what is missing.
+        expect(screen.getByText('No email or phone')).toBeInTheDocument();
         expect(screen.getByText('--')).toBeInTheDocument();
     });
 
@@ -237,62 +244,199 @@ describe('EnvelopeHistory — delivery method and fallbacks', () => {
     });
 });
 
-describe('EnvelopeHistory — action visibility', () => {
-    it('offers only Download for a signed document', () => {
+describe('EnvelopeHistory — title presentation', () => {
+    it('clamps a long title to two lines while exposing the full text', () => {
+        const longTitle = `Extremely long artificial onboarding packet filename ${'x'.repeat(120)}.pdf`;
         renderHistory();
+        emit([makeDoc({ title: longTitle })]);
+        const clamped = screen.getByText(longTitle);
+        expect(clamped.className).toContain('line-clamp-2');
+        // The full stored title stays reachable through the cell tooltip.
+        expect(clamped.closest('[title]')).toHaveAttribute('title', longTitle);
+    });
+});
+
+describe('EnvelopeHistory — quick action hierarchy', () => {
+    it('offers Download as the only row action for a signed document', () => {
+        renderHistory({ onCorrect: vi.fn() });
         emit([makeDoc({ status: 'signed' })]);
-        expect(screen.getByRole('button', { name: 'Download Offer Letter' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /Link for/ })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /Void/ })).not.toBeInTheDocument();
+        const row = screen.getByRole('row', { name: 'Details for Offer Letter' });
+        const buttons = within(row).getAllByRole('button');
+        expect(buttons).toHaveLength(1);
+        expect(buttons[0]).toHaveAccessibleName('Download Offer Letter');
     });
 
-    it('offers only Details for a voided document', () => {
-        renderHistory();
-        emit([makeDoc({ status: 'voided' })]);
-        // A voided document is read-only: the row still opens its details (which
-        // is how an operator sees why it was voided) but exposes no action that
-        // could change it.
-        expect(screen.getByRole('button', { name: 'Details for Offer Letter' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /Link for|Void|Correct|Download/ })).not.toBeInTheDocument();
-    });
-
-    it('offers Link, Correct and Void for a sent document when onCorrect exists', () => {
+    it('offers Copy Link as the only row action for a sent document', () => {
         renderHistory({ onCorrect: vi.fn() });
         emit([makeDoc({ status: 'sent' })]);
-        expect(screen.getByRole('button', { name: 'Link for Offer Letter' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Correct Offer Letter' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Void Offer Letter' })).toBeInTheDocument();
+        const row = screen.getByRole('row', { name: 'Details for Offer Letter' });
+        const buttons = within(row).getAllByRole('button');
+        expect(buttons).toHaveLength(1);
+        expect(buttons[0]).toHaveAccessibleName('Link for Offer Letter');
+        // Correct and Void no longer sit in every row; they live in the details dialog.
+        expect(screen.queryByRole('button', { name: 'Correct Offer Letter' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Void Offer Letter' })).not.toBeInTheDocument();
     });
 
-    it('hides Correct when no onCorrect handler is supplied', () => {
+    it('offers Review details as the only row action for a delivery failure', () => {
+        renderHistory({ onCorrect: vi.fn() });
+        emit([makeDoc({ status: 'sent', emailStatus: 'failed', emailError: 'SMTP 550 rejected' })]);
+        const row = screen.getByRole('row', { name: 'Details for Offer Letter' });
+        const buttons = within(row).getAllByRole('button');
+        expect(buttons).toHaveLength(1);
+        expect(buttons[0]).toHaveAccessibleName('Review details for Offer Letter');
+    });
+
+    it('offers Review details as the only row action for a sealing failure', () => {
+        renderHistory();
+        emit([makeDoc({ status: 'error_sealing' })]);
+        expect(screen.getByRole('button', { name: 'Review details for Offer Letter' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Link for|Download|Void|Correct/ })).not.toBeInTheDocument();
+    });
+
+    it.each(['processing', 'pending_seal', 'voided', 'archived_by_admin'])(
+        'offers View details as the only row action for a %s document',
+        (status) => {
+            renderHistory({ onCorrect: vi.fn() });
+            emit([makeDoc({ status })]);
+            const row = screen.getByRole('row', { name: 'Details for Offer Letter' });
+            const buttons = within(row).getAllByRole('button');
+            expect(buttons).toHaveLength(1);
+            expect(buttons[0]).toHaveAccessibleName('View details for Offer Letter');
+        },
+    );
+
+    it('never renders more than one action control in an ordinary row', () => {
+        renderHistory({ onCorrect: vi.fn() });
+        emit([
+            makeDoc({ id: 'a', status: 'sent' }),
+            makeDoc({ id: 'b', title: 'Signed Doc', status: 'signed' }),
+            makeDoc({ id: 'c', title: 'Voided Doc', status: 'voided' }),
+        ]);
+        for (const name of ['Details for Offer Letter', 'Details for Signed Doc', 'Details for Voided Doc']) {
+            expect(within(screen.getByRole('row', { name })).getAllByRole('button')).toHaveLength(1);
+        }
+    });
+});
+
+describe('EnvelopeHistory — row details activation', () => {
+    it('opens the details dialog when the row is clicked', async () => {
         renderHistory();
         emit([makeDoc({ status: 'sent' })]);
-        expect(screen.queryByRole('button', { name: /Correct/ })).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Void Offer Letter' })).toBeInTheDocument();
+        const dialog = await openDetails();
+        expect(dialog).toHaveAccessibleName('Offer Letter');
     });
 
-    it('offers only Link for a non-sent, non-signed, non-voided document', () => {
-        renderHistory({ onCorrect: vi.fn() });
-        emit([makeDoc({ status: 'processing' })]);
-        expect(screen.getByRole('button', { name: 'Link for Offer Letter' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /Void|Correct/ })).not.toBeInTheDocument();
+    it('opens the details dialog from the keyboard with Enter and Space', async () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+        const row = screen.getByRole('row', { name: 'Details for Offer Letter' });
+        expect(row).toHaveAttribute('tabindex', '0');
+
+        fireEvent.keyDown(row, { key: 'Enter' });
+        let dialog = await screen.findByRole('dialog');
+        // The dialog has a footer Close and an icon Close; either dismisses it.
+        fireEvent.click(within(dialog).getAllByRole('button', { name: 'Close' })[0]);
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+        fireEvent.keyDown(row, { key: ' ' });
+        dialog = await screen.findByRole('dialog');
+        expect(dialog).toHaveAccessibleName('Offer Letter');
     });
 
-    it('passes the exact document object to onCorrect', () => {
+    it('restores focus to the row after the details dialog closes', async () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+        const row = screen.getByRole('row', { name: 'Details for Offer Letter' });
+        row.focus();
+        fireEvent.keyDown(row, { key: 'Enter' });
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getAllByRole('button', { name: 'Close' })[0]);
+        await waitFor(() => expect(row).toHaveFocus());
+    });
+
+    it('row activation opens details without triggering any quick action', async () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+        await openDetails();
+        expect(callables.getSigningLink).not.toHaveBeenCalled();
+        expect(callables.getSignedDocumentUrl).not.toHaveBeenCalled();
+        expect(fs.updateDoc).not.toHaveBeenCalled();
+    });
+
+    it('quick-action activation never opens the row details', async () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+        fireEvent.click(screen.getByRole('button', { name: 'Link for Offer Letter' }));
+        await waitFor(() => expect(callables.getSigningLink).toHaveBeenCalled());
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+});
+
+describe('EnvelopeHistory — details dialog actions', () => {
+    it('Copy Link in the dialog calls getSigningLink with the exact payload', async () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+        const dialog = await openDetails();
+
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Copy Link' }));
+
+        await waitFor(() => expect(fnMocks.httpsCallable).toHaveBeenCalledWith({}, 'getSigningLink'));
+        expect(callables.getSigningLink).toHaveBeenCalledWith({ companyId: 'co-1', requestId: 'req-1' });
+        await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SIGNING_LINK));
+        await waitFor(() => expect(toast.showSuccess).toHaveBeenCalledWith('Full signing link copied to clipboard!'));
+    });
+
+    it('Correct in the dialog passes the exact document and closes the dialog', async () => {
         const onCorrect = vi.fn();
         renderHistory({ onCorrect });
         emit([makeDoc({ status: 'sent' })]);
-        fireEvent.click(screen.getByRole('button', { name: 'Correct Offer Letter' }));
+        const dialog = await openDetails();
+
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Correct' }));
+
         expect(onCorrect).toHaveBeenCalledTimes(1);
         expect(onCorrect.mock.calls[0][0]).toMatchObject({ id: 'req-1', title: 'Offer Letter', status: 'sent' });
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('hides Correct in the dialog when no onCorrect handler is supplied', async () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+        const dialog = await openDetails();
+        expect(within(dialog).queryByRole('button', { name: 'Correct' })).not.toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'Void' })).toBeInTheDocument();
+    });
+
+    it('Download in the dialog uses the exact existing download contract', async () => {
+        const openSpy = vi.fn();
+        vi.stubGlobal('open', openSpy);
+        renderHistory();
+        emit([makeDoc({ status: 'signed', signedPdfUrl: 'companies/co-1/signed/artificial.pdf' })]);
+        const dialog = await openDetails();
+
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+        await waitFor(() => {
+            expect(callables.getSignedDocumentUrl).toHaveBeenCalledWith({ storagePath: 'companies/co-1/signed/artificial.pdf' });
+        });
+        await waitFor(() => expect(openSpy).toHaveBeenCalledWith(DOC_URL, '_blank'));
+    });
+
+    it('keeps a voided document read-only in the dialog', async () => {
+        renderHistory({ onCorrect: vi.fn() });
+        emit([makeDoc({ status: 'voided' })]);
+        const dialog = await openDetails();
+        expect(within(dialog).queryByRole('button', { name: /Copy Link|Correct|Void|Download/ })).not.toBeInTheDocument();
     });
 });
 
 describe('EnvelopeHistory — void action', () => {
-    /** Opens the void confirmation for a row and returns the dialog. */
-    async function openVoidConfirmation(rowLabel = 'Void Offer Letter') {
-        fireEvent.click(screen.getByRole('button', { name: rowLabel }));
-        return screen.findByRole('dialog');
+    /** Opens the details dialog, requests the void, and returns the confirmation. */
+    async function openVoidConfirmation(rowName = 'Details for Offer Letter') {
+        const details = await openDetails(rowName);
+        fireEvent.click(within(details).getByRole('button', { name: 'Void' }));
+        return screen.findByRole('dialog', { name: /^Void / });
     }
 
     it('writes the exact update after the exact confirmation and reports success', async () => {
@@ -321,7 +465,7 @@ describe('EnvelopeHistory — void action', () => {
         renderHistory();
         emit([makeDoc({ status: 'sent', title: undefined })]);
 
-        const dialog = await openVoidConfirmation('Void Untitled');
+        const dialog = await openVoidConfirmation('Details for Untitled');
         expect(dialog).toHaveAccessibleName('Void "this document"?');
     });
 
@@ -366,7 +510,7 @@ describe('EnvelopeHistory — void action', () => {
         consoleError.mockRestore();
     });
 
-    it('shows a busy state on the voiding row only', async () => {
+    it('marks the confirmation busy while the void is in flight', async () => {
         let resolveVoid;
         fs.updateDoc.mockReturnValue(new Promise((resolve) => { resolveVoid = resolve; }));
         renderHistory();
@@ -375,8 +519,10 @@ describe('EnvelopeHistory — void action', () => {
         const dialog = await openVoidConfirmation();
         fireEvent.click(within(dialog).getByRole('button', { name: 'Void document' }));
 
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Void Offer Letter' })).toBeDisabled());
-        expect(screen.getByRole('button', { name: 'Void NDA' })).toBeEnabled();
+        await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Void document' })).toBeDisabled());
+        expect(within(dialog).getByRole('button', { name: 'Keep document' })).toBeDisabled();
+        // The other row stays fully usable while this envelope voids.
+        expect(screen.getByRole('button', { name: 'Link for NDA' })).toBeEnabled();
 
         await React.act(async () => { resolveVoid(); });
     });
@@ -488,6 +634,62 @@ describe('EnvelopeHistory — download action', () => {
     });
 });
 
+describe('EnvelopeHistory — pagination', () => {
+    const manyDocs = (count) => Array.from({ length: count }, (_, index) =>
+        makeDoc({ id: `req-${index}`, title: `Doc ${index}`, status: 'sent' }));
+
+    it('shows no pagination for 25 or fewer documents', () => {
+        renderHistory();
+        emit(manyDocs(25));
+        expect(screen.queryByRole('navigation', { name: /pagination/ })).not.toBeInTheDocument();
+        // Header row plus every document.
+        expect(screen.getAllByRole('row')).toHaveLength(26);
+    });
+
+    it('pages beyond 25 documents and announces the visible range', () => {
+        renderHistory();
+        emit(manyDocs(30));
+
+        expect(screen.getAllByRole('row')).toHaveLength(26);
+        expect(screen.getByText('Showing 1–25 of 30 documents')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+        expect(screen.getAllByRole('row')).toHaveLength(6);
+        expect(screen.getByText('Showing 26–30 of 30 documents')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
+        expect(screen.getByText('Showing 1–25 of 30 documents')).toBeInTheDocument();
+    });
+
+    it('clamps the page when a live update shrinks the list', () => {
+        renderHistory();
+        emit(manyDocs(30));
+        fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+        expect(screen.getByText('Showing 26–30 of 30 documents')).toBeInTheDocument();
+
+        // The live snapshot narrows (a filter change upstream, or deletions):
+        // the table must fall back to a page that still exists.
+        emit(manyDocs(3));
+        expect(screen.getAllByRole('row')).toHaveLength(4);
+        expect(screen.queryByRole('navigation', { name: /pagination/ })).not.toBeInTheDocument();
+    });
+
+    it('does not resurrect a stale page after the list shrinks and grows again', () => {
+        renderHistory();
+        emit(manyDocs(30));
+        fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+        expect(screen.getByText('Showing 26–30 of 30 documents')).toBeInTheDocument();
+
+        // A filter narrows the list below one page, then is cleared again. The
+        // clamp must persist, or the restored list would silently open on page
+        // 2 and hide the first 25 documents.
+        emit(manyDocs(10));
+        emit(manyDocs(30));
+        expect(screen.getByText('Showing 1–25 of 30 documents')).toBeInTheDocument();
+    });
+});
+
 describe('EnvelopeHistory — accessibility', () => {
     it('exposes a labelled, keyboard-focusable horizontal scroll region', () => {
         renderHistory();
@@ -502,16 +704,15 @@ describe('EnvelopeHistory — accessibility', () => {
         expect(container.innerHTML).not.toMatch(/text-\[9px\]|text-\[10px\]/);
     });
 
-    it('activates an action from the keyboard', () => {
-        const onCorrect = vi.fn();
-        renderHistory({ onCorrect });
+    it('activates a quick action from the keyboard', async () => {
+        renderHistory();
         emit([makeDoc({ status: 'sent' })]);
 
-        const correct = screen.getByRole('button', { name: 'Correct Offer Letter' });
-        correct.focus();
-        expect(correct).toHaveFocus();
-        fireEvent.click(correct); // Enter/Space on a native button dispatches click
-        expect(onCorrect).toHaveBeenCalledTimes(1);
+        const link = screen.getByRole('button', { name: 'Link for Offer Letter' });
+        link.focus();
+        expect(link).toHaveFocus();
+        fireEvent.click(link); // Enter/Space on a native button dispatches click
+        await waitFor(() => expect(callables.getSigningLink).toHaveBeenCalledTimes(1));
     });
 
     it('has no accessibility violations across mixed row states', async () => {
@@ -522,6 +723,13 @@ describe('EnvelopeHistory — accessibility', () => {
             makeDoc({ id: 'c', status: 'voided', title: 'Voided Doc' }),
             makeDoc({ id: 'd', title: 'Failed Doc', emailStatus: 'failed', emailError: 'SMTP 550 rejected' }),
         ]);
+        expect((await axe(container)).violations).toEqual([]);
+    });
+
+    it('has no accessibility violations with the details dialog open', async () => {
+        const { container } = renderHistory({ onCorrect: vi.fn() });
+        emit([makeDoc({ status: 'sent' })]);
+        await openDetails();
         expect((await axe(container)).violations).toEqual([]);
     });
 
