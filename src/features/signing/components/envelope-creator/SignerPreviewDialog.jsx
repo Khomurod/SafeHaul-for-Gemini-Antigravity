@@ -39,7 +39,6 @@ export function SignerPreviewDialog({
     recipientPhone = '',
     companyName = '',
     initialPage = 1,
-    pageDimensions = {},
     onClose,
 }) {
     const rawId = useId().replace(/:/g, '');
@@ -62,7 +61,6 @@ export function SignerPreviewDialog({
         [preview.orderedFields, page],
     );
 
-    const dims = pageDimensions[page];
     const noop = () => {};
     const noopHandler = () => noop;
 
@@ -137,8 +135,13 @@ export function SignerPreviewDialog({
                                     <div
                                         inert
                                         data-testid="signer-preview-layer"
+                                        // `inset-0` alone: the layer must match the
+                                        // page THIS dialog rendered. Sizing it from
+                                        // the editor's `pageDimensions` — measured at
+                                        // the editor's own zoom — displaced every
+                                        // field vertically whenever that zoom was not
+                                        // exactly the preview's 560px.
                                         className="absolute inset-0"
-                                        style={{ height: dims ? dims.height : undefined }}
                                     >
                                         {pageFields.map((field, index) => (
                                             <SignerField

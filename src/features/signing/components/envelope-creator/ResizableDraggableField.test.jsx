@@ -418,6 +418,46 @@ describe('ResizableDraggableField — appearance states', () => {
     });
 });
 
+describe('ResizableDraggableField — pointer selection order', () => {
+    const box = (container) => container.querySelector('[data-draggable]');
+
+    it('lets the click own selection when a pointer press focused the field', () => {
+        // A pointer press focuses before the click is dispatched. If focus also
+        // selected, a Shift-click would select on focus and toggle straight back
+        // out on click, leaving an empty selection.
+        const { container } = renderField();
+        const target = box(container);
+
+        fireEvent.mouseDown(target);
+        fireEvent.focus(target);
+        expect(handlers.onSelect).not.toHaveBeenCalled();
+
+        fireEvent.click(target, { shiftKey: true });
+        expect(handlers.onSelect).toHaveBeenCalledTimes(1);
+        expect(handlers.onSelect).toHaveBeenCalledWith('f-1', { additive: true });
+    });
+
+    it('still selects on focus when the keyboard got there', () => {
+        const { container } = renderField();
+        fireEvent.focus(box(container));
+        expect(handlers.onSelect).toHaveBeenCalledWith('f-1');
+    });
+
+    it('selects on focus again after the pointer leaves the field', () => {
+        const { container } = renderField();
+        const target = box(container);
+
+        fireEvent.mouseDown(target);
+        fireEvent.focus(target);
+        fireEvent.blur(target);
+        handlers.onSelect.mockClear();
+
+        // Tabbing back in is a keyboard focus again, not the earlier press.
+        fireEvent.focus(target);
+        expect(handlers.onSelect).toHaveBeenCalledWith('f-1');
+    });
+});
+
 describe('ResizableDraggableField — presentation', () => {
     it.each([
         ['signature', 'warning'],

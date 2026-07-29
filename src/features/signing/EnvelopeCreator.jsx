@@ -783,6 +783,33 @@ export default function EnvelopeCreator({
     };
 
     /** Only reachable from a completed write. Also a safe history reset point. */
+    /**
+     * Recipient and delivery edits are part of the document being built, so they
+     * count as unsaved work — otherwise Back would close without asking and
+     * throw them away.
+     *
+     * These wrap the raw setters rather than replacing them: hydration keeps
+     * using the raw ones, because it only resets the history (and with it the
+     * save state) when the loaded document actually has fields. Marking a
+     * freshly opened document unsaved would be its own lie.
+     */
+    const editRecipientName = useCallback((value) => {
+        setRecipientName(value);
+        setSaveState(SAVE_STATES.UNSAVED);
+    }, []);
+    const editRecipientEmail = useCallback((value) => {
+        setRecipientEmail(value);
+        setSaveState(SAVE_STATES.UNSAVED);
+    }, []);
+    const editRecipientPhone = useCallback((value) => {
+        setRecipientPhone(value);
+        setSaveState(SAVE_STATES.UNSAVED);
+    }, []);
+    const editDeliveryMethod = useCallback((value) => {
+        setDeliveryMethod(value);
+        setSaveState(SAVE_STATES.UNSAVED);
+    }, []);
+
     const markSaved = useCallback(() => {
         setSaveState(SAVE_STATES.SAVED);
         historyRef.current = createHistory(fieldsRef.current);
@@ -1032,13 +1059,13 @@ export default function EnvelopeCreator({
         creatorMode,
         isEditingTemplate,
         recipientName,
-        setRecipientName,
+        setRecipientName: editRecipientName,
         recipientEmail,
-        setRecipientEmail,
+        setRecipientEmail: editRecipientEmail,
         recipientPhone,
-        setRecipientPhone,
+        setRecipientPhone: editRecipientPhone,
         deliveryMethod,
-        setDeliveryMethod,
+        setDeliveryMethod: editDeliveryMethod,
         file,
         handleFileChange,
         addField,
@@ -1301,7 +1328,6 @@ export default function EnvelopeCreator({
                     recipientPhone={recipientPhone}
                     companyName={companyName}
                     initialPage={activePage}
-                    pageDimensions={pageDimensions}
                     onClose={() => setPreviewOpen(false)}
                 />
             )}
