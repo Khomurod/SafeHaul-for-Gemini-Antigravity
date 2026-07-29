@@ -7714,10 +7714,10 @@ Three pre-existing categories, one new, all recorded:
 ### Verification
 
 1. Implementation complete; behaviour preserved as listed above.
-2. Tests: full frontend suite **3011 passed / 48 skipped** across 203 files with
+2. Tests: full frontend suite **3012 passed / 48 skipped** across 203 files with
    the coverage ratchet green (statements 63.54%, branches 61.24%, functions
-   65.36%, lines 64.82%). The signing area alone is **646 passing**, including
-   174 tests new in this slice: editor history (19), field geometry (44), the
+   65.36%, lines 64.82%). The signing area alone is **647 passing**, including
+   175 tests new in this slice: editor history (19), field geometry (44), the
    signer-preview projection (13), the preview dialog (18), the editor chrome
    (37), the rail sections (8), field appearance (9), the wired editor (39) and
    the compact editor (12). Functions: **405 passed** across 61 suites.
@@ -7737,6 +7737,25 @@ Three pre-existing categories, one new, all recorded:
 7. Documentation: this log.
 8. Final diff inspected; `git diff --check` clean; lint 0 errors; typecheck
    clean; production build succeeds.
+
+### Defects found by this slice's own review
+
+Two, both fixed with regression tests rather than worked around:
+
+- **`Promise.withResolvers` on Node 20.** `PageThumbnailRail` owns its own
+  react-pdf `Document`. Two creator suites stubbed the workbench but not the
+  rail, so pdf.js mounted for real and called `Promise.withResolvers` — present
+  on Node 22 (local) and absent on Node 20 (CI). The throw came from a passive
+  effect, so React unmounted the whole tree and every later query saw an empty
+  container. Both suites now stub the rail for the same reason they stub the
+  workbench. Verified by re-running under a config that deletes
+  `Promise.withResolvers`: the failure reproduces exactly with the stub removed
+  and the full suite passes with it.
+- **A save state that lied.** Editing a template whose `storagePath` never
+  hydrated hits an existing guard that writes nothing — but it returned without
+  restoring the save state, so the indicator and the live region said "Saving…"
+  permanently. It now returns to "Unsaved changes"; the guard, the message and
+  the refusal to write are unchanged.
 
 ### Honest limitations
 
