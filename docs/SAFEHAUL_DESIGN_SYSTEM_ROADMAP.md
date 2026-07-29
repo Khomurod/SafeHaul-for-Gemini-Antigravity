@@ -1826,6 +1826,43 @@ The reverse directions are prohibited.
       unique; a snapshot failure raises a visible `role="alert"` instead of an
       empty table. `DocumentsManager`, `EnvelopeCreator`, backend functions and
       rules were untouched and stay open as separate slices.
+  - [x] Refine the Sent Documents table — compact rows, single status-specific
+    quick action, row-activated details, display-only pagination.
+    - Complete when: ordinary desktop rows sit in the 64–76 px band with no
+      four-button vertical stack; each row offers exactly one quick action
+      (signed→Download, sent→Copy Link, delivery/sealing failure→Review,
+      otherwise→View details); activating the row (mouse, Enter, Space) opens
+      the existing details dialog, which remains the complete home for Copy
+      Link/Correct/Void/Download; and the `signing_requests` subscription,
+      `getSigningLink`/`getSignedDocumentUrl` payloads, void confirmation and
+      Firestore update, clipboard behaviour, every toast, and the per-status
+      action eligibility (table+dialog combined) are byte-identical.
+    - Completed: 2026-07-29 (GO).
+    - Files: `src/features/signing/components/EnvelopeHistory.jsx`,
+      `src/features/signing/components/EnvelopeHistory.test.jsx`,
+      `src/features/company-admin/components/documents/SentDocumentDetailsDialog.test.jsx`
+      (new — the dialog's status→action contract now has its own coverage),
+      this roadmap.
+    - Verification: 66 EnvelopeHistory + 16 SentDocumentDetailsDialog focused
+      tests (row activation, focus restoration, quick-action isolation, exact
+      callable payloads, void-once semantics, pagination range/clamping, jsdom
+      axe with and without the dialog open); the documents-workspace suites;
+      the full frontend suite and coverage gate; lint; typecheck; production
+      build; `git diff --check`; Chromium + Mobile Chrome E-Doc E2E including
+      the scoped real-browser axe checks; and a measured live review with 110
+      fixture documents at 1440/1024/768/412 (ordinary rows 74 px, one-line
+      quick actions, 44 px `lg` touch controls below 768 px via `useIsMobile`,
+      zero document-level horizontal overflow).
+    - Notes: the old 64 px `actions` column width is what forced the vertical
+      Details/Link/Correct/Void stack; the quick-action column now uses `lg`
+      and the title/recipient columns share the flexible width. Pagination is
+      a display-only slice over the live list (25/page, clamped when the list
+      shrinks) using the DataTable pagination contract. Recipient contact
+      fallback text replaces the bare em dash with "No email or phone". The
+      delivery-failure row keeps its one-line truncated error; the full safe
+      detail stays in the details dialog. Stored titles/recipients are never
+      mutated — long values clamp visually with the full text on the cell
+      tooltip and in the dialog.
   - [x] Migrate the Documents Center page header (`DocumentsManager` header area
     only) — page canvas, Back to Dashboard, Create Template, Send One-off.
     - Complete when: back navigation and both creator transitions keep their
