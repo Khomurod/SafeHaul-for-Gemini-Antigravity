@@ -580,10 +580,14 @@ export default function DocumentsManager() {
             <PageContainer width="standard">
                 <Stack gap="lg">
                     <Stack gap="sm">
+                        {/* -ml-ds-3 cancels the sm button's own ds-space-3 inline
+                            padding so the visible arrow/label sits flush with the
+                            Documents heading below, while the padded hit area and
+                            focus ring stay full size. */}
                         <Button
                             variant="ghost"
                             size="sm"
-                            className="self-start"
+                            className="-ml-ds-3 self-start"
                             onClick={() => navigate('/company/dashboard')}
                         >
                             <ArrowLeft size={16} aria-hidden="true" /> Back to Dashboard

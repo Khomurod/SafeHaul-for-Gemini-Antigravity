@@ -266,7 +266,15 @@ export default function EnvelopeHistory({
             );
         }
 
-        return <div className="flex items-center justify-end gap-ds-2">{action}</div>;
+        /*
+         * -mr-ds-4 pulls the quick action toward the table's right border. The
+         * scroll region reserves a scrollbar gutter and every cell carries the
+         * shared ds-space-5 inline padding, which left the right-aligned action
+         * ~36px from the border while the left edge sits at ~21px. Offsetting
+         * the feature's own content by ds-space-4 restores the symmetry without
+         * touching the DataTable padding contract other tables rely on.
+         */
+        return <div className="-mr-ds-4 flex items-center justify-end gap-ds-2">{action}</div>;
     };
 
     const columns = defineTableColumns([
@@ -328,7 +336,9 @@ export default function EnvelopeHistory({
         },
         {
             key: 'actions',
-            header: 'Actions',
+            // The same -mr-ds-4 offset as the quick-action cells, so the
+            // heading stays exactly above its buttons.
+            header: <span className="-mr-ds-4 inline-block">Actions</span>,
             align: 'end',
             // 'lg', not 'actions': one labelled quick action needs a real column,
             // and the old 64px 'actions' width is what stacked buttons vertically.

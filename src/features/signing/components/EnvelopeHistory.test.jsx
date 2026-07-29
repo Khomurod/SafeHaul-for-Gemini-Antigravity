@@ -306,6 +306,18 @@ describe('EnvelopeHistory — quick action hierarchy', () => {
         },
     );
 
+    it('offsets the Actions heading and quick action toward the table edge together', () => {
+        renderHistory();
+        emit([makeDoc({ status: 'sent' })]);
+        // Both carry the same -mr-ds-4: it compensates the scrollbar gutter +
+        // shared cell padding on the table's right edge, and the heading must
+        // keep the exact offset of the buttons below it or they drift apart.
+        const header = screen.getByRole('columnheader', { name: 'Actions' });
+        expect(header.querySelector('span')).toHaveClass('-mr-ds-4');
+        const quickAction = screen.getByRole('button', { name: 'Link for Offer Letter' });
+        expect(quickAction.parentElement).toHaveClass('-mr-ds-4', 'justify-end');
+    });
+
     it('never renders more than one action control in an ordinary row', () => {
         renderHistory({ onCorrect: vi.fn() });
         emit([
