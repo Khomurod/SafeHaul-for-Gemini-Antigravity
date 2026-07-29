@@ -19,16 +19,25 @@ function pdfFile(name) {
   return { name, mimeType: 'application/pdf', buffer: Buffer.from(pdf, 'utf8') };
 }
 
-async function openWorkbench(page) {
+/**
+ * The desktop workbench. Below `lg` the editor is the compact layout, whose own
+ * coverage is in e2e/edoc-editor-mobile.spec.cjs, so this spec pins a desktop
+ * viewport rather than driving rails that deliberately are not rendered there.
+ */
+async function openWorkbench(page, { width = 1440 } = {}) {
+  await page.setViewportSize({ width, height: 900 });
   await openCreator(page, 'request', URL);
-  await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
   await page.setInputFiles('#pdf-upload', pdfFile('artificial-agreement.pdf'));
-  await expect(page.getByRole('group', { name: 'PDF zoom' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('toolbar', { name: 'Document canvas tools' })).toBeVisible({ timeout: 20_000 });
 }
 
 async function placeField(page, paletteField = 'Text') {
   await page.getByRole('button', { name: `Add ${paletteField} field`, exact: true }).click();
   await expect(page.locator('[data-page-num="1"]').first()).toBeVisible({ timeout: 20_000 });
+  // The resize handle belongs to the selected field, and adding does not select,
+  // so select it first.
+  await page.getByRole('group', { name: new RegExp(`${paletteField.toLowerCase()} field on page 1`) }).first().focus();
   await expect(page.locator('.resize-handle').first()).toBeVisible({ timeout: 20_000 });
 }
 
@@ -85,13 +94,14 @@ async function pressAndMeasure(field, page, key, previousBox) {
  * subsequent down/right press unclamped and the measurement meaningful.
  */
 async function selectAndPinToOrigin(page) {
-  const field = page.getByRole('group', { name: /text field on page 1$/ });
+  const field = page.getByRole('group', { name: /text field on page 1(, selected)?$/ }).first();
   await field.focus();
   await expect(field).toBeFocused();
-  // Focusing selects the field, which opens the properties rail and re-centres
-  // the workbench. Measure only after that relayout, or the screen position
-  // moves for a reason that has nothing to do with a key press.
-  await expect(page.getByRole('group', { name: 'Field properties' })).toBeVisible();
+  // Focusing selects the field, which fills the inspector. Measure only after
+  // that, or the screen position moves for a reason that has nothing to do with
+  // a key press.
+  await expect(page.getByRole('complementary', { name: 'Document inspector' })
+    .getByLabel('Field Label')).toBeVisible();
 
   for (let i = 0; i < 101; i += 1) {
     await page.keyboard.press('ArrowUp');
@@ -116,17 +126,72 @@ test.describe('E-Doc workbench close-out', () => {
 
   test('names every zoom control and announces the level', async ({ page }) => {
     await openWorkbench(page);
-    const group = page.getByRole('group', { name: 'PDF zoom' });
+    const toolbar = page.getByRole('toolbar', { name: 'Document canvas tools' });
+    const group = toolbar.getByRole('group', { name: 'PDF zoom' });
 
     await expect(group.getByRole('button', { name: 'Zoom out' })).toBeVisible();
     await expect(group.getByRole('button', { name: 'Zoom in' })).toBeVisible();
     await expect(group.getByRole('button', { name: /^Reset zoom to 100 percent/ })).toBeVisible();
-    await expect(group.getByRole('status')).toHaveText(/Zoom \d+ percent/);
+    // The level is announced alongside the page, not only shown as a percentage.
+    await expect(toolbar.getByRole('status')).toHaveText(/Page \d+ of \d+\. Zoom \d+ percent\./);
+  });
+
+  test('offers fit, paging, history and preview from one canvas toolbar', async ({ page }) => {
+    await openWorkbench(page);
+    const toolbar = page.getByRole('toolbar', { name: 'Document canvas tools' });
+
+    await expect(toolbar.getByText('Page 1 / 1')).toBeVisible();
+    // A one-page document has nowhere to page to, and says so rather than
+    // offering a control that does nothing.
+    await expect(toolbar.getByRole('button', { name: 'Previous page' })).toBeDisabled();
+    await expect(toolbar.getByRole('button', { name: 'Next page' })).toBeDisabled();
+
+    const reset = toolbar.getByRole('button', { name: /^Reset zoom to 100 percent/ });
+    await toolbar.getByRole('button', { name: 'Fit Width' }).click();
+    await expect(reset).not.toHaveText('100%');
+    await toolbar.getByRole('button', { name: 'Fit Page' }).click();
+    await expect(reset).toBeVisible();
+
+    // Nothing has been edited yet, so there is nothing to undo or redo.
+    await expect(toolbar.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    await expect(toolbar.getByRole('button', { name: 'Redo' })).toBeDisabled();
+    await expect(toolbar.getByRole('button', { name: 'Preview as signer' })).toBeEnabled();
+  });
+
+  test('undoes and redoes a placed field from the canvas toolbar', async ({ page }) => {
+    await openWorkbench(page);
+    const toolbar = page.getByRole('toolbar', { name: 'Document canvas tools' });
+    await placeField(page);
+
+    const field = page.getByRole('group', { name: /text field on page 1/ });
+    await expect(field).toHaveCount(1);
+
+    await toolbar.getByRole('button', { name: 'Undo' }).click();
+    await expect(field).toHaveCount(0);
+
+    await toolbar.getByRole('button', { name: 'Redo' }).click();
+    await expect(field).toHaveCount(1);
+  });
+
+  test('previews the document as the signer would see it, writing nothing', async ({ page }) => {
+    await openWorkbench(page);
+    await placeField(page);
+
+    await page.getByRole('toolbar', { name: 'Document canvas tools' })
+      .getByRole('button', { name: 'Preview as signer' })
+      .click();
+    const preview = page.getByRole('dialog', { name: /Preview as signer/ });
+    await expect(preview).toBeVisible();
+    await expect(preview.getByText(/What the recipient sees/)).toBeVisible();
+
+    await preview.getByRole('button', { name: 'Back to editing' }).click();
+    await expect(preview).toHaveCount(0);
   });
 
   test('zooms out, in and back to the default from the keyboard', async ({ page }) => {
     await openWorkbench(page);
-    const group = page.getByRole('group', { name: 'PDF zoom' });
+    const group = page.getByRole('toolbar', { name: 'Document canvas tools' })
+      .getByRole('group', { name: 'PDF zoom' });
     const reset = group.getByRole('button', { name: /^Reset zoom to 100 percent/ });
 
     await expect(reset).toHaveText('100%');
@@ -181,37 +246,19 @@ test.describe('E-Doc workbench close-out', () => {
     expect(after.width).toBeGreaterThan(before.width);
   });
 
-  test('keeps the properties rail usable at 412px, where it used to be clipped', async ({ page }) => {
-    await page.setViewportSize({ width: 412, height: 915 });
+  test('keeps the inspector inline and its width stable across selection', async ({ page }) => {
     await openWorkbench(page);
+    const inspector = page.getByRole('complementary', { name: 'Document inspector' });
+    await expect(inspector).toBeVisible();
+    const before = await inspector.boundingBox();
+
     await placeField(page);
-    // addField places without selecting, so select the field to open the rail.
-    await page.getByRole('group', { name: /text field on page 1$/ }).focus();
+    await expect(inspector.getByLabel('Field Label')).toBeVisible();
+    const after = await inspector.boundingBox();
 
-    const rail = page.getByRole('group', { name: 'Field properties' });
-    await expect(rail).toBeVisible();
-    await expect(rail.getByLabel('Field Label')).toBeVisible();
-
-    const box = await rail.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
-
-    // And it can be dismissed, since the canvas behind it is covered.
-    await rail.getByRole('button', { name: 'Close field properties' }).click();
-    await expect(page.getByRole('group', { name: 'Field properties' })).toBeHidden();
-  });
-
-  test('keeps the desktop rail inline rather than overlaying the canvas', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await openWorkbench(page);
-    await placeField(page);
-    await page.getByRole('group', { name: /text field on page 1$/ }).focus();
-
-    const rail = page.getByRole('group', { name: 'Field properties' });
-    await expect(rail).toBeVisible();
-    // The mobile-only dismiss control is not part of the desktop layout.
-    await expect(rail.getByRole('button', { name: 'Close field properties' })).toBeHidden();
+    // The column does not collapse and reopen, so the canvas never resizes
+    // under the pointer.
+    expect(Math.abs(after.width - before.width)).toBeLessThanOrEqual(1);
 
     const geometry = await page.evaluate(() => ({
       viewport: window.innerWidth,
@@ -225,7 +272,7 @@ test.describe('E-Doc workbench close-out', () => {
     await placeField(page);
 
     const { violations } = await new AxeBuilder({ page })
-      .include('[role="group"][aria-label="PDF zoom"]')
+      .include('[role="toolbar"][aria-label="Document canvas tools"]')
       .include('[data-page-num="1"]')
       .analyze();
     const serious = violations

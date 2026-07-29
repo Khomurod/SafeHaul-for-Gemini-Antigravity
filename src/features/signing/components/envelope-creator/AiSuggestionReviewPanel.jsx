@@ -10,6 +10,7 @@ import {
     selectHighConfidence,
 } from '@features/signing/utils/aiFieldSuggestions';
 import { BINDING_LABELS } from '@features/signing/utils/prefillEngine';
+import { groupFieldsByPage } from '@features/signing/utils/fieldGeometry';
 import { MAX_SCAN_PAGES } from '@features/signing/hooks/useAiFieldAssistant';
 
 /**
@@ -177,108 +178,163 @@ export function AiSuggestionReviewPanel({
                                 {stats?.duplicates ? `, ${stats.duplicates} duplicate removed` : ''}.
                             </p>
 
-                            <ul className="flex flex-col gap-ds-3">
-                                {suggestions.map((item) => {
-                                    const controlId = `ai-suggestion-${item.suggestionId}`;
-                                    const isSelected = selectedSuggestionId === item.suggestionId;
-                                    return (
-                                        <li
-                                            key={item.suggestionId}
-                                            className={`rounded-ds-lg border p-ds-3 ${
-                                                isSelected
-                                                    ? 'border-ds-action-primary bg-ds-status-info-bg'
-                                                    : 'border-ds-border bg-ds-surface-subtle'
-                                            }`}
+                            {/* Grouped by page and compact by default: a long scan is a
+                                list you can skim, not a wall of forms. The editing
+                                controls belong to the one suggestion you are looking
+                                at, which is also the one highlighted on the PDF. */}
+                            {groupFieldsByPage(suggestions).map(({ page, fields: pageSuggestions }) => {
+                                const groupId = `ai-page-group-${rawId}-${page}`;
+                                return (
+                                    <div key={page}>
+                                        <h4
+                                            id={groupId}
+                                            className="mb-ds-1 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary"
                                         >
-                                            <div className="flex items-start justify-between gap-ds-2">
-                                                <Checkbox
-                                                    id={`${controlId}-accept`}
-                                                    label={`Apply ${item.label}`}
-                                                    checked={item.status === 'accepted'}
-                                                    onChange={() => onToggleAccepted(item.suggestionId)}
-                                                />
-                                                <Badge tone={confidenceTone(item.confidence)}>
-                                                    {Math.round(item.confidence * 100)}%
-                                                </Badge>
-                                            </div>
-
-                                            <p className="mt-ds-1 flex flex-wrap items-center gap-ds-1 text-ds-xs text-ds-content-secondary">
-                                                <Badge tone="neutral">Page {item.page}</Badge>
-                                                <Badge tone="neutral">{item.type}</Badge>
-                                                <span>
-                                                    {Math.round(item.x)}%, {Math.round(item.y)}% ·{' '}
-                                                    {Math.round(item.width)}×{Math.round(item.height)}%
-                                                </span>
-                                            </p>
-
-                                            {item.overlapsFieldId && (
-                                                <p className="mt-ds-2 flex items-start gap-ds-1 text-ds-xs text-ds-status-warning-fg">
-                                                    <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-                                                    Overlaps your existing field “{item.overlapsFieldLabel}”. Applying it
-                                                    adds a second field on top; your field is never replaced.
-                                                </p>
-                                            )}
-
-                                            <div className="mt-ds-2 grid grid-cols-1 gap-ds-2">
-                                                <FormField id={`${controlId}-label`} label="Label">
-                                                    <Input
-                                                        type="text"
-                                                        value={item.label}
-                                                        onChange={(event) =>
-                                                            onUpdateSuggestion(item.suggestionId, { label: event.target.value })
-                                                        }
-                                                        onFocus={() => onSelectSuggestion(item.suggestionId)}
-                                                    />
-                                                </FormField>
-
-                                                <FormField id={`${controlId}-type`} label="Field type">
-                                                    <Select
-                                                        value={item.category}
-                                                        onChange={(event) =>
-                                                            onUpdateSuggestion(item.suggestionId, {
-                                                                category: event.target.value,
-                                                                // Re-derive the binding from the new category
-                                                                // unless the reviewer overrides it below.
-                                                                bindingKey: SEMANTIC_FIELD_MAP[event.target.value]?.bindingKey ?? '',
-                                                            })
-                                                        }
+                                            Page {page} · {pageSuggestions.length} suggestion
+                                            {pageSuggestions.length === 1 ? '' : 's'}
+                                        </h4>
+                                        <ul aria-labelledby={groupId} className="flex flex-col gap-ds-1">
+                                            {pageSuggestions.map((item) => {
+                                                const controlId = `ai-suggestion-${item.suggestionId}`;
+                                                const detailId = `${controlId}-detail`;
+                                                const isSelected = selectedSuggestionId === item.suggestionId;
+                                                const isAccepted = item.status === 'accepted';
+                                                return (
+                                                    <li
+                                                        key={item.suggestionId}
+                                                        className={`rounded-ds-lg border p-ds-2 ${
+                                                            isSelected
+                                                                ? 'border-ds-action-primary bg-ds-status-info-bg'
+                                                                : 'border-ds-border bg-ds-surface-subtle'
+                                                        }`}
                                                     >
-                                                        {SEMANTIC_CATEGORIES.map((category) => (
-                                                            <option key={category} value={category}>
-                                                                {SEMANTIC_FIELD_MAP[category].label} ({SEMANTIC_FIELD_MAP[category].type})
-                                                            </option>
-                                                        ))}
-                                                    </Select>
-                                                </FormField>
+                                                        <div className="flex items-center gap-ds-2">
+                                                            <Checkbox
+                                                                id={`${controlId}-accept`}
+                                                                label={`Apply ${item.label}`}
+                                                                labelHidden
+                                                                checked={isAccepted}
+                                                                onChange={() => onToggleAccepted(item.suggestionId)}
+                                                            />
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                fullWidth
+                                                                justify="start"
+                                                                aria-expanded={isSelected}
+                                                                aria-controls={detailId}
+                                                                className="min-w-0 flex-1"
+                                                                onClick={() =>
+                                                                    onSelectSuggestion(isSelected ? null : item.suggestionId)
+                                                                }
+                                                            >
+                                                                <span className="truncate font-bold text-ds-content">
+                                                                    {item.label}
+                                                                </span>
+                                                                <Badge tone="neutral">{item.type}</Badge>
+                                                                <Badge tone={confidenceTone(item.confidence)}>
+                                                                    {Math.round(item.confidence * 100)}%
+                                                                </Badge>
+                                                                <Badge tone={isAccepted ? 'success' : 'neutral'}>
+                                                                    {isAccepted ? 'Accepted' : 'Pending'}
+                                                                </Badge>
+                                                                {item.overlapsFieldId && (
+                                                                    <>
+                                                                        <AlertTriangle
+                                                                            size={12}
+                                                                            aria-hidden="true"
+                                                                            className="shrink-0 text-ds-status-warning-fg"
+                                                                        />
+                                                                        <span className="ds-visually-hidden">
+                                                                            overlaps an existing field
+                                                                        </span>
+                                                                    </>
+                                                                )}
+                                                            </Button>
+                                                        </div>
 
-                                                <FormField id={`${controlId}-binding`} label="Prefill binding">
-                                                    <Select
-                                                        value={item.bindingKey}
-                                                        onChange={(event) =>
-                                                            onUpdateSuggestion(item.suggestionId, { bindingKey: event.target.value })
-                                                        }
-                                                    >
-                                                        {SUPPORTED_BINDING_KEYS.map((key) => (
-                                                            <option key={key || 'none'} value={key}>
-                                                                {key ? BINDING_LABELS[key] || key : 'No prefill'}
-                                                            </option>
-                                                        ))}
-                                                    </Select>
-                                                </FormField>
+                                                        {isSelected && (
+                                                            <div id={detailId} className="mt-ds-2">
+                                                                <p className="flex flex-wrap items-center gap-ds-1 text-ds-xs text-ds-content-secondary">
+                                                                    <span>
+                                                                        {Math.round(item.x)}%, {Math.round(item.y)}% ·{' '}
+                                                                        {Math.round(item.width)}×{Math.round(item.height)}%
+                                                                    </span>
+                                                                </p>
 
-                                                <Checkbox
-                                                    id={`${controlId}-required`}
-                                                    label="Required"
-                                                    checked={item.required}
-                                                    onChange={() =>
-                                                        onUpdateSuggestion(item.suggestionId, { required: !item.required })
-                                                    }
-                                                />
-                                            </div>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
+                                                                {item.overlapsFieldId && (
+                                                                    <p className="mt-ds-2 flex items-start gap-ds-1 text-ds-xs text-ds-status-warning-fg">
+                                                                        <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                                                        Overlaps your existing field “{item.overlapsFieldLabel}”. Applying it
+                                                                        adds a second field on top; your field is never replaced.
+                                                                    </p>
+                                                                )}
+
+                                                                <div className="mt-ds-2 grid grid-cols-1 gap-ds-2">
+                                                                    <FormField id={`${controlId}-label`} label="Label">
+                                                                        <Input
+                                                                            type="text"
+                                                                            value={item.label}
+                                                                            onChange={(event) =>
+                                                                                onUpdateSuggestion(item.suggestionId, { label: event.target.value })
+                                                                            }
+                                                                            onFocus={() => onSelectSuggestion(item.suggestionId)}
+                                                                        />
+                                                                    </FormField>
+
+                                                                    <FormField id={`${controlId}-type`} label="Field type">
+                                                                        <Select
+                                                                            value={item.category}
+                                                                            onChange={(event) =>
+                                                                                onUpdateSuggestion(item.suggestionId, {
+                                                                                    category: event.target.value,
+                                                                                    // Re-derive the binding from the new category
+                                                                                    // unless the reviewer overrides it below.
+                                                                                    bindingKey: SEMANTIC_FIELD_MAP[event.target.value]?.bindingKey ?? '',
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            {SEMANTIC_CATEGORIES.map((category) => (
+                                                                                <option key={category} value={category}>
+                                                                                    {SEMANTIC_FIELD_MAP[category].label} ({SEMANTIC_FIELD_MAP[category].type})
+                                                                                </option>
+                                                                            ))}
+                                                                        </Select>
+                                                                    </FormField>
+
+                                                                    <FormField id={`${controlId}-binding`} label="Prefill binding">
+                                                                        <Select
+                                                                            value={item.bindingKey}
+                                                                            onChange={(event) =>
+                                                                                onUpdateSuggestion(item.suggestionId, { bindingKey: event.target.value })
+                                                                            }
+                                                                        >
+                                                                            {SUPPORTED_BINDING_KEYS.map((key) => (
+                                                                                <option key={key || 'none'} value={key}>
+                                                                                    {key ? BINDING_LABELS[key] || key : 'No prefill'}
+                                                                                </option>
+                                                                            ))}
+                                                                        </Select>
+                                                                    </FormField>
+
+                                                                    <Checkbox
+                                                                        id={`${controlId}-required`}
+                                                                        label="Required"
+                                                                        checked={item.required}
+                                                                        onChange={() =>
+                                                                            onUpdateSuggestion(item.suggestionId, { required: !item.required })
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                );
+                            })}
                         </>
                     )}
                 </Stack>

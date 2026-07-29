@@ -12,7 +12,14 @@ const AxeBuilder = require('@axe-core/playwright').default;
 
 const URL = '/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock';
 
+/**
+ * The rail is the desktop presentation. Below `lg` the same sections live in
+ * bottom sheets, covered by e2e/edoc-editor-mobile.spec.cjs — so this spec sets
+ * a desktop viewport rather than asserting a rail that deliberately is not
+ * there on a phone.
+ */
 async function openSidebar(page) {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openEnvelopeCreator(page, 'request', URL);
   await expect(page.getByRole('complementary', { name: 'Envelope setup' })).toBeVisible({ timeout: 20_000 });
 }
@@ -53,13 +60,35 @@ test.describe('E-Doc envelope creator sidebar', () => {
     await expect(choose).toBeFocused();
   });
 
-  test('does not overflow the document at desktop/tablet/mobile', async ({ page }, testInfo) => {
-    const widths = testInfo.project.name.startsWith('mobile') ? [412] : [1440, 1024];
-    await page.setViewportSize({ width: widths[0], height: widths[0] === 412 ? 915 : 900 });
+  test('groups the rail into Setup, Add Fields and Fields', async ({ page }) => {
+    await openSidebar(page);
+    const sidebar = page.getByRole('complementary', { name: 'Envelope setup' });
+
+    for (const name of [/^Setup/, /^Add Fields/, /^Fields/]) {
+      await expect(sidebar.getByRole('button', { name, expanded: true })).toBeVisible();
+    }
+  });
+
+  test('collapses a section and takes its contents out of reach', async ({ page }) => {
+    await openSidebar(page);
+    const sidebar = page.getByRole('complementary', { name: 'Envelope setup' });
+    const setup = sidebar.getByRole('button', { name: /^Setup/ });
+
+    await expect(page.getByRole('button', { name: 'Choose File' })).toBeVisible();
+    await setup.click();
+    await expect(setup).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('button', { name: 'Choose File' })).toHaveCount(0);
+
+    await setup.click();
+    await expect(page.getByRole('button', { name: 'Choose File' })).toBeVisible();
+  });
+
+  test('does not overflow the document at desktop and tablet', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.startsWith('mobile'), 'The rail is desktop-only; see edoc-editor-mobile.');
     await openSidebar(page);
 
-    for (const width of widths) {
-      await page.setViewportSize({ width, height: width === 412 ? 915 : 900 });
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
       const geometry = await page.evaluate(() => ({
         viewport: window.innerWidth,
         documentWidth: document.documentElement.scrollWidth,

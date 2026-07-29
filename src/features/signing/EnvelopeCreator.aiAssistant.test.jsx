@@ -69,6 +69,26 @@ vi.mock('@features/signing/utils/pdfFieldInspector', async (importOriginal) => (
 }));
 // The PDF canvas itself is out of scope here — recording its props proves the
 // suggestion layer receives exactly what the review rail is showing.
+// The page navigator owns its own react-pdf `Document`, which is out of scope
+// here for the same reason the workbench is stubbed: this suite is about the
+// creator's behaviour, not PDF rendering. It also keeps pdf.js — which needs
+// `Promise.withResolvers` — out of a Node 20 test run.
+vi.mock('./components/envelope-creator/PageThumbnailRail', () => ({
+    PageThumbnailRail: ({ numPages = 0, activePage, onSelectPage }) => (
+        <nav aria-label="Pages">
+            {Array.from({ length: numPages }, (_, index) => index + 1).map((page) => (
+                <button
+                    key={page}
+                    type="button"
+                    aria-current={page === activePage ? 'page' : undefined}
+                    onClick={() => onSelectPage(page)}
+                >
+                    {`Page ${page}`}
+                </button>
+            ))}
+        </nav>
+    ),
+}));
 vi.mock('./components/envelope-creator/PdfFieldWorkbench', () => ({
     PdfFieldWorkbench: (props) => {
         workbenchProps.push(props);
@@ -341,6 +361,9 @@ describe('applying suggestions', () => {
         await runScan();
         await screen.findByRole('checkbox', { name: 'Apply Sign here' });
 
+        // The review list is compact: the editing controls belong to the
+        // suggestion you open, so select it first.
+        fireEvent.click(screen.getByRole('button', { name: /^Sign here/ }));
         fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Driver signature' } });
         fireEvent.click(screen.getByRole('checkbox', { name: 'Apply Driver signature' }));
         fireEvent.click(screen.getByRole('button', { name: /Apply selected \(1\)/ }));
@@ -355,6 +378,7 @@ describe('applying suggestions', () => {
         await runScan();
         await screen.findByRole('checkbox', { name: 'Apply Sign here' });
 
+        fireEvent.click(screen.getByRole('button', { name: /^Sign here/ }));
         fireEvent.change(screen.getByLabelText('Field type'), { target: { value: 'email' } });
         fireEvent.click(screen.getByRole('checkbox', { name: 'Apply Sign here' }));
         fireEvent.click(screen.getByRole('button', { name: /Apply selected \(1\)/ }));
@@ -486,6 +510,9 @@ describe('safe undo and manual-field preservation', () => {
         });
         await runScan();
 
+        // The compact row flags the overlap; the full explanation is in the detail.
+        const row = await screen.findByRole('button', { name: /overlaps an existing field/ });
+        fireEvent.click(row);
         expect(await screen.findByText(/Overlaps your existing field/)).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('checkbox', { name: 'Apply Sign here' }));

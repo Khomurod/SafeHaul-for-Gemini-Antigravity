@@ -45,6 +45,75 @@ beforeEach(() => {
     };
 });
 
+describe('EnvelopeSidebar — rail sections', () => {
+    const withFile = { file: { name: 'artificial.pdf' }, fields: [FIELD_A, FIELD_B] };
+
+    it('groups the rail into Setup, Add Fields and Fields, in that order', () => {
+        renderSidebar(withFile);
+        const names = screen
+            .getAllByRole('button', { expanded: true })
+            .map((b) => b.textContent.replace(/\s+/g, ' ').trim());
+        expect(names).toEqual(['Setup', 'Add Fields', 'Fields22 placed']);
+    });
+
+    it('starts every section open so nothing the workflow needs is hidden', () => {
+        renderSidebar(withFile);
+        expect(screen.queryAllByRole('button', { expanded: false })).toHaveLength(0);
+    });
+
+    it('collapses and reopens a section, hiding its panel in between', () => {
+        renderSidebar(withFile);
+        const header = screen.getByRole('button', { name: /^Add Fields/ });
+        const panel = document.getElementById(header.getAttribute('aria-controls'));
+
+        expect(panel).toBeVisible();
+        fireEvent.click(header);
+        expect(header).toHaveAttribute('aria-expanded', 'false');
+        expect(panel).not.toBeVisible();
+        // `hidden` takes the panel out of the accessibility tree entirely, so a
+        // collapsed section is unreachable rather than merely invisible.
+        expect(screen.queryByRole('button', { name: 'Add Signature field' })).toBeNull();
+
+        fireEvent.click(header);
+        expect(header).toHaveAttribute('aria-expanded', 'true');
+        expect(panel).toBeVisible();
+    });
+
+    it('points each disclosure at the panel it controls', () => {
+        renderSidebar(withFile);
+        for (const name of [/^Setup/, /^Add Fields/, /^Fields/]) {
+            const header = screen.getByRole('button', { name });
+            const panel = document.getElementById(header.getAttribute('aria-controls'));
+            expect(panel).toBeInTheDocument();
+            expect(panel.contains(header)).toBe(false);
+        }
+    });
+
+    it('states the placed count in text, not only as a badge', () => {
+        renderSidebar(withFile);
+        expect(screen.getByRole('button', { name: /^Fields/ })).toHaveAccessibleName(/2 placed/);
+    });
+
+    it('omits the count entirely when nothing is placed', () => {
+        renderSidebar({ file: { name: 'artificial.pdf' }, fields: [] });
+        expect(screen.getByRole('button', { name: 'Fields' })).toBeInTheDocument();
+        expect(screen.getByText('No fields placed yet.')).toBeInTheDocument();
+    });
+
+    it('names the loaded document in Setup instead of the upload prompt', () => {
+        renderSidebar({ file: { name: 'artificial.pdf' } });
+        expect(screen.getByText('artificial.pdf')).toBeInTheDocument();
+        expect(screen.queryByText('Upload a PDF first')).not.toBeInTheDocument();
+    });
+
+    it('renders a supplied field-tools slot inside the Fields section', () => {
+        renderSidebar({ ...withFile, fieldTools: <p>artificial tools</p> });
+        const header = screen.getByRole('button', { name: /^Fields/ });
+        const panel = document.getElementById(header.getAttribute('aria-controls'));
+        expect(within(panel).getByText('artificial tools')).toBeInTheDocument();
+    });
+});
+
 describe('EnvelopeSidebar — recipient section visibility', () => {
     it('shows the recipient section in request mode', () => {
         renderSidebar();
@@ -173,13 +242,16 @@ describe('EnvelopeSidebar — upload state', () => {
 describe('EnvelopeSidebar — field palette', () => {
     const withFile = { file: { name: 'artificial.pdf' } };
 
-    it('uses the mode-specific palette heading', () => {
+    it('names the palette section the same way in every mode', () => {
+        // The mode used to be restated here as "Fields" vs "Setup Fields". The
+        // top bar now carries the mode, so the rail section is simply what it
+        // does — one label, in both modes.
         const view = renderSidebar({ ...withFile, creatorMode: 'request' });
-        expect(screen.getByRole('heading', { name: 'Fields' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /^Add Fields/ })).toBeInTheDocument();
         view.unmount();
 
         renderSidebar({ ...withFile, creatorMode: 'template' });
-        expect(screen.getByRole('heading', { name: 'Setup Fields' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /^Add Fields/ })).toBeInTheDocument();
     });
 
     it('renders every category and item in order', () => {
@@ -328,8 +400,11 @@ describe('EnvelopeSidebar — presentation and accessibility', () => {
         const raw = Array.from(container.querySelectorAll('button'))
             .filter((b) => !b.classList.contains('ds-button'))
             .map((b) => b.getAttribute('aria-label') || b.textContent.trim());
-        // Only the eight documented palette buttons remain.
+        // The three rail-section disclosures and the eight documented palette
+        // buttons. Both exceptions are recorded in the component.
         expect(raw).toEqual([
+            'Setup',
+            'Add Fields',
             'Add Signature field',
             'Add Initial field',
             'Add Date Signed field',
@@ -338,6 +413,7 @@ describe('EnvelopeSidebar — presentation and accessibility', () => {
             'Add Company field',
             'Add Text field',
             'Add Checkbox field',
+            'Fields22 placed',
         ]);
     });
 

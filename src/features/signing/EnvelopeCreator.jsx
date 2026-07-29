@@ -3,7 +3,7 @@ import { db, storage, auth } from '@lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp, Timestamp, writeBatch, doc, getDoc, updateDoc } from 'firebase/firestore';
-import { Loader2, UploadCloud, Save, FileText } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@shared/components/feedback';
 import {
@@ -20,10 +20,12 @@ import { serializeTemplateFields } from '@features/signing/utils/templateFieldSe
 import {
     PDF_VIEWPORT_WIDTH_DEFAULT,
     adjustPdfViewportWidth,
+    clampPdfViewportWidth,
 } from '@features/signing/utils/envelopePdfZoom';
-import { Button } from '@/design-system/components';
+import { ConfirmDialog } from '@shared/components/modals/ConfirmDialog';
 import { FIELD_TEMPLATES, getFieldIcon } from './components/envelope-creator/fieldDefinitions';
 import { FieldPropertiesPanel } from './components/envelope-creator/FieldPropertiesPanel';
+import { EditorInspector } from './components/envelope-creator/EditorInspector';
 import { EnvelopeSidebar } from './components/envelope-creator/EnvelopeSidebar';
 import { PdfFieldWorkbench } from './components/envelope-creator/PdfFieldWorkbench';
 import { AiScanOptionsDialog } from './components/envelope-creator/AiScanOptionsDialog';
@@ -33,6 +35,41 @@ import {
     applySuggestionsToFields,
     selectHighConfidence,
 } from '@features/signing/utils/aiFieldSuggestions';
+import { EditorTopBar } from './components/envelope-creator/EditorTopBar';
+import { EditorCanvasToolbar } from './components/envelope-creator/EditorCanvasToolbar';
+import { PageThumbnailRail } from './components/envelope-creator/PageThumbnailRail';
+import { SignerPreviewDialog } from './components/envelope-creator/SignerPreviewDialog';
+import {
+    canRedo as historyCanRedo,
+    canUndo as historyCanUndo,
+    createHistory,
+    currentFields,
+    isRedoShortcut,
+    isUndoShortcut,
+    pushHistory,
+    redoHistory,
+    undoHistory,
+} from '@features/signing/utils/editorHistory';
+import {
+    INSPECTOR_TABS,
+    SAVE_STATES,
+    hasUnsavedWork,
+    resolveEditorMode,
+} from '@features/signing/utils/editorSaveState';
+import {
+    alignFields,
+    allPages,
+    copyFieldsToPages,
+    countFieldsByPage,
+    duplicateField,
+    matchFieldSize,
+    snapFieldPosition,
+    toggleSelection,
+} from '@features/signing/utils/fieldGeometry';
+import { FieldToolsPanel } from './components/envelope-creator/FieldToolsPanel';
+import { EditorBottomSheet } from './components/envelope-creator/EditorBottomSheet';
+import { EditorMobileBar } from './components/envelope-creator/EditorMobileBar';
+import { useCompactEditor } from './hooks/useCompactEditor';
 
 /**
  * EnvelopeCreator — one-off signing request + template editor.
@@ -67,8 +104,25 @@ export default function EnvelopeCreator({
     const [creatorMode, setCreatorMode] = useState(editTemplateId ? 'template' : initialMode); // 'request' or 'template'
     const [existingStoragePath, setExistingStoragePath] = useState('');
 
-    // PHASE 1: Selected field state
-    const [selectedFieldId, setSelectedFieldId] = useState(null);
+    /**
+     * Selection.
+     *
+     * The array is the source of truth and its FIRST entry is the anchor: the
+     * field the inspector edits and the one alignment and size-matching measure
+     * against. `setSelectedFieldId(id)` replaces the selection,
+     * `setSelectedFieldId(id, { additive: true })` toggles membership, and
+     * `setSelectedFieldId(null)` clears it — so every existing caller keeps
+     * working unchanged.
+     */
+    const [selectedFieldIds, setSelectedFieldIds] = useState([]);
+    // Guides for the field currently under the pointer. Purely visual — it is
+    // never part of the document and never enters the undo history.
+    const [dragGuides, setDragGuides] = useState(null);
+    const selectedFieldId = selectedFieldIds[0] ?? null;
+
+    const setSelectedFieldId = useCallback((id, options = {}) => {
+        setSelectedFieldIds((previous) => toggleSelection(previous, id, options?.additive === true));
+    }, []);
 
     // FEAT-1: Track the currently visible page for multi-page field placement
     const [activePage, setActivePage] = useState(1);
@@ -89,11 +143,29 @@ export default function EnvelopeCreator({
     // them; nothing here can save a template or send a document.
     const [aiScanDialogOpen, setAiScanDialogOpen] = useState(false);
     const [aiPanelOpen, setAiPanelOpen] = useState(false);
+    const [inspectorTab, setInspectorTab] = useState(INSPECTOR_TABS.PROPERTIES);
+    // Compact editor: the desktop rails are replaced by a bottom toolbar and one
+    // bottom sheet at a time, so the PDF keeps the screen.
+    const isCompact = useCompactEditor();
+    const [mobileSheet, setMobileSheet] = useState(null);
     const [selectedSuggestionId, setSelectedSuggestionId] = useState(null);
     // One-level undo for the last "apply". Holds the ids of the fields that
     // apply appended — not a whole snapshot — so undoing removes exactly those
     // and leaves any work done since the apply untouched.
     const [aiUndoFieldIds, setAiUndoFieldIds] = useState([]);
+
+    // --- Editor shell -------------------------------------------------------
+    const [history, setHistory] = useState(() => createHistory([]));
+    const [saveState, setSaveState] = useState(SAVE_STATES.CLEAN);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [pendingClose, setPendingClose] = useState(false);
+    const historyRef = useRef(history);
+    const canvasRef = useRef(null);
+    // The keydown listener is registered once on mount, so it reads the
+    // handlers through refs rather than closing over a stale render.
+    const handleUndoRef = useRef(() => {});
+    const handleRedoRef = useRef(() => {});
+    const commitFieldsRef = useRef(() => {});
 
     const [pageDimensions, setPageDimensions] = useState({});
     const [pdfViewportWidth, setPdfViewportWidth] = useState(PDF_VIEWPORT_WIDTH_DEFAULT);
@@ -101,6 +173,7 @@ export default function EnvelopeCreator({
     const pdfWorkbenchRef = useRef(null);
     const fieldsRef = useRef([]);
     const selectedFieldIdRef = useRef(null);
+    const selectedFieldIdsRef = useRef([]);
     const fileRef = useRef(null);
     const envelopeClipboardRef = useRef(null);
 
@@ -110,7 +183,8 @@ export default function EnvelopeCreator({
 
     useEffect(() => {
         selectedFieldIdRef.current = selectedFieldId;
-    }, [selectedFieldId]);
+        selectedFieldIdsRef.current = selectedFieldIds;
+    }, [selectedFieldId, selectedFieldIds]);
 
     useEffect(() => {
         fileRef.current = file;
@@ -143,6 +217,21 @@ export default function EnvelopeCreator({
         const onKeyDown = (e) => {
             const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
             if (!(e.ctrlKey || e.metaKey) || !key) return;
+
+            // Undo/redo come first: they must work even with a field selected,
+            // and they are not text-editing operations.
+            if (isRedoShortcut(e)) {
+                if (isEditableKeyboardTarget(e.target)) return;
+                e.preventDefault();
+                handleRedoRef.current();
+                return;
+            }
+            if (isUndoShortcut(e)) {
+                if (isEditableKeyboardTarget(e.target)) return;
+                e.preventDefault();
+                handleUndoRef.current();
+                return;
+            }
 
             if (key === 'c') {
                 if (isEditableKeyboardTarget(e.target)) return;
@@ -183,8 +272,8 @@ export default function EnvelopeCreator({
                     height: rect.height,
                     page: rect.page,
                 };
-                setFields((prev) => [...prev, newField]);
-                setSelectedFieldId(newField.id);
+                commitFieldsRef.current((prev) => [...prev, newField], { label: 'Paste field' });
+                setSelectedFieldIds([newField.id]);
                 envelopeClipboardRef.current = {
                     ...clip,
                     lastPlaced: {
@@ -200,7 +289,67 @@ export default function EnvelopeCreator({
 
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
+        // Everything the listener needs is read through refs, so it is
+        // registered once on mount rather than on every field change.
     }, []);
+
+    useEffect(() => {
+        historyRef.current = history;
+    }, [history]);
+
+    /**
+     * The single write path for placed fields.
+     *
+     * Every mutation goes through here so it lands in the undo history and
+     * marks the document unsaved. `fieldsRef` is updated eagerly so two commits
+     * inside one tick still see each other, and the history push happens
+     * outside the state updater so a double-invoked updater cannot record the
+     * same change twice.
+     */
+    const commitFields = useCallback((updater, { label = 'Edit', coalesceKey = null } = {}) => {
+        const previous = fieldsRef.current;
+        const next = typeof updater === 'function' ? updater(previous) : updater;
+        if (next === previous) return;
+        fieldsRef.current = next;
+        setFields(next);
+        const nextHistory = pushHistory(historyRef.current, next, { label, coalesceKey });
+        historyRef.current = nextHistory;
+        setHistory(nextHistory);
+        setSaveState(SAVE_STATES.UNSAVED);
+    }, []);
+
+    /** Replace both the fields and the history at a safe reset point. */
+    const resetEditorHistory = useCallback((nextFields, { markClean = true } = {}) => {
+        const base = createHistory(nextFields);
+        fieldsRef.current = nextFields;
+        historyRef.current = base;
+        setFields(nextFields);
+        setHistory(base);
+        if (markClean) setSaveState(SAVE_STATES.CLEAN);
+    }, []);
+
+    const stepHistory = useCallback((step) => {
+        const next = step(historyRef.current);
+        if (next === historyRef.current) return;
+        historyRef.current = next;
+        setHistory(next);
+        const restored = currentFields(next);
+        fieldsRef.current = restored;
+        setFields(restored);
+        setSaveState(SAVE_STATES.UNSAVED);
+        // Keep only the selected fields that still exist.
+        const alive = new Set(restored.map((field) => field.id));
+        setSelectedFieldIds((previous) => previous.filter((id) => alive.has(id)));
+    }, []);
+
+    const handleUndo = useCallback(() => stepHistory(undoHistory), [stepHistory]);
+    const handleRedo = useCallback(() => stepHistory(redoHistory), [stepHistory]);
+
+    useEffect(() => {
+        handleUndoRef.current = handleUndo;
+        handleRedoRef.current = handleRedo;
+        commitFieldsRef.current = commitFields;
+    }, [handleUndo, handleRedo, commitFields]);
 
     const aiAssistant = useAiFieldAssistant({
         companyId,
@@ -221,6 +370,7 @@ export default function EnvelopeCreator({
 
     const openAiAssistant = useCallback(() => {
         setAiPanelOpen(true);
+        setInspectorTab(INSPECTOR_TABS.AI);
         setAiScanDialogOpen(true);
     }, []);
 
@@ -228,6 +378,7 @@ export default function EnvelopeCreator({
         ({ scope, selectedPages }) => {
             setAiScanDialogOpen(false);
             setAiPanelOpen(true);
+            setInspectorTab(INSPECTOR_TABS.AI);
             setSelectedSuggestionId(null);
             startAiScan({ scope, selectedPages });
         },
@@ -258,22 +409,20 @@ export default function EnvelopeCreator({
     const applySuggestions = useCallback(
         (toApply) => {
             if (!toApply.length) return;
-            setFields((prev) => {
-                const { fields: nextFields, appended } = applySuggestionsToFields({
-                    fields: prev,
-                    suggestions: toApply,
-                    idFactory: () => uuidv4(),
-                });
-                // Remember WHICH fields this apply added, not a whole snapshot:
-                // undoing must not throw away work done after the apply.
-                setAiUndoFieldIds(appended.map((field) => field.id));
-                return nextFields;
+            const { fields: nextFields, appended } = applySuggestionsToFields({
+                fields: fieldsRef.current,
+                suggestions: toApply,
+                idFactory: () => uuidv4(),
             });
+            // Remember WHICH fields this apply added, not a whole snapshot:
+            // undoing must not throw away work done after the apply.
+            setAiUndoFieldIds(appended.map((field) => field.id));
+            commitFields(nextFields, { label: `Apply ${toApply.length} AI field(s)` });
             removeAiSuggestions(toApply.map((item) => item.suggestionId));
             setSelectedSuggestionId(null);
             showSuccess(`${toApply.length} field${toApply.length === 1 ? '' : 's'} placed. Review before saving.`);
         },
-        [removeAiSuggestions, showSuccess],
+        [removeAiSuggestions, showSuccess, commitFields],
     );
 
     const handleApplySelected = useCallback(() => {
@@ -294,11 +443,11 @@ export default function EnvelopeCreator({
     const handleAiUndo = useCallback(() => {
         if (aiUndoFieldIds.length === 0) return;
         const undoIds = new Set(aiUndoFieldIds);
-        setFields((prev) => prev.filter((field) => !undoIds.has(field.id)));
+        commitFields((prev) => prev.filter((field) => !undoIds.has(field.id)), { label: 'Undo AI placement' });
         setAiUndoFieldIds([]);
-        setSelectedFieldId((prev) => (prev && undoIds.has(prev) ? null : prev));
+        setSelectedFieldIds((previous) => previous.filter((id) => !undoIds.has(id)));
         showSuccess('Last AI placement undone.');
-    }, [aiUndoFieldIds, showSuccess]);
+    }, [aiUndoFieldIds, showSuccess, commitFields]);
 
     const handleAiDiscardAll = useCallback(() => {
         discardAiSuggestions();
@@ -308,6 +457,7 @@ export default function EnvelopeCreator({
     const closeAiPanel = useCallback(() => {
         setAiPanelOpen(false);
         setSelectedSuggestionId(null);
+        setInspectorTab(INSPECTOR_TABS.PROPERTIES);
     }, []);
 
     const moveSuggestion = useCallback(
@@ -373,7 +523,7 @@ export default function EnvelopeCreator({
                         defaultValue: f.defaultValue || '',
                         fontSize: f.fontSize || 'Auto',
                     }));
-                    setFields(hydratedFields);
+                    resetEditorHistory(hydratedFields);
                 }
 
                 // Hydrate PDF file from storage
@@ -393,7 +543,7 @@ export default function EnvelopeCreator({
                 setHydrating(false);
             }
         })();
-    }, [editingEntityId, companyId, editingCollection, isEditingTemplate, showError]);
+    }, [editingEntityId, companyId, editingCollection, isEditingTemplate, showError, resetEditorHistory]);
 
     // FEAT-1: IntersectionObserver to track which page is visible
     useEffect(() => {
@@ -415,6 +565,42 @@ export default function EnvelopeCreator({
         return () => observer.disconnect();
     }, [numPages, file]);
 
+    const handleTitleChange = useCallback((next) => {
+        setTitle(next);
+        setSaveState(SAVE_STATES.UNSAVED);
+    }, []);
+
+    /** Scroll a page into view; the IntersectionObserver then updates activePage. */
+    const goToPage = useCallback((page) => {
+        const target = pageRefs.current?.[page];
+        if (target?.scrollIntoView) target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        setActivePage(page);
+    }, []);
+
+    /**
+     * Fit Width / Fit Page.
+     *
+     * Both express themselves as a viewport WIDTH, because that is the single
+     * dimension the workbench renders from — so fitting cannot desynchronise
+     * the field overlays from the page.
+     */
+    const handleFitWidth = useCallback(() => {
+        const available = canvasRef.current?.clientWidth;
+        if (!available) return;
+        // Leave the canvas gutter so the page is not flush against the rails.
+        setPdfViewportWidth(clampPdfViewportWidth(available - 64));
+    }, []);
+
+    const handleFitPage = useCallback(() => {
+        const availableHeight = canvasRef.current?.clientHeight;
+        const availableWidth = canvasRef.current?.clientWidth;
+        if (!availableHeight || !availableWidth) return;
+        const dims = pageDimensions[activePage];
+        const ratio = dims && dims.width > 0 ? dims.height / dims.width : 11 / 8.5;
+        const widthThatFitsHeight = (availableHeight - 64) / ratio;
+        setPdfViewportWidth(clampPdfViewportWidth(Math.min(availableWidth - 64, widthThatFitsHeight)));
+    }, [pageDimensions, activePage]);
+
     const handleFileChange = (e) => {
         const selected = e.target.files[0];
         if (selected && selected.type === 'application/pdf') {
@@ -429,6 +615,12 @@ export default function EnvelopeCreator({
             setFile(selected);
             setNumPages(null); // RACE FIX: Wipe stale page count before new document loads
             setTitle(selected.name.replace('.pdf', ''));
+            // A different document invalidates every placement, so the history
+            // starts again rather than letting undo reach fields that belonged
+            // to the previous PDF.
+            resetEditorHistory([], { markClean: false });
+            setSelectedFieldId(null);
+            setSaveState(SAVE_STATES.UNSAVED);
         } else {
             showError('Please upload a valid PDF file.');
         }
@@ -454,35 +646,148 @@ export default function EnvelopeCreator({
             x: 10, y: 10,
             width: w, height: h,
         };
-        setFields(prev => [...prev, newField]);
-    }, [file, activePage]);
+        commitFields(prev => [...prev, newField], { label: `Add ${template.label || templateId} field` });
+    }, [file, activePage, commitFields]);
 
     const removeField = useCallback((id) => {
-        setFields(prev => prev.filter(f => f.id !== id));
-        if (selectedFieldId === id) setSelectedFieldId(null);
-    }, [selectedFieldId]);
+        commitFields(prev => prev.filter(f => f.id !== id), { label: 'Remove field' });
+        setSelectedFieldIds((previous) => previous.filter((value) => value !== id));
+    }, [commitFields]);
 
-    const updateFieldPosition = useCallback((id, pageNum, xPercent, yPercent) => {
-        setFields(prev => prev.map(f => f.id === id ? { ...f, x: xPercent, y: yPercent, page: pageNum } : f));
+    /**
+     * Live alignment guides while a field is under the pointer.
+     *
+     * Read-only: it computes what the drop *would* snap to and shows it. No
+     * field is touched, so a drag that is abandoned changes nothing and adds no
+     * history entry.
+     */
+    const handleFieldDragMove = useCallback((id, pageNum, xPercent, yPercent) => {
+        const current = fieldsRef.current;
+        const moving = current.find((f) => f.id === id);
+        if (!moving) return;
+        const others = current.filter((f) => f.id !== id && f.page === pageNum);
+        const { guides } = snapFieldPosition({ ...moving, x: xPercent, y: yPercent, page: pageNum }, others);
+        setDragGuides(guides.length > 0 ? { page: pageNum, guides } : null);
     }, []);
+
+    // One completed drag is one history entry: react-draggable commits once on
+    // `onStop`, and the coalesce key merges a run of keyboard nudges.
+    //
+    // Snapping applies to pointer drags only (`options.snap`). Arrow-key
+    // placement stays exact to the percent, because the keyboard is the
+    // precision path — silently pulling a nudge onto a guide would make it
+    // impossible to sit a field just off centre.
+    const updateFieldPosition = useCallback((id, pageNum, xPercent, yPercent, options = {}) => {
+        setDragGuides(null);
+        commitFields(
+            (prev) => {
+                const moving = prev.find((f) => f.id === id);
+                if (!moving) return prev;
+                let x = xPercent;
+                let y = yPercent;
+                if (options?.snap) {
+                    const others = prev.filter((f) => f.id !== id && f.page === pageNum);
+                    const snapped = snapFieldPosition({ ...moving, x, y, page: pageNum }, others);
+                    x = snapped.x;
+                    y = snapped.y;
+                }
+                return prev.map((f) => (f.id === id ? { ...f, x, y, page: pageNum } : f));
+            },
+            { label: 'Move field', coalesceKey: `move:${id}` },
+        );
+    }, [commitFields]);
 
     const updateFieldSize = useCallback((id, widthPercent, heightPercent) => {
-        setFields(prev => prev.map(f => f.id === id ? { ...f, width: widthPercent, height: heightPercent } : f));
-    }, []);
+        commitFields(
+            prev => prev.map(f => f.id === id ? { ...f, width: widthPercent, height: heightPercent } : f),
+            { label: 'Resize field', coalesceKey: `resize:${id}` },
+        );
+    }, [commitFields]);
 
     const updateFieldLabel = useCallback((id, newLabel) => {
-        setFields(prev => prev.map(f => f.id === id ? { ...f, label: newLabel } : f));
-    }, []);
+        commitFields(
+            prev => prev.map(f => f.id === id ? { ...f, label: newLabel } : f),
+            { label: 'Rename field', coalesceKey: `label:${id}` },
+        );
+    }, [commitFields]);
 
     // PHASE 3: Update any property on the active field
     const updateActiveField = useCallback((key, value) => {
         if (!selectedFieldId) return;
-        setFields(prev => prev.map(f => f.id === selectedFieldId ? { ...f, [key]: value } : f));
-    }, [selectedFieldId]);
+        commitFields(
+            prev => prev.map(f => f.id === selectedFieldId ? { ...f, [key]: value } : f),
+            { label: 'Change field property', coalesceKey: `prop:${selectedFieldId}:${key}` },
+        );
+    }, [selectedFieldId, commitFields]);
+
+    /**
+     * Bulk field tools.
+     *
+     * All of them go through `commitFields`, so each one is exactly one undo
+     * step, and all of them are pure geometry on the local field array — no
+     * Firestore, no Storage, no callable.
+     *
+     * Copies get their own ids. The suffix guarantees uniqueness even where the
+     * id source repeats within a tick, which matters because a copy that shared
+     * an id with its source would silently overwrite it on save.
+     */
+    const copySequenceRef = useRef(0);
+    const nextCopyId = useCallback(() => {
+        copySequenceRef.current += 1;
+        return `${uuidv4()}_${copySequenceRef.current}`;
+    }, []);
+
+    const handleAlignFields = useCallback((mode) => {
+        commitFields(
+            (prev) => alignFields(prev, selectedFieldIdsRef.current, mode),
+            { label: `Align ${mode}` },
+        );
+    }, [commitFields]);
+
+    const handleMatchFieldSize = useCallback((dimension) => {
+        commitFields(
+            (prev) => matchFieldSize(prev, selectedFieldIdsRef.current, dimension),
+            { label: `Match ${dimension}` },
+        );
+    }, [commitFields]);
+
+    const handleDuplicateSelection = useCallback(() => {
+        const ids = selectedFieldIdsRef.current;
+        if (ids.length === 0) return;
+        const created = [];
+        commitFields((prev) => {
+            const copies = prev
+                .filter((field) => ids.includes(field.id))
+                .map((field) => duplicateField(field, nextCopyId))
+                .filter(Boolean);
+            if (copies.length === 0) return prev;
+            created.push(...copies.map((copy) => copy.id));
+            return [...prev, ...copies];
+        }, { label: `Duplicate ${ids.length} field${ids.length === 1 ? '' : 's'}` });
+        // The copies become the selection, so the next nudge moves them and not
+        // the originals underneath.
+        if (created.length > 0) setSelectedFieldIds(created);
+    }, [commitFields, nextCopyId]);
+
+    const handleCopyToPages = useCallback((targetPages, label) => {
+        const ids = selectedFieldIdsRef.current;
+        if (ids.length === 0 || targetPages.length === 0) return;
+        commitFields(
+            (prev) => copyFieldsToPages(prev, ids, targetPages, nextCopyId).fields,
+            { label },
+        );
+    }, [commitFields, nextCopyId]);
 
     const onPageLoadSuccess = (page) => {
         setPageDimensions(prev => ({ ...prev, [page.pageNumber]: { width: page.width, height: page.height } }));
     };
+
+    /** Only reachable from a completed write. Also a safe history reset point. */
+    const markSaved = useCallback(() => {
+        setSaveState(SAVE_STATES.SAVED);
+        historyRef.current = createHistory(fieldsRef.current);
+        setHistory(historyRef.current);
+    }, []);
 
     const handleSave = async () => {
         if (!file || fields.length === 0) {
@@ -541,6 +846,7 @@ export default function EnvelopeCreator({
         }
 
         setLoading(true);
+        setSaveState(SAVE_STATES.SAVING);
 
         try {
             const commonData = {
@@ -561,6 +867,7 @@ export default function EnvelopeCreator({
                     recipientPhone: recipientPhone || null,
                 });
                 showSuccess('Document updated successfully!');
+                markSaved();
                 if (onClose) onClose();
                 return;
             }
@@ -568,6 +875,9 @@ export default function EnvelopeCreator({
             if (isEditingTemplate) {
                 if (!existingStoragePath) {
                     showError('Template file reference is missing. Please re-upload the PDF as a new template.');
+                    // Nothing was written, so the work is still unsaved. Leaving
+                    // the state at SAVING would show "Saving…" forever.
+                    setSaveState(SAVE_STATES.UNSAVED);
                     return;
                 }
                 const docRef = doc(db, 'companies', companyId, 'templates', editTemplateId);
@@ -576,6 +886,7 @@ export default function EnvelopeCreator({
                     storagePath: existingStoragePath,
                 });
                 showSuccess('Template updated successfully!');
+                markSaved();
                 if (onClose) onClose();
                 return;
             }
@@ -651,9 +962,12 @@ export default function EnvelopeCreator({
                 }
             }
 
+            markSaved();
             if (onClose) onClose();
         } catch (err) {
             console.error('Error saving:', err);
+            // Never claim "Saved" after a failed write — the edits are still local.
+            setSaveState(SAVE_STATES.ERROR);
             // Surface the real reason (e.g. permission-denied, storage/unauthorized,
             // invalid-argument) instead of a generic message. An opaque "Action failed"
             // is undebuggable; a precise code/message means this is never a mystery again.
@@ -667,11 +981,163 @@ export default function EnvelopeCreator({
     const getIcon = getFieldIcon;
 
     /**
-     * The right rail holds one panel at a time. The assistant wins while it is
-     * open, because a reviewer working through suggestions should not lose the
-     * list by touching a placed field.
+     * The inspector is a permanent column on wide screens, so the canvas never
+     * resizes under the pointer. Below that breakpoint it is a sheet, shown only
+     * when it has something to say.
      */
-    const rightRailContent = aiPanelOpen ? 'ai' : selectedFieldId ? 'field' : null;
+    const inspectorOpen = Boolean(selectedFieldId) || aiPanelOpen;
+
+    const dismissInspector = useCallback(() => {
+        setSelectedFieldIds([]);
+        setAiPanelOpen(false);
+    }, []);
+
+    const editorMode = resolveEditorMode({ creatorMode, isEditingTemplate, isEditingRequest });
+    const fieldCountsByPage = useMemo(() => countFieldsByPage(fields), [fields]);
+    const suggestionCountsByPage = useMemo(() => {
+        const counts = {};
+        for (const suggestion of aiSuggestions) {
+            counts[suggestion.page] = (counts[suggestion.page] || 0) + 1;
+        }
+        return counts;
+    }, [aiSuggestions]);
+    const reviewPages = useMemo(
+        () => [...new Set(aiAssistant.manualReview.map((entry) => entry.page).filter(Boolean))],
+        [aiAssistant.manualReview],
+    );
+
+    /**
+     * Leaving the editor.
+     *
+     * With unsaved work this asks first, through the shared accessible
+     * confirmation rather than a blocking browser dialog. With nothing to lose
+     * it closes straight away — a confirmation that always fires trains people
+     * to dismiss it without reading.
+     */
+    const requestClose = useCallback(() => {
+        if (hasUnsavedWork(saveState)) {
+            setPendingClose(true);
+            return;
+        }
+        if (onClose) onClose();
+    }, [saveState, onClose]);
+
+    /**
+     * Prop bundles shared by the desktop rails and the compact bottom sheets.
+     *
+     * The same components render in both layouts with the same props — the
+     * compact editor is a different arrangement, not a different editor.
+     */
+    const sidebarProps = {
+        creatorMode,
+        isEditingTemplate,
+        recipientName,
+        setRecipientName,
+        recipientEmail,
+        setRecipientEmail,
+        recipientPhone,
+        setRecipientPhone,
+        deliveryMethod,
+        setDeliveryMethod,
+        file,
+        handleFileChange,
+        addField,
+        fields,
+        selectedFieldId,
+        setSelectedFieldId,
+        removeField,
+        getIcon,
+        onOpenAiAssistant: openAiAssistant,
+        aiAssistantBusy: aiAssistant.isScanning,
+        fieldTools: (
+            <FieldToolsPanel
+                selectedCount={selectedFieldIds.length}
+                numPages={numPages || 1}
+                activePage={activePage}
+                onAlign={handleAlignFields}
+                onMatchSize={handleMatchFieldSize}
+                onDuplicate={handleDuplicateSelection}
+                onCopyToPage={(page) => handleCopyToPages([page], `Copy to page ${page}`)}
+                onCopyToAllPages={() => handleCopyToPages(allPages(numPages || 1), 'Copy to all pages')}
+            />
+        ),
+    };
+
+    /** One rail section at a time, inside a sheet rather than a fixed column. */
+    const sheetSidebarProps = (section) => ({
+        ...sidebarProps,
+        initialOpenSections: { setup: section === 'setup', add: section === 'add', placed: section === 'fields' },
+        className: 'flex w-full flex-col',
+        label: 'Envelope setup',
+    });
+
+    const pageRailProps = {
+        file,
+        numPages: numPages || 0,
+        activePage,
+        fieldCountsByPage,
+        suggestionCountsByPage,
+        reviewPages,
+    };
+
+    const inspectorElement = (
+        <EditorInspector
+            tab={inspectorTab}
+            onTabChange={setInspectorTab}
+            suggestionCount={aiSuggestions.length}
+            hasSelection={Boolean(activeField)}
+            onDismiss={!isCompact && inspectorOpen ? dismissInspector : undefined}
+            propertiesPanel={
+                <FieldPropertiesPanel
+                    activeField={activeField}
+                    updateActiveField={updateActiveField}
+                    getIcon={getIcon}
+                />
+            }
+            aiPanel={
+                aiPanelOpen ? (
+                    <AiSuggestionReviewPanel
+                        status={aiAssistant.status}
+                        progress={aiAssistant.progress}
+                        suggestions={aiSuggestions}
+                        manualReview={aiAssistant.manualReview}
+                        stats={aiAssistant.stats}
+                        error={aiAssistant.error}
+                        partial={aiAssistant.partial}
+                        truncatedPages={aiAssistant.truncatedPages}
+                        selectedSuggestionId={selectedSuggestionId}
+                        onSelectSuggestion={setSelectedSuggestionId}
+                        onUpdateSuggestion={updateAiSuggestion}
+                        onToggleAccepted={toggleSuggestionAccepted}
+                        onApplySelected={handleApplySelected}
+                        onApplyHighConfidence={handleApplyHighConfidence}
+                        onDiscardAll={handleAiDiscardAll}
+                        onRescan={() => setAiScanDialogOpen(true)}
+                        onUndo={handleAiUndo}
+                        canUndo={aiUndoFieldIds.length > 0}
+                        onCancel={aiAssistant.cancelScan}
+                        onClose={closeAiPanel}
+                    />
+                ) : null
+            }
+        />
+    );
+
+    /** Opening the AI sheet also selects the tab it is meant to show. */
+    const openMobileSheet = (key) => {
+        if (key === 'ai') setInspectorTab(INSPECTOR_TABS.AI);
+        if (key === 'inspector') setInspectorTab(INSPECTOR_TABS.PROPERTIES);
+        setMobileSheet((previous) => (previous === key ? null : key));
+    };
+
+    const MOBILE_SHEET_TITLES = {
+        setup: 'Setup',
+        add: 'Add Field',
+        fields: 'Fields',
+        inspector: 'Properties',
+        ai: 'AI Suggestions',
+        pages: 'Pages',
+    };
 
     // Show loading state while hydrating for Correct flow
     if (hydrating) {
@@ -685,163 +1151,178 @@ export default function EnvelopeCreator({
 
     return (
         <div className="flex h-screen flex-col bg-ds-canvas">
-            {/* TOP BAR */}
-            <div className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-ds-3 border-b border-ds-border-subtle bg-ds-surface px-ds-6 py-ds-4 shadow-ds-xs">
-                <div className="flex flex-wrap items-center gap-ds-4">
-                    <h2 className="flex items-center gap-ds-2 text-ds-heading-sm font-bold text-ds-content">
-                        {creatorMode === 'template'
-                            ? <FileText className="text-ds-status-accent-fg" aria-hidden="true" />
-                            : <UploadCloud className="text-ds-action-primary" aria-hidden="true" />}
-                        {isEditingTemplate ? 'Edit Template' : isEditingRequest ? 'Correct Document' : creatorMode === 'template' ? 'Create Template' : 'New Envelope'}
-                    </h2>
-                    {/* The mode is chosen up front in the New Document dialog and is
-                        FIXED here: the old One-off Send / Save Template toggle let the
-                        outcome change silently after fields were placed, so the same
-                        screen could either send a document or save a template depending
-                        on a control most people never noticed. The mode is now stated,
-                        not switchable. Template editing and request correction are
-                        unaffected — both already arrive with their mode pinned. */}
-                    {!isEditingRequest && !isEditingTemplate && (
-                        <p className="rounded-ds-md bg-ds-surface-subtle px-ds-3 py-ds-1 text-ds-xs font-bold uppercase tracking-wide text-ds-content-secondary">
-                            {creatorMode === 'template' ? 'Reusable template' : 'One-off send'}
-                        </p>
-                    )}
-                </div>
-                <div className="flex flex-wrap gap-ds-3">
-                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button
-                        variant="primary"
-                        onClick={handleSave}
-                        disabled={loading}
-                        loading={loading}
-                    >
-                        {!loading && <Save size={18} aria-hidden="true" />}
-                        {isEditingTemplate ? 'Save Template Changes' : isEditingRequest ? 'Save Correction' : creatorMode === 'template' ? 'Save Template' : 'Send Document'}
-                    </Button>
-                </div>
-                {/* Announce the in-flight save to assistive technology. */}
-                <p role="status" className="ds-visually-hidden">
-                    {loading ? 'Saving document, please wait…' : ''}
-                </p>
-            </div>
+            <EditorTopBar
+                mode={editorMode}
+                title={title}
+                onTitleChange={handleTitleChange}
+                saveState={saveState}
+                pageCount={numPages || 0}
+                fieldCount={fields.length}
+                canUndo={historyCanUndo(history)}
+                canRedo={historyCanRedo(history)}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                onPreview={() => setPreviewOpen(true)}
+                previewDisabled={!file}
+                onBack={requestClose}
+                onSave={handleSave}
+                saving={loading}
+                compact={isCompact}
+            />
 
             {/* 3-COLUMN LAYOUT */}
             <div className="flex flex-1 overflow-hidden">
 
-                {/* LEFT SIDEBAR: Recipient + Semantic Field Palette */}
-                <EnvelopeSidebar
-                    creatorMode={creatorMode}
-                    isEditingTemplate={isEditingTemplate}
-                    recipientName={recipientName}
-                    setRecipientName={setRecipientName}
-                    recipientEmail={recipientEmail}
-                    setRecipientEmail={setRecipientEmail}
-                    recipientPhone={recipientPhone}
-                    setRecipientPhone={setRecipientPhone}
-                    deliveryMethod={deliveryMethod}
-                    setDeliveryMethod={setDeliveryMethod}
-                    file={file}
-                    handleFileChange={handleFileChange}
-                    addField={addField}
-                    fields={fields}
-                    selectedFieldId={selectedFieldId}
-                    setSelectedFieldId={setSelectedFieldId}
-                    removeField={removeField}
-                    getIcon={getIcon}
-                    onOpenAiAssistant={openAiAssistant}
-                    aiAssistantBusy={aiAssistant.isScanning}
-                />
+                {/* LEFT RAIL: Setup / Add Fields / Fields.
 
-                {/* CENTER: PDF Viewer & Draggable Fields */}
-                <PdfFieldWorkbench
-                    workbenchRef={pdfWorkbenchRef}
-                    file={file}
-                    numPages={numPages}
-                    setNumPages={setNumPages}
-                    activePage={activePage}
-                    pageRefs={pageRefs}
-                    pageDimensions={pageDimensions}
-                    onPageLoadSuccess={onPageLoadSuccess}
-                    pdfViewportWidth={pdfViewportWidth}
-                    setPdfViewportWidth={setPdfViewportWidth}
-                    fields={fields}
-                    selectedFieldId={selectedFieldId}
-                    setSelectedFieldId={setSelectedFieldId}
-                    updateFieldPosition={updateFieldPosition}
-                    updateFieldSize={updateFieldSize}
-                    removeField={removeField}
-                    updateFieldLabel={updateFieldLabel}
-                    getIcon={getIcon}
-                    aiSuggestions={aiSuggestions}
-                    selectedSuggestionId={selectedSuggestionId}
-                    onSelectSuggestion={setSelectedSuggestionId}
-                    onMoveSuggestion={moveSuggestion}
-                    onResizeSuggestion={resizeSuggestion}
-                    onAcceptSuggestion={toggleSuggestionAccepted}
-                    onRejectSuggestion={rejectSuggestion}
-                />
+                    Desktop only. On a phone the same sections are reachable
+                    from the bottom bar, one sheet at a time, instead of being
+                    compressed into a column that leaves no room for the PDF. */}
+                {!isCompact && <EnvelopeSidebar {...sidebarProps} />}
 
-                {/* RIGHT SIDEBAR: Field Properties Editor.
+                {!isCompact && <PageThumbnailRail {...pageRailProps} onSelectPage={goToPage} />}
 
-                    Desktop is unchanged: a shrink-0 column that animates between
-                    w-80 and w-0. Below `md` the fixed three-column row had no room
-                    left for a 320px rail, so it was clipped off-screen and its
-                    controls were unreachable. There it now presents as a full-width
-                    sheet with its own close control, because the usual way to
-                    dismiss it — clicking the canvas — sits underneath the sheet. */}
-                <div
-                    role={rightRailContent ? 'group' : undefined}
-                    aria-label={rightRailContent === 'ai' ? 'AI field suggestions' : rightRailContent ? 'Field properties' : undefined}
-                    className={`overflow-y-auto bg-ds-surface shadow-ds-lg transition-all duration-200 motion-reduce:transition-none ${
-                        rightRailContent
-                            ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm border-l border-ds-border-subtle md:static md:z-auto md:w-80 md:max-w-none md:shrink-0'
-                            : 'hidden md:block md:w-0 md:shrink-0'
-                    }`}
-                >
-                    {rightRailContent === 'ai' && (
-                        <AiSuggestionReviewPanel
-                            status={aiAssistant.status}
-                            progress={aiAssistant.progress}
-                            suggestions={aiSuggestions}
-                            manualReview={aiAssistant.manualReview}
-                            stats={aiAssistant.stats}
-                            error={aiAssistant.error}
-                            partial={aiAssistant.partial}
-                            truncatedPages={aiAssistant.truncatedPages}
-                            selectedSuggestionId={selectedSuggestionId}
-                            onSelectSuggestion={setSelectedSuggestionId}
-                            onUpdateSuggestion={updateAiSuggestion}
-                            onToggleAccepted={toggleSuggestionAccepted}
-                            onApplySelected={handleApplySelected}
-                            onApplyHighConfidence={handleApplyHighConfidence}
-                            onDiscardAll={handleAiDiscardAll}
-                            onRescan={() => setAiScanDialogOpen(true)}
-                            onUndo={handleAiUndo}
-                            canUndo={aiUndoFieldIds.length > 0}
-                            onCancel={aiAssistant.cancelScan}
-                            onClose={closeAiPanel}
+                {/* CENTER: canvas toolbar + PDF viewer with the field overlays */}
+                <div ref={canvasRef} className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                    {file && (
+                        <EditorCanvasToolbar
+                            activePage={activePage}
+                            numPages={numPages || 0}
+                            onPreviousPage={() => goToPage(Math.max(1, activePage - 1))}
+                            onNextPage={() => goToPage(Math.min(numPages || 1, activePage + 1))}
+                            pdfViewportWidth={pdfViewportWidth}
+                            setPdfViewportWidth={setPdfViewportWidth}
+                            onFitWidth={handleFitWidth}
+                            onFitPage={handleFitPage}
+                            canUndo={historyCanUndo(history)}
+                            canRedo={historyCanRedo(history)}
+                            onUndo={handleUndo}
+                            onRedo={handleRedo}
+                            onPreview={() => setPreviewOpen(true)}
+                            previewDisabled={!file}
                         />
                     )}
-                    {rightRailContent === 'field' && (
-                        <>
-                            <div className="flex justify-end p-ds-2 md:hidden">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setSelectedFieldId(null)}
-                                >
-                                    Close field properties
-                                </Button>
-                            </div>
-                            <FieldPropertiesPanel
-                                activeField={activeField}
-                                updateActiveField={updateActiveField}
-                                getIcon={getIcon}
-                            />
-                        </>
-                    )}
+                    <PdfFieldWorkbench
+                        workbenchRef={pdfWorkbenchRef}
+                        file={file}
+                        numPages={numPages}
+                        setNumPages={setNumPages}
+                        activePage={activePage}
+                        pageRefs={pageRefs}
+                        pageDimensions={pageDimensions}
+                        onPageLoadSuccess={onPageLoadSuccess}
+                        pdfViewportWidth={pdfViewportWidth}
+                        setPdfViewportWidth={setPdfViewportWidth}
+                        fields={fields}
+                        selectedFieldId={selectedFieldId}
+                        selectedFieldIds={selectedFieldIds}
+                        setSelectedFieldId={setSelectedFieldId}
+                        updateFieldPosition={updateFieldPosition}
+                        onFieldDragMove={handleFieldDragMove}
+                        dragGuides={dragGuides}
+                        updateFieldSize={updateFieldSize}
+                        removeField={removeField}
+                        updateFieldLabel={updateFieldLabel}
+                        getIcon={getIcon}
+                        aiSuggestions={aiSuggestions}
+                        selectedSuggestionId={selectedSuggestionId}
+                        onSelectSuggestion={setSelectedSuggestionId}
+                        onMoveSuggestion={moveSuggestion}
+                        onResizeSuggestion={resizeSuggestion}
+                        onAcceptSuggestion={toggleSuggestionAccepted}
+                        onRejectSuggestion={rejectSuggestion}
+                    />
                 </div>
+
+                {/* RIGHT: the inspector.
+
+                    A permanent 320px column from `lg` up, so selecting or
+                    deselecting a field never resizes the canvas under the
+                    pointer. Below that breakpoint there is no room for a third
+                    column and it moves into the Properties / AI Suggestions
+                    bottom sheets instead. */}
+                {!isCompact && (
+                    <div
+                        role="complementary"
+                        aria-label="Document inspector"
+                        className={`shrink-0 overflow-hidden border-l border-ds-border-subtle bg-ds-surface shadow-ds-lg ${
+                            inspectorOpen
+                                ? 'fixed inset-y-0 right-0 z-40 w-full max-w-sm lg:static lg:z-auto lg:w-80 lg:max-w-none'
+                                : 'hidden lg:block lg:w-80'
+                        }`}
+                    >
+                        {inspectorElement}
+                    </div>
+                )}
             </div>
+
+            {/* Compact editor: a bottom toolbar that opens one sheet at a time.
+                Each sheet is the shared accessible dialog, so focus moves in,
+                Tab is trapped, Escape and the backdrop close it, and focus
+                returns to the button that opened it. */}
+            {isCompact && (
+                <EditorMobileBar
+                    openSheet={mobileSheet}
+                    onOpenSheet={openMobileSheet}
+                    fieldCount={fields.length}
+                    suggestionCount={aiSuggestions.length}
+                />
+            )}
+
+            {isCompact && mobileSheet && (
+                <EditorBottomSheet
+                    title={MOBILE_SHEET_TITLES[mobileSheet]}
+                    onClose={() => setMobileSheet(null)}
+                >
+                    {(mobileSheet === 'setup' || mobileSheet === 'add' || mobileSheet === 'fields') && (
+                        <EnvelopeSidebar {...sheetSidebarProps(mobileSheet)} />
+                    )}
+                    {(mobileSheet === 'inspector' || mobileSheet === 'ai') && inspectorElement}
+                    {mobileSheet === 'pages' && (
+                        <PageThumbnailRail
+                            {...pageRailProps}
+                            variant="sheet"
+                            onSelectPage={(page) => {
+                                goToPage(page);
+                                setMobileSheet(null);
+                            }}
+                        />
+                    )}
+                </EditorBottomSheet>
+            )}
+
+            {previewOpen && (
+                <SignerPreviewDialog
+                    file={file}
+                    numPages={numPages || 1}
+                    fields={fields}
+                    recipientName={recipientName}
+                    recipientEmail={recipientEmail}
+                    recipientPhone={recipientPhone}
+                    companyName={companyName}
+                    initialPage={activePage}
+                    pageDimensions={pageDimensions}
+                    onClose={() => setPreviewOpen(false)}
+                />
+            )}
+
+            {/*
+              Leaving with unsaved work is guarded by the shared accessible
+              confirmation, not a blocking browser dialog.
+            */}
+            <ConfirmDialog
+                isOpen={pendingClose}
+                tone="warning"
+                title="Leave without saving?"
+                description="This document has changes that have not been saved. Leaving now discards them."
+                confirmLabel="Discard changes"
+                cancelLabel="Keep editing"
+                onConfirm={() => {
+                    setPendingClose(false);
+                    if (onClose) onClose();
+                }}
+                onCancel={() => setPendingClose(false)}
+            />
 
             {aiScanDialogOpen && (
                 <AiScanOptionsDialog

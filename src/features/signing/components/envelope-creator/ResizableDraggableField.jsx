@@ -18,6 +18,14 @@ import { X, Scaling } from 'lucide-react';
  *
  * Field-type tones use the same `--ds-*` status tokens as the sidebar palette,
  * which is what makes the palette a legend for these overlays.
+ *
+ * APPEARANCE: a placed field is a thin toned border over a translucent fill, so
+ * the document underneath stays readable — the fill is a separate `aria-hidden`
+ * layer because the tone tokens resolve to opaque hex values that Tailwind's
+ * opacity modifiers cannot thin. Selection is the loud state: a primary border,
+ * a focus ring, a heavier fill, and the only state that reveals the remove
+ * control and the resize handle. A field in a multi-selection takes the primary
+ * border without the ring, so the field being edited is never ambiguous.
  */
 
 /**
@@ -26,14 +34,14 @@ import { X, Scaling } from 'lucide-react';
  * groups stay distinguishable and match the palette buttons one-for-one.
  */
 const FIELD_TONE = {
-    signature: 'bg-ds-status-warning-bg border-ds-status-warning-border',
-    initial: 'bg-ds-status-warning-bg border-ds-status-warning-border',
-    text: 'bg-ds-status-info-bg border-ds-status-info-border',
-    date: 'bg-ds-status-success-bg border-ds-status-success-border',
+    signature: { fill: 'bg-ds-status-warning-bg', border: 'border-ds-status-warning-border' },
+    initial: { fill: 'bg-ds-status-warning-bg', border: 'border-ds-status-warning-border' },
+    text: { fill: 'bg-ds-status-info-bg', border: 'border-ds-status-info-border' },
+    date: { fill: 'bg-ds-status-success-bg', border: 'border-ds-status-success-border' },
 };
-const FIELD_TONE_FALLBACK = 'bg-ds-status-accent-bg border-ds-status-accent-border';
+const FIELD_TONE_FALLBACK = { fill: 'bg-ds-status-accent-bg', border: 'border-ds-status-accent-border' };
 
-export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, onSelect }) => {
+export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, pageHeight, onStop, onResize, onRemove, getIcon, onLabelChange, isSelected, isMultiSelected = false, onSelect, onDragMove }) => {
     const nodeRef = useRef(null);
     const hintId = `placed-field-hint-${useId().replace(/:/g, '')}`;
     const safePageHeight = pageHeight || 800;
@@ -79,12 +87,22 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
         window.addEventListener('mouseup', stopDrag);
     };
 
+    // The percentages are unchanged; the trailing options object is additive.
+    // `snap: true` marks this as a pointer gesture, where snapping to guides is
+    // wanted. Keyboard placement below deliberately does not set it, so arrow
+    // keys stay exact to the percent.
     const handleDragStop = (e, data) => {
-        onStop(field.id, pageNum, (data.x / pageWidth) * 100, (data.y / safePageHeight) * 100);
+        onStop(field.id, pageNum, (data.x / pageWidth) * 100, (data.y / safePageHeight) * 100, { snap: true });
+    };
+
+    const handleDrag = (e, data) => {
+        if (!onDragMove) return;
+        onDragMove(field.id, pageNum, (data.x / pageWidth) * 100, (data.y / safePageHeight) * 100);
     };
 
     const tone = FIELD_TONE[field.type] || FIELD_TONE_FALLBACK;
     const fieldName = field.label || 'Untitled field';
+    const inSelection = isSelected || isMultiSelected;
 
     /**
      * Keyboard placement. Purely additive: the pointer path above is untouched,
@@ -124,6 +142,7 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
             nodeRef={nodeRef}
             bounds="parent"
             position={{ x: xPx, y: yPx }}
+            onDrag={handleDrag}
             onStop={handleDragStop}
             cancel=".resize-handle, .label-input"
         >
@@ -134,19 +153,38 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
                 // states how to move it.
                 tabIndex={0}
                 role="group"
-                aria-label={`${fieldName}, ${field.type} field on page ${pageNum}`}
+                // Selection is stated in the name, not only in the border colour.
+                // `aria-selected` is not allowed on role="group", so the name carries it.
+                aria-label={`${fieldName}, ${field.type} field on page ${pageNum}${inSelection ? ', selected' : ''}`}
                 aria-describedby={hintId}
                 onFocus={() => onSelect(field.id)}
                 onKeyDown={handleKeyDown}
-                onClick={(e) => { e.stopPropagation(); onSelect(field.id); }}
-                className={`group absolute z-50 flex cursor-move flex-col rounded-ds-sm border-2 pointer-events-auto shadow-ds-md transition focus-visible:outline-none focus-visible:shadow-ds-focus
-                    ${isSelected ? 'ring-2 ring-ds-focus ring-offset-1' : ''}
-                    ${tone}`
+                // Shift adds to the selection rather than replacing it. The second
+                // argument is additive metadata: callers that ignore it behave
+                // exactly as before.
+                onClick={(e) => { e.stopPropagation(); onSelect(field.id, { additive: e.shiftKey === true }); }}
+                className={`group absolute flex cursor-move flex-col rounded-ds-sm border pointer-events-auto transition-shadow motion-reduce:transition-none focus-visible:outline-none focus-visible:shadow-ds-focus
+                    ${isSelected
+                        ? 'z-[60] border-ds-action-primary shadow-ds-md ring-2 ring-ds-focus ring-offset-1'
+                        : isMultiSelected
+                            ? 'z-[55] border-ds-action-primary shadow-ds-sm'
+                            : `z-50 shadow-ds-xs hover:shadow-ds-sm ${tone.border}`}`
                 }
                 style={{ width: size.width, height: size.height }}
             >
-                <div className="flex shrink-0 items-center gap-ds-1 overflow-hidden p-ds-1">
-                    <span aria-hidden="true" className="text-ds-content">{getIcon(field.type)}</span>
+                {/* Translucent fill layer. Separate from the box so the border can
+                    stay crisp while the fill lets the document show through. */}
+                <span
+                    data-field-fill="true"
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute inset-0 rounded-ds-sm ${tone.fill} ${
+                        inSelection ? 'opacity-70' : 'opacity-40'
+                    }`}
+                />
+
+                {/* Compact type + label chip. */}
+                <div className="relative z-10 flex shrink-0 items-center gap-ds-1 overflow-hidden px-ds-1 py-0.5">
+                    <span aria-hidden="true" className="shrink-0 text-ds-content">{getIcon(field.type)}</span>
                     {size.width > 40 && (
                         <input
                             className="label-input w-full cursor-text truncate border-none bg-transparent p-0 text-ds-xs font-bold uppercase text-ds-content focus:ring-0"
@@ -163,34 +201,41 @@ export const ResizableDraggableField = React.memo(({ field, pageNum, pageWidth, 
                     arrow key resizes it.
                 </span>
 
-                {/* DOCUMENTED EXCEPTION — this corner control is not the approved
-                    IconButton. It is a ~14px round badge pinned to the corner of a
-                    field whose minimum size is 8px; the approved primitive carries a
-                    min-height and padding that would overflow the field it belongs
-                    to. It keeps an accessible name, a focus-visible ring and the
-                    `--ds-*` tokens. Retiring it needs a compact icon-button size in
-                    the design system, recorded in the roadmap gap list. */}
-                <button
-                    type="button"
-                    aria-label={`Remove ${fieldName} from page ${pageNum}`}
-                    onMouseDown={(e) => { e.stopPropagation(); onRemove(field.id); }}
-                    className="absolute -right-2 -top-2 z-50 rounded-full bg-ds-action-danger p-0.5 text-ds-content-inverse shadow-ds-sm focus-visible:outline-none focus-visible:shadow-ds-focus"
-                >
-                    <X size={10} aria-hidden="true" />
-                </button>
+                {/* Remove and resize are contextual: they appear on the selected
+                    field only, so an unselected field is a clean rectangle rather
+                    than a cluster of controls. Focusing a field selects it, so both
+                    stay reachable from the keyboard. */}
+                {isSelected && (
+                    <>
+                        {/* DOCUMENTED EXCEPTION — this corner control is not the approved
+                            IconButton. It is a ~14px round badge pinned to the corner of a
+                            field whose minimum size is 8px; the approved primitive carries a
+                            min-height and padding that would overflow the field it belongs
+                            to. It keeps an accessible name, a focus-visible ring and the
+                            `--ds-*` tokens. Retiring it needs a compact icon-button size in
+                            the design system, recorded in the roadmap gap list. */}
+                        <button
+                            type="button"
+                            aria-label={`Remove ${fieldName} from page ${pageNum}`}
+                            onMouseDown={(e) => { e.stopPropagation(); onRemove(field.id); }}
+                            className="absolute -right-2 -top-2 z-[70] rounded-full bg-ds-action-danger p-0.5 text-ds-content-inverse shadow-ds-sm focus-visible:outline-none focus-visible:shadow-ds-focus"
+                        >
+                            <X size={10} aria-hidden="true" />
+                        </button>
 
-                {/* The resize affordance stays a pointer-only control: react-draggable
-                    cancels dragging on `.resize-handle`, and the mousemove/mouseup
-                    mathematics above is frozen. Keyboard-operable placement is an open
-                    item recorded against the sub-slice F close-out. It is no longer
-                    hover-only, so touch and low-vision users can see it. */}
-                <div
-                    className="resize-handle absolute bottom-0 right-0 flex h-3 w-3 cursor-se-resize items-end justify-end p-0.5 opacity-60 transition group-hover:opacity-100"
-                    onMouseDown={handleMouseDown}
-                    aria-hidden="true"
-                >
-                    <Scaling size={10} className="text-ds-content-secondary" />
-                </div>
+                        {/* The resize affordance stays a pointer-only control: react-draggable
+                            cancels dragging on `.resize-handle`, and the mousemove/mouseup
+                            mathematics above is frozen. Keyboard resizing is Alt+arrows on the
+                            field itself, so nothing is pointer-only overall. */}
+                        <div
+                            className="resize-handle absolute bottom-0 right-0 z-[70] flex h-3 w-3 cursor-se-resize items-end justify-end p-0.5 opacity-60 transition motion-reduce:transition-none group-hover:opacity-100"
+                            onMouseDown={handleMouseDown}
+                            aria-hidden="true"
+                        >
+                            <Scaling size={10} className="text-ds-content-secondary" />
+                        </div>
+                    </>
+                )}
             </div>
         </Draggable>
     );

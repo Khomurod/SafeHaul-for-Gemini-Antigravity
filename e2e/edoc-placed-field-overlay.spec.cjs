@@ -10,7 +10,6 @@ const { openCreator } = require('./helpers/edocHelpers.cjs');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 const URL = '/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock';
-const DESKTOP_ONLY = 'Creator workbench is a desktop surface — open E-Docs responsive gap owned by sub-slice F.';
 
 /** Minimal single-page PDF, generated inline so no fixture file is needed. */
 function pdfFile(name) {
@@ -25,8 +24,9 @@ function pdfFile(name) {
 }
 
 async function placeField(page, paletteField) {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openCreator(page, 'request', URL);
-  await expect(page.getByRole('heading', { name: 'New Envelope' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
 
   await page.setInputFiles('#pdf-upload', pdfFile('artificial-agreement.pdf'));
   await page.getByRole('button', { name: `Add ${paletteField} field`, exact: true }).click();
@@ -34,14 +34,37 @@ async function placeField(page, paletteField) {
   // The overlay only exists once the page wrapper has rendered; wait for both so
   // no assertion (or axe include) races the PDF viewer.
   await expect(page.locator('[data-page-num="1"]').first()).toBeVisible({ timeout: 20_000 });
+
+  // Remove and resize are contextual — they belong to the selected field — so
+  // select it before asserting on either.
+  await page
+    .getByRole('group', { name: new RegExp(`${paletteField.toLowerCase()} field on page 1`) })
+    .first()
+    .focus();
   await expect(page.locator('.resize-handle').first()).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe('E-Doc placed-field overlay', () => {
   test.describe.configure({ timeout: 90_000 });
 
-  test('names the overlay controls it places on the page', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name.startsWith('mobile'), DESKTOP_ONLY);
+  test('reveals the remove control and resize handle only on the selected field', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openCreator(page, 'request', URL);
+    await expect(page.getByLabel('Document title')).toBeVisible({ timeout: 15_000 });
+    await page.setInputFiles('#pdf-upload', pdfFile('artificial-agreement.pdf'));
+    await page.getByRole('button', { name: 'Add Text field', exact: true }).click();
+    await expect(page.locator('[data-page-num="1"]').first()).toBeVisible({ timeout: 20_000 });
+
+    // Placing does not select, so an unselected field is a clean rectangle.
+    await expect(page.locator('.resize-handle')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Remove .* from page 1$/ })).toHaveCount(0);
+
+    await page.getByRole('group', { name: /text field on page 1/ }).first().focus();
+    await expect(page.locator('.resize-handle').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Remove .* from page 1$/ })).toBeVisible();
+  });
+
+  test('names the overlay controls it places on the page', async ({ page }) => {
     await placeField(page, 'Text');
 
     // The overlay's own label editor and remove control are both named.
@@ -49,8 +72,7 @@ test.describe('E-Doc placed-field overlay', () => {
     await expect(page.getByRole('button', { name: /^Remove .* from page 1$/ })).toBeVisible();
   });
 
-  test('keeps the resize affordance visible without hover', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name.startsWith('mobile'), DESKTOP_ONLY);
+  test('keeps the resize affordance visible without hover once selected', async ({ page }) => {
     await placeField(page, 'Text');
 
     const handle = page.locator('.resize-handle').first();
@@ -59,8 +81,7 @@ test.describe('E-Doc placed-field overlay', () => {
     expect(Number(opacity)).toBeGreaterThan(0);
   });
 
-  test('resizes through a real pointer gesture and keeps the field on the page', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name.startsWith('mobile'), DESKTOP_ONLY);
+  test('resizes through a real pointer gesture and keeps the field on the page', async ({ page }) => {
     await placeField(page, 'Text');
 
     const overlay = page.locator('.resize-handle').first().locator('..');
@@ -83,8 +104,7 @@ test.describe('E-Doc placed-field overlay', () => {
     expect(after.y).toBeGreaterThanOrEqual(bounds.y - 1);
   });
 
-  test('edits the overlay label in place', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name.startsWith('mobile'), DESKTOP_ONLY);
+  test('edits the overlay label in place', async ({ page }) => {
     await placeField(page, 'Text');
 
     const label = page.getByRole('textbox', { name: /^Label for text field on page 1$/ });
@@ -95,8 +115,7 @@ test.describe('E-Doc placed-field overlay', () => {
       .getByRole('button', { name: /Artificial Label.*P1/ })).toBeVisible();
   });
 
-  test('does not overflow the document while a field is placed', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name.startsWith('mobile'), DESKTOP_ONLY);
+  test('does not overflow the document while a field is placed', async ({ page }) => {
     await placeField(page, 'Signature');
 
     for (const width of [1440, 1024]) {
@@ -109,8 +128,7 @@ test.describe('E-Doc placed-field overlay', () => {
     }
   });
 
-  test('has no serious/critical or contrast violations around the placed field', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name.startsWith('mobile'), DESKTOP_ONLY);
+  test('has no serious/critical or contrast violations around the placed field', async ({ page }) => {
     await placeField(page, 'Text');
 
     const { violations } = await new AxeBuilder({ page }).include('[data-page-num="1"]').analyze();

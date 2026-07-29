@@ -7592,3 +7592,183 @@ recorded in [`docs/security-posture.md`](./security-posture.md).
   changes, and the CDL model pin was not touched.
 - Firefox and WebKit E2E lanes were not run; they are not part of the repo's CI
   gate, which runs Chromium and Mobile Chrome.
+
+---
+
+## E-Docs editor — professional document-building experience (2026-07-29)
+
+Second pass over the company-side E-Docs **editor** (`EnvelopeCreator` and its
+workbench). The architecture was already sound, so nothing was rebuilt: this
+slice is visual hierarchy, navigation and editing comfort, plus the arrangement
+tools a document builder is expected to have.
+
+### What changed
+
+**Top bar.** The bare `<h2>` heading is now `EditorTopBar`: back, an editable
+document title, the fixed mode, page and field counts, a save-state indicator,
+undo, redo, preview-as-signer and the one primary action. The save state is
+explicit — `SAVE_STATES` in `utils/editorSaveState.js` — and "Saved" is
+reachable only from `markSaved()` after a write has actually succeeded. Every
+in-`try` bail-out on the save path restores "Unsaved changes" rather than
+leaving a stale success. Leaving with unsaved work goes through the shared
+accessible `ConfirmDialog`.
+
+**Workspace.** Four regions instead of two-and-a-half: a page navigator rail, a
+sectioned tools rail, the canvas, and a stable inspector.
+
+- `PageThumbnailRail` renders 96px thumbnails lazily (IntersectionObserver with
+  a screen of margin, plus the current page and its neighbours always), each
+  entry stating its page number, field count, AI-suggestion count and
+  manual-review flag as text, with `aria-current` on the current page.
+- `EnvelopeSidebar` is now three collapsible sections — Setup, Add Fields,
+  Fields — rather than one long column.
+- `EditorCanvasToolbar` owns paging, zoom, Fit Width, Fit Page, undo, redo and
+  preview. The workbench's floating zoom widget is gone: it exposed a second
+  control group with the same accessible name in the same view.
+- `EditorInspector` is a permanent 320px column from `lg` up with Properties and
+  AI Suggestions tabs. The rail no longer collapses to `w-0` and reappear, so
+  the canvas never resizes under the pointer.
+
+**Field appearance.** A placed field is a thin toned border over a translucent
+fill (a separate `aria-hidden` layer, because the tone tokens resolve to opaque
+hex values Tailwind's opacity modifiers cannot thin). Selection is the loud
+state — primary border, focus ring, heavier fill — and the only state that
+renders the remove control and the resize handle. Selection is stated in the
+accessible name, never by colour alone.
+
+**AI review.** `AiSuggestionReviewPanel` groups suggestions by page and shows a
+compact row per suggestion (label, type, confidence, accepted/pending, overlap
+warning); the editing controls belong to the suggestion you open. Every action —
+Apply selected, Apply high-confidence, Discard all, Rescan, Undo apply,
+per-suggestion accept/reject, move and resize — is unchanged, and suggestions
+still become fields only through an explicit apply.
+
+**Undo/redo.** `utils/editorHistory.js` is a pure `{ entries, index }` value
+over the local placed-field array. `commitFields` in `EnvelopeCreator` is the
+single write path: it computes the next state and pushes history outside the
+state updater (so React's double-invoke cannot duplicate an entry) and carries a
+`coalesceKey`, which makes one completed drag or resize one entry. Zoom, paging
+and panel selection are not history. Ctrl/⌘+Z undoes, Ctrl+Shift+Z and Ctrl+Y
+redo. History resets on hydration, on PDF replacement and after a successful
+save. AI undo flows through the same history and still removes only the ids its
+apply added, so later manual work survives. Nothing remote — no Firestore
+document, Storage path, signing token or recipient detail — is ever recorded.
+
+**Field tools.** `utils/fieldGeometry.js` plus `FieldToolsPanel`: Shift-click
+multi-selection (first selection is the anchor), align left/centre/right and
+top/middle/bottom, match width/height/both, duplicate, copy to a chosen page and
+copy to all pages. Live alignment guides while dragging; snapping to page edges,
+page centre and neighbouring field edges on pointer drops only — arrow-key
+placement stays exact to the percent, because the keyboard is the precision
+path. Every copy takes its own id (uuid plus a monotonic suffix), keeps type,
+label, binding, required flag and relative geometry, is clamped inside the page,
+and skips the page it already lives on. Every bulk action is one undo step.
+
+**Preview as signer.** `SignerPreviewDialog` renders the real `SignerField` over
+`react-pdf` and drives it through `buildSignerPreview`, which runs
+`resolveFieldsForSend` then `serializeTemplateFields` — the send path's own
+transforms in its own order, so the preview cannot drift from what a recipient
+sees. It performs no Firestore or Storage I/O, creates no signing request or
+access token and sends no notification; a spy-based test asserts exactly that.
+Unresolved required fields are raised in a `role="alert"`, and the field layer is
+`inert` with an `<aside>` carrying the accessible equivalent.
+
+**Compact editor.** Below `lg` the three-column layout is replaced, not
+compressed: full-screen canvas, compact top bar, and a bottom toolbar opening
+Setup / Add Field / Fields / Properties / AI Suggestions / Pages as bottom
+sheets. Each sheet is the shared accessible `Modal`, so focus moves in, Tab is
+trapped, Escape and the backdrop close it, and focus returns to the button that
+opened it. `useCompactEditor` matches the same `lg` breakpoint the classes
+switch on, so the JS and the CSS cannot disagree about which layout is showing.
+
+### Preserved exactly
+
+Routes, roles, permissions and tenant isolation; Firestore and Storage paths and
+schemas; signing-token confidentiality; template/request field serialization;
+field percentage coordinates; the drag and resize mathematics (including the
+`pageHeight || 800` fallback, the 8px floor and `bounds="parent"`); supported
+field types and bindings; AI suggestion safety and application rules; delivery
+values and callable payloads; save, send, correction and template-edit behaviour;
+keyboard placement and field-copy behaviour; the 20MB PDF upload limit; and
+public signer behaviour. The `onStop` payload gained a trailing options object —
+the four positional arguments are unchanged, and callers that ignore it behave
+exactly as before.
+
+### Design-system exceptions used
+
+Three pre-existing categories, one new, all recorded:
+
+- The inspector's WAI-ARIA tablist is feature-owned — no approved `Tabs`
+  primitive (the same exception already recorded for the Driver Dossier). The
+  tabs themselves are the approved `Button`.
+- The palette's toned buttons and the overlay's ~14px corner controls are
+  unchanged, for the reasons already recorded.
+- **New:** the rail's disclosure headers and the compact bottom toolbar's cells
+  are raw `<button>`s. Both need a full-width layout the approved `Button`'s
+  inline layout and padding cannot express (edge-to-edge header with a rotating
+  affordance inside a heading; equal-width stacked icon-over-label cells). Both
+  use only `--ds-*` tokens, a 44px/56px activation height, a focus-visible ring
+  and `aria-expanded`. **Missing capabilities:** a Disclosure/Accordion
+  primitive and a stacked/toolbar `Button` variant.
+
+### Verification
+
+1. Implementation complete; behaviour preserved as listed above.
+2. Tests: full frontend suite **3012 passed / 48 skipped** across 203 files with
+   the coverage ratchet green (statements 63.54%, branches 61.24%, functions
+   65.36%, lines 64.82%). The signing area alone is **647 passing**, including
+   175 tests new in this slice: editor history (19), field geometry (44), the
+   signer-preview projection (13), the preview dialog (18), the editor chrome
+   (37), the rail sections (8), field appearance (9), the wired editor (39) and
+   the compact editor (12). Functions: **405 passed** across 61 suites.
+   Firestore/Storage rules under the emulators: **48 passed**. Callable contract:
+   57 frontend callables verified.
+3. Desktop visual behaviour reviewed at 1440 and 1024px; no document-level
+   horizontal overflow.
+4. Mobile reviewed at 412px (Pixel 7 lane); no document-level horizontal
+   overflow; every bottom-toolbar target measured at 44px or more.
+5. Keyboard and accessibility reviewed: roving tabindex with arrow/Home/End on
+   the inspector tabs, disclosure `aria-expanded`/`aria-controls`, sheet focus
+   trap and restoration, Escape handling, `aria-current` on the page navigator,
+   selection stated in accessible names, and zero serious/critical axe violations
+   in the vitest suites and the Playwright axe lanes.
+6. E2E: 41 editor checks on Chromium and 44 on Mobile Chrome, plus the full
+   E-Docs sweep (26 checks) and the `@a11y` lane (8 checks) — all passing.
+7. Documentation: this log.
+8. Final diff inspected; `git diff --check` clean; lint 0 errors; typecheck
+   clean; production build succeeds.
+
+### Defects found by this slice's own review
+
+Two, both fixed with regression tests rather than worked around:
+
+- **`Promise.withResolvers` on Node 20.** `PageThumbnailRail` owns its own
+  react-pdf `Document`. Two creator suites stubbed the workbench but not the
+  rail, so pdf.js mounted for real and called `Promise.withResolvers` — present
+  on Node 22 (local) and absent on Node 20 (CI). The throw came from a passive
+  effect, so React unmounted the whole tree and every later query saw an empty
+  container. Both suites now stub the rail for the same reason they stub the
+  workbench. Verified by re-running under a config that deletes
+  `Promise.withResolvers`: the failure reproduces exactly with the stub removed
+  and the full suite passes with it.
+- **A save state that lied.** Editing a template whose `storagePath` never
+  hydrated hits an existing guard that writes nothing — but it returned without
+  restoring the save state, so the indicator and the live region said "Saving…"
+  permanently. It now returns to "Unsaved changes"; the guard, the message and
+  the refusal to write are unchanged.
+
+### Honest limitations
+
+- A real contrast defect was found by the mobile axe lane and fixed: the active
+  bottom-toolbar item and the current page number used
+  `--ds-color-action-primary` on `--ds-color-status-info-bg`, which measures
+  4.23:1 against a 4.5:1 minimum. Both now use `--ds-color-status-info-fg`. The
+  same pairing may exist on surfaces outside this slice and was not audited
+  repository-wide.
+- Snapping applies to pointer drops only. That is a deliberate choice, not an
+  oversight, but it means a mouse user and a keyboard user can land a field in
+  measurably different places from the same intent.
+- Firefox and WebKit E2E lanes were not run; they are not part of the repo's CI
+  gate, which runs Chromium.
+- The AI provider is a mock in every test, as before — CI never calls it, and no
+  provider claim in this slice was verified against a live key.
