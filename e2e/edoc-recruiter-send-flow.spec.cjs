@@ -15,10 +15,19 @@ test.describe('E-Doc recruiter send flow', () => {
     await expect(page.getByText('E2E Test Document')).toBeVisible();
     await page.getByRole('button', { name: 'Send E2E Test Document' }).click();
 
-    await expect(page.getByRole('heading', { name: /Send Document/i })).toBeVisible();
-    await page.getByPlaceholder('Recipient name *').fill('Taylor Recruiter');
-    await page.getByPlaceholder('Email address').fill('taylor@example.com');
-    await page.getByRole('button', { name: /Send Document/i }).click();
+    // The send is now a guided three-step flow: recipient, document details,
+    // then delivery and review. The send itself — the write, the callable and
+    // the handoff route below — is unchanged.
+    const dialog = page.getByRole('dialog', { name: 'Send Document' });
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByLabel(/Recipient name/).fill('Taylor Recruiter');
+    await dialog.getByLabel('Email address').fill('taylor@example.com');
+    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await dialog.getByRole('button', { name: 'Continue' }).click();
+
+    await expect(dialog.getByText('Step 3 of 3: Delivery and review')).toBeVisible();
+    await dialog.getByRole('button', { name: /Send Document/i }).click();
 
     await expect(page).toHaveURL(/\/sign\/e2e-company\/e2e-edoc-send-req\?token=.*e2eSign=mock/);
     await expect(page.getByText('E2E Test Document')).toBeVisible({ timeout: 20_000 });

@@ -13,23 +13,31 @@ const AxeBuilder = require('@axe-core/playwright').default;
 
 const URL = '/company/e-docs?e2eAuth=company_admin&e2eEdoc=mock';
 
+/** The wizard dialog. Every lookup is scoped to it: the workspace behind the
+ *  modal has its own "Back to Dashboard" and template controls, and an
+ *  unscoped name lookup would match those too. */
+function wizard(page) {
+  return page.getByRole('dialog', { name: 'Send Document' });
+}
+
 async function openWizard(page) {
   await page.goto(URL);
   await expect(page.getByRole('heading', { level: 1, name: 'Documents' })).toBeVisible({ timeout: 20_000 });
   await page.getByRole('tab', { name: /^Templates/ }).click();
   await expect(page.getByText('E2E Test Document')).toBeVisible();
   await page.getByRole('button', { name: 'Send E2E Test Document' }).click();
-  await expect(page.getByRole('dialog', { name: 'Send Document' })).toBeVisible({ timeout: 15_000 });
+  await expect(wizard(page)).toBeVisible({ timeout: 15_000 });
 }
 
 /** Fill in the recipient and walk to the final review step. */
 async function goToReview(page) {
-  await page.getByLabel(/Recipient name/).fill('Artificial Recipient');
-  await page.getByLabel('Email address').fill('artificial@example.test');
-  await page.getByLabel('Phone number').fill('555-0100');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.getByText('Step 3 of 3: Delivery and review')).toBeVisible();
+  const dialog = wizard(page);
+  await dialog.getByLabel(/Recipient name/).fill('Artificial Recipient');
+  await dialog.getByLabel('Email address').fill('artificial@example.test');
+  await dialog.getByLabel('Phone number').fill('555-0100');
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await expect(dialog.getByText('Step 3 of 3: Delivery and review')).toBeVisible();
 }
 
 test.describe('E-Doc guided send flow', () => {
@@ -38,48 +46,50 @@ test.describe('E-Doc guided send flow', () => {
   test('is an accessible dialog naming the selected template', async ({ page }) => {
     await openWizard(page);
 
-    const dialog = page.getByRole('dialog', { name: 'Send Document' });
+    const dialog = wizard(page);
     await expect(dialog).toHaveAttribute('aria-modal', 'true');
     await expect(dialog.getByText(/Sending:/)).toBeVisible();
     await expect(dialog.getByText('E2E Test Document').first()).toBeVisible();
 
     // Focus lands on the recipient name field.
-    await expect(page.getByLabel(/Recipient name/)).toBeFocused();
+    await expect(dialog.getByLabel(/Recipient name/)).toBeFocused();
   });
 
   test('walks through the three named steps', async ({ page }) => {
     await openWizard(page);
+    const dialog = wizard(page);
 
-    await expect(page.getByText('Step 1 of 3: Recipient')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await expect(dialog.getByText('Step 1 of 3: Recipient')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Continue' })).toBeDisabled();
 
-    await page.getByLabel(/Recipient name/).fill('Artificial Recipient');
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await expect(page.getByText('Step 2 of 3: Document details')).toBeVisible();
+    await dialog.getByLabel(/Recipient name/).fill('Artificial Recipient');
+    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await expect(dialog.getByText('Step 2 of 3: Document details')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await expect(page.getByText('Step 3 of 3: Delivery and review')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await expect(dialog.getByText('Step 3 of 3: Delivery and review')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Back' }).click();
-    await expect(page.getByText('Step 2 of 3: Document details')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(dialog.getByText('Step 2 of 3: Document details')).toBeVisible();
   });
 
   test('labels every recipient field', async ({ page }) => {
     await openWizard(page);
+    const dialog = wizard(page);
 
-    await page.getByLabel(/Recipient name/).fill('Artificial Recipient');
-    await page.getByLabel('Email address').fill('artificial@example.test');
-    await page.getByLabel('Phone number').fill('555-0100');
+    await dialog.getByLabel(/Recipient name/).fill('Artificial Recipient');
+    await dialog.getByLabel('Email address').fill('artificial@example.test');
+    await dialog.getByLabel('Phone number').fill('555-0100');
 
-    await expect(page.getByLabel(/Recipient name/)).toHaveValue('Artificial Recipient');
-    await expect(page.getByLabel('Email address')).toHaveValue('artificial@example.test');
+    await expect(dialog.getByLabel(/Recipient name/)).toHaveValue('Artificial Recipient');
+    await expect(dialog.getByLabel('Email address')).toHaveValue('artificial@example.test');
   });
 
   test('selects delivery methods with a programmatic pressed state', async ({ page }) => {
     await openWizard(page);
     await goToReview(page);
 
-    const group = page.getByRole('group', { name: 'Delivery method' });
+    const group = wizard(page).getByRole('group', { name: 'Delivery method' });
     await expect(group).toBeVisible();
 
     const email = group.getByRole('button', { name: 'Email', exact: true });
@@ -95,33 +105,36 @@ test.describe('E-Doc guided send flow', () => {
     await openWizard(page);
     await goToReview(page);
 
-    await expect(page.getByText('Review before sending')).toBeVisible();
-    await expect(page.getByText('Artificial Recipient')).toBeVisible();
-    await expect(page.getByText('artificial@example.test')).toBeVisible();
-    await expect(page.getByText('7 days after sending')).toBeVisible();
+    const dialog = wizard(page);
+    await expect(dialog.getByText('Review before sending')).toBeVisible();
+    await expect(dialog.getByText('Artificial Recipient')).toBeVisible();
+    await expect(dialog.getByText('artificial@example.test')).toBeVisible();
+    await expect(dialog.getByText('7 days after sending')).toBeVisible();
   });
 
   test('switches the primary action text between send and copy', async ({ page }) => {
     await openWizard(page);
     await goToReview(page);
 
-    await expect(page.getByRole('button', { name: /Send Document/ })).toBeVisible();
+    const dialog = wizard(page);
+    await expect(dialog.getByRole('button', { name: /Send Document/ })).toBeVisible();
 
-    await page.getByRole('group', { name: 'Delivery method' })
+    await dialog.getByRole('group', { name: 'Delivery method' })
       .getByRole('button', { name: 'Copy Link' }).click();
-    await expect(page.getByRole('button', { name: /Copy Signing Link/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Send Document/ })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: /Copy Signing Link/ })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /Send Document/ })).toHaveCount(0);
   });
 
   test('searches and quick-selects a lead on the recipient step', async ({ page }) => {
     await openWizard(page);
 
-    await expect(page.getByText('Or choose an existing driver or lead')).toBeVisible();
-    const search = page.getByLabel('Search leads');
+    const dialog = wizard(page);
+    await expect(dialog.getByText('Or choose an existing driver or lead')).toBeVisible();
+    const search = dialog.getByLabel('Search leads');
     await expect(search).toHaveAttribute('placeholder', 'Search leads...');
 
     await search.fill('zzz-no-such-lead');
-    await expect(page.getByText('No leads found.')).toBeVisible();
+    await expect(dialog.getByText('No leads found.')).toBeVisible();
   });
 
   test('keeps the dialog keyboard navigable and closes on Escape', async ({ page }, testInfo) => {
@@ -138,7 +151,7 @@ test.describe('E-Doc guided send flow', () => {
     expect(insideAfterTab).toBe(true);
 
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Send Document' })).toHaveCount(0);
+    await expect(wizard(page)).toHaveCount(0);
   });
 
   test('keeps the submit action reachable on mobile without document overflow', async ({ page }, testInfo) => {
@@ -147,7 +160,7 @@ test.describe('E-Doc guided send flow', () => {
     await openWizard(page);
     await goToReview(page);
 
-    const submit = page.getByRole('button', { name: /Send Document/ });
+    const submit = wizard(page).getByRole('button', { name: /Send Document/ });
     await submit.scrollIntoViewIfNeeded();
     await expect(submit).toBeVisible();
 
