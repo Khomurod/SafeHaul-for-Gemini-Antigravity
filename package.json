@@ -24,7 +24,10 @@
     "deploy:functions:plan": "node scripts/deploy-functions-incremental.mjs --dry-run",
     "storage:set-cors": "node scripts/set-storage-cors.mjs",
     "typecheck": "tsc -p jsconfig.json --noEmit",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test:stories": "vitest run src/tests/designSystemStories.a11y.test.jsx"
   },
   "dependencies": {
     "@sentry/react": "^10.32.1",
@@ -51,6 +54,9 @@
     "@eslint/js": "^9.36.0",
     "@firebase/rules-unit-testing": "^4.0.1",
     "@playwright/test": "^1.57.0",
+    "@storybook/addon-a11y": "^10.5.5",
+    "@storybook/addon-docs": "^10.5.5",
+    "@storybook/react-vite": "^10.5.5",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@types/react": "^19.1.16",
@@ -69,6 +75,7 @@
     "happy-dom": "^20.0.11",
     "playwright": "^1.59.1",
     "postcss": "^8.5.6",
+    "storybook": "^10.5.5",
     "tailwindcss": "^3.4.18",
     "typescript": "^5.9.3",
     "vite": "^7.1.7",

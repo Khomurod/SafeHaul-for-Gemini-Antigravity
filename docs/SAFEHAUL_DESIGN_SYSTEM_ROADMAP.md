@@ -704,20 +704,76 @@ The reverse directions are prohibited.
 
 ### Phase 11 — component catalog and visual regression
 
-- [!] Select Storybook or a smaller equivalent and its baseline-review service.
-  - Complete when: dependency/security/maintenance cost, Firebase compatibility,
-    hosting, CI time, private data mocking, and baseline approval ownership are
-    decided.
+- [x] Select the component catalog tool and stand up its foundation.
+  - Complete when: dependency/security/maintenance cost, Firebase
+    compatibility, hosting, CI time, and private data mocking are decided and
+    the tool actually builds in CI.
+  - Completed: 2026-07-29. **Storybook 10.5.5** with `@storybook/react-vite`,
+    `@storybook/addon-docs` and `@storybook/addon-a11y`.
+  - Decision record:
+    - *Tool*: Storybook, on the React/Vite framework, because it is the only
+      option that already supports the repo's React 19 + Vite 7 + Tailwind 3 +
+      ESM setup without a second build pipeline. It reuses `vite.config.js`
+      (hence the app's aliases) and the root `postcss.config.js` and
+      `tailwind.config.js`, so a component cannot render differently in the
+      catalog than in the product.
+    - *Firebase compatibility*: not applicable by construction. The catalog
+      loads design-system and business-neutral pattern stories only, so nothing
+      it imports reaches Firebase, Storage, Cloud Functions, application
+      context or domain services.
+    - *Private data*: every value comes from
+      `src/design-system/stories/fixtures.js`, which is entirely hand-written
+      literals — no `Math.random`, no `Date.now()`, no generated data, no
+      network. Stories render identically on every run.
+    - *Secrets*: the CI job blanks the workflow-level `VITE_*` secrets rather
+      than inheriting them, so the build provably needs none.
+    - *CI time*: ~2 minutes (`npm ci` + story tests + `storybook build`), added
+      as its own job so it does not lengthen `frontend-quality`.
+    - *Cost*: 1345 packages added to `devDependencies` only; nothing ships to
+      the application bundle.
+  - Files: `.storybook/main.js`, `.storybook/preview.jsx`,
+    `.storybook/preview.css`, `.storybook/catalog.css`, `package.json`
+    (`storybook`, `build-storybook`, `test:stories`), `.github/workflows/main.yml`
+    (`storybook-build`, required by both deploy jobs), `.gitignore`.
+  - Verification: production `storybook build` green; `npm run test:stories`
+    renders all 151 stories and runs axe over each.
+  - **Not decided, still open below**: baseline-review service ownership.
+    Chromatic was explicitly excluded from this campaign.
 
 - [ ] Catalog every approved component and pattern.
   - Complete when: default, variant, state, error, long-content, empty,
     loading, reduced-motion, and narrow viewport examples exist with usage and
     anti-pattern documentation.
+  - **In progress (2026-07-29).** 151 stories across 16 documented subjects now
+    exist, each with intended use, supported variants, accessibility
+    expectations, common mistakes, the feature-composition boundary, and an
+    explicit Approved / Needs review status.
+    - Components: Button, IconButton, Input, Select, Textarea,
+      Checkbox/Radio/ChoiceGroup, Badge, Card/MetricCard, DataTable, page layout
+      (`PageContainer`/`PageHeader`/`Section`/`Stack`/`Inline`/`ResponsiveGrid`),
+      ProgressBar, StatusMedallion, SectionNavigation, form structure
+      (`FormSection`/`FormField`/`Label`/`FieldMessage`/`FieldDisplay`), Modal,
+      ConfirmDialog.
+    - Patterns: back navigation + page header, section navigation + content,
+      filter panel, compact `DataTable` with a correctly sized action column,
+      page states (loading/empty/error), modal form.
+  - **Remains open because**: `WorkspaceFrame` has no story; reduced-motion is
+    documented but has no dedicated story; and the Approved/Needs-review status
+    recorded on each page is this campaign's honest reading, not an
+    owner-approved sign-off.
 
 - [ ] Add blocking visual screenshot regression.
   - Complete when: deterministic fonts/data/animations are configured, desktop
     and mobile baselines are approved, intentional-update workflow is
     documented, and CI uploads useful diffs.
+  - **Partial groundwork (2026-07-29), still open.** Determinism prerequisites
+    are now met: fixtures are static literals, the catalog does not load the
+    externally hosted Inter webfont (it uses the local fallback stack, so a
+    build cannot depend on whether a network font arrived), the only animation
+    is the `DataTable` skeleton pulse which is disabled under
+    `prefers-reduced-motion`, and CI uploads `storybook-static` as an artifact.
+    No baselines exist, nothing is blocking, and Chromatic was excluded from
+    this campaign by scope.
 
 ### Phase 12 — permanent automated guardrails
 
@@ -7060,7 +7116,11 @@ The mission scoped "six", derived from a `window.confirm` scan. Scanning for the
   them changes every exported PDF, so it needs approval plus a re-proof of
   export parity.
 - `[!]` Confirm WCAG 2.2 AA as the permanent standard.
-- `[!]` Select component catalog and visual baseline hosting/review ownership.
+- `[!]` Select visual baseline hosting and review ownership. *(The catalog tool
+  itself was decided on 2026-07-29 — Storybook 10.5.5, see Phase 11. What
+  remains open is who hosts the built catalog, who approves a visual baseline
+  change, and which service stores baselines. Chromatic was excluded from the
+  catalog-foundation campaign by scope, not evaluated and rejected.)*
 - `[!]` Decide whether Inter remains externally hosted.
 - `[!]` Approve semantic brand/action colors before declaring visible component
   families fully approved. Compatibility-first consumers preserve the current
@@ -7826,3 +7886,99 @@ Two, both fixed with regression tests rather than worked around:
   gate, which runs Chromium.
 - The AI provider is a mock in every test, as before — CI never calls it, and no
   provider claim in this slice was verified against a live key.
+
+---
+
+## Storybook design-system catalogue foundation (2026-07-29)
+
+Phase 11's first two items move: the catalog *tool* is now decided and building
+in CI, and 16 subjects plus 6 patterns are documented. The catalog item itself
+stays open — see below for exactly what is missing.
+
+### What changed
+
+- **Storybook 10.5.5** on `@storybook/react-vite`, with `@storybook/addon-docs`
+  and `@storybook/addon-a11y`. Configured in `.storybook/`.
+- It reuses `vite.config.js` (hence the app's aliases) and the same Tailwind
+  theme, and loads `src/design-system/index.css`, so a component cannot render
+  differently in the catalog than in the product. `viteFinal` strips the three
+  application-build-only settings that must not be inherited: the `index.html`
+  rollup entry, the hidden Sentry sourcemaps, and the port-5000 `strictPort` dev
+  server that would otherwise collide with the app and the Playwright suite.
+- **151 stories** across 16 documented subjects and 6 business-neutral page
+  patterns. Every page records intended use, supported variants, accessibility
+  expectations, common mistakes, the feature-composition boundary, and an
+  explicit **Approved / Needs review** status.
+- **Three new scripts**: `storybook`, `build-storybook`, `test:stories`.
+- **A required CI job**, `storybook-build`, added to both deploy jobs' `needs:`.
+  It runs `npm ci`, the story render + axe lane, then `storybook build`, and
+  uploads `storybook-static` as an artifact. It is given **no credentials**: the
+  workflow-level `VITE_*` secrets are explicitly blanked rather than inherited,
+  so the build provably needs none.
+
+### Two real defects this campaign found and fixed
+
+- **Story prose was leaking CSS into the production bundle.** Tailwind's
+  extractor scans every file in `content` for candidate class names, prose
+  included. A story documentation paragraph containing the word *shadow*
+  compiled a `.shadow` rule into the shipped `dist/assets/main-*.css`. Fixed by
+  excluding `src/**/*.stories.jsx` from the application's Tailwind `content` and
+  giving the catalog `.storybook/tailwind.config.js`, which inherits the app's
+  theme by reference and re-adds those files. Verified: every app JS and CSS
+  artifact is now **byte-identical** to a build of `origin/main`.
+- **`eslint .` was linting the Storybook build output.** `storybook-static/` is
+  gitignored but was not in the ESLint ignore list, so a local lint after a
+  catalog build reported 6,859 errors from a minified bundle. Added to
+  `eslint.config.js` alongside `dist/`.
+
+### Preserved exactly
+
+No application behaviour changed. No Firebase rule, database structure, backend
+behaviour, integration, permission, route, feature flag or business workflow was
+touched. `vitest.config.js` gained the `@design-system` alias (already present in
+`vite.config.js` and `jsconfig.json`) and excludes stories from coverage globs;
+no threshold was lowered.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `npm run build-storybook` | green |
+| `npm run test:stories` | 151 stories render; **0** serious/critical axe violations — and **0 at any impact level** |
+| `npm run test:coverage` | 205 files, 3208 passed, 48 skipped; 63.9% stmts / 61.8% br / 65.8% fn / 65.2% lines, all far above the ratchet |
+| `npm run lint:frontend` | 0 errors (106 pre-existing warnings) |
+| `npm run typecheck` | clean |
+| `npm run build` | green, artifacts byte-identical to `origin/main` |
+| Real-browser pass | all 174 pages (151 stories + 23 docs) in Chromium: **0** console errors, **0** console warnings, **0** page errors, **0** render failures |
+| `git diff --check` | clean |
+| Visual review | 1440 / 1024 / 412px; screenshots in `docs/screenshots/storybook-catalog/` |
+
+The axe harness was itself sanity-checked — a deliberately unlabelled button was
+confirmed to produce a `button-name` critical violation through the same code
+path — so the zero-violation result is a real pass, not a vacuous one.
+
+### Honest limitations
+
+- **The catalog item stays open.** `WorkspaceFrame` has no story, reduced-motion
+  is documented but has no dedicated story, and the Approved/Needs-review status
+  on each page is this campaign's reading, **not an owner-approved sign-off**.
+- **No visual regression.** Determinism prerequisites are met (static literal
+  fixtures, no externally hosted webfont in the catalog, the only animation
+  disabled under `prefers-reduced-motion`, CI artifact upload), but no baselines
+  exist and nothing blocks on them. Chromatic was excluded from this campaign by
+  scope — not evaluated and rejected.
+- **`color-contrast` is not covered by the story lane.** happy-dom computes no
+  layout, so the rule is disabled there. Contrast remains covered by the
+  real-browser `@axe-core/playwright` lane and the pinned token pairings in
+  `tests/tokens.test.js`. The story lane also disables four page-level rules
+  (`region`, `page-has-heading-one`, `landmark-one-main`) because a story is a
+  fragment, not a page.
+- **`Modal`, `ConfirmDialog` and the modal-form pattern are documented from
+  `src/shared/components/modals`,** not from the design system. That is the
+  existing recorded inversion — the design system must not depend on `shared` —
+  and it is unchanged by this campaign.
+- **No dark appearance was added,** because SafeHaul has none. The catalog
+  offers the existing inverse *surface role* instead and says plainly that it is
+  not a theme.
+- The three viewport presets are catalog-level conveniences; they do not prove
+  the application's own breakpoints, which are unchanged.

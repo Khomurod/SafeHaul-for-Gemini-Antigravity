@@ -13,6 +13,8 @@ dist-ssr/
 build/
 .next/
 out/
+# Storybook component catalog build output (CI rebuilds and uploads it).
+storybook-static/
 # ===========================================
 # REPLIT-SPECIFIC FILES
 # ===========================================

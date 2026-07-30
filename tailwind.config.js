@@ -3,6 +3,21 @@ export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+    /*
+     * Storybook stories are excluded from the APPLICATION's stylesheet.
+     *
+     * Tailwind's extractor pulls candidate class names out of any scanned file,
+     * including prose. A story that merely writes the word "shadow" in its
+     * documentation caused a `.shadow` rule to be compiled into the shipped
+     * `dist/assets/main-*.css` — dead weight the application never uses, and an
+     * unintended change to a production artifact.
+     *
+     * The catalog still gets full Tailwind coverage of these files: Storybook
+     * runs Tailwind with `.storybook/tailwind.config.js`, which re-adds them.
+     * Keep the two in step — a utility class used only in a story renders in
+     * Storybook and is deliberately absent from the app bundle.
+     */
+    "!./src/**/*.stories.jsx",
   ],
   theme: {
     extend: {
