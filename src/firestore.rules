@@ -547,6 +547,11 @@ service cloud.firestore {
     match /integrations_index/{id} { allow read, write: if false; } // server-only (Admin SDK)
     match /rate_limits/{id}        { allow read, write: if false; } // server-only (rate limiter)
     match /processing_status/{id}  { allow read, write: if false; } // server-only (idempotency)
+    // Environment & Integrations vault audit trail. Deliberately closed to every
+    // client, including Super Admins: the page reads recent activity through the
+    // `listEnvironmentAndIntegrations` callable, so no browser needs (or gets) a
+    // direct read, and no browser can append a forged record.
+    match /environment_audit_log/{id} { allow read, write: if false; } // server-only (audit)
 
     // --- SYSTEM SETTINGS ---
     match /system_settings/{settingId} {

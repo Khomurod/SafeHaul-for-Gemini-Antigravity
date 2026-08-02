@@ -10,6 +10,7 @@ import {
   Activity,
   MessageSquare,
   RefreshCw,
+  KeyRound,
 } from "lucide-react";
 import { SectionNavigation } from '@/design-system/components';
 import { SUPER_ADMIN_NAV_ITEMS } from '../config/views';
@@ -25,6 +26,7 @@ const ICONS = {
   Activity,
   MessageSquare,
   RefreshCw,
+  KeyRound,
 };
 
 /**

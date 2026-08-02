@@ -17,6 +17,7 @@ import StatsBackfillPanel from './StatsBackfillPanel.jsx';
 // --- Views from Parent Directory ---
 import { AnalyticsView } from '../views/AnalyticsView.jsx';
 import { UnifiedDriverList } from '../views/UnifiedDriverList.jsx';
+import { EnvironmentIntegrationsView } from '../views/EnvironmentIntegrationsView.jsx';
 
 // --- Form Builder (Super Admin) ---
 import { GlobalQuestionsManager } from './GlobalQuestionsManager';
@@ -162,6 +163,8 @@ export function ViewRouter({
                     onBack={onBackToIntegrations}
                 />
             );
+        case SUPER_ADMIN_VIEWS.ENVIRONMENT:
+            return <EnvironmentIntegrationsView />;
         case SUPER_ADMIN_VIEWS.STATS_BACKFILL:
             return <StatsBackfillPanel />;
         case SUPER_ADMIN_VIEWS.QUESTIONS:

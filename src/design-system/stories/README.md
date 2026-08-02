@@ -18,9 +18,9 @@ npm run test:stories     # renders every story and runs axe over each one
 - `patterns/*.stories.jsx` — business-neutral page compositions.
 - `fixtures.js` — the shared, deterministic fixture data.
 
-Two stories live **outside** this directory, in
+Three story files live **outside** this directory, in
 `src/shared/components/modals/`: `Modal` and `ConfirmDialog` (plus the modal-form
-pattern built on them). They are colocated with the components they document
+and typed-confirmation patterns built on them). They are colocated with the components they document
 because the design system must not depend on `shared`, and those primitives have
 not moved into `design-system/patterns` yet. Their catalog `title` still files
 them under Components and Patterns. They move when `Modal` moves.

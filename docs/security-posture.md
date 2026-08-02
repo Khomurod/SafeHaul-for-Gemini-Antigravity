@@ -147,8 +147,38 @@ Privacy:
   been verified in this project's production account, so no such claim is made in
   the product or in these docs.
 
+## Super Admin Environment & Integrations vault
+
+The Super Admin **Environment & Integrations** view lists every configuration
+value, deployment secret and stored integration credential SafeHaul uses, and can
+reveal one at a time. The full operational description is in
+[`docs/environment-and-integrations-runbook.md`](environment-and-integrations-runbook.md);
+the security-relevant controls are:
+
+| Control | Implementation |
+|---------|----------------|
+| Server-mediated only | Six narrow Cloud Functions callables. No client reads secret storage directly, and there is no generic environment-variable endpoint. |
+| Exact role | `globalRole === 'super_admin'` only. Company admins, ordinary users and unauthenticated callers are rejected — no degraded read. |
+| Recent authentication | Reveal and every mutation require `auth_time` within 15 minutes. A silent token refresh does not satisfy it; only `reauthenticateWithCredential` moves the claim. |
+| Allowlisted lookup | Every entry identifier is resolved against the frozen registry before anything is read or written. `process.env` is never enumerated or serialised. |
+| One value per request | A reveal returns exactly one value. Revealing one row can never surface another. |
+| No ciphertext to the browser | Encrypted Firestore credentials are decrypted server-side; the stored ciphertext never leaves the backend. |
+| Masked by default | The list response carries `maskedValue: '********'` and no plaintext, so there is nothing sensitive in the initial DOM to hide. |
+| Automatic clearing | A revealed value clears after 30 seconds and immediately on a second press, another reveal, a view change, a hidden tab, unmount, sign-out or refresh. It is never written to `localStorage`, `sessionStorage`, IndexedDB, a data attribute, the URL, a log, an error, analytics or a Sentry breadcrumb, and is never auto-copied to the clipboard. |
+| Fail-closed rate limits | 60 lists / 30 reveals / 10 mutations per 5 minutes per caller; a limiter error denies rather than allows. |
+| Value-free audit | Every outcome, including denials, writes to `environment_audit_log` through an allowlist filter that cannot carry a value, ciphertext, a fragment or a length beyond the recorded `valueLength` integer. The collection denies all client access, including Super Admins. |
+| Generic failures | Callable errors never contain plaintext, ciphertext or provider response text. |
+| Protected keys stay readable, not writable | Sensitivity never removes the eye; infrastructure keys such as `SMS_ENCRYPTION_KEY` and `BULK_WORKER_SECRET` lose Edit, Replace, Add and Delete instead. |
+| Honest unavailability | GitHub Actions cannot return a stored secret. Those rows stay listed, keep the eye, and report "The source does not permit reading the saved value." No value is invented or substituted. |
+
+The vault does not change the existing SMS `IntegrationManager` workflow: that
+form still never preloads stored credentials, `__PRESERVE__` still means "keep
+what is stored", and line inventory, assignments and dedicated-line credentials
+are untouched. The vault is a separate, explicitly authorised reveal path.
+
 ## Related files
 
+- [`functions/environmentVault/`](../functions/environmentVault/) — configuration registry, guards, retrieval and audit
 - [`functions/edocFieldPlacement.js`](../functions/edocFieldPlacement.js) — AI Field Assistant callable
 - [`functions/shared/documentVisionProvider.js`](../functions/shared/documentVisionProvider.js) — provider-neutral vision boundary
 - [`functions/storageSecure.js`](../functions/storageSecure.js) — upload path reservation

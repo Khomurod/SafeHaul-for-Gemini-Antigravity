@@ -76,6 +76,7 @@ Used by Cloud Functions with Admin SDK:
 | `rate_limits/{key}` | Token-bucket rate limiting |
 | `processing_status/{id}` | Trigger idempotency (e.g. `app_{companyId}_{appId}`) |
 | `orphaned_signature_cleanup` | Digital sealing maintenance |
+| `environment_audit_log/{id}` | Super Admin Environment & Integrations vault audit trail. Written only by the vault callables; `src/firestore.rules` denies every client read and write, **including Super Admins**, so it cannot be forged or read around the callable. Fields: `actorUid`, `actorEmail`, `action`, `result`, `entryId`, `key`, `integration`, `scope`, `companyId`, `source`, `category`, `sensitivity`, `availability`, `reason`, `valueLength`, `timestamp`. It never stores a plaintext value, ciphertext, a partial value or a token fragment — see [`functions/environmentVault/audit.js`](../functions/environmentVault/audit.js). |
 
 ---
 

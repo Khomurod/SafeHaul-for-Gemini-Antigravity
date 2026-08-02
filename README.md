@@ -250,6 +250,16 @@ cd functions && npm install && cd ..
 
 ### Environment Variables
 
+> **Complete inventory:** the tables below are the getting-started subset. The
+> authoritative, machine-checked list of every variable, secret and stored
+> integration credential — with its source, whether it can be read back, and what
+> may be changed — is
+> [docs/environment-and-integrations-runbook.md](docs/environment-and-integrations-runbook.md),
+> surfaced in the app under Super Admin → **Environment & Integrations**. The
+> registry in `functions/environmentVault/registry.js` is verified against the
+> repository by `functions/test/unit/environmentRegistry.inventory.test.js`, so a
+> new configuration key cannot silently escape it.
+
 #### Frontend (`.env`)
 
 | Variable | Description |
@@ -271,8 +281,13 @@ cd functions && npm install && cd ..
 | `PROCESS_BULK_BATCH_URL` | Cloud Run URL for `processBulkBatch` (required for bulk campaigns) |
 | `BULK_WORKER_SECRET` | Shared secret for bulk worker HTTP auth (same on `initBulkSession` and `processBulkBatch`) |
 | `GROQ_API_KEY` | Groq vision API for CDL parsing |
-| `SMS_ENCRYPTION_KEY` | AES key for encrypting SMS provider credentials |
-| `SENTRY_DSN` | Sentry DSN for server-side error tracking |
+| `SMS_ENCRYPTION_KEY` | AES key for encrypting SMS provider credentials (bound via Secret Manager, not `functions/.env`) |
+
+> `SENTRY_DSN` was previously listed here for server-side error tracking. The
+> 2026-08-02 configuration audit found no backend code that reads it — only the
+> browser DSN (`VITE_SENTRY_DSN`) and the deploy-time sourcemap-upload secrets
+> (`SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`) are consumed — so it has
+> been removed rather than left as a key operators would set to no effect.
 
 > **Bulk campaigns:** See [docs/production-readiness-runbook.md](docs/production-readiness-runbook.md#bulk-sms--email-campaigns) for Cloud Tasks queue setup and verification.
 
