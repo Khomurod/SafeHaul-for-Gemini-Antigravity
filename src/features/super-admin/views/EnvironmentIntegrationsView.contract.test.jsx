@@ -443,6 +443,19 @@ describe('inventory presentation', () => {
         expect(screen.getByText('No entries match these filters.')).toBeInTheDocument();
     });
 
+    it('names the real reason when the inventory is denied', async () => {
+        // Regression: the Firebase SDK prefixes callable codes with `functions/`,
+        // so an inline `=== 'permission-denied'` never matched and a denied
+        // Super Admin check was reported as a generic load failure.
+        const denied = vi.fn().mockRejectedValue(
+            Object.assign(new Error('denied'), { code: 'functions/permission-denied' }),
+        );
+        installCallables({ list: denied });
+        render(<EnvironmentIntegrationsView />);
+
+        expect(await screen.findByText('Super Admin access is required for this action.')).toBeInTheDocument();
+    });
+
     it('shows an error state with a retry that reloads', async () => {
         const failing = vi.fn().mockRejectedValueOnce(new Error('offline'));
         installCallables({ list: failing });

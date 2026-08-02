@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '@lib/firebase';
 import { isBrowserValueConfigured } from '../config/browserVisibleEnvironment';
+import { describeVaultError, listEnvironmentAndIntegrations } from '../services/environmentVault';
 
 /**
  * Loads the Environment & Integrations inventory and owns its filter state.
@@ -84,21 +83,18 @@ export function useEnvironmentInventory() {
         setLoading(true);
         setError(null);
         try {
-            const listFn = httpsCallable(functions, 'listEnvironmentAndIntegrations');
-            const result = await listFn({});
+            const data = await listEnvironmentAndIntegrations({});
             if (!mounted.current) return;
-            const rows = (result.data?.entries || []).map(refineStatus);
-            setEntries(rows);
-            setRecentActivity(result.data?.recentActivity || []);
-            setCompanyError(result.data?.companyError || null);
+            setEntries((data?.entries || []).map(refineStatus));
+            setRecentActivity(data?.recentActivity || []);
+            setCompanyError(data?.companyError || null);
         } catch (err) {
             if (!mounted.current) return;
-            // The callable never puts a value in an error, but the message is
-            // still not rendered raw — a stable sentence is shown instead and the
-            // code is what distinguishes the cases.
-            setError(err?.code === 'permission-denied'
-                ? 'Super Admin access is required to view this inventory.'
-                : 'The configuration inventory could not be loaded.');
+            // Mapped through the shared describer rather than matched here: the
+            // Firebase SDK prefixes callable codes with `functions/`, so an
+            // inline `=== 'permission-denied'` never matched and a denied Super
+            // Admin check was reported as a generic load failure.
+            setError(describeVaultError(err, 'The configuration inventory could not be loaded.'));
             setEntries([]);
             setRecentActivity([]);
         } finally {
