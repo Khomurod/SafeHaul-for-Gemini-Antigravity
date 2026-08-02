@@ -14,6 +14,27 @@ import { auth, functions } from '@lib/firebase';
 const REAUTH_SENTINEL = 'REAUTH_REQUIRED';
 
 /**
+ * Thrown when the operator dismisses the re-authentication prompt.
+ *
+ * This is not a failure to report — it means the operation never started, so
+ * callers must neither claim success nor show an error. It exists as its own
+ * type precisely so "the user backed out" cannot be confused with "the server
+ * refused", which is how a cancelled mutation would otherwise be announced as a
+ * completed one.
+ */
+export class ReauthCancelledError extends Error {
+    constructor() {
+        super('Re-authentication was cancelled.');
+        this.name = 'ReauthCancelledError';
+    }
+}
+
+/** True when an operation stopped because the operator dismissed the prompt. */
+export function isReauthCancelled(error) {
+    return error instanceof ReauthCancelledError || error?.name === 'ReauthCancelledError';
+}
+
+/**
  * True when a callable failure means "re-enter your password", rather than a
  * genuine denial. Matched on the sentinel rather than the whole message so
  * wording can change without breaking the flow.

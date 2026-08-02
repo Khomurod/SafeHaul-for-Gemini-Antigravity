@@ -9,7 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
     BROWSER_VISIBLE_KEYS,
@@ -44,6 +44,11 @@ function viteKeysUsedInSource() {
     return [...keys].sort();
 }
 
+afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+});
+
 describe('browser-visible environment map', () => {
     it('resolves every VITE_ variable the application reads', () => {
         const used = viteKeysUsedInSource();
@@ -57,8 +62,28 @@ describe('browser-visible environment map', () => {
         expect(typeof isBrowserValueConfigured('VITE_FIREBASE_PROJECT_ID')).toBe('boolean');
     });
 
-    it('returns null for an unset variable rather than an empty string', () => {
-        expect(readBrowserVisibleValue('VITE_SOCRATA_APP_TOKEN')).toBeNull();
+    /**
+     * The module captures its values at import time, so the stub has to be in
+     * place before a fresh import. Asserting against the ambient environment
+     * instead would pass locally (no `.env`) and fail in CI, where the workflow
+     * injects these variables — which is exactly what happened.
+     */
+    it('returns null for an unset variable rather than an empty string', async () => {
+        vi.stubEnv('VITE_SOCRATA_APP_TOKEN', '');
+        vi.resetModules();
+        const reloaded = await import('./browserVisibleEnvironment.js');
+
+        expect(reloaded.readBrowserVisibleValue('VITE_SOCRATA_APP_TOKEN')).toBeNull();
+        expect(reloaded.isBrowserValueConfigured('VITE_SOCRATA_APP_TOKEN')).toBe(false);
+    });
+
+    it('resolves a variable that is set', async () => {
+        vi.stubEnv('VITE_SOCRATA_APP_TOKEN', 'artificial-token');
+        vi.resetModules();
+        const reloaded = await import('./browserVisibleEnvironment.js');
+
+        expect(reloaded.readBrowserVisibleValue('VITE_SOCRATA_APP_TOKEN')).toBe('artificial-token');
+        expect(reloaded.isBrowserValueConfigured('VITE_SOCRATA_APP_TOKEN')).toBe(true);
     });
 
     it('refuses to resolve a key it does not know', () => {

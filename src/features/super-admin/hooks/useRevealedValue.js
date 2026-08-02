@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { readBrowserVisibleValue } from '../config/browserVisibleEnvironment';
-import { revealEnvironmentValue } from '../services/environmentVault';
+import { isReauthCancelled } from '../services/environmentVault';
 
 /**
  * Owns the single revealed value on the Environment & Integrations page.
@@ -11,6 +11,16 @@ import { revealEnvironmentValue } from '../services/environmentVault';
  * is the mechanism by which "revealing one row never reveals another" is true:
  * there is nowhere for a second plaintext value to live, so a second reveal
  * necessarily evicts the first.
+ *
+ * ## Why in-flight requests carry a generation
+ *
+ * Only the row being revealed has its control disabled, so an operator can start
+ * a reveal for row A and then start one for row B before A's response lands. If
+ * A resolved last it would overwrite B's value and restart the countdown — a
+ * secret the page had already evicted would reappear, attached to the wrong row.
+ * Every request takes a generation number; a response whose generation is no
+ * longer current is discarded. `hide()` bumps the generation too, so an
+ * explicit hide cannot be undone by a request that was already in the air.
  *
  * ## Where a revealed value is *not*
  *
@@ -25,11 +35,16 @@ import { revealEnvironmentValue } from '../services/environmentVault';
  * unmounting (view change, logout, row unmount), and a 30-second timer. The
  * timer ticks once a second so the countdown shown next to the value is the real
  * remaining time rather than a decoration.
+ *
+ * @param {object} params
+ * @param {(entryId: string) => Promise<object>} params.request Performs one
+ *   reveal. The view supplies a wrapper that handles re-authentication, so this
+ *   hook never has to know about session recency.
  */
 
 export const REVEAL_WINDOW_SECONDS = 30;
 
-export function useRevealedValue({ onReauthRequired } = {}) {
+export function useRevealedValue({ request }) {
     const [revealedId, setRevealedId] = useState(null);
     const [revealedValue, setRevealedValue] = useState(null);
     const [unavailableReason, setUnavailableReason] = useState(null);
@@ -38,6 +53,7 @@ export function useRevealedValue({ onReauthRequired } = {}) {
     const [error, setError] = useState(null);
 
     const timerRef = useRef(null);
+    const generationRef = useRef(0);
 
     const clearTimer = useCallback(() => {
         if (timerRef.current) {
@@ -46,12 +62,15 @@ export function useRevealedValue({ onReauthRequired } = {}) {
         }
     }, []);
 
+    /** Invalidates any in-flight reveal and clears whatever is on screen. */
     const hide = useCallback(() => {
+        generationRef.current += 1;
         clearTimer();
         setRevealedId(null);
         setRevealedValue(null);
         setUnavailableReason(null);
         setSecondsRemaining(0);
+        setPendingId(null);
     }, [clearTimer]);
 
     // Unmount — view change, logout, or the row's owner going away.
@@ -99,13 +118,17 @@ export function useRevealedValue({ onReauthRequired } = {}) {
         }
 
         // Evict the previous value before the request, not after: an in-flight
-        // reveal must never leave an older secret on screen.
+        // reveal must never leave an older secret on screen. This also bumps the
+        // generation, invalidating any request still in the air.
         hide();
         setError(null);
         setPendingId(entry.id);
+        const generation = generationRef.current;
 
         try {
-            const result = await revealEnvironmentValue(entry.id);
+            const result = await request(entry.id);
+            // Superseded by a later reveal, an explicit hide, or an unmount.
+            if (generationRef.current !== generation) return;
 
             let value = result?.value ?? null;
             let reason = result?.unavailableReason ?? null;
@@ -120,12 +143,15 @@ export function useRevealedValue({ onReauthRequired } = {}) {
             setUnavailableReason(value === null ? (reason || 'No value is available from this source.') : null);
             startCountdown();
         } catch (caught) {
-            if (onReauthRequired?.(caught, () => reveal(entry))) return;
+            if (generationRef.current !== generation) return;
+            // The operator dismissed the re-authentication prompt. Nothing
+            // happened, so nothing is reported.
+            if (isReauthCancelled(caught)) return;
             setError({ entryId: entry.id, error: caught });
         } finally {
-            setPendingId(null);
+            if (generationRef.current === generation) setPendingId(null);
         }
-    }, [hide, onReauthRequired, revealedId, startCountdown]);
+    }, [hide, request, revealedId, startCountdown]);
 
     return {
         revealedId,

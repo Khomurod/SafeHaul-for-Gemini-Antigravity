@@ -568,4 +568,123 @@ describe('re-authentication', () => {
         await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
         expect(document.body.textContent).not.toContain(SECRET_PLAINTEXT);
     });
+
+    /**
+     * Regression: an earlier version resolved the guarded operation as soon as it
+     * opened the prompt, so the edit dialog closed and a success toast fired for
+     * a write that had not happened — and would never happen if the operator
+     * backed out.
+     */
+    it('reports nothing and writes nothing when a mutation is cancelled at the prompt', async () => {
+        const update = vi.fn().mockRejectedValue(staleError);
+        await renderLoaded({ update });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Edit clientSecret' }));
+        const editDialog = await screen.findByRole('dialog');
+        fireEvent.change(within(editDialog).getByLabelText(/New value/), { target: { value: 'a-new-artificial-secret' } });
+        fireEvent.click(within(editDialog).getByRole('button', { name: 'Replace value' }));
+
+        const reauthDialog = await screen.findByText('Confirm it is you');
+        fireEvent.click(within(reauthDialog.closest('[role="dialog"]')).getByRole('button', { name: 'Cancel' }));
+
+        await waitFor(() => expect(screen.queryByText('Confirm it is you')).not.toBeInTheDocument());
+
+        // Nothing claimed, nothing written, and the operator's input survives.
+        expect(showSuccess).not.toHaveBeenCalled();
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('button', { name: 'Replace value' })).toBeInTheDocument();
+        expect(screen.getByLabelText(/New value/)).toHaveValue('a-new-artificial-secret');
+    });
+
+    it('completes the mutation once, after a successful re-authentication', async () => {
+        const update = vi.fn()
+            .mockRejectedValueOnce(staleError)
+            .mockResolvedValueOnce({ data: { verified: true } });
+        reauthenticateWithCredential.mockResolvedValue({});
+        await renderLoaded({ update });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Edit clientSecret' }));
+        const editDialog = await screen.findByRole('dialog');
+        fireEvent.change(within(editDialog).getByLabelText(/New value/), { target: { value: 'a-new-artificial-secret' } });
+        fireEvent.click(within(editDialog).getByRole('button', { name: 'Replace value' }));
+
+        const reauthHeading = await screen.findByText('Confirm it is you');
+        const reauthDialog = reauthHeading.closest('[role="dialog"]');
+        fireEvent.change(within(reauthDialog).getByLabelText(/Password/), { target: { value: 'artificial-password' } });
+        fireEvent.click(within(reauthDialog).getByRole('button', { name: 'Continue' }));
+
+        await waitFor(() => expect(showSuccess).toHaveBeenCalled());
+        expect(update).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('concurrent reveals', () => {
+    /**
+     * Regression: only the pending row's control is disabled, so a second reveal
+     * can start while the first is still in flight. If the first landed last it
+     * used to overwrite the second and restart the countdown — a secret the page
+     * had already evicted reappearing, attached to the wrong row.
+     */
+    it('discards a reveal response that a later reveal has superseded', async () => {
+        let resolveFirst;
+        const reveal = vi.fn()
+            .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+            .mockImplementationOnce(async () => ({
+                data: {
+                    entryId: 'company:co-alpha:sms_provider:clientSecret',
+                    availability: 'firestore-encrypted',
+                    readFrom: 'firestore',
+                    value: 'second-artificial-value',
+                    unavailableReason: null,
+                },
+            }));
+
+        await renderLoaded({ reveal });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Reveal ARTIFICIAL_MASTER_KEY' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Reveal clientSecret' }));
+        await screen.findByText('second-artificial-value');
+
+        // The first request lands late; its value must never reach the screen.
+        resolveFirst({
+            data: {
+                entryId: 'secret-manager:ARTIFICIAL_MASTER_KEY',
+                availability: 'server-runtime',
+                readFrom: 'process-env',
+                value: SECRET_PLAINTEXT,
+                unavailableReason: null,
+            },
+        });
+        await waitFor(() => expect(reveal).toHaveBeenCalledTimes(2));
+
+        expect(screen.queryByText(SECRET_PLAINTEXT)).not.toBeInTheDocument();
+        expect(screen.getByText('second-artificial-value')).toBeInTheDocument();
+        expect(document.body.textContent).not.toContain(SECRET_PLAINTEXT);
+    });
+
+    it('discards a reveal response that arrived after an explicit hide', async () => {
+        let resolveFirst;
+        const reveal = vi.fn(() => new Promise((resolve) => { resolveFirst = resolve; }));
+        await renderLoaded({ reveal });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Reveal ARTIFICIAL_MASTER_KEY' }));
+
+        // Hiding the tab evicts everything, including anything still in flight.
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        fireEvent(document, new Event('visibilitychange'));
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+
+        resolveFirst({
+            data: {
+                entryId: 'secret-manager:ARTIFICIAL_MASTER_KEY',
+                availability: 'server-runtime',
+                readFrom: 'process-env',
+                value: SECRET_PLAINTEXT,
+                unavailableReason: null,
+            },
+        });
+        await waitFor(() => expect(reveal).toHaveBeenCalledTimes(1));
+
+        expect(document.body.textContent).not.toContain(SECRET_PLAINTEXT);
+    });
 });

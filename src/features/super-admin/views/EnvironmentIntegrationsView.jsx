@@ -24,10 +24,13 @@ import { useToast } from '@shared/components/feedback';
 import { useEnvironmentInventory } from '../hooks/useEnvironmentInventory';
 import { useRevealedValue } from '../hooks/useRevealedValue';
 import {
+    ReauthCancelledError,
     addEnvironmentValue,
     deleteEnvironmentValue,
     describeVaultError,
+    isReauthCancelled,
     isReauthRequired,
+    revealEnvironmentValue,
     testManagedIntegration,
     updateEnvironmentValue,
 } from '../services/environmentVault';
@@ -122,25 +125,45 @@ export function EnvironmentIntegrationsView() {
     const [deleteError, setDeleteError] = useState(null);
 
     /**
-     * Shared re-authentication trap. Returns true when it has taken ownership of
-     * the failure, so callers stop treating it as an error.
+     * Opens the re-authentication prompt and resolves once the operator has
+     * proved who they are — or rejects with `ReauthCancelledError` if they back
+     * out.
+     *
+     * Returning a promise rather than a boolean is the point. An earlier version
+     * swallowed the stale-session failure and *resolved*, so a caller went on to
+     * close its dialog and report success for a mutation that had not run, and
+     * would never run if the operator cancelled. Nothing downstream may continue
+     * until this settles.
      */
-    const handleReauthRequired = useCallback((error, retry) => {
-        if (!isReauthRequired(error)) return false;
-        setReauth({ retry });
-        return true;
-    }, []);
+    const requestReauth = useCallback(() => new Promise((resolve, reject) => {
+        setReauth({ resolve, reject });
+    }), []);
 
-    const revealed = useRevealedValue({ onReauthRequired: handleReauthRequired });
-
+    /**
+     * Runs one vault operation, transparently re-authenticating once if the
+     * session has gone stale. The returned promise settles only when the
+     * operation itself has actually run — or rejects, so no caller can mistake a
+     * pending re-authentication for a completed action.
+     */
     const runGuarded = useCallback(async (operation) => {
         try {
-            await operation();
+            return await operation();
         } catch (error) {
-            if (handleReauthRequired(error, () => runGuarded(operation))) return;
-            throw error;
+            if (!isReauthRequired(error)) throw error;
+            // Rejects with ReauthCancelledError when the operator dismisses it.
+            await requestReauth();
+            // One retry. A second stale-session failure is a real failure and is
+            // reported as one rather than looping the prompt.
+            return operation();
         }
-    }, [handleReauthRequired]);
+    }, [requestReauth]);
+
+    const revealed = useRevealedValue({
+        request: useCallback(
+            (entryId) => runGuarded(() => revealEnvironmentValue(entryId)),
+            [runGuarded],
+        ),
+    });
 
     const handleAction = useCallback(async (actionId, entry) => {
         if (actionId === 'edit' || actionId === 'replace') {
@@ -159,11 +182,11 @@ export function EnvironmentIntegrationsView() {
         if (actionId === 'test') {
             showInfo(`Testing ${entry.integration}…`);
             try {
-                await runGuarded(async () => {
-                    const result = await testManagedIntegration(entry.id);
-                    showSuccess(result.message || 'The integration responded successfully.');
-                });
+                const result = await runGuarded(() => testManagedIntegration(entry.id));
+                showSuccess(result.message || 'The integration responded successfully.');
             } catch (error) {
+                // A dismissed re-authentication prompt means the test never ran.
+                if (isReauthCancelled(error)) return;
                 showError(describeVaultError(error, 'The integration could not be reached.'));
             }
         }
@@ -172,11 +195,14 @@ export function EnvironmentIntegrationsView() {
     const submitValue = useCallback(async (value) => {
         const { entry, mode } = valueModal;
         try {
-            await runGuarded(async () => {
-                if (mode === 'add') await addEnvironmentValue(entry.id, value);
-                else await updateEnvironmentValue(entry.id, value);
-            });
+            await runGuarded(() => (mode === 'add'
+                ? addEnvironmentValue(entry.id, value)
+                : updateEnvironmentValue(entry.id, value)));
         } catch (error) {
+            // A dismissed re-authentication prompt means nothing was written.
+            // The dialog stays open with the operator's input intact, and
+            // nothing is claimed.
+            if (isReauthCancelled(error)) return;
             // Rethrown to the modal, which shows it inline. The message never
             // contains a value — the callable guarantees that.
             throw new Error(describeVaultError(error, 'The value could not be saved.'));
@@ -198,7 +224,11 @@ export function EnvironmentIntegrationsView() {
             showSuccess(`${deleteTarget.key} deleted.`);
             inventory.reload();
         } catch (error) {
-            setDeleteError(describeVaultError(error, 'The value could not be deleted.'));
+            // A dismissed re-authentication prompt means nothing was deleted.
+            // The confirmation dialog stays open and says nothing.
+            if (!isReauthCancelled(error)) {
+                setDeleteError(describeVaultError(error, 'The value could not be deleted.'));
+            }
         } finally {
             setDeleting(false);
         }
@@ -514,11 +544,15 @@ export function EnvironmentIntegrationsView() {
             {reauth && (
                 <ReauthenticateModal
                     onSuccess={() => {
-                        const { retry } = reauth;
+                        const { resolve } = reauth;
                         setReauth(null);
-                        retry?.();
+                        resolve();
                     }}
-                    onCancel={() => setReauth(null)}
+                    onCancel={() => {
+                        const { reject } = reauth;
+                        setReauth(null);
+                        reject(new ReauthCancelledError());
+                    }}
                 />
             )}
         </Stack>
