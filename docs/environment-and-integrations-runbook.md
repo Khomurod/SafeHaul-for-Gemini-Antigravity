@@ -287,6 +287,18 @@ corruption. This vault does not change that; it inventories it.
     revealing another row, switching Super Admin view, the browser tab becoming
     hidden, the row unmounting, sign-out, or a page refresh.
 
+Only the row being revealed has its control disabled, so a second reveal can be
+started while the first is still in flight. Every request carries a generation
+number and a response that is no longer current is discarded — otherwise a slow
+first response could land last and put an already-evicted value back on screen,
+attached to the wrong row. An explicit hide bumps the generation too, so a
+request already in the air cannot undo it.
+
+If the prompt in step 4 is **dismissed**, the operation never ran. Nothing is
+revealed, nothing is written, no success is reported and no error is shown: a
+cancelled action is not a failed one. A mutation dialog stays open with the
+entered value intact so it can be retried.
+
 Nothing is copied to the clipboard automatically. A revealed value lives in React
 state and nowhere else — not `localStorage`, `sessionStorage`, IndexedDB, a data
 attribute, the URL, a console line, an error, an analytics event or a Sentry
@@ -421,9 +433,10 @@ worth investigating in `environment_audit_log`.
 
 **"Every action asks me to re-authenticate."**
 The 15-minute recency window has lapsed. Enter the password when prompted; the
-original action is retried automatically. If re-authentication itself fails, the
-signed-in account may not have a password credential (federated sign-in) — in
-that case sign out and sign in again.
+original action is retried automatically, exactly once. Dismissing the prompt
+cancels the action cleanly — nothing is written and nothing is claimed. If
+re-authentication itself fails, the signed-in account may not have a password
+credential (federated sign-in); in that case sign out and sign in again.
 
 **"Company rows are missing but global rows are fine."**
 The inventory reports a partial failure rather than blanking the page. The

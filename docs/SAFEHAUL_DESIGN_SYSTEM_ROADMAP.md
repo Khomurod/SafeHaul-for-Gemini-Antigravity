@@ -8065,8 +8065,8 @@ terminal deny for the new `environment_audit_log` collection.
 
 | Check | Result |
 | --- | --- |
-| `npm run test:coverage` | 207 files, **3413 passed**, 48 skipped; 64.3% stmts / 61.9% br / 66.4% fn / 65.6% lines — all above the ratchet |
-| `cd functions && npm test` | 63 suites, **481 passed** |
+| `npm run test:coverage` | 207 files, **3418 passed**, 48 skipped; 64.3% stmts / 61.9% br / 66.4% fn / 65.6% lines — all above the ratchet |
+| `cd functions && npm test` | 63 suites, **484 passed** |
 | `npm run test:stories` | **323 passed**; 0 serious/critical axe violations |
 | `npm run lint` | 0 errors (107 pre-existing warnings) |
 | `npm run typecheck` | clean |
