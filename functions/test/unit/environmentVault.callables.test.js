@@ -231,7 +231,7 @@ describe('inventory listing', () => {
             'github-actions-secret:FIREBASE_SERVICE_ACCOUNT_TRUCKERAPP_SYSTEM',
             'company:co-alpha:sms_provider:clientId',
             'company:co-alpha:sms_provider:clientSecret',
-            'company:co-alpha:sms_keychain:Line A:jwt',
+            'company:co-alpha:sms_keychain:+15550001111:jwt',
             'company:co-alpha:email_config:smtpPass',
             'company:co-alpha:facebook_page:page-artificial:accessToken',
         ]));
@@ -297,9 +297,35 @@ describe('reveal', () => {
         expect(JSON.stringify(result)).not.toContain(LINE_JWT_PLAINTEXT);
     });
 
+    it('addresses a keychain line by its document id, not its free-text label', async () => {
+        // Two lines may carry the same label; the row id must still resolve to
+        // exactly one document.
+        mock.docs.set('companies/co-alpha/integrations/sms_provider/keychain/+15559999999', {
+            phoneNumber: '+15559999999',
+            label: 'Line A',
+            jwt: encrypt('a-different-line-jwt'),
+        });
+
+        const { entries } = await vault.listEnvironmentAndIntegrations(request(superAdmin()));
+        const jwtRows = entries.filter((row) => row.templateId === 'sms_keychain' && row.key === 'jwt');
+        expect(jwtRows).toHaveLength(2);
+        expect(new Set(jwtRows.map((row) => row.id)).size).toBe(2);
+
+        const second = await vault.revealEnvironmentValue(request(superAdmin(), {
+            entryId: 'company:co-alpha:sms_keychain:+15559999999:jwt',
+        }));
+        expect(second.value).toBe('a-different-line-jwt');
+    });
+
+    it('rejects an entry identifier carrying a path separator', async () => {
+        await expect(vault.revealEnvironmentValue(request(superAdmin(), {
+            entryId: 'company:co-alpha:sms_keychain:../../other/doc:jwt',
+        }))).rejects.toMatchObject({ code: 'invalid-argument' });
+    });
+
     it('reveals a dedicated line JWT from the private keychain', async () => {
         const result = await vault.revealEnvironmentValue(request(superAdmin(), {
-            entryId: 'company:co-alpha:sms_keychain:Line A:jwt',
+            entryId: 'company:co-alpha:sms_keychain:+15550001111:jwt',
         }));
         expect(result.value).toBe(LINE_JWT_PLAINTEXT);
     });

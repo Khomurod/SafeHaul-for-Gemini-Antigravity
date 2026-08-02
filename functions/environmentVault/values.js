@@ -32,10 +32,12 @@ const CIPHERTEXT_PATTERN = /^[0-9a-f]+:[0-9a-f]+$/i;
 
 /**
  * Parses a company row id of the form
- * `company:{companyId}:{templateId}[:{instanceLabel}]:{field}`.
+ * `company:{companyId}:{templateId}[:{instanceKey}]:{field}`.
  *
- * The instance label may itself contain `:` (a keychain label is free text), so
- * the field is taken from the end and the label is whatever is left in between.
+ * The instance key is a Firestore document id and is unique by construction —
+ * never the free-text label, which two records may share. Document ids can
+ * contain `:`, so the field is taken from the end and the key is whatever is
+ * left in between.
  */
 function parseCompanyEntryId(entryId) {
     const parts = String(entryId).split(':');
@@ -44,10 +46,10 @@ function parseCompanyEntryId(entryId) {
     const companyId = parts[1];
     const templateId = parts[2];
     const field = parts[parts.length - 1];
-    const instanceLabel = parts.length > 4 ? parts.slice(3, -1).join(':') : null;
+    const instanceKey = parts.length > 4 ? parts.slice(3, -1).join(':') : null;
 
     if (!companyId || !templateId || !field) return null;
-    return { companyId, templateId, field, instanceLabel };
+    return { companyId, templateId, field, instanceKey };
 }
 
 /**
@@ -76,32 +78,36 @@ function resolveEntry(entryId) {
     return { kind: 'company', ...parsed, template, definition };
 }
 
-/** Firestore reference for the document a company entry lives on. */
+/**
+ * Firestore reference for the document a company entry lives on.
+ *
+ * The instance key is always a document id, so every path here is built from
+ * ids the inventory produced rather than from anything a caller typed. A key
+ * containing a path separator would address a different collection, so it is
+ * rejected outright.
+ */
 async function resolveCompanyDocument(resolved) {
-    const { companyId, templateId, instanceLabel } = resolved;
+    const { companyId, templateId, instanceKey } = resolved;
+
+    if (instanceKey && instanceKey.includes('/')) {
+        throw new HttpsError('invalid-argument', 'That entry identifier is not valid.');
+    }
 
     switch (templateId) {
         case 'sms_provider':
             return db.collection('companies').doc(companyId)
                 .collection('integrations').doc('sms_provider');
-        case 'sms_keychain': {
-            // The row's instance label is the human line label, not the document
-            // id, so the matching keychain document is located by scanning that
-            // company's keychain rather than trusting the label as a path.
-            const providerRef = db.collection('companies').doc(companyId)
-                .collection('integrations').doc('sms_provider');
-            const keychainSnap = await providerRef.collection('keychain').get();
-            const match = keychainSnap.docs.find((doc) => {
-                const data = doc.data() || {};
-                return (data.label || doc.id) === instanceLabel;
-            });
-            return match ? match.ref : null;
-        }
+        case 'sms_keychain':
+            return instanceKey
+                ? db.collection('companies').doc(companyId)
+                    .collection('integrations').doc('sms_provider')
+                    .collection('keychain').doc(instanceKey)
+                : null;
         case 'email_config':
             return db.collection('companies').doc(companyId)
                 .collection('system_settings').doc('email_config');
         case 'facebook_page':
-            return instanceLabel ? db.collection('integrations_index').doc(instanceLabel) : null;
+            return instanceKey ? db.collection('integrations_index').doc(instanceKey) : null;
         default:
             return null;
     }

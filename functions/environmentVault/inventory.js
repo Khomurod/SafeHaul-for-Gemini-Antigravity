@@ -162,7 +162,10 @@ function companyPermissions(definition, { present, providerActive }) {
  * @param {string|null} params.companyName
  * @param {string} params.documentPath Firestore path of the owning document.
  * @param {boolean} params.present Whether a value is stored.
- * @param {string|null} params.instanceLabel Extra label (e.g. a line token).
+ * @param {string|null} params.instanceKey Stable, unique instance identifier
+ *   (a document id). Two records with the same human label must still produce
+ *   two different row ids, or a reveal could resolve to the wrong document.
+ * @param {string|null} params.instanceLabel Human label shown to the operator.
  * @param {boolean} params.providerActive Whether the field applies to the active provider.
  * @param {number|null} params.lastUpdated
  * @param {string|null} params.updatedBy
@@ -174,6 +177,7 @@ function buildCompanyRow({
     companyName,
     documentPath,
     present,
+    instanceKey = null,
     instanceLabel = null,
     providerActive = true,
     lastUpdated = null,
@@ -186,7 +190,7 @@ function buildCompanyRow({
 
     const { permissions, restrictions } = companyPermissions(definition, { present, providerActive });
 
-    const instanceSuffix = instanceLabel ? `:${instanceLabel}` : '';
+    const instanceSuffix = instanceKey ? `:${instanceKey}` : '';
     const displaySuffix = instanceLabel ? ` — ${instanceLabel}` : '';
 
     return {
@@ -214,6 +218,7 @@ function buildCompanyRow({
         documentPath,
         field: definition.field,
         templateId,
+        instanceKey,
         instanceLabel,
         lastUpdated,
         updatedBy,
@@ -314,6 +319,9 @@ async function buildCompanyRows(companyFilter = null) {
                 companyName: names.get(companyId),
                 documentPath: doc.ref.path,
                 present,
+                // The document id (the normalised phone) is unique; the label is
+                // free text and two lines may share one.
+                instanceKey: doc.id,
                 instanceLabel: label,
                 lastUpdated,
                 updatedBy,
@@ -360,7 +368,8 @@ async function buildCompanyRows(companyFilter = null) {
                 companyName: names.get(companyId),
                 documentPath: doc.ref.path,
                 present: isPresent(data[definition.field]),
-                instanceLabel: doc.id,
+                instanceKey: doc.id,
+                instanceLabel: data.pageName || doc.id,
                 lastUpdated: toMillis(data.updatedAt || data.connectedAt),
                 updatedBy: null,
             }));
