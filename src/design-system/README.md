@@ -126,6 +126,22 @@ verified.
   exported document as immutable content, not themeable chrome, and prove export
   parity before changing that.
 
+- The Super Admin Environment & Integrations vault consumes Card, MetricCard,
+  Badge, Button, IconButton, DataTable, FormField, Input, Select, the page
+  layout primitives, and the shared accessible `Modal` / `ConfirmDialog`. The
+  configuration registry, the six Cloud Functions callables, the reveal
+  authorisation and timing rules, the audit trail and every domain-to-visual
+  mapping remain feature-owned. It deliberately does **not** use `PageHeader`:
+  that primitive renders the page-level `<h1>`, which the Super Admin masthead
+  already owns, so the view uses the same `<h2>` composition as the other
+  migrated Super Admin views.
+
+  This campaign added one capability to the design system: `Button` now styles
+  `aria-disabled='true'` identically to `disabled`. A truly `disabled` button is
+  removed from the tab order, which makes an unavailable action's *reason*
+  unreachable by exactly the users who most need it. Callers using
+  `aria-disabled` must refuse the activation themselves.
+
 The primitive APIs are usable for migrated consumers, but their broader
 component-family roadmap items remain in progress until catalog examples and
 durable visual baselines are owner-approved.
@@ -136,7 +152,7 @@ durable visual baselines are owner-approved.
 IconButton, Input, Select, Textarea, Checkbox/Radio/ChoiceGroup, Badge,
 Card/MetricCard, DataTable, the page layout primitives, ProgressBar,
 StatusMedallion, SectionNavigation, the form-structure primitives, Modal and
-ConfirmDialog — plus six business-neutral page patterns.
+ConfirmDialog — plus eight business-neutral page patterns.
 
 Each page records an explicit **Approved** / **Needs review** / **Temporary**
 status and names what is unresolved. Read that status before reusing something:

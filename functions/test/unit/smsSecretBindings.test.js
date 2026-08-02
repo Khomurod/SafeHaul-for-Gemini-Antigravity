@@ -27,6 +27,11 @@ const SENDER_FILES = [
     'integrations/controllers/config/lineInventoryController.js',   // add / remove line
     'integrations/controllers/config/lineAssignmentsController.js', // recruiter line assignments
     'notifySignerSMS.js',                      // e-doc signer SMS
+    // Super Admin Environment & Integrations vault: reveals decrypt stored
+    // company credentials, and the inventory reports whether the Secret
+    // Manager-backed keys are configured. Without the binding every one of
+    // those rows would report "missing", which looks like an outage.
+    'environmentVault/index.js',
 ];
 
 describe('SMS_ENCRYPTION_KEY secret bindings', () => {

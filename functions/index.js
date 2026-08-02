@@ -226,6 +226,19 @@ exports.getSignedApplicationFileUrl = require('./getSignedApplicationFileUrl').g
 const featureScheduler = require('./featureScheduler');
 exports.enforceFeatureSchedules = featureScheduler.enforceFeatureSchedules;
 
+// 20. Super Admin Environment & Integrations vault.
+// Six narrow callables over the frozen configuration registry. Every one of
+// them requires exactly globalRole === 'super_admin', reveals or mutates a
+// single entry, and writes a value-free audit record. There is no generic
+// environment-variable endpoint. See functions/environmentVault/index.js.
+const environmentVault = require('./environmentVault');
+exports.listEnvironmentAndIntegrations = environmentVault.listEnvironmentAndIntegrations;
+exports.revealEnvironmentValue = environmentVault.revealEnvironmentValue;
+exports.updateEnvironmentValue = environmentVault.updateEnvironmentValue;
+exports.addEnvironmentValue = environmentVault.addEnvironmentValue;
+exports.deleteEnvironmentValue = environmentVault.deleteEnvironmentValue;
+exports.testManagedIntegration = environmentVault.testManagedIntegration;
+
 // 19. Legacy Compatibility Callables (frontend contract preservation)
 exports.updateBulkSessionStatus = legacyCompat.updateBulkSessionStatus;
 exports.backfillEmployerFields = legacyCompat.backfillEmployerFields;

@@ -7982,3 +7982,120 @@ path — so the zero-violation result is a real pass, not a vacuous one.
   not a theme.
 - The three viewport presets are catalog-level conveniences; they do not prove
   the application's own breakpoints, which are unchanged.
+
+---
+
+## Super Admin Environment & Integrations vault (2026-08-02)
+
+**Status:** `[x]` Implemented and verified, with the honest limitations recorded
+below. Branch `claude/super-admin-environment-integrations-8mjifh`, based on
+`main` at `9c1ff4d06121dd09b20d4fc9aa42f18a022b49c4`.
+
+### What was added
+
+A new Super Admin navigation item, **Environment & Integrations** (icon
+`KeyRound`, group `ops`), between *SMS Integrations* and *Form Builder*. It lists
+every environment variable, deployment secret, runtime configuration value and
+stored integration credential SafeHaul uses — 73 global registry entries plus 20
+per-company credential field templates expanded per tenant — with every value
+masked as `********` until a Super Admin deliberately reveals one.
+
+The existing per-company **SMS Integrations** workflow is untouched and stays
+where it was.
+
+Full operational documentation:
+[`docs/environment-and-integrations-runbook.md`](environment-and-integrations-runbook.md).
+
+### Design-system decisions this campaign made
+
+- **One capability added: `Button` now styles `aria-disabled='true'` the same as
+  `disabled`.** The page must show unavailable actions rather than hide them, and
+  it must say *why*. A truly `disabled` button is removed from the tab order,
+  which puts its explanation out of reach of exactly the keyboard and
+  screen-reader users who need it most. `aria-disabled` keeps the control
+  focusable so the reason — carried in the accessible name and repeated as a
+  tooltip — is reachable. Callers must refuse the activation themselves; the CSS
+  cannot. Recorded here rather than hand-rolled in the feature.
+
+- **`PageHeader` is deliberately not used.** It renders the page-level `<h1>`,
+  and the Super Admin masthead already owns the single `<h1>` for this shell —
+  an invariant `e2e/super-admin-views.spec.cjs` enforces across every migrated
+  view. The view uses the same `<h2>` + description composition as
+  `SystemHealthView` and the rest of the Super Admin row. Using `PageHeader` here
+  would have been a real accessibility regression, not a stylistic difference.
+
+- **No new primitives were hand-rolled.** The screen is Card, MetricCard, Badge,
+  Button, IconButton, DataTable, FormField, Input, Select, `ResponsiveGrid` /
+  `Stack`, and the shared accessible `Modal` / `ConfirmDialog`. The two known
+  primitive gaps this screen would have liked — a filter-chip row and an overflow
+  menu for row actions — were **not** invented; the filters are approved
+  `FormField` + `Select` controls in a `ResponsiveGrid`, and the row actions are
+  a visible `IconButton` group. Both gaps remain open in the Introduction page's
+  missing-primitive list.
+
+### Catalog
+
+Two business-neutral story files were added, bringing the catalog to eight page
+patterns:
+
+- `Patterns/Managed value inventory` (`src/design-system/stories/patterns/ManagedValueInventory.stories.jsx`)
+  — masked row, revealed row with its automatic-hide notice, editable entry,
+  protected read-only entry with disabled-and-explained actions, missing entry,
+  unavailable-from-source entry, and the empty state.
+- `Patterns/Typed confirmation` (`src/shared/components/modals/TypedConfirmation.stories.jsx`)
+  — the destructive confirmation that requires the exact name typed back, built
+  from `ConfirmDialog` with no new dialog primitive. It lives beside
+  `ConfirmDialog` for the same recorded reason `Modal` does.
+
+No real SafeHaul key name or value appears in either. Fixtures are neutral
+literals (`SERVICE_TOKEN`, `REGION_NAME`, …) and the only "revealed" value in the
+catalog is the literal string `sample-value-not-a-secret`.
+
+### Preserved exactly
+
+No existing behaviour changed. The SMS `IntegrationManager` still never preloads
+stored credentials into its form, `__PRESERVE__` still means "keep what is
+stored", provider verification is unchanged, and line inventory, assignments and
+dedicated-line credentials are untouched — `IntegrationManager.contract.test.jsx`,
+`LineManager.contract.test.jsx` and `AddLineModal.contract.test.jsx` all still
+pass unmodified. No Firestore rule was loosened: the only rules change **adds** a
+terminal deny for the new `environment_audit_log` collection.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `npm run test:coverage` | 207 files, **3418 passed**, 48 skipped; 64.3% stmts / 61.9% br / 66.4% fn / 65.6% lines — all above the ratchet |
+| `cd functions && npm test` | 63 suites, **484 passed** |
+| `npm run test:stories` | **323 passed**; 0 serious/critical axe violations |
+| `npm run lint` | 0 errors (107 pre-existing warnings) |
+| `npm run typecheck` | clean |
+| `npm run build` | green |
+| `npm run build-storybook` | green |
+| `node scripts/check-callable-contract.mjs` | passed, 63 callables verified |
+| `node scripts/validate-function-index-parse.mjs` | OK, 108 exports mapped |
+| `git diff --check` | clean |
+
+### Honest limitations
+
+- **No visual-regression baselines.** The roadmap's screenshot-baseline item is
+  still open, so density and alignment on this screen were reviewed by eye and by
+  the E2E overflow assertions at 1440 / 1024 / 768 / 412px — not against pinned
+  images.
+- **The E2E lane asserts the reachable state only.** Under
+  `VITE_E2E_TEST_MODE=1` the inventory callable is unreachable by construction,
+  so `e2e/super-admin-environment-integrations.spec.cjs` covers the page shell,
+  the security notice, the summary cards, the named filter controls, the
+  announced load failure and its retry, keyboard operation, axe and overflow.
+  Masking, reveal, the 30-second auto-hide, the disabled-action explanations,
+  typed-confirmation delete and re-authentication are proven by
+  `EnvironmentIntegrationsView.contract.test.jsx`, which can supply rows
+  deterministically. Asserting them in the browser would require a backend this
+  environment must never have.
+- **The Firestore rules emulator lane was not run locally** (no emulator
+  download in this sandbox). The new terminal-deny rule and its assertions run in
+  CI's `rules-emulator` job.
+- **Status for build-time browser values is resolved in the browser.** The Cloud
+  Functions runtime has no access to the bundle's inlined values, so the server
+  reports `unknown` and the client refines it from a presence boolean. This is
+  the only correct answer available, and both the row and the docs say so.

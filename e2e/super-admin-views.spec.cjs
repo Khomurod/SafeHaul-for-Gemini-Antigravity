@@ -21,6 +21,15 @@ const VIEWS = [
   { nav: 'Unified Driver DB', expect: (page) => page.getByRole('heading', { name: 'Unified Driver Database' }) },
   { nav: 'Global Features', expect: (page) => page.getByRole('heading', { name: 'Company Feature Overrides' }) },
   { nav: 'SMS Integrations', expect: (page) => page.getByRole('heading', { name: 'SMS Integrations Hub' }) },
+  // The configuration inventory. Offline its table settles into the announced
+  // load failure (the callable is unreachable under VITE_E2E_TEST_MODE=1); the
+  // page heading and the security notice render either way, so that is what is
+  // waited on here. Row behaviour is covered by
+  // `EnvironmentIntegrationsView.contract.test.jsx`.
+  {
+    nav: 'Environment & Integrations',
+    expect: (page) => page.getByRole('heading', { name: 'Environment & Integrations', level: 2 }),
+  },
   { nav: 'Stats Backfill', expect: (page) => page.getByRole('heading', { name: 'Performance Stats Backfill' }) },
   // Added 2026-07-28 with the final three views of the Super Admin row.
   { nav: 'System Health', expect: (page) => page.getByRole('heading', { name: 'System Health & Diagnostics' }) },
