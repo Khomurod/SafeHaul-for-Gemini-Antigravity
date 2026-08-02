@@ -264,6 +264,18 @@ describe('inventory listing', () => {
         expect(row.scope).toBe('company');
     });
 
+    it('offers Add rather than Edit on a supported field with nothing stored', async () => {
+        const { entries } = await vault.listEnvironmentAndIntegrations(request(superAdmin()));
+        const row = entries.find((entry) => entry.id === 'company:co-alpha:sms_provider:senderId');
+
+        expect(row.status).toBe('missing');
+        // An enabled Edit here would be a control guaranteed to fail server-side.
+        expect(row.permissions.editable).toBe(false);
+        expect(row.permissions.addable).toBe(true);
+        expect(row.permissions.revealable).toBe(false);
+        expect(row.restrictions.edit).toBe('Nothing is stored yet — use Add');
+    });
+
     it('omits credentials that belong to a provider this company is not using', async () => {
         const { entries } = await vault.listEnvironmentAndIntegrations(request(superAdmin()));
         // The seeded company is on RingCentral, so no 8x8 API key row is invented.

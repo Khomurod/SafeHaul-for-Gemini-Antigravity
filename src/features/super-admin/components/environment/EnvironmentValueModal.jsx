@@ -19,16 +19,23 @@ import { Modal } from '@shared/components/modals/Modal';
  *  3. **Claim more than it did.** A build-time entry is marked as requiring a
  *     deployment; the dialog says the live application has not changed yet.
  */
+/**
+ * The one field the vault stores as a boolean rather than a string. It gets a
+ * two-option `Select` so an operator cannot type `"yes"` into a flag that only
+ * accepts `true` / `false` — the backend would reject it, but after a round trip.
+ */
+const BOOLEAN_FIELD_KEYS = new Set(['isSandbox']);
+
 export function EnvironmentValueModal({ entry, mode, onSubmit, onCancel }) {
+    const isBoolean = BOOLEAN_FIELD_KEYS.has(entry.key);
     const titleId = useId();
     const descriptionId = useId();
     const inputRef = useRef(null);
-    const [value, setValue] = useState(entry.valueType === 'boolean' ? 'true' : '');
+    const [value, setValue] = useState(isBoolean ? 'true' : '');
     const [validationError, setValidationError] = useState(null);
     const [submitError, setSubmitError] = useState(null);
     const [saving, setSaving] = useState(false);
 
-    const isBoolean = entry.key === 'isSandbox';
     const verb = mode === 'add' ? 'Add' : 'Replace';
 
     const handleSubmit = async (event) => {

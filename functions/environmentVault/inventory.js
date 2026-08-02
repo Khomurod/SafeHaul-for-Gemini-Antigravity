@@ -112,11 +112,25 @@ function buildGlobalRows() {
     }));
 }
 
-/** Permissions for a company field, derived from its template definition. */
+/**
+ * Permissions for a company field, derived from its template definition.
+ *
+ * Editing additionally requires something to *be* there: the backend refuses an
+ * update against an empty field and tells the operator to use Add instead, so
+ * offering an enabled Edit control on an empty field would be a control that is
+ * guaranteed to fail. Add covers that case, and its own reason says so.
+ */
 function companyPermissions(definition, { present, providerActive }) {
-    const editable = Boolean(definition.editable) && providerActive;
+    const writable = Boolean(definition.editable) && providerActive;
+    const editable = writable && present;
     const deletable = Boolean(definition.deletable) && present && providerActive;
     const addable = Boolean(definition.editable || definition.addable) && !present && providerActive;
+
+    const editReason = editable
+        ? null
+        : (writable && !present
+            ? 'Nothing is stored yet — use Add'
+            : (definition.editReason || 'Source does not support editing'));
 
     return {
         permissions: {
@@ -128,8 +142,8 @@ function companyPermissions(definition, { present, providerActive }) {
             testable: Boolean(definition.testable),
         },
         restrictions: {
-            edit: editable ? null : (definition.editReason || 'Source does not support editing'),
-            replace: editable ? null : (definition.editReason || 'Source does not support editing'),
+            edit: editReason,
+            replace: editReason,
             add: addable ? null : (present ? 'The key already exists' : 'Source does not support adding keys here'),
             delete: deletable
                 ? null
