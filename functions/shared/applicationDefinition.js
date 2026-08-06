@@ -179,18 +179,45 @@ const GATE_DEFAULT_REQUIRED = Object.freeze({
 });
 
 /**
+ * Alternative spellings for the same gate that exist in stored data.
+ *
+ * The company settings UI (StandardQuestionsConfig) writes `addressHistory` and
+ * `employmentHistory`, but publicProfileDto's allowlist exposes
+ * `previousAddresses` and `employers` instead. Both spellings therefore occur in
+ * real `applicationConfig` maps depending on which surface the config came from,
+ * and a gate that only knew one name silently fell back to its default.
+ *
+ * Accepting both is faithful rather than lenient: it reports the configuration
+ * that was actually in force. The underlying key mismatch is a separate defect —
+ * a company gate set in settings does not currently reach the public apply page
+ * at all — and fixing the allowlist is a behaviour change tracked on its own.
+ */
+const GATE_ALIASES = Object.freeze({
+    addressHistory: ['previousAddresses'],
+    employmentHistory: ['employers'],
+});
+
+/**
  * Resolve one gate against the company's `applicationConfig`.
  * Mirrors functions/shared/buildApplicationDoc.getFieldConfig so the definition
  * and the submission validator can never disagree about what was required.
  */
 function resolveGate(applicationConfig, gate) {
     if (!gate) return { hidden: false, required: false, gated: false };
+
     const config = applicationConfig ? applicationConfig[gate] : undefined;
+    // The canonical key wins; an alias is consulted only when it is absent.
+    const resolved = config !== undefined
+        ? config
+        : (GATE_ALIASES[gate] || [])
+            .map((alias) => (applicationConfig ? applicationConfig[alias] : undefined))
+            .find((value) => value !== undefined);
+
     const defaultRequired = Boolean(GATE_DEFAULT_REQUIRED[gate]);
     return {
         gated: true,
-        hidden: Boolean(config && config.hidden),
-        required: config !== undefined ? Boolean(config.required) : defaultRequired,
+        hidden: Boolean(resolved && resolved.hidden),
+        required: resolved !== undefined ? Boolean(resolved.required) : defaultRequired,
     };
 }
 
@@ -358,6 +385,7 @@ function findFieldLabel(definition, fieldId) {
 }
 
 module.exports = {
+    GATE_ALIASES,
     GATE_DEFAULT_REQUIRED,
     STANDARD_SECTIONS,
     buildApplicationDefinition,
