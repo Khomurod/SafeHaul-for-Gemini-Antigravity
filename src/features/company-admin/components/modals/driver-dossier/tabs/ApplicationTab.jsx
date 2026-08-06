@@ -20,6 +20,8 @@ import { formatIsoDateUs, formatMonthYearUs } from '@shared/utils/dateFormHelper
 import { APPLICATION_SCHEMA } from '@/config/applicationSchema';
 import { SchemaSection } from '@shared/components/schema/SchemaRenderer';
 import { useApplicationChanges } from '@features/applications/hooks/useApplicationChanges';
+import { useSubmissionRecord } from '@features/applications/hooks/useSubmissionRecord';
+import { SubmissionRecordNotice } from '@features/applications/components/SubmissionRecordNotice';
 import { Badge, Button, Card, IconButton } from '@/design-system/components';
 
 /**
@@ -93,6 +95,10 @@ export function ApplicationTab({ appData, fileUrls = {}, canEdit = false, compan
     const { pendingChanges, proposing, linking, proposeChanges, createReviewLink } =
         useApplicationChanges(companyId, applicationId, collectionName);
 
+    // Provenance of what this tab is showing. Resolved before the `!appData`
+    // early return so the hook order stays stable across renders.
+    const { record: submissionRecord } = useSubmissionRecord(companyId, applicationId);
+
     // DEFECT FIX: this used to `return null`, so an application that resolved to
     // nothing left the dossier's tab panel completely blank — no explanation and
     // no indication that anything had happened. The panel now says so.
@@ -130,6 +136,11 @@ export function ApplicationTab({ appData, fileUrls = {}, canEdit = false, compan
 
     return (
         <div className="space-y-ds-6">
+            {/* States whether this is the frozen original, a reconstruction, or a
+                historical record with nothing preserved. Shown first, because it
+                qualifies everything below it. */}
+            <SubmissionRecordNotice record={submissionRecord} />
+
             {/* Pending company edits — awaiting driver approval */}
             {pendingChanges.length > 0 && (
                 <Card padding="md" className="border-ds-status-warning-border bg-ds-status-warning-bg">
