@@ -8,6 +8,7 @@ import BusinessInfoSection from './components/BusinessInfoSection';
 import VehicleExperienceSection from './components/VehicleExperienceSection';
 import EmergencyContactsSection from './components/EmergencyContactsSection';
 import { StepNavigation } from './components/StepNavigation';
+import { resolveApplicationGate } from '@/config/applicationGates';
 
 /**
  * Presentation migrated to the approved `FormSection` / `FormField` / `Textarea`
@@ -21,6 +22,14 @@ const Step7_General = ({ formData, updateFormData, onNavigate }) => {
     const { states } = useUtils();
     const { currentCompanyProfile } = useData();
     const currentCompany = currentCompanyProfile;
+
+    // Resolved through the shared gate resolver so the canonical
+    // `emergencyContacts` setting works alongside the legacy
+    // `showEmergencyContacts` boolean. Default stays hidden, as before.
+    const emergencyContactsConfig = resolveApplicationGate(
+        currentCompany?.applicationConfig,
+        'emergencyContacts',
+    );
 
     const yesNoOptions = YES_NO_OPTIONS;
     const milesOptions = MILES_DRIVEN_OPTIONS;
@@ -55,7 +64,7 @@ const Step7_General = ({ formData, updateFormData, onNavigate }) => {
                 expOptions={expOptions}
             />
 
-            {currentCompany?.applicationConfig?.showEmergencyContacts && (
+            {!emergencyContactsConfig.hidden && (
                 <EmergencyContactsSection
                     formData={formData}
                     updateFormData={updateFormData}

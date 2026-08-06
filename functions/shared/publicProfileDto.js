@@ -11,10 +11,28 @@
 //   3. It is unit-testable without booting firebase-admin, so the regression test
 //      guards the real implementation rather than a hand-copied mirror.
 
-/** Whitelisted applicationConfig keys exposed on public apply pages. */
+/**
+ * Whitelisted applicationConfig keys exposed on public apply pages.
+ *
+ * These are the CANONICAL gate ids the settings UI (StandardQuestionsConfig)
+ * writes. `addressHistory`, `employmentHistory`, `mvrConsent`, `referralSource`
+ * and `emergencyContacts` were previously absent, so a company could set them in
+ * Settings and they would have no effect at all on a public apply page — the
+ * projection simply never carried them across.
+ *
+ * The trailing entries are legacy spellings kept so configurations written
+ * before the canonical keys were forwarded keep working. `applicationGates`
+ * (browser) and `applicationDefinition` (server) both read the canonical key
+ * first and fall back to the alias, so both spellings resolve identically.
+ */
 const PUBLIC_APPLICATION_CONFIG_KEYS = [
-    'cdlUpload', 'medCardUpload', 'showEmergencyContacts',
-    'ssn', 'dob', 'previousAddresses', 'employers', 'violations', 'accidents',
+    // Canonical gate ids, in settings-UI order.
+    'ssn', 'dob', 'addressHistory', 'employmentHistory',
+    'cdlUpload', 'medCardUpload', 'mvrConsent', 'referralSource',
+    'emergencyContacts',
+    // Legacy spellings — read only when the canonical key is absent.
+    'showEmergencyContacts', 'previousAddresses', 'employers',
+    'violations', 'accidents',
 ];
 
 /**

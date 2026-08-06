@@ -13,6 +13,7 @@ import EmployerNameAutocomplete from './components/EmployerNameAutocomplete';
 import { FormField, FormSection, Textarea } from '@/design-system/components';
 import { StepNavigation } from './components/StepNavigation';
 import { StateSelectField } from './components/StateSelectField';
+import { resolveApplicationGate } from '@/config/applicationGates';
 
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -41,15 +42,12 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
     const yesNoOptions = YES_NO_OPTIONS;
 
     // --- Configuration ---
-    const getConfig = (fieldId, defaultReq = true) => {
-        const config = currentCompany?.applicationConfig?.[fieldId];
-        return {
-            hidden: config?.hidden || false,
-            required: config !== undefined ? config.required : defaultReq
-        };
-    };
+    // One resolver for every surface (see src/config/applicationGates.js):
+    // canonical gate ids, legacy aliases and shared defaults, so this step, the
+    // submission validator and the immutable snapshot always agree.
+    const getConfig = (fieldId) => resolveApplicationGate(currentCompany?.applicationConfig, fieldId);
 
-    const empHistoryConfig = getConfig('employmentHistory', true);
+    const empHistoryConfig = getConfig('employmentHistory');
 
     const initialEmployer = {
         companyName: '',

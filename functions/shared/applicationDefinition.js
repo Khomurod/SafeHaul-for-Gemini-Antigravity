@@ -137,12 +137,12 @@ const STANDARD_SECTIONS = Object.freeze([
         id: 'emergencyAndDisclosures',
         title: 'Emergency Contacts & Disclosures',
         fields: [
-            { id: 'ec1Name', label: 'Emergency Contact #1 Name' },
-            { id: 'ec1Relationship', label: 'Emergency Contact #1 Relationship' },
-            { id: 'ec1Phone', label: 'Emergency Contact #1 Phone' },
-            { id: 'ec2Name', label: 'Emergency Contact #2 Name' },
-            { id: 'ec2Relationship', label: 'Emergency Contact #2 Relationship' },
-            { id: 'ec2Phone', label: 'Emergency Contact #2 Phone' },
+            { id: 'ec1Name', label: 'Emergency Contact #1 Name', gate: 'emergencyContacts' },
+            { id: 'ec1Relationship', label: 'Emergency Contact #1 Relationship', gate: 'emergencyContacts' },
+            { id: 'ec1Phone', label: 'Emergency Contact #1 Phone', gate: 'emergencyContacts' },
+            { id: 'ec2Name', label: 'Emergency Contact #2 Name', gate: 'emergencyContacts' },
+            { id: 'ec2Relationship', label: 'Emergency Contact #2 Relationship', gate: 'emergencyContacts' },
+            { id: 'ec2Phone', label: 'Emergency Contact #2 Phone', gate: 'emergencyContacts' },
             { id: 'has-felony', label: 'Felony Conviction' },
             { id: 'felonyExplanation', label: 'Felony Explanation', dependsOn: { field: 'has-felony', equals: 'yes' } },
             { id: 'ein', label: 'EIN / Business Number' },
@@ -166,58 +166,110 @@ const STANDARD_SECTIONS = Object.freeze([
     },
 ]);
 
-/** Defaults mirroring StandardQuestionsConfig's `defaultReq`. */
+/**
+ * Defaults mirroring StandardQuestionsConfig's `defaultReq`.
+ *
+ * MUST stay identical to `src/config/applicationGates.js`; the parity test in
+ * `src/config/applicationGates.test.js` loads this file and asserts it.
+ */
 const GATE_DEFAULT_REQUIRED = Object.freeze({
     ssn: true,
     dob: true,
     addressHistory: true,
     employmentHistory: true,
     cdlUpload: true,
-    medCardUpload: false,
-    mvrConsent: true,
+    // Required by default: that is what the wizard and the submission validator
+    // have always enforced. The settings screen used to show it as optional,
+    // which was the half that was wrong.
+    medCardUpload: true,
+    // MVR consent has never been collected by the wizard, so no existing
+    // applicant has one on file. Defaulting it to required would retroactively
+    // block every applicant at every company that never touched the setting.
+    // It becomes required only when a company explicitly asks for it.
+    mvrConsent: false,
     referralSource: false,
+    emergencyContacts: false,
+});
+
+/**
+ * Gates that are hidden until a company opts in.
+ *
+ * Emergency contacts were historically gated by a bare boolean
+ * (`showEmergencyContacts`) that defaulted to falsy, i.e. hidden. Keeping that
+ * default preserves what every existing company's application looks like today.
+ */
+const GATE_DEFAULT_HIDDEN = Object.freeze({
+    emergencyContacts: true,
+    // Never rendered by any step until now, so no applicant has ever been asked
+    // for it. Showing it to everyone by default would add a document request to
+    // every application in the product; it stays opt-in.
+    mvrConsent: true,
 });
 
 /**
  * Alternative spellings for the same gate that exist in stored data.
  *
- * The company settings UI (StandardQuestionsConfig) writes `addressHistory` and
- * `employmentHistory`, but publicProfileDto's allowlist exposes
- * `previousAddresses` and `employers` instead. Both spellings therefore occur in
- * real `applicationConfig` maps depending on which surface the config came from,
- * and a gate that only knew one name silently fell back to its default.
- *
- * Accepting both is faithful rather than lenient: it reports the configuration
- * that was actually in force. The underlying key mismatch is a separate defect —
- * a company gate set in settings does not currently reach the public apply page
- * at all — and fixing the allowlist is a behaviour change tracked on its own.
+ * `previousAddresses` / `employers` are the names publicProfileDto's allowlist
+ * exposed before the canonical keys were forwarded, and `showEmergencyContacts`
+ * is the older boolean form. All of them occur in real `applicationConfig` maps
+ * depending on which surface the config came from, and a gate that only knew one
+ * name silently fell back to its default.
  */
 const GATE_ALIASES = Object.freeze({
     addressHistory: ['previousAddresses'],
     employmentHistory: ['employers'],
+    emergencyContacts: ['showEmergencyContacts'],
 });
 
 /**
+ * Normalize one stored gate value.
+ *
+ * Legacy boolean form: `true` means visible, `false` means hidden. It carries no
+ * requiredness, so the gate's default is used for that half.
+ */
+function normalizeGateValue(raw, gate) {
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw === 'boolean') {
+        return { hidden: !raw, required: Boolean(GATE_DEFAULT_REQUIRED[gate]) };
+    }
+    if (typeof raw !== 'object') return undefined;
+    return { hidden: Boolean(raw.hidden), required: Boolean(raw.required) };
+}
+
+/**
  * Resolve one gate against the company's `applicationConfig`.
- * Mirrors functions/shared/buildApplicationDoc.getFieldConfig so the definition
- * and the submission validator can never disagree about what was required.
+ * Mirrors `src/config/applicationGates.resolveApplicationGate` so the driver's
+ * screen, the submission validator and the definition can never disagree about
+ * what was asked or required.
  */
 function resolveGate(applicationConfig, gate) {
     if (!gate) return { hidden: false, required: false, gated: false };
 
-    const config = applicationConfig ? applicationConfig[gate] : undefined;
-    // The canonical key wins; an alias is consulted only when it is absent.
-    const resolved = config !== undefined
-        ? config
-        : (GATE_ALIASES[gate] || [])
-            .map((alias) => (applicationConfig ? applicationConfig[alias] : undefined))
-            .find((value) => value !== undefined);
+    const config = applicationConfig && typeof applicationConfig === 'object' ? applicationConfig : {};
 
-    const defaultRequired = Boolean(GATE_DEFAULT_REQUIRED[gate]);
+    // The canonical key wins; an alias is consulted only when it is absent.
+    let resolved = normalizeGateValue(config[gate], gate);
+    if (resolved === undefined) {
+        for (const alias of GATE_ALIASES[gate] || []) {
+            resolved = normalizeGateValue(config[alias], gate);
+            if (resolved !== undefined) break;
+        }
+    }
+
+    if (resolved === undefined) {
+        return {
+            gated: true,
+            hidden: Boolean(GATE_DEFAULT_HIDDEN[gate]),
+            required: Boolean(GATE_DEFAULT_REQUIRED[gate]),
+        };
+    }
+
+    // Required and hidden are mutually exclusive: a question nobody is shown
+    // cannot be one they must answer.
     return {
         gated: true,
-        hidden: Boolean(resolved && resolved.hidden),
-        required: resolved !== undefined ? Boolean(resolved.required) : defaultRequired,
+        hidden: resolved.hidden,
+        required: resolved.hidden ? false : resolved.required,
     };
 }
 
@@ -386,6 +438,7 @@ function findFieldLabel(definition, fieldId) {
 
 module.exports = {
     GATE_ALIASES,
+    GATE_DEFAULT_HIDDEN,
     GATE_DEFAULT_REQUIRED,
     STANDARD_SECTIONS,
     buildApplicationDefinition,

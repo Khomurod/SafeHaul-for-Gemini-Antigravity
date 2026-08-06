@@ -114,8 +114,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
   const postApplicationTemplates = normalizePostApplicationTemplates(company?.postApplicationTemplates);
   // #8 FIX: Dynamic consent step index based on whether custom questions exist
   const consentStepIndex = customQuestions.length > 0 ? 9 : 8;
-  const cdlUploadConfig = getFieldConfig(company?.applicationConfig, 'cdlUpload', true);
-  const medCardConfig = getFieldConfig(company?.applicationConfig, 'medCardUpload', true);
+  const cdlUploadConfig = getFieldConfig(company?.applicationConfig, 'cdlUpload');
+  const medCardConfig = getFieldConfig(company?.applicationConfig, 'medCardUpload');
+  const mvrConsentConfig = getFieldConfig(company?.applicationConfig, 'mvrConsent');
 
   /**
    * Restore a recent submission (and its document checklist) after the driver
@@ -309,6 +310,9 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     }
     if (!medCardConfig.hidden && medCardConfig.required && !hasUploadedFile(formData['medical-card-upload'])) {
       requiredUploadErrors.push('Medical Card');
+    }
+    if (!mvrConsentConfig.hidden && mvrConsentConfig.required && !hasUploadedFile(formData['mvr-consent-upload'])) {
+      requiredUploadErrors.push('MVR Consent Form');
     }
     if (requiredUploadErrors.length > 0) {
       showError(`Please upload required documents before submitting: ${requiredUploadErrors.join(', ')}.`);
