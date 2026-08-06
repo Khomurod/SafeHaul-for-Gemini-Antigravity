@@ -184,6 +184,37 @@ describe('submission freezes a snapshot', () => {
     expect(agreements[0].acceptedAt).toBe('2026-06-15T12:00:00.000Z');
   });
 
+  it('records the IP the server observed, not one the client claims', async () => {
+    // Acceptance evidence that the accepting party can forge is not evidence.
+    await submitGuestApplication(payload({
+      agreementAcceptances: {
+        electronicSignature: {
+          accepted: true,
+          acceptedAt: '2026-06-15T12:00:00.000Z',
+          ip: '10.0.0.1',                    // forged by the client
+          userAgent: 'Mozilla/5.0 (Test)',   // legitimately self-reported
+        },
+      },
+    }), ctx);
+
+    const accepted = onlySnapshot().agreements.find((a) => a.id === 'electronicSignature');
+    expect(accepted.acceptanceContext.ip).toBe('203.0.113.1');
+    expect(accepted.acceptanceContext.ip).not.toBe('10.0.0.1');
+    expect(accepted.acceptanceContext.userAgent).toBe('Mozilla/5.0 (Test)');
+  });
+
+  it('stamping does not resurrect acceptance the driver never gave', async () => {
+    await submitGuestApplication(payload({
+      agreementAcceptances: {
+        electronicSignature: { accepted: false, ip: '10.0.0.1' },
+      },
+    }), ctx);
+
+    const agreements = onlySnapshot().agreements;
+    expect(agreements.every((a) => a.accepted === false)).toBe(true);
+    expect(agreements.every((a) => a.signature === null)).toBe(true);
+  });
+
   it('stamps owner ids so the driver can read their own snapshot', async () => {
     const res = await submitGuestApplication(payload(), ctx);
     const snap = onlySnapshot();
