@@ -268,10 +268,16 @@ function canonicalize(value) {
     return value;
 }
 
-/** Content hash used as the definition version. */
+/**
+ * Content hash used as the definition version.
+ *
+ * `version` is excluded from its own input, so re-hashing an already-versioned
+ * definition reproduces the same value instead of drifting.
+ */
 function hashDefinition(definition) {
-    const { version, ...rest } = definition || {};
-    return crypto.createHash('sha256').update(JSON.stringify(canonicalize(rest))).digest('hex').substring(0, 16);
+    const content = { ...(definition || {}) };
+    delete content.version;
+    return crypto.createHash('sha256').update(JSON.stringify(canonicalize(content))).digest('hex').substring(0, 16);
 }
 
 /**
