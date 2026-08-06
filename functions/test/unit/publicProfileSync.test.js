@@ -11,21 +11,32 @@ const {
     PUBLIC_PROFILE_DTO_VERSION,
     buildPublicProfileDto,
 } = require('../../shared/publicProfileDto');
-const { reconcilePublicProfiles } = require('../../shared/publicProfileSync');
+const {
+    reconcilePublicProfiles,
+    reconcilePublicProfilesToCompletion,
+} = require('../../shared/publicProfileSync');
 
 const TIMESTAMP = '__server_timestamp__';
 const DELETE = { __delete: true };
 
 /**
- * A Firestore double covering exactly what the reconciler uses: default
- * document-id ordering, `startAfter`, `limit`, `getAll` and batched `set` with
- * merge. Deliberately narrow — an unimplemented call throws rather than passing
- * against a fiction.
+ * A Firestore double covering exactly what the reconciler uses: document-id
+ * ordering, `startAfter` by id, `limit`, `getAll`, and `runTransaction` with the
+ * optimistic-concurrency behaviour the race fix depends on — a transaction whose
+ * read set was written underneath it retries. Deliberately narrow: an
+ * unimplemented call throws rather than passing against a fiction.
  */
 function createDb(seed = {}) {
     const docs = new Map(Object.entries(seed).map(([path, data]) => [path, structuredClone(data)]));
+    const versions = new Map();
     const reads = { getAll: 0, pages: 0 };
     const writes = [];
+
+    /** Write outside any transaction, as `syncPublicProfile`'s trigger does. */
+    const writeDirect = (path, data) => {
+        docs.set(path, mergeInto(docs.get(path) || {}, data));
+        versions.set(path, (versions.get(path) || 0) + 1);
+    };
 
     const mergeInto = (target, value) => {
         const next = { ...target };
@@ -56,8 +67,12 @@ function createDb(seed = {}) {
 
     function makeQuery(collectionPath, { after = null, max = Infinity } = {}) {
         return {
+            orderBy: () => makeQuery(collectionPath, { after, max }),
             limit: (count) => makeQuery(collectionPath, { after, max: count }),
-            startAfter: (cursorDoc) => makeQuery(collectionPath, { after: cursorDoc.id, max }),
+            startAfter: (cursor) => makeQuery(collectionPath, {
+                after: typeof cursor === 'string' ? cursor : cursor.id,
+                max,
+            }),
             get: async () => {
                 reads.pages += 1;
                 let ids = childrenOf(collectionPath);
@@ -68,10 +83,15 @@ function createDb(seed = {}) {
         };
     }
 
+    /** Runs after a transaction's reads, to simulate a concurrent writer. */
+    const interference = { hook: null };
+
     return {
         __docs: docs,
+        __writeDirect: writeDirect,
         __reads: reads,
         __writes: writes,
+        __interference: interference,
         collection: (name) => ({
             doc: (id) => docRef(`${name}/${id}`),
             ...makeQuery(name),
@@ -80,18 +100,39 @@ function createDb(seed = {}) {
             reads.getAll += 1;
             return refs.map((ref) => snapshotFor(ref.path));
         },
-        batch: () => {
-            const staged = [];
-            return {
-                set: (ref, data, options) => staged.push({ ref, data, options }),
-                commit: async () => {
-                    for (const { ref, data, options } of staged) {
-                        const base = options && options.merge ? (docs.get(ref.path) || {}) : {};
-                        docs.set(ref.path, mergeInto(base, data));
-                        writes.push(ref.path);
-                    }
-                },
-            };
+        runTransaction: async (handler) => {
+            for (let attempt = 0; attempt < 5; attempt += 1) {
+                const readVersions = new Map();
+                const staged = [];
+                const transaction = {
+                    get: async (ref) => {
+                        readVersions.set(ref.path, versions.get(ref.path) || 0);
+                        return snapshotFor(ref.path);
+                    },
+                    set: (ref, data, options) => staged.push({ ref, data, options }),
+                };
+                const outcome = await handler(transaction);
+
+                if (interference.hook) {
+                    const hook = interference.hook;
+                    interference.hook = null;
+                    hook();
+                }
+
+                // Optimistic concurrency: abort and retry if anything read has
+                // been written since. This is the property the race fix needs.
+                const stale = [...readVersions].some(([path, seen]) => (versions.get(path) || 0) !== seen);
+                if (stale) continue;
+
+                for (const { ref, data, options } of staged) {
+                    const base = options && options.merge ? (docs.get(ref.path) || {}) : {};
+                    docs.set(ref.path, mergeInto(base, data));
+                    versions.set(ref.path, (versions.get(ref.path) || 0) + 1);
+                    writes.push(ref.path);
+                }
+                return outcome;
+            }
+            throw new Error('transaction exceeded retry limit');
         },
     };
 }
@@ -243,5 +284,113 @@ describe('public profile reconciler', () => {
 
     it('requires a Firestore instance rather than silently doing nothing', async () => {
         await expect(reconcilePublicProfiles({})).rejects.toThrow(/requires a Firestore instance/);
+    });
+});
+
+describe('the reconciler against a concurrent company edit', () => {
+    it('does not revert settings saved while the pass was running', async () => {
+        // The batch version of this made a real loss possible: the pass reads
+        // the company, an admin saves new settings, syncPublicProfile writes
+        // them, the pass commits the OLD settings over the top — and stamps the
+        // current dtoVersion, so no later pass ever notices.
+        const db = createDb({
+            'companies/acme': {
+                companyName: 'Acme',
+                applicationConfig: { referralSource: { hidden: true, required: false } },
+            },
+            'public_profiles/acme': { companyName: 'Acme', applicationConfig: {} },
+        });
+
+        db.__interference.hook = () => {
+            // The admin saves, and the onWrite trigger projects the new settings.
+            db.__writeDirect('companies/acme', {
+                applicationConfig: { referralSource: { hidden: false, required: true } },
+            });
+            db.__writeDirect('public_profiles/acme', {
+                dtoVersion: PUBLIC_PROFILE_DTO_VERSION,
+                applicationConfig: { referralSource: { hidden: false, required: true } },
+            });
+        };
+
+        await run(db);
+
+        // The applicant sees what the company actually saved, not what the pass
+        // happened to read a moment earlier.
+        expect(db.__docs.get('public_profiles/acme').applicationConfig.referralSource)
+            .toEqual({ hidden: false, required: true });
+        expect(db.__docs.get('public_profiles/acme').dtoVersion).toBe(PUBLIC_PROFILE_DTO_VERSION);
+    });
+
+    it('does not resurrect the profile of a company deleted mid-pass', async () => {
+        const db = createDb({
+            'companies/acme': { companyName: 'Acme' },
+            'public_profiles/acme': { companyName: 'Acme' },
+        });
+
+        // Deleted between the page read and the rewrite. syncPublicProfile
+        // removes the profile on delete; writing one back would undo that.
+        db.__docs.delete('companies/acme');
+
+        const result = await run(db);
+        expect(result.synced).toBe(0);
+        expect(db.__writes).toEqual([]);
+    });
+});
+
+describe('the reconciler across passes', () => {
+    const manyCompanies = (count) => Object.fromEntries(
+        Array.from({ length: count }, (_, i) => [
+            `companies/c${String(i).padStart(3, '0')}`,
+            { companyName: `Company ${i}` },
+        ]),
+    );
+
+    it('reports where to resume when it hits the ceiling', async () => {
+        const db = createDb(manyCompanies(5));
+        const result = await run(db, { pageSize: 2, maxCompanies: 3 });
+
+        expect(result.truncated).toBe(true);
+        expect(result.lastCompanyId).toBe('c002');
+    });
+
+    it('resumes from that point rather than re-walking from the start', async () => {
+        const db = createDb(manyCompanies(5));
+        const first = await run(db, { pageSize: 2, maxCompanies: 3 });
+        const second = await run(db, { pageSize: 2, maxCompanies: 3, startAfterId: first.lastCompanyId });
+
+        expect(second.scanned).toBe(2);
+        expect(second.lastCompanyId).toBeNull();
+        for (let i = 0; i < 5; i += 1) {
+            expect(db.__docs.has(`public_profiles/c${String(i).padStart(3, '0')}`)).toBe(true);
+        }
+    });
+
+    it('reaches a fleet larger than one pass\'s ceiling in a single run', async () => {
+        // Without a resume point, every run restarted at the first company and
+        // the already-current ones consumed the whole budget, so the tail was
+        // never reached — while `truncated` claimed the next pass would get it.
+        const db = createDb(manyCompanies(12));
+
+        const result = await reconcilePublicProfilesToCompletion({
+            db, serverTimestamp: TIMESTAMP, deleteSentinel: DELETE, pageSize: 2, maxCompanies: 3,
+        });
+
+        expect(result.truncated).toBe(false);
+        expect(result.synced).toBe(12);
+        for (let i = 0; i < 12; i += 1) {
+            expect(db.__docs.has(`public_profiles/c${String(i).padStart(3, '0')}`)).toBe(true);
+        }
+    });
+
+    it('stops looping at its pass ceiling and hands the resume point back', async () => {
+        const db = createDb(manyCompanies(30));
+        const result = await reconcilePublicProfilesToCompletion({
+            db, serverTimestamp: TIMESTAMP, deleteSentinel: DELETE,
+            pageSize: 2, maxCompanies: 2, maxPasses: 3,
+        });
+
+        expect(result.truncated).toBe(true);
+        expect(result.scanned).toBe(6);
+        expect(result.lastCompanyId).toBe('c005');
     });
 });

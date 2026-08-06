@@ -7,7 +7,16 @@ const { admin, db } = require("./firebaseAdmin");
 const { deleteCompanySchema, sendEmailSchema } = require("./shared/schema");
 const { assertCompanyAdminStrict } = require('./shared/companyAccess');
 const { buildPublicProfileDto } = require('./shared/publicProfileDto');
-const { reconcilePublicProfiles } = require('./shared/publicProfileSync');
+const { reconcilePublicProfilesToCompletion } = require('./shared/publicProfileSync');
+
+/**
+ * Where the reconciler records how far it got.
+ *
+ * Server-only: `system_jobs` has no Firestore rule, so clients are default-denied.
+ * Without it, a fleet larger than one pass's ceiling would restart at the first
+ * company every hour and never reach the tail.
+ */
+const RECONCILE_JOB_REF = () => db.collection('system_jobs').doc('publicProfileReconcile');
 
 /** Sentinels, resolved once. Injected so the shared modules stay admin-free. */
 const serverTimestamp = () => admin.firestore.FieldValue.serverTimestamp();
@@ -198,7 +207,10 @@ exports.backfillPublicProfiles = onCall({
     }
 
     try {
-        const result = await reconcilePublicProfiles({
+        // Always from the beginning, and through to the end: a manual repair
+        // that stopped at an arbitrary ceiling would be worse than useless,
+        // because it would look like it had finished.
+        const result = await reconcilePublicProfilesToCompletion({
             db,
             serverTimestamp: serverTimestamp(),
             deleteSentinel: deleteSentinel(),
@@ -207,7 +219,9 @@ exports.backfillPublicProfiles = onCall({
         });
         return {
             success: true,
-            message: `Backfilled ${result.synced} public profiles.`,
+            message: result.truncated
+                ? `Backfilled ${result.synced} public profiles; more remain — run again to continue.`
+                : `Backfilled ${result.synced} public profiles.`,
             ...result,
         };
     } catch (error) {
@@ -236,12 +250,36 @@ exports.reconcilePublicProfilesSchedule = onSchedule({
     timeoutSeconds: 540,
     memory: '512MiB',
 }, async () => {
-    await reconcilePublicProfiles({
+    const jobRef = RECONCILE_JOB_REF();
+
+    // Resume where the last run stopped. A fleet larger than one run's budget
+    // would otherwise re-walk the same first companies every hour and never
+    // reach the tail, while `truncated` claimed the next pass would continue it.
+    let startAfterId = null;
+    try {
+        const jobSnap = await jobRef.get();
+        startAfterId = jobSnap.exists ? (jobSnap.data()?.resumeAfterCompanyId || null) : null;
+    } catch (error) {
+        console.warn('[reconcilePublicProfilesSchedule] Could not read the resume point:', error.message);
+    }
+
+    const result = await reconcilePublicProfilesToCompletion({
         db,
         serverTimestamp: serverTimestamp(),
         deleteSentinel: deleteSentinel(),
+        startAfterId,
         logLabel: 'reconcilePublicProfilesSchedule',
     });
+
+    await jobRef.set({
+        // Null once the walk completes, so the next run starts a fresh sweep and
+        // picks up companies created since.
+        resumeAfterCompanyId: result.lastCompanyId,
+        lastRunAt: serverTimestamp(),
+        lastRunScanned: result.scanned,
+        lastRunSynced: result.synced,
+        lastRunConflicted: result.conflicted,
+    }, { merge: true });
 });
 
 
