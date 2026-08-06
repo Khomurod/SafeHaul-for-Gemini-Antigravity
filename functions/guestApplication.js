@@ -12,6 +12,26 @@ const { buildApplicationDefinition } = require('./shared/applicationDefinition')
 const { buildSubmissionSnapshot } = require('./shared/submissionSnapshot');
 const { writeSubmissionSnapshot } = require('./shared/writeSubmissionSnapshot');
 
+/**
+ * Stamp the observed request IP onto each agreement acceptance.
+ *
+ * The browser reports its own user agent, which is fine — it is self-description.
+ * It must NOT report its own IP: a client-supplied address is trivially forged,
+ * and acceptance evidence that can be forged by the party it incriminates is not
+ * evidence. The address observed by the server is substituted unconditionally,
+ * overwriting anything the client sent.
+ */
+function stampAcceptanceOrigin(acceptances, clientIp) {
+    if (!acceptances || typeof acceptances !== 'object') return acceptances;
+
+    const stamped = {};
+    for (const [agreementId, evidence] of Object.entries(acceptances)) {
+        if (!evidence || typeof evidence !== 'object') continue;
+        stamped[agreementId] = { ...evidence, ip: clientIp };
+    }
+    return stamped;
+}
+
 exports.submitGuestApplication = functions
     .runWith({ memory: '256MB', timeoutSeconds: 30 })
     .https.onCall(async (data, context) => {
@@ -129,7 +149,10 @@ exports.submitGuestApplication = functions
                 const snapshot = buildSubmissionSnapshot({
                     definition,
                     formData: normalizedFormData,
-                    acceptances: normalizedFormData.agreementAcceptances,
+                    acceptances: stampAcceptanceOrigin(
+                        normalizedFormData.agreementAcceptances,
+                        clientIp
+                    ),
                     signature: {
                         image: signature,
                         type: normalizedFormData.signatureType || 'drawn',

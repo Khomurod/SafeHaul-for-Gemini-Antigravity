@@ -640,6 +640,10 @@ function ConsentCard({ appData }) {
         { key: 'agree-electronic', label: 'Electronic Transaction Consent' },
         { key: 'agree-background-check', label: 'Background Check Authorization' },
         { key: 'agree-psp', label: 'FMCSA PSP Authorization' },
+        // Applications submitted before the Clearinghouse consent was added to the
+        // consent step legitimately have no value here, and correctly show as not
+        // recorded rather than as refused.
+        { key: 'agree-clearinghouse', label: 'FMCSA Clearinghouse Query Consent' },
         { key: 'final-certification', label: 'Final Certification' },
     ];
 

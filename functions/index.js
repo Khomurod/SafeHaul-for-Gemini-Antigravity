@@ -108,6 +108,10 @@ exports.onLeadAtsContactSms = atsContactSms.onLeadAtsContactSms;
 
 // 4b. Guest Application Submission (Admin SDK — bypasses rules)
 exports.submitGuestApplication = require('./guestApplication').submitGuestApplication;
+// Serves the legal agreements the apply page displays, from the same registry
+// that freezes them into the submission snapshot, so displayed and preserved
+// wording cannot diverge.
+exports.getApplicationAgreements = require('./applicationAgreements').getApplicationAgreements;
 exports.parseCdlWithGroq = require('./cdlParser').parseCdlWithGroq;
 exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').createPostApplicationSigningRequest;
 // AI Field Assistant: authenticated, company-scoped PDF field-placement suggestions.
