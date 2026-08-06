@@ -2,10 +2,16 @@
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { admin, db } = require("./firebaseAdmin");
 const { deleteCompanySchema, sendEmailSchema } = require("./shared/schema");
 const { assertCompanyAdminStrict } = require('./shared/companyAccess');
 const { buildPublicProfileDto } = require('./shared/publicProfileDto');
+const { reconcilePublicProfiles } = require('./shared/publicProfileSync');
+
+/** Sentinels, resolved once. Injected so the shared modules stay admin-free. */
+const serverTimestamp = () => admin.firestore.FieldValue.serverTimestamp();
+const deleteSentinel = () => admin.firestore.FieldValue.delete();
 
 // --- IN-MEMORY CACHE FOR SLUG RESOLUTION (REMOVED - HANDLED CLIENT SIDE) ---
 
@@ -172,9 +178,11 @@ const migrationLogic = onCall({
 exports.runMigration = migrationLogic;
 /**
  * BACKFILL PUBLIC PROFILES
- * One-time callable function to force-sync ALL companies to public_profiles.
- * Use this to repair stale data or after deploying syncPublicProfile for the first time.
- * Safe to run multiple times (idempotent via merge: true).
+ * Super-admin callable that force-rewrites EVERY company's public profile,
+ * whether or not it is already current. The scheduled reconciler below is what
+ * normally keeps profiles converged; this remains for deliberate repair — e.g.
+ * after a manual edit to `public_profiles` outside the projection.
+ * Safe to run repeatedly (idempotent via merge: true).
  */
 exports.backfillPublicProfiles = onCall({
     cors: true, region: "us-central1", maxInstances: 1,
@@ -190,33 +198,50 @@ exports.backfillPublicProfiles = onCall({
     }
 
     try {
-        const snapshot = await db.collection('companies').get();
-        let batch = db.batch();
-        let count = 0;
-        let totalSynced = 0;
-
-        for (const doc of snapshot.docs) {
-            const data = doc.data();
-            const publicData = buildPublicProfileDto(data, admin.firestore.FieldValue.serverTimestamp());
-
-            batch.set(db.collection('public_profiles').doc(doc.id), publicData, { merge: true });
-            count++;
-            totalSynced++;
-
-            if (count >= 400) {
-                await batch.commit();
-                batch = db.batch();
-                count = 0;
-            }
-        }
-        if (count > 0) await batch.commit();
-
-        console.log(`[backfillPublicProfiles] Synced ${totalSynced} companies.`);
-        return { success: true, message: `Backfilled ${totalSynced} public profiles.` };
+        const result = await reconcilePublicProfiles({
+            db,
+            serverTimestamp: serverTimestamp(),
+            deleteSentinel: deleteSentinel(),
+            force: true,
+            logLabel: 'backfillPublicProfiles',
+        });
+        return {
+            success: true,
+            message: `Backfilled ${result.synced} public profiles.`,
+            ...result,
+        };
     } catch (error) {
         console.error('[backfillPublicProfiles] Error:', error);
         return { success: false, error: error.message };
     }
+});
+
+/**
+ * RECONCILE PUBLIC PROFILES (scheduled)
+ *
+ * The automatic half of the migration story. `syncPublicProfile` only fires when
+ * a company document is written, so a change to the projection itself — such as
+ * widening the applicationConfig allowlist — never reaches companies that are
+ * not edited afterwards. Their apply pages would keep ignoring settings the
+ * company had already configured.
+ *
+ * This pass compares each profile's stamped `dtoVersion` against the current
+ * one and rewrites only what is stale, so it costs one read per company and no
+ * writes at all once the fleet has converged. Hourly, because a company that
+ * saved its application settings should not wait a day to see them take effect.
+ */
+exports.reconcilePublicProfilesSchedule = onSchedule({
+    schedule: 'every 60 minutes',
+    region: 'us-central1',
+    timeoutSeconds: 540,
+    memory: '512MiB',
+}, async () => {
+    await reconcilePublicProfiles({
+        db,
+        serverTimestamp: serverTimestamp(),
+        deleteSentinel: deleteSentinel(),
+        logLabel: 'reconcilePublicProfilesSchedule',
+    });
 });
 
 
@@ -237,7 +262,11 @@ exports.syncPublicProfile = onDocumentWritten("companies/{companyId}", async (ev
         return;
     }
 
-    const publicData = buildPublicProfileDto(newData, admin.firestore.FieldValue.serverTimestamp());
+    // The delete sentinel is what makes un-setting a gate take effect: profiles
+    // are merged, and a merge leaves a nested key that is merely absent in place.
+    const publicData = buildPublicProfileDto(newData, serverTimestamp(), {
+        deleteSentinel: deleteSentinel(),
+    });
 
     await db.collection("public_profiles").doc(companyId).set(publicData, { merge: true });
     console.log(`[syncPublicProfile] Synced public profile for ${companyId}`);

@@ -15,8 +15,12 @@ import { resolveApplicationGate } from '@/config/applicationGates';
  * primitives (2026-07-27).
  *
  * Unchanged: the `positionType` owner/lease-operator gate on the business
- * section, the `applicationConfig.showEmergencyContacts` gate, the `has-felony`
- * key and its conditional explanation, and the `form.checkValidity()` gate.
+ * section, the `has-felony` key and its conditional explanation, and the
+ * `form.checkValidity()` gate.
+ *
+ * The emergency-contacts gate now supplies BOTH halves of its setting. It used
+ * to supply only visibility, and the section hard-coded Contact #1 as required —
+ * so "visible but optional" was unreachable and blocked the applicant.
  */
 const Step7_General = ({ formData, updateFormData, onNavigate }) => {
     const { states } = useUtils();
@@ -68,6 +72,7 @@ const Step7_General = ({ formData, updateFormData, onNavigate }) => {
                 <EmergencyContactsSection
                     formData={formData}
                     updateFormData={updateFormData}
+                    required={emergencyContactsConfig.required}
                 />
             )}
 
