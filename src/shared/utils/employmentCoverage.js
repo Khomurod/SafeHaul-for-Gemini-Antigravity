@@ -1,29 +1,17 @@
-// functions/shared/employmentCoverage.js
+// src/shared/utils/employmentCoverage.js
 //
-// Works out how much of a driver's recent history is actually accounted for.
+// ESM mirror of `functions/shared/employmentCoverage.js`.
 //
-// 49 CFR 391.21(b)(10) requires the application to cover the previous three
-// years of employment, and an applicant accounts for that span with employment,
-// periods of unemployment, schooling or military service — a gap is only a gap
-// if nothing explains it.
+// The driver's wizard needs the same three-year coverage answer in the browser
+// that the submission snapshot records on the server, and `src/` cannot import
+// from `functions/`. Both copies run the shared vectors in
+// `functions/shared/employmentCoverage.vectors.json`, so editing one without the
+// other fails the other suite — the same convention `searchNormalization` uses.
 //
-// Nothing in the codebase computed this. The PDF simply listed whatever
-// employers existed, so an application covering four months of the required
-// thirty-six looked no different from a complete one.
-//
-// Deliberately pure and calendar-month based:
-//   * Month granularity matches what the form collects (YYYY-MM), so this never
-//     invents day-level precision the driver did not supply.
-//   * No I/O and an injected reference date, so results are reproducible — the
-//     coverage recorded in a submission snapshot must never drift afterwards.
-//
-// PARITY NOTE: the driver wizard needs the same answer in the browser, and
-// `src/` cannot import from `functions/`. The mirrored implementation is proven
-// identical against the shared vectors in employmentCoverage.vectors.json — the
-// same convention this repo already uses for searchNormalization.
+// Keep the two files structurally identical apart from module syntax.
 
 /** Months of history the application must account for. */
-const REQUIRED_COVERAGE_MONTHS = 36;
+export const REQUIRED_COVERAGE_MONTHS = 36;
 
 /**
  * Parse the date shapes the form actually produces: `YYYY-MM`, `YYYY-MM-DD`,
@@ -33,7 +21,7 @@ const REQUIRED_COVERAGE_MONTHS = 36;
  * Returning null rather than guessing matters: an unreadable date must not be
  * silently treated as covering time the driver never claimed.
  */
-function parseMonthIndex(value) {
+export function parseMonthIndex(value) {
     if (value === null || value === undefined) return null;
     const raw = String(value).trim();
     if (!raw) return null;
@@ -58,7 +46,7 @@ function parseMonthIndex(value) {
 }
 
 /** Render an absolute month index back to `YYYY-MM` for display. */
-function formatMonthIndex(index) {
+export function formatMonthIndex(index) {
     if (typeof index !== 'number' || !Number.isFinite(index)) return null;
     const year = Math.floor(index / 12);
     const month = (index % 12) + 1;
@@ -71,7 +59,7 @@ function formatMonthIndex(index) {
  */
 const ONGOING_TOKENS = new Set(['present', 'current', 'ongoing', 'now', 'to date']);
 
-function isOngoing(value) {
+export function isOngoing(value) {
     if (value === null || value === undefined) return true;
     const raw = String(value).trim().toLowerCase();
     return raw === '' || ONGOING_TOKENS.has(raw);
@@ -84,7 +72,7 @@ function isOngoing(value) {
  * @param {object} record   Anything with start/end-ish fields.
  * @param {number} nowIndex Reference month, used to close ongoing periods.
  */
-function toSpan(record, nowIndex) {
+export function toSpan(record, nowIndex) {
     if (!record || typeof record !== 'object') return null;
 
     const startRaw = record.startDate ?? record.start ?? record.from ?? record.dateFrom ?? null;
@@ -104,7 +92,7 @@ function toSpan(record, nowIndex) {
  * Classify a record so the confirmation screen can tell the driver what kinds of
  * period they have already accounted for.
  */
-function spanKind(record, fallback) {
+export function spanKind(record, fallback) {
     const declared = record && typeof record === 'object'
         ? String(record.type || record.kind || '').trim().toLowerCase()
         : '';
@@ -117,7 +105,7 @@ function spanKind(record, fallback) {
 }
 
 /** Merge overlapping/adjacent spans into a minimal ascending set. */
-function mergeSpans(spans) {
+export function mergeSpans(spans) {
     const sorted = [...spans].sort((a, b) => a.start - b.start || a.end - b.end);
     const merged = [];
     for (const span of sorted) {
@@ -146,7 +134,7 @@ function mergeSpans(spans) {
  * @returns {{requiredMonths, coveredMonths, missingMonths, isComplete,
  *            windowStart, windowEnd, gaps, accountedKinds, unparseableRecords}}
  */
-function computeEmploymentCoverage(history = {}, opts = {}) {
+export function computeEmploymentCoverage(history = {}, opts = {}) {
     const requiredMonths = Number.isFinite(opts.requiredMonths) && opts.requiredMonths > 0
         ? Math.floor(opts.requiredMonths)
         : REQUIRED_COVERAGE_MONTHS;
@@ -236,14 +224,3 @@ function computeEmploymentCoverage(history = {}, opts = {}) {
         unparseableRecords,
     };
 }
-
-module.exports = {
-    REQUIRED_COVERAGE_MONTHS,
-    computeEmploymentCoverage,
-    formatMonthIndex,
-    isOngoing,
-    mergeSpans,
-    parseMonthIndex,
-    spanKind,
-    toSpan,
-};

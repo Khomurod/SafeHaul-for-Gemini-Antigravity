@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@lib/firebase';
+import { isE2ETestMode } from '@lib/runtime/e2eMode';
+import { E2E_AGREEMENTS, E2E_AGREEMENT_VERSION } from './e2eAgreementFixtures';
 
 export function useApplicationAgreements(companyId) {
     const [agreements, setAgreements] = useState([]);
@@ -32,6 +34,18 @@ export function useApplicationAgreements(companyId) {
         if (!companyId) {
             setAgreements([]);
             setAgreementVersion(null);
+            setLoading(false);
+            setError(null);
+            return undefined;
+        }
+
+        // E2E runs point at an unreachable Firebase project on purpose, so the
+        // callable can never succeed there. Serving the fixture through this same
+        // hook keeps the step's real logic — per-agreement acceptance, the
+        // submit gate, the failure branch — under test.
+        if (isE2ETestMode) {
+            setAgreements(E2E_AGREEMENTS);
+            setAgreementVersion(E2E_AGREEMENT_VERSION);
             setLoading(false);
             setError(null);
             return undefined;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import InputField from '@shared/components/form/InputField';
 import RadioGroup from '@shared/components/form/RadioGroup';
 import DynamicRow from '@shared/components/form/DynamicRow';
@@ -13,6 +13,11 @@ import EmployerNameAutocomplete from './components/EmployerNameAutocomplete';
 import { FormField, FormSection, Textarea } from '@/design-system/components';
 import { StepNavigation } from './components/StepNavigation';
 import { StateSelectField } from './components/StateSelectField';
+import { computeEmploymentCoverage } from '@shared/utils/employmentCoverage';
+import {
+    EmploymentCoveragePrompt,
+    EmploymentCoverageSummary,
+} from './components/EmploymentCoveragePrompt';
 import { resolveApplicationGate } from '@/config/applicationGates';
 
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -70,6 +75,43 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
     const initialUnemployment = { startDate: '', endDate: '', details: '' };
     const initialMilitary = { branch: '', start: '', end: '', rank: '', heavyEq: 'no', honorable: 'yes', explanation: '' };
 
+    // Live three-year coverage, computed by the same module the submission
+    // snapshot uses on the server, so what the driver is told here and what the
+    // preserved record states are the same number.
+    const coverage = useMemo(() => computeEmploymentCoverage({
+        employers: formData.employers,
+        unemployment: formData.unemployment,
+        unemploymentPeriods: formData.unemploymentPeriods,
+        schools: formData.schools,
+        military: formData.military,
+    }), [
+        formData.employers,
+        formData.unemployment,
+        formData.unemploymentPeriods,
+        formData.schools,
+        formData.military,
+    ]);
+
+    const [coveragePromptOpen, setCoveragePromptOpen] = useState(false);
+    // Shown once. After the driver has seen it, Continue continues — being told
+    // twice is nagging, and a driver who cannot get past a step abandons the
+    // application entirely.
+    const coveragePromptSeen = useRef(false);
+    const employersSectionRef = useRef(null);
+
+    const proceed = () => {
+        setCoveragePromptOpen(false);
+        onNavigate('next');
+    };
+
+    const handleAddHistory = () => {
+        setCoveragePromptOpen(false);
+        employersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Focus lands on the section itself, so a keyboard user continues from
+        // the history they were asked to add rather than the bottom of the page.
+        employersSectionRef.current?.focus();
+    };
+
     const handleContinue = () => {
         const employers = Array.isArray(formData.employers) ? formData.employers : [];
         if (!empHistoryConfig.hidden && employers.length > 0) {
@@ -101,7 +143,16 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                 return;
             }
         }
-        onNavigate('next');
+
+        // Encourage, never block: the prompt interrupts once, and its own
+        // "Continue anyway" always proceeds.
+        if (!coverage.isComplete && !coveragePromptSeen.current) {
+            coveragePromptSeen.current = true;
+            setCoveragePromptOpen(true);
+            return;
+        }
+
+        proceed();
     };
 
     const renderEmployerRow = (index, item, handleChange) => (
@@ -330,6 +381,19 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                 </p>
             </div>
 
+            <EmploymentCoverageSummary coverage={coverage} />
+
+            {/*
+              Everything that can account for the three years lives inside this
+              block, so "Add missing history" has one unambiguous place to send
+              the driver — including when the company has hidden the employer
+              list and the gaps/schools/military sections are all that remain.
+            */}
+            <div
+                ref={employersSectionRef}
+                tabIndex={-1}
+                className="space-y-ds-6 focus:outline-none"
+            >
             {/* Previous Employers - Configurable */}
             {!empHistoryConfig.hidden && (
                 <FormSection title="Previous Employers">
@@ -377,6 +441,16 @@ const Step6_Employment = ({ formData, updateFormData, onNavigate }) => {
                     addButtonLabel="+ Add Military Service"
                 />
             </FormSection>
+
+            </div>
+
+            {coveragePromptOpen && (
+                <EmploymentCoveragePrompt
+                    coverage={coverage}
+                    onAddHistory={handleAddHistory}
+                    onContinueAnyway={proceed}
+                />
+            )}
 
             <StepNavigation
                 onBack={() => onNavigate('back')}

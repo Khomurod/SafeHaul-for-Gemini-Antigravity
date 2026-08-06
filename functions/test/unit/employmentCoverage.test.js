@@ -224,3 +224,37 @@ describe('three-year coverage', () => {
     expect(coverage(history)).toEqual(coverage(history));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shared vectors.
+//
+// The browser mirror in `src/shared/utils/employmentCoverage.js` runs this exact
+// file through vitest. A change to either copy fails the other suite until the
+// two implementations agree again — which is the point: the coverage a driver
+// sees while filling the form and the coverage frozen into the submission
+// snapshot must be the same number.
+// ---------------------------------------------------------------------------
+const fs = require('fs');
+const path = require('path');
+const impl = require('../../shared/employmentCoverage');
+
+const vectors = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../../shared/employmentCoverage.vectors.json'), 'utf8'),
+);
+
+describe('employmentCoverage — shared vectors', () => {
+  for (const [fnName, cases] of Object.entries(vectors)) {
+    if (fnName === '//') continue;
+    describe(fnName, () => {
+      it('is exported', () => {
+        expect(typeof impl[fnName]).toBe('function');
+      });
+      cases.forEach((testCase, index) => {
+        const args = Array.isArray(testCase.input) ? testCase.input : [testCase.input];
+        it(`vector #${index}${testCase['//'] ? `: ${testCase['//']}` : ''}`, () => {
+          expect(impl[fnName](...args)).toEqual(testCase.expected);
+        });
+      });
+    });
+  }
+});

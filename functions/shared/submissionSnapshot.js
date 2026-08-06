@@ -289,6 +289,9 @@ function buildSubmissionSnapshot({
         {
             employers: data.employers,
             unemploymentPeriods: data.unemploymentPeriods,
+            // The wizard stores explained gaps under `unemployment`. Both keys
+            // are forwarded so a gap the driver actually explained counts.
+            unemployment: data.unemployment,
             schools: data.schools,
             military: data.military,
         },
