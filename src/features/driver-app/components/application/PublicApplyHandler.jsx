@@ -6,6 +6,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@lib/firebase';
 import Stepper from '@shared/components/layout/Stepper';
 import { IntakeChooser } from './IntakeChooser';
+import { newSubmissionAttemptId } from '@shared/utils/submissionAttemptId';
 import {
   getFieldConfig,
   hasUploadedFile,
@@ -341,6 +342,13 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
     isSubmittingRef.current = true;
     setSubmissionStatus('submitting');
 
+    // One id for this press of Submit, reused by all three retries below AND by
+    // any later replay out of the offline queue. The server keys the preserved
+    // submission record on it, so a call that timed out after the write
+    // committed comes back as the SAME submission instead of a resubmission the
+    // driver never made.
+    const submissionAttemptId = newSubmissionAttemptId();
+
     if (isE2ETestMode && !sandbox) {
       // Deterministic offline-queue path for E2E: "all direct submits failed but
       // the submission is safely queued". The submission is written through the
@@ -422,6 +430,7 @@ export function PublicApplyHandler({ sandbox = false } = {}) {
       const applicationData = {
         applicantId: applicationId,
         applicationId: applicationId,
+        submissionAttemptId,
         confirmationNumber: confirmationNumber,
         ...formData,
         // Ensure these top-level keys always exist (overrides from formData if present)

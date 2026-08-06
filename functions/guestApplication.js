@@ -11,6 +11,11 @@ const { upsertApplicationDoc } = require('./shared/upsertApplicationDoc');
 const { buildApplicationDefinition } = require('./shared/applicationDefinition');
 const { buildSubmissionSnapshot } = require('./shared/submissionSnapshot');
 const { writeSubmissionSnapshot } = require('./shared/writeSubmissionSnapshot');
+const {
+    buildFailedStatus,
+    buildRecordedStatus,
+    stampSubmissionRecordStatus,
+} = require('./shared/submissionRecordStatus');
 
 /**
  * Stamp the observed request IP onto each agreement acceptance.
@@ -135,6 +140,14 @@ exports.submitGuestApplication = functions
             // Best-effort: a snapshot failure must not lose an application the
             // driver has already submitted. It is logged loudly, and Stage 8's
             // reconstruction job can rebuild what is recoverable.
+            //
+            // The attempt id makes redelivery idempotent: the browser retries
+            // three times and the offline queue replays the identical payload,
+            // and neither may turn one submission into two preserved records.
+            const submissionAttemptId = typeof normalizedFormData.submissionAttemptId === 'string'
+                ? normalizedFormData.submissionAttemptId.trim() || null
+                : null;
+
             let submissionSnapshot = null;
             try {
                 const definition = buildApplicationDefinition({
@@ -170,6 +183,19 @@ exports.submitGuestApplication = functions
                         applicantId: result.applicationId,
                         driverId: result.applicationId,
                     },
+                    submissionAttemptId,
+                    logLabel: 'submitGuestApplication',
+                });
+
+                await stampSubmissionRecordStatus({
+                    db,
+                    companyId,
+                    applicationId: result.applicationId,
+                    submissionRecord: buildRecordedStatus({
+                        result: submissionSnapshot,
+                        snapshot,
+                        submissionAttemptId,
+                    }),
                     logLabel: 'submitGuestApplication',
                 });
             } catch (snapshotError) {
@@ -178,6 +204,18 @@ exports.submitGuestApplication = functions
                     + `${result.applicationId} (company ${companyId}):`,
                     snapshotError
                 );
+                // Leave a queryable marker. A log line cannot be enumerated, and
+                // the reconstruction job needs to find exactly these.
+                await stampSubmissionRecordStatus({
+                    db,
+                    companyId,
+                    applicationId: result.applicationId,
+                    submissionRecord: buildFailedStatus({
+                        error: snapshotError,
+                        submissionAttemptId,
+                    }),
+                    logLabel: 'submitGuestApplication',
+                });
             }
 
             return {
