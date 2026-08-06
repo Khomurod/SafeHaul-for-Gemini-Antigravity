@@ -14,6 +14,7 @@ import { useToast } from '@shared/components/feedback';
 import { Checkbox, FormSection } from '@/design-system/components';
 import { StepNavigation } from './components/StepNavigation';
 import { StateSelectField } from './components/StateSelectField';
+import { resolveApplicationGate } from '@/config/applicationGates';
 
 // Map validator field names to their input element ids (for focus-on-error).
 const FIELD_ID_BY_NAME = {
@@ -48,18 +49,15 @@ const Step1_Contact = ({ formData, updateFormData, onNavigate, onPartialSubmit }
     const currentCompany = currentCompanyProfile;
 
     // --- Configuration Helper ---
-    const getConfig = (fieldId, defaultReq = true) => {
-        const config = currentCompany?.applicationConfig?.[fieldId];
-        return {
-            hidden: config?.hidden || false,
-            required: config !== undefined ? config.required : defaultReq
-        };
-    };
+    // One resolver for every surface (see src/config/applicationGates.js):
+    // canonical gate ids, legacy aliases and shared defaults, so this step, the
+    // submission validator and the immutable snapshot always agree.
+    const getConfig = (fieldId) => resolveApplicationGate(currentCompany?.applicationConfig, fieldId);
 
-    const ssnConfig = getConfig('ssn', true);
-    const dobConfig = getConfig('dob', true);
-    const historyConfig = getConfig('addressHistory', true);
-    const referralConfig = getConfig('referralSource', false);
+    const ssnConfig = getConfig('ssn');
+    const dobConfig = getConfig('dob');
+    const historyConfig = getConfig('addressHistory');
+    const referralConfig = getConfig('referralSource');
 
     // --- Logic ---
     const residenceThreeYears = formData['residence-3-years'];

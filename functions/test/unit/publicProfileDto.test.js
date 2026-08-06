@@ -83,8 +83,15 @@ describe('public profile DTO (A4 projection)', () => {
   it('locks the public applicationConfig allowlist to a known set', () => {
     // If this set changes, a reviewer must confirm the new key is non-PII.
     expect(PUBLIC_APPLICATION_CONFIG_KEYS).toEqual([
-      'cdlUpload', 'medCardUpload', 'showEmergencyContacts',
-      'ssn', 'dob', 'previousAddresses', 'employers', 'violations', 'accidents',
+      // Canonical gate ids the settings UI writes. All of them must be here:
+      // a gate that does not cross this boundary has no effect on a public
+      // apply page, which is exactly the defect this list used to have.
+      'ssn', 'dob', 'addressHistory', 'employmentHistory',
+      'cdlUpload', 'medCardUpload', 'mvrConsent', 'referralSource',
+      'emergencyContacts',
+      // Legacy spellings, read only when the canonical key is absent.
+      'showEmergencyContacts', 'previousAddresses', 'employers',
+      'violations', 'accidents',
     ]);
   });
 

@@ -1,4 +1,5 @@
 const {
+  GATE_DEFAULT_HIDDEN,
   GATE_DEFAULT_REQUIRED,
   STANDARD_SECTIONS,
   buildApplicationDefinition,
@@ -70,11 +71,39 @@ describe('definition version is content-addressed', () => {
 describe('standard field gates mirror the company settings UI', () => {
   it('applies each documented default when a company has configured nothing', () => {
     const def = buildApplicationDefinition({ company: company() });
-    for (const [gate, expected] of Object.entries(GATE_DEFAULT_REQUIRED)) {
-      const field = visibleFields(def).find((f) => f.gate === gate);
+    const all = def.sections.flatMap((s) => s.fields);
+
+    for (const [gate, expectedRequired] of Object.entries(GATE_DEFAULT_REQUIRED)) {
+      const field = all.find((f) => f.gate === gate);
       expect(field).toBeDefined();
-      expect(field.required).toBe(expected);
+      expect(field.hidden).toBe(Boolean(GATE_DEFAULT_HIDDEN[gate]));
+      expect(field.required).toBe(expectedRequired);
     }
+  });
+
+  it('keeps opt-in gates out of the visible set until a company enables them', () => {
+    const def = buildApplicationDefinition({ company: company() });
+    expect(visibleFields(def).some((f) => f.gate === 'emergencyContacts')).toBe(false);
+
+    const optedIn = buildApplicationDefinition({
+      company: company({ applicationConfig: { emergencyContacts: { hidden: false, required: false } } }),
+    });
+    expect(visibleFields(optedIn).some((f) => f.gate === 'emergencyContacts')).toBe(true);
+  });
+
+  it('reads the legacy showEmergencyContacts boolean', () => {
+    const legacy = buildApplicationDefinition({
+      company: company({ applicationConfig: { showEmergencyContacts: true } }),
+    });
+    expect(visibleFields(legacy).some((f) => f.gate === 'emergencyContacts')).toBe(true);
+  });
+
+  it('never records a hidden field as required', () => {
+    const def = buildApplicationDefinition({
+      company: company({ applicationConfig: { ssn: { hidden: true, required: true } } }),
+    });
+    const ssn = def.sections.flatMap((sec) => sec.fields).find((f) => f.id === 'ssn');
+    expect(ssn).toMatchObject({ hidden: true, required: false });
   });
 
   it('honours an explicit required override', () => {

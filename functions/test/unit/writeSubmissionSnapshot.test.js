@@ -50,7 +50,7 @@ describe('sequence claiming', () => {
   it('writes the original submission as v1', async () => {
     const { db, store } = makeDb();
     const result = await writeSubmissionSnapshot(args(db));
-    expect(result).toEqual({ snapshotId: 'v1', sequence: 1, isOriginal: true });
+    expect(result).toEqual({ snapshotId: 'v1', sequence: 1, isOriginal: true, deduplicated: false });
     expect(store['/companies/co-a/applications/app-1/submission/v1']).toBeDefined();
   });
 
@@ -63,7 +63,7 @@ describe('sequence claiming', () => {
     const second = await writeSubmissionSnapshot(args(db, { snapshot: { ...SNAP, marker: 'second' } }));
 
     expect(first.snapshotId).toBe('v1');
-    expect(second).toEqual({ snapshotId: 'v2', sequence: 2, isOriginal: false });
+    expect(second).toEqual({ snapshotId: 'v2', sequence: 2, isOriginal: false, deduplicated: false });
     expect(store['/companies/co-a/applications/app-1/submission/v1'].marker).toBe('first');
     expect(store['/companies/co-a/applications/app-1/submission/v2'].marker).toBe('second');
   });
