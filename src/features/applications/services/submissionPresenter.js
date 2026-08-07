@@ -20,8 +20,44 @@
 //
 // Pure and framework-free so it can be unit tested and reused by any renderer.
 
+import STANDARD_SECTIONS from '../../../../functions/shared/applicationSections.json';
+import { buildRepeatingRows } from '@/config/applicationDefinition';
+
 /** Shown when a field was presented but left empty. */
 export const NOT_PROVIDED = 'Not provided';
+
+/** Every repeating field's current columns, by field id. */
+const CURRENT_COLUMNS = new Map(
+    STANDARD_SECTIONS
+        .flatMap((section) => section.fields)
+        .filter((field) => field.repeating && Array.isArray(field.columns))
+        .map((field) => [field.id, field.columns]),
+);
+
+/**
+ * The rows to render for one repeating answer.
+ *
+ * A snapshot written before columns were declared holds its records as raw
+ * objects in `value` and has no `rows`. Showing only `rows` would say "None
+ * recorded" for an applicant who listed three employers — silently dropping
+ * submitted data, which is the one thing no renderer here may do.
+ *
+ * The fallback lays those records out under the field's CURRENT column names and
+ * flags it, so a screen can say the labels are today's rather than the ones the
+ * record froze. Showing the driver's employers under current field names,
+ * labelled as such, is honest; dropping them is not.
+ */
+function resolveRows(answer) {
+    if (Array.isArray(answer?.rows) && answer.rows.length > 0) {
+        return { rows: answer.rows, usedCurrentColumns: false };
+    }
+    if (!Array.isArray(answer?.value) || answer.value.length === 0) {
+        return { rows: [], usedCurrentColumns: false };
+    }
+    const columns = CURRENT_COLUMNS.get(answer.fieldId);
+    if (!columns) return { rows: [], usedCurrentColumns: false };
+    return { rows: buildRepeatingRows(answer.value, columns), usedCurrentColumns: true };
+}
 
 /** Shown when a custom question's wording was never recorded. */
 export const WORDING_UNAVAILABLE = 'Question wording not recorded';
@@ -64,6 +100,18 @@ export function toDisplayAnswer(answer) {
         // Repeating groups (employers, violations) are rendered by dedicated
         // components; flagged so a generic renderer does not print "[object Object]".
         repeating: Boolean(answer.repeating),
+        /**
+         * Rows of `{label, displayValue}` cells, resolved once when the snapshot
+         * was frozen against the columns the definition declared. A renderer lays
+         * them out without knowing anything about employers or violations, and an
+         * internal key that found its way into a stored row has already been
+         * dropped — it is not in the column list, so it never reaches a screen.
+         *
+         * Empty for a snapshot written before columns existed; such a record
+         * legitimately shows the group as having nothing to display rather than
+         * printing raw objects.
+         */
+        ...(answer.repeating ? resolveRows(answer) : { rows: [], usedCurrentColumns: false }),
         rawValue: answer.repeating ? answer.value : undefined,
     };
 }
@@ -119,8 +167,16 @@ export function describeAgreementEvidence(agreement) {
         ? 'accepted'
         : (agreement.evidenceRecorded ? 'declined' : 'unrecorded');
 
+    // A historical record can evidence that the applicant certified the whole set
+    // with one action, but not that they accepted this agreement on its own.
+    // Saying "accepted and signed" there would overclaim; saying "not accepted"
+    // would be false. The distinction is stated instead.
+    const combined = agreement.acceptanceScope === 'combined';
+
     const summary = {
-        accepted: 'Accepted and signed by the applicant',
+        accepted: combined
+            ? 'Certified as part of a single combined acknowledgement'
+            : 'Accepted and signed by the applicant',
         declined: 'The applicant did not accept this agreement',
         unrecorded: 'No acceptance was recorded for this agreement',
     }[status];
@@ -133,6 +189,8 @@ export function describeAgreementEvidence(agreement) {
         status,
         summary,
         acceptedAt: agreement.acceptedAt || null,
+        acceptanceScope: agreement.acceptanceScope || null,
+        acceptedIndividually: status === 'accepted' && !combined,
         // Only ever true where this agreement itself carries acceptance evidence.
         hasSignature: Boolean(agreement.signature && agreement.signature.present),
         signatureType: agreement.signature?.type || null,

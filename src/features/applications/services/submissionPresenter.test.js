@@ -268,3 +268,47 @@ describe('presentSubmission', () => {
         expect(view.reconstructionNotes).toEqual(['Acceptance not captured at submission.']);
     });
 });
+
+describe('a snapshot written before columns existed', () => {
+    // Between the first snapshot release and columns being declared, repeating
+    // records were stored as raw objects with no resolved rows. Showing only
+    // `rows` said "None recorded" for an applicant who listed three employers.
+    const legacyAnswer = {
+        fieldId: 'employers',
+        label: 'Previous Employers',
+        presented: true,
+        repeating: true,
+        rows: null,
+        value: [{ companyName: 'Lone Star Logistics', position: 'OTR Driver', mayContact: 'yes' }],
+    };
+
+    it('lays the records out rather than dropping them', () => {
+        const row = toDisplayAnswer(legacyAnswer);
+        expect(row.rows).toHaveLength(1);
+        expect(row.rows[0]).toContainEqual({ label: 'Employer', displayValue: 'Lone Star Logistics' });
+        expect(row.usedCurrentColumns).toBe(true);
+    });
+
+    it('reads only declared columns, so a stored internal key cannot leak', () => {
+        const row = toDisplayAnswer({
+            ...legacyAnswer,
+            value: [{ companyName: 'Acme', _localDraftId: 'draft-7712-internal' }],
+        });
+        expect(JSON.stringify(row.rows)).not.toMatch(/draft-7712-internal/);
+    });
+
+    it('does not claim current columns when the record already has its own rows', () => {
+        const row = toDisplayAnswer({
+            ...legacyAnswer,
+            rows: [[{ label: 'Employer', displayValue: 'Frozen Freight' }]],
+        });
+        expect(row.usedCurrentColumns).toBe(false);
+        expect(row.rows[0][0].displayValue).toBe('Frozen Freight');
+    });
+
+    it('still reports an empty group as empty', () => {
+        const row = toDisplayAnswer({ ...legacyAnswer, rows: null, value: [] });
+        expect(row.rows).toEqual([]);
+        expect(row.usedCurrentColumns).toBe(false);
+    });
+});

@@ -45,126 +45,33 @@ function clean(value) {
  * and always collected.
  *
  * `repeating` marks a field whose value is a list of records rather than a
- * scalar; those are rendered by dedicated sections and are described here only
- * so the definition is a complete inventory of what is asked.
+ * scalar. Its `columns` name and label each cell of a row, so a renderer can lay
+ * out a real table without knowing anything about the domain — and, critically,
+ * without printing `[object Object]` or a raw key. Only listed columns are ever
+ * shown, so an internal field that finds its way into a row cannot leak.
+ *
+ * `presentWhenAnswered` marks a field that only some intake paths collect — a
+ * manual entry, an ATS record, an owner-operator's business details. The wizard
+ * never shows it, so recording it as an unanswered question would claim it was
+ * asked. It is treated as presented only when there is actually a value.
+ *
+ * This list is the authoritative inventory of what the application asks. A
+ * question the wizard collects but that is absent here is invisible to the
+ * preserved record, to the recruiter views and to the PDF — which is how the
+ * driving disclosures, the additional licences, the employment gaps and the
+ * vehicle-experience answers all went unrecorded.
  */
-const STANDARD_SECTIONS = Object.freeze([
-    {
-        id: 'personal',
-        title: 'Personal Information',
-        fields: [
-            { id: 'firstName', label: 'First Name' },
-            { id: 'middleName', label: 'Middle Name' },
-            { id: 'lastName', label: 'Last Name' },
-            { id: 'suffix', label: 'Suffix' },
-            { id: 'known-by-other-name', label: 'Known by Other Name' },
-            { id: 'otherName', label: 'Other Name(s)', dependsOn: { field: 'known-by-other-name', equals: 'yes' } },
-            { id: 'ssn', label: 'Social Security Number', gate: 'ssn', sensitive: true },
-            { id: 'dob', label: 'Date of Birth', gate: 'dob', type: 'date' },
-            { id: 'email', label: 'Email Address' },
-            { id: 'phone', label: 'Phone Number' },
-        ],
-    },
-    {
-        id: 'addressHistory',
-        title: 'Address History',
-        fields: [
-            { id: 'address', label: 'Current Street Address' },
-            { id: 'city', label: 'Current City' },
-            { id: 'state', label: 'Current State' },
-            { id: 'zip', label: 'Current ZIP Code' },
-            { id: 'previousAddresses', label: 'Previous Addresses', gate: 'addressHistory', repeating: true },
-        ],
-    },
-    {
-        id: 'qualifications',
-        title: 'General Qualifications',
-        fields: [
-            { id: 'positionApplyingTo', label: 'Position Applied For' },
-            { id: 'legal-work', label: 'Legal to Work in U.S.' },
-            { id: 'english-fluency', label: 'English Fluency' },
-            { id: 'experience-years', label: 'Years of CDL Experience' },
-            { id: 'drug-test-positive', label: 'Drug Test History' },
-            { id: 'drug-test-explanation', label: 'Drug Test Explanation', dependsOn: { field: 'drug-test-positive', equals: 'yes' } },
-            { id: 'dot-return-to-duty', label: 'DOT Return to Duty' },
-            { id: 'referralSource', label: 'Referral Source', gate: 'referralSource' },
-        ],
-    },
-    {
-        id: 'license',
-        title: 'License & Credentials',
-        fields: [
-            { id: 'cdlNumber', label: 'License Number' },
-            { id: 'cdlState', label: 'License State' },
-            { id: 'cdlClass', label: 'License Class' },
-            { id: 'cdlExpiration', label: 'Expiration Date', type: 'date' },
-            { id: 'endorsements', label: 'Endorsements' },
-            { id: 'has-twic', label: 'Has TWIC Card' },
-            { id: 'twicExpiration', label: 'TWIC Expiration', type: 'date', dependsOn: { field: 'has-twic', equals: 'yes' } },
-        ],
-    },
-    {
-        id: 'drivingRecord',
-        title: 'Driving Record',
-        fields: [
-            { id: 'violations', label: 'Traffic Violations', repeating: true },
-            { id: 'accidents', label: 'Accidents', repeating: true },
-        ],
-    },
-    {
-        id: 'experience',
-        title: 'Vehicle Experience',
-        fields: [
-            { id: 'experience', label: 'Equipment Experience', repeating: true },
-        ],
-    },
-    {
-        id: 'employment',
-        title: 'Employment History',
-        fields: [
-            { id: 'employers', label: 'Employment History', gate: 'employmentHistory', repeating: true },
-        ],
-    },
-    {
-        id: 'educationMilitary',
-        title: 'Education & Military',
-        fields: [
-            { id: 'schools', label: 'Driving Schools', repeating: true },
-            { id: 'military', label: 'Military Service', repeating: true },
-        ],
-    },
-    {
-        id: 'emergencyAndDisclosures',
-        title: 'Emergency Contacts & Disclosures',
-        fields: [
-            { id: 'ec1Name', label: 'Emergency Contact #1 Name', gate: 'emergencyContacts' },
-            { id: 'ec1Relationship', label: 'Emergency Contact #1 Relationship', gate: 'emergencyContacts' },
-            { id: 'ec1Phone', label: 'Emergency Contact #1 Phone', gate: 'emergencyContacts' },
-            { id: 'ec2Name', label: 'Emergency Contact #2 Name', gate: 'emergencyContacts' },
-            { id: 'ec2Relationship', label: 'Emergency Contact #2 Relationship', gate: 'emergencyContacts' },
-            { id: 'ec2Phone', label: 'Emergency Contact #2 Phone', gate: 'emergencyContacts' },
-            { id: 'has-felony', label: 'Felony Conviction' },
-            { id: 'felonyExplanation', label: 'Felony Explanation', dependsOn: { field: 'has-felony', equals: 'yes' } },
-            { id: 'ein', label: 'EIN / Business Number' },
-            { id: 'businessName', label: 'Business Name' },
-            { id: 'driverInitials', label: 'Driver Initials' },
-        ],
-    },
-    {
-        id: 'documents',
-        title: 'Required Documents',
-        fields: [
-            { id: 'cdl-front', label: 'CDL (Front)', gate: 'cdlUpload', type: 'file' },
-            { id: 'cdl-back', label: 'CDL (Back)', gate: 'cdlUpload', type: 'file' },
-            { id: 'medical-card-upload', label: 'Medical Card', gate: 'medCardUpload', type: 'file' },
-            { id: 'mvr-consent-upload', label: 'MVR Consent Form', gate: 'mvrConsent', type: 'file' },
-            { id: 'twic-card-upload', label: 'TWIC Card', type: 'file' },
-            { id: 'mvr-upload', label: 'MVR Report', type: 'file' },
-            { id: 'drug-test-consent-upload', label: 'Drug Test Consent', type: 'file' },
-            { id: 'ssc-upload', label: 'Social Security Card', type: 'file', sensitive: true },
-        ],
-    },
-]);
+/**
+ * Loaded from JSON rather than written here, because the driver's browser needs
+ * the same table. `src/config/applicationDefinition.js` imports the very same
+ * file, so the wizard, the preserved record and the PDF cannot drift apart in
+ * what a field is called, which column a row has, or what it depends on — the
+ * way they did when each surface carried its own copy of the labels.
+ *
+ * Data only, deliberately: the resolution logic lives in code on both sides and
+ * is held together by `src/config/applicationGates.test.js`.
+ */
+const STANDARD_SECTIONS = Object.freeze(require('./applicationSections.json'));
 
 /**
  * Defaults mirroring StandardQuestionsConfig's `defaultReq`.
@@ -384,7 +291,17 @@ function buildApplicationDefinition({ company, agreementVersion = CURRENT_AGREEM
                 label: field.label,
                 type: field.type || 'text',
                 repeating: Boolean(field.repeating),
+                // Frozen with the definition so a preserved record can lay out a
+                // row's cells with the labels that were in force at the time.
+                columns: Array.isArray(field.columns)
+                    ? field.columns.map((column) => ({
+                        id: column.id,
+                        label: column.label,
+                        type: column.type || 'text',
+                    }))
+                    : null,
                 sensitive: Boolean(field.sensitive),
+                presentWhenAnswered: Boolean(field.presentWhenAnswered),
                 dependsOn: field.dependsOn || null,
                 gate: field.gate || null,
                 required: gate.required,

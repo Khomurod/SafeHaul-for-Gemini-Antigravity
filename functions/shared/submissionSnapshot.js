@@ -35,7 +35,7 @@
 //      the renderer, driven by the `sensitive` flag.
 
 const { resolveAgreement } = require('./legalAgreements');
-const { visibleFields } = require('./applicationDefinition');
+const { STANDARD_SECTIONS, visibleFields } = require('./applicationDefinition');
 const { computeEmploymentCoverage } = require('./employmentCoverage');
 
 const SNAPSHOT_SCHEMA_VERSION = 1;
@@ -107,8 +107,82 @@ function formatAnswerForDisplay(value, field = {}) {
     return raw || null;
 }
 
+/**
+ * Resolve a repeating field's rows into labelled cells.
+ *
+ * Only columns the definition declares are read, so an internal key that finds
+ * its way into a stored row (an id, a storage path, a `_dirty` flag) can never
+ * reach a screen or a PDF. A cell with no value is dropped rather than rendered
+ * as a blank or a placeholder: a renderer showing "Supervisor Email: —" for
+ * every employer is noise, and a driver who left it out did not answer nothing —
+ * they were not required to answer.
+ *
+ * Returns an empty array for a non-list value, which is what a renderer needs in
+ * order to say "none recorded" instead of printing `[object Object]`.
+ */
+function buildRepeatingRows(value, columns) {
+    if (!Array.isArray(value) || !Array.isArray(columns) || columns.length === 0) return [];
+
+    return value
+        .map((row) => {
+            const record = row && typeof row === 'object' ? row : {};
+            return columns
+                .map((column) => ({
+                    label: column.label,
+                    displayValue: formatAnswerForDisplay(record[column.id], column),
+                }))
+                .filter((cell) => cell.displayValue !== null);
+        })
+        .filter((cells) => cells.length > 0);
+}
+
+/**
+ * The rows to render for one repeating answer.
+ *
+ * A snapshot written before columns were declared holds its records as raw
+ * objects in `value` and has no `rows`. Rendering only `rows` would show
+ * "None recorded" for an applicant who listed three employers — silently
+ * dropping submitted data, which is the one thing no renderer here may do.
+ *
+ * So the fallback lays those records out using the field's CURRENT column list,
+ * and says so with `usedCurrentColumns`. Consumers state that, because the
+ * labels are today's wording rather than wording the record froze. Showing the
+ * driver's employers under current field names, labelled as such, is honest;
+ * dropping them is not.
+ */
+function resolveRepeatingRows(answer, currentColumnsById = null) {
+    if (Array.isArray(answer?.rows) && answer.rows.length > 0) {
+        return { rows: answer.rows, usedCurrentColumns: false };
+    }
+    if (!Array.isArray(answer?.value) || answer.value.length === 0) {
+        return { rows: [], usedCurrentColumns: false };
+    }
+    const columns = currentColumnsById && currentColumnsById.get
+        ? currentColumnsById.get(answer.fieldId)
+        : null;
+    if (!columns) return { rows: [], usedCurrentColumns: false };
+    return { rows: buildRepeatingRows(answer.value, columns), usedCurrentColumns: true };
+}
+
+/** Every repeating field's current columns, by field id. */
+function currentRepeatingColumns() {
+    const map = new Map();
+    for (const section of STANDARD_SECTIONS) {
+        for (const field of section.fields) {
+            if (field.repeating && Array.isArray(field.columns)) map.set(field.id, field.columns);
+        }
+    }
+    return map;
+}
+
 /** Was a conditional field actually shown to the driver? */
 function wasPresented(field, formData) {
+    // Collected only by some intake paths (manual entry, ATS, owner-operator
+    // business details). No value means it was not asked — recording it as an
+    // unanswered question would claim it was.
+    if (field.presentWhenAnswered) {
+        return !isBlank(formData ? formData[field.id] : undefined);
+    }
     if (!field.dependsOn) return true;
     const { field: dependency, equals } = field.dependsOn;
     const actual = formData ? formData[dependency] : undefined;
@@ -137,6 +211,7 @@ function buildSections(definition, formData) {
 
         const presented = wasPresented(field, formData);
         const rawValue = formData ? formData[field.id] : undefined;
+        const value = presented && !isBlank(rawValue) ? rawValue : null;
 
         bySection.get(field.sectionId).answers.push({
             fieldId: field.id,
@@ -147,8 +222,15 @@ function buildSections(definition, formData) {
             required: field.required,
             presented,
             // A field that was never shown holds no value, so none is recorded.
-            value: presented && !isBlank(rawValue) ? rawValue : null,
-            displayValue: presented ? formatAnswerForDisplay(rawValue, field) : null,
+            value,
+            displayValue: presented && !field.repeating
+                ? formatAnswerForDisplay(rawValue, field)
+                : null,
+            // Repeating answers resolve to labelled cells here, once, so every
+            // renderer lays out the same rows instead of each one re-deriving
+            // them from raw objects — which is how `[object Object]` reached
+            // users, and how a stored internal key could have.
+            rows: field.repeating ? buildRepeatingRows(value, field.columns) : null,
         });
     }
 
@@ -228,6 +310,19 @@ function buildAgreementRecords({ definition, acceptances = {}, signature = null 
         const evidence = given[declaredAgreement.id];
         const accepted = Boolean(evidence && evidence.accepted === true);
         const acceptedAt = accepted ? (clean(evidence.acceptedAt) || null) : null;
+        /**
+         * HOW acceptance was given, not merely whether.
+         *
+         * `individual` — this agreement was accepted on its own, which is what a
+         * live submission records.
+         * `combined` — the applicant certified the set with one action, which is
+         * all a historical application can evidence. Recording it as `individual`
+         * would overclaim; recording it as "not accepted" would be false, because
+         * they did certify. Consumers state the distinction in words.
+         */
+        const acceptanceScope = accepted
+            ? (clean(evidence.scope) === 'combined' ? 'combined' : 'individual')
+            : null;
 
         return {
             id: resolved.id,
@@ -239,6 +334,7 @@ function buildAgreementRecords({ definition, acceptances = {}, signature = null 
             requiresSignature: resolved.requiresSignature,
             accepted,
             acceptedAt,
+            acceptanceScope,
             evidenceRecorded: Boolean(evidence),
             acceptanceContext: accepted
                 ? {
@@ -336,7 +432,10 @@ module.exports = {
     SNAPSHOT_SCHEMA_VERSION,
     buildAgreementRecords,
     buildCustomAnswers,
+    buildRepeatingRows,
     buildSections,
+    currentRepeatingColumns,
+    resolveRepeatingRows,
     buildSubmissionSnapshot,
     formatAnswerForDisplay,
     formatDateForDisplay,
