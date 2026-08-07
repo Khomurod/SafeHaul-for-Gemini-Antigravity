@@ -64,6 +64,18 @@ export function toDisplayAnswer(answer) {
         // Repeating groups (employers, violations) are rendered by dedicated
         // components; flagged so a generic renderer does not print "[object Object]".
         repeating: Boolean(answer.repeating),
+        /**
+         * Rows of `{label, displayValue}` cells, resolved once when the snapshot
+         * was frozen against the columns the definition declared. A renderer lays
+         * them out without knowing anything about employers or violations, and an
+         * internal key that found its way into a stored row has already been
+         * dropped — it is not in the column list, so it never reaches a screen.
+         *
+         * Empty for a snapshot written before columns existed; such a record
+         * legitimately shows the group as having nothing to display rather than
+         * printing raw objects.
+         */
+        rows: answer.repeating && Array.isArray(answer.rows) ? answer.rows : [],
         rawValue: answer.repeating ? answer.value : undefined,
     };
 }
