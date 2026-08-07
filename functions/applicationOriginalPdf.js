@@ -48,7 +48,11 @@ async function resolveAccess({ request, companyId, applicationSnap }) {
         await assertCompanyAccess(uid, companyId);
         return 'company';
     } catch (error) {
-        if (error?.code && !String(error.code).includes('permission-denied')) throw error;
+        // Only a DENIAL falls through to the applicant check. Anything else — an
+        // unavailable Firestore, a claims lookup that threw — is a failure to
+        // determine access, and treating that as "not company staff" would turn
+        // an outage into a silent, confusing denial for a legitimate recruiter.
+        if (!String(error?.code || '').includes('permission-denied')) throw error;
     }
 
     const data = applicationSnap.data() || {};

@@ -130,6 +130,15 @@ describe('getApplicationOriginalPdfUrl', () => {
       }))).rejects.toMatchObject({ code: 'permission-denied' });
     });
 
+    it('surfaces an access-check failure instead of silently denying', async () => {
+      // An unavailable Firestore is not "you are not company staff". Falling
+      // through would turn an outage into a confusing denial for a recruiter
+      // who does have access.
+      mockAssertCompanyAccess.mockRejectedValue(new Error('firestore unavailable'));
+      await expect(getApplicationOriginalPdfUrl(request())).rejects.toThrow(/firestore unavailable/);
+      expect(mockGetSignedUrl).not.toHaveBeenCalled();
+    });
+
     it('reports a missing application as not found rather than leaking its absence as denial', async () => {
       applicationData.value = null;
       await expect(getApplicationOriginalPdfUrl(request()))
