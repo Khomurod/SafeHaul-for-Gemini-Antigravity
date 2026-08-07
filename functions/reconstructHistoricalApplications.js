@@ -29,6 +29,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { logger } = require('firebase-functions');
 const { admin, db, storage } = require('./firebaseAdmin');
 const { reconstructSubmissionSnapshot } = require('./shared/reconstructSubmission');
+const { signatureFingerprint } = require('./shared/submissionSnapshot');
 const { writeSubmissionSnapshot } = require('./shared/writeSubmissionSnapshot');
 const { preserveApplicationPdf } = require('./shared/preserveApplicationPdf');
 const { RECORD_STATUS, stampSubmissionRecordStatus } = require('./shared/submissionRecordStatus');
@@ -45,6 +46,72 @@ const DEFAULT_MAX_APPLICATIONS = 200;
  * @returns {Promise<{scanned, reconstructed, skipped, failed, pdfs, truncated,
  *   lastApplicationId, unrecoverable, errors}>}
  */
+/**
+ * Preserve the PDF for an application whose record exists but whose document
+ * does not. Returns true when it wrote one.
+ *
+ * Safe to call on every skipped application: `preserveApplicationPdf` writes
+ * create-only, so an existing object is left exactly as it is.
+ */
+async function repairMissingPdf({ doc, companyId, snapshot }) {
+    if (!snapshot) return false;
+
+    // The signature bitmap is NOT in the snapshot — only its fingerprint. The
+    // application document's `signature` is mutable: a genuine resubmission, or
+    // a later re-signing, overwrites it. Drawing that onto a repair of the
+    // ORIGINAL would stamp a mark the original was never signed with, which is
+    // worse than a document with no signature image on it.
+    //
+    // So the bitmap is used only when it can be PROVEN to be the one this record
+    // was signed with. A snapshot written before fingerprints existed cannot
+    // prove it, and is repaired without the image rather than with a guess.
+    const live = doc.data()?.signature || null;
+    const expected = snapshot.signature?.sha256 || null;
+    const signatureImage = expected && live && signatureFingerprint(live) === expected
+        ? live
+        : null;
+
+    try {
+        // Not guarded on the object already existing: `preserveApplicationPdf`
+        // writes create-only and, when the object IS there, adopts it and
+        // recreates the deterministic DQ entry. That is the case where the bytes
+        // were saved but the Documents entry was not, which an early return
+        // would leave broken forever.
+        const { alreadyExisted } = await preserveApplicationPdf({
+            db,
+            storage,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            companyId,
+            applicationId: doc.id,
+            snapshot,
+            snapshotId: 'v1',
+            sequence: 1,
+            signatureImage,
+            ownerIds: {
+                applicantId: doc.data()?.applicantId || doc.id,
+                driverId: doc.data()?.driverId || doc.id,
+            },
+            logLabel: 'reconstructHistoricalApplications:repair',
+        });
+
+        if (!alreadyExisted) {
+            logger.info(
+                `[reconstructHistoricalApplications] Repaired the missing preserved PDF for ${doc.id}`
+                + `${signatureImage ? '' : ' (without a signature image: it could not be verified)'}`,
+            );
+        }
+        return !alreadyExisted;
+    } catch (error) {
+        // A repair failure must not abort the company: the record itself is
+        // intact, and the next run will try again.
+        logger.warn(
+            `[reconstructHistoricalApplications] Could not repair the PDF for ${doc.id}: `
+            + `${error?.message || error}`,
+        );
+        return false;
+    }
+}
+
 async function reconstructForCompany({
     companyId,
     company,
@@ -93,6 +160,22 @@ async function reconstructForCompany({
                 const existing = await doc.ref.collection('submission').doc('v1').get();
                 if (existing.exists) {
                     result.skipped += 1;
+
+                    // The record is preserved, but its PDF may not be. A
+                    // submission whose snapshot committed and whose PDF write
+                    // then failed returns `pdfPreserved: false` and nothing else
+                    // ever retries it — so without this, its official document
+                    // would be missing permanently while every later run
+                    // skipped it as "already done".
+                    //
+                    // Repairing from the STORED snapshot, never a fresh rebuild,
+                    // keeps the document faithful to the preserved record.
+                    if (!dryRun) {
+                        const repaired = await repairMissingPdf({
+                            doc, companyId, snapshot: existing.data(),
+                        });
+                        if (repaired) result.pdfs += 1;
+                    }
                     continue;
                 }
 
