@@ -107,8 +107,43 @@ function formatAnswerForDisplay(value, field = {}) {
     return raw || null;
 }
 
+/**
+ * Resolve a repeating field's rows into labelled cells.
+ *
+ * Only columns the definition declares are read, so an internal key that finds
+ * its way into a stored row (an id, a storage path, a `_dirty` flag) can never
+ * reach a screen or a PDF. A cell with no value is dropped rather than rendered
+ * as a blank or a placeholder: a renderer showing "Supervisor Email: —" for
+ * every employer is noise, and a driver who left it out did not answer nothing —
+ * they were not required to answer.
+ *
+ * Returns an empty array for a non-list value, which is what a renderer needs in
+ * order to say "none recorded" instead of printing `[object Object]`.
+ */
+function buildRepeatingRows(value, columns) {
+    if (!Array.isArray(value) || !Array.isArray(columns) || columns.length === 0) return [];
+
+    return value
+        .map((row) => {
+            const record = row && typeof row === 'object' ? row : {};
+            return columns
+                .map((column) => ({
+                    label: column.label,
+                    displayValue: formatAnswerForDisplay(record[column.id], column),
+                }))
+                .filter((cell) => cell.displayValue !== null);
+        })
+        .filter((cells) => cells.length > 0);
+}
+
 /** Was a conditional field actually shown to the driver? */
 function wasPresented(field, formData) {
+    // Collected only by some intake paths (manual entry, ATS, owner-operator
+    // business details). No value means it was not asked — recording it as an
+    // unanswered question would claim it was.
+    if (field.presentWhenAnswered) {
+        return !isBlank(formData ? formData[field.id] : undefined);
+    }
     if (!field.dependsOn) return true;
     const { field: dependency, equals } = field.dependsOn;
     const actual = formData ? formData[dependency] : undefined;
@@ -137,6 +172,7 @@ function buildSections(definition, formData) {
 
         const presented = wasPresented(field, formData);
         const rawValue = formData ? formData[field.id] : undefined;
+        const value = presented && !isBlank(rawValue) ? rawValue : null;
 
         bySection.get(field.sectionId).answers.push({
             fieldId: field.id,
@@ -147,8 +183,15 @@ function buildSections(definition, formData) {
             required: field.required,
             presented,
             // A field that was never shown holds no value, so none is recorded.
-            value: presented && !isBlank(rawValue) ? rawValue : null,
-            displayValue: presented ? formatAnswerForDisplay(rawValue, field) : null,
+            value,
+            displayValue: presented && !field.repeating
+                ? formatAnswerForDisplay(rawValue, field)
+                : null,
+            // Repeating answers resolve to labelled cells here, once, so every
+            // renderer lays out the same rows instead of each one re-deriving
+            // them from raw objects — which is how `[object Object]` reached
+            // users, and how a stored internal key could have.
+            rows: field.repeating ? buildRepeatingRows(value, field.columns) : null,
         });
     }
 
@@ -336,6 +379,7 @@ module.exports = {
     SNAPSHOT_SCHEMA_VERSION,
     buildAgreementRecords,
     buildCustomAnswers,
+    buildRepeatingRows,
     buildSections,
     buildSubmissionSnapshot,
     formatAnswerForDisplay,

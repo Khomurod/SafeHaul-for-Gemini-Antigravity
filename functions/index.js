@@ -232,6 +232,9 @@ exports.getSignedDocumentUrl = require('./getSignedDocumentUrl').getSignedDocume
 // Signed download URLs for driver-uploaded application files (guest_uploads): re-signs
 // at view time so company users can open CDLs/medical cards (the persisted URL expires).
 exports.getSignedApplicationFileUrl = require('./getSignedApplicationFileUrl').getSignedApplicationFileUrl;
+// The ONLY way to read a preserved original application PDF. Authorizes the
+// caller and writes an audit record before issuing a short-lived signed URL.
+exports.getApplicationOriginalPdfUrl = require('./applicationOriginalPdf').getApplicationOriginalPdfUrl;
 
 // Public marketing-site lead form. Hosting rewrites /api/landing-lead here;
 // Telegram credentials remain server-side in Google Secret Manager.

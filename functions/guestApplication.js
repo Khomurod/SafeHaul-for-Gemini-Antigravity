@@ -4,7 +4,7 @@
  */
 
 const functions = require('firebase-functions/v1');
-const { db } = require('./firebaseAdmin');
+const { admin, db, storage } = require('./firebaseAdmin');
 const { assertCompanyAcceptingIntake } = require('./shared/companyTenant');
 const { assertRequiredUploads, buildApplicationDoc } = require('./shared/buildApplicationDoc');
 const { upsertApplicationDoc } = require('./shared/upsertApplicationDoc');
@@ -16,6 +16,7 @@ const {
     buildRecordedStatus,
     stampSubmissionRecordStatus,
 } = require('./shared/submissionRecordStatus');
+const { preserveApplicationPdf } = require('./shared/preserveApplicationPdf');
 
 /**
  * Stamp the observed request IP onto each agreement acceptance.
@@ -187,15 +188,51 @@ exports.submitGuestApplication = functions
                     logLabel: 'submitGuestApplication',
                 });
 
+                // Render and preserve the official PDF from the record we have
+                // just frozen. Separately best-effort: a storage hiccup must not
+                // cost the driver their application, and the PDF can be rebuilt
+                // from the snapshot later, byte-identically, because the snapshot
+                // is the only input.
+                let preservedPdf = null;
+                try {
+                    preservedPdf = await preserveApplicationPdf({
+                        db,
+                        storage,
+                        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+                        companyId,
+                        applicationId: result.applicationId,
+                        snapshot,
+                        snapshotId: submissionSnapshot.snapshotId,
+                        sequence: submissionSnapshot.sequence,
+                        signatureImage: signature,
+                        ownerIds: {
+                            applicantId: result.applicationId,
+                            driverId: result.applicationId,
+                        },
+                        logLabel: 'submitGuestApplication',
+                    });
+                } catch (pdfError) {
+                    console.error(
+                        '[submitGuestApplication] Preserving the application PDF failed for '
+                        + `${result.applicationId} (company ${companyId}):`,
+                        pdfError
+                    );
+                }
+
                 await stampSubmissionRecordStatus({
                     db,
                     companyId,
                     applicationId: result.applicationId,
-                    submissionRecord: buildRecordedStatus({
-                        result: submissionSnapshot,
-                        snapshot,
-                        submissionAttemptId,
-                    }),
+                    submissionRecord: {
+                        ...buildRecordedStatus({
+                            result: submissionSnapshot,
+                            snapshot,
+                            submissionAttemptId,
+                        }),
+                        // Queryable, so a repair pass can find submissions whose
+                        // PDF is missing without re-reading every snapshot.
+                        pdfPreserved: Boolean(preservedPdf),
+                    },
                     logLabel: 'submitGuestApplication',
                 });
             } catch (snapshotError) {

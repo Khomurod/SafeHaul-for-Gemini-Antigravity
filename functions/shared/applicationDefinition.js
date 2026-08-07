@@ -45,8 +45,21 @@ function clean(value) {
  * and always collected.
  *
  * `repeating` marks a field whose value is a list of records rather than a
- * scalar; those are rendered by dedicated sections and are described here only
- * so the definition is a complete inventory of what is asked.
+ * scalar. Its `columns` name and label each cell of a row, so a renderer can lay
+ * out a real table without knowing anything about the domain — and, critically,
+ * without printing `[object Object]` or a raw key. Only listed columns are ever
+ * shown, so an internal field that finds its way into a row cannot leak.
+ *
+ * `presentWhenAnswered` marks a field that only some intake paths collect — a
+ * manual entry, an ATS record, an owner-operator's business details. The wizard
+ * never shows it, so recording it as an unanswered question would claim it was
+ * asked. It is treated as presented only when there is actually a value.
+ *
+ * This list is the authoritative inventory of what the application asks. A
+ * question the wizard collects but that is absent here is invisible to the
+ * preserved record, to the recruiter views and to the PDF — which is how the
+ * driving disclosures, the additional licences, the employment gaps and the
+ * vehicle-experience answers all went unrecorded.
  */
 const STANDARD_SECTIONS = Object.freeze([
     {
@@ -63,30 +76,49 @@ const STANDARD_SECTIONS = Object.freeze([
             { id: 'dob', label: 'Date of Birth', gate: 'dob', type: 'date' },
             { id: 'email', label: 'Email Address' },
             { id: 'phone', label: 'Phone Number' },
+            { id: 'sms-consent', label: 'Consent to SMS Messages' },
         ],
     },
     {
         id: 'addressHistory',
         title: 'Address History',
         fields: [
-            { id: 'address', label: 'Current Street Address' },
+            // `street`, not `address`: that is the key the wizard writes. The
+            // definition asked for `address`, so every preserved record carried a
+            // blank current street address while the driver had supplied one.
+            { id: 'street', label: 'Current Street Address' },
             { id: 'city', label: 'Current City' },
             { id: 'state', label: 'Current State' },
             { id: 'zip', label: 'Current ZIP Code' },
-            { id: 'previousAddresses', label: 'Previous Addresses', gate: 'addressHistory', repeating: true },
+            { id: 'residence-3-years', label: 'At Current Address 3+ Years', gate: 'addressHistory' },
+            {
+                id: 'previousAddresses',
+                label: 'Previous Addresses',
+                gate: 'addressHistory',
+                repeating: true,
+                columns: [
+                    { id: 'street', label: 'Street' },
+                    { id: 'city', label: 'City' },
+                    { id: 'state', label: 'State' },
+                    { id: 'zip', label: 'ZIP' },
+                    { id: 'startDate', label: 'From', type: 'date' },
+                    { id: 'endDate', label: 'To', type: 'date' },
+                ],
+            },
         ],
     },
     {
         id: 'qualifications',
         title: 'General Qualifications',
         fields: [
-            { id: 'positionApplyingTo', label: 'Position Applied For' },
+            // Set by intake and ATS paths, never asked in the driver wizard.
+            { id: 'positionApplyingTo', label: 'Position Applied For', presentWhenAnswered: true },
             { id: 'legal-work', label: 'Legal to Work in U.S.' },
             { id: 'english-fluency', label: 'English Fluency' },
             { id: 'experience-years', label: 'Years of CDL Experience' },
-            { id: 'drug-test-positive', label: 'Drug Test History' },
-            { id: 'drug-test-explanation', label: 'Drug Test Explanation', dependsOn: { field: 'drug-test-positive', equals: 'yes' } },
-            { id: 'dot-return-to-duty', label: 'DOT Return to Duty' },
+            { id: 'drug-test-positive', label: 'Positive Drug or Alcohol Test / Refusal' },
+            { id: 'drug-test-explanation', label: 'Drug or Alcohol Test Explanation', dependsOn: { field: 'drug-test-positive', equals: 'yes' } },
+            { id: 'dot-return-to-duty', label: 'Can Document DOT Return-to-Duty' },
             { id: 'referralSource', label: 'Referral Source', gate: 'referralSource' },
         ],
     },
@@ -99,6 +131,20 @@ const STANDARD_SECTIONS = Object.freeze([
             { id: 'cdlClass', label: 'License Class' },
             { id: 'cdlExpiration', label: 'Expiration Date', type: 'date' },
             { id: 'endorsements', label: 'Endorsements' },
+            { id: 'medCardExpiration', label: 'Medical Card Expiration', type: 'date' },
+            { id: 'has-other-licenses', label: 'Held Other Licences in the Past 3 Years' },
+            {
+                id: 'additionalLicenses',
+                label: 'Additional Licences',
+                repeating: true,
+                dependsOn: { field: 'has-other-licenses', equals: 'yes' },
+                columns: [
+                    { id: 'number', label: 'Licence Number' },
+                    { id: 'state', label: 'State' },
+                    { id: 'class', label: 'Class' },
+                    { id: 'expiration', label: 'Expires', type: 'date' },
+                ],
+            },
             { id: 'has-twic', label: 'Has TWIC Card' },
             { id: 'twicExpiration', label: 'TWIC Expiration', type: 'date', dependsOn: { field: 'has-twic', equals: 'yes' } },
         ],
@@ -107,30 +153,144 @@ const STANDARD_SECTIONS = Object.freeze([
         id: 'drivingRecord',
         title: 'Driving Record',
         fields: [
-            { id: 'violations', label: 'Traffic Violations', repeating: true },
-            { id: 'accidents', label: 'Accidents', repeating: true },
+            { id: 'consent-mvr', label: 'Consent to Obtain Motor Vehicle Record' },
+            { id: 'revoked-licenses', label: 'Licence Ever Suspended, Revoked or Denied' },
+            { id: 'revocationExplanation', label: 'Suspension / Revocation Explanation', dependsOn: { field: 'revoked-licenses', equals: 'yes' } },
+            { id: 'driving-convictions', label: 'Convicted of a Moving Violation' },
+            { id: 'convictionExplanation', label: 'Moving Violation Explanation', dependsOn: { field: 'driving-convictions', equals: 'yes' } },
+            { id: 'drug-alcohol-convictions', label: 'Convicted of a Drug or Alcohol Offence' },
+            { id: 'drugConvictionExplanation', label: 'Drug or Alcohol Offence Explanation', dependsOn: { field: 'drug-alcohol-convictions', equals: 'yes' } },
+            {
+                id: 'violations',
+                label: 'Traffic Violations',
+                repeating: true,
+                columns: [
+                    { id: 'date', label: 'Date', type: 'date' },
+                    { id: 'charge', label: 'Charge' },
+                    { id: 'location', label: 'Location' },
+                    { id: 'penalty', label: 'Penalty' },
+                ],
+            },
+            {
+                id: 'accidents',
+                label: 'Accidents',
+                repeating: true,
+                // Exactly the six things the accident form collects. Fatalities
+                // and injuries are NOT among them, and the old PDF printed
+                // "Fatalities: 0 / Injuries: 0" on every accident — asserting a
+                // fact about a fatal crash that nobody had been asked.
+                columns: [
+                    { id: 'date', label: 'Date', type: 'date' },
+                    { id: 'city', label: 'City' },
+                    { id: 'state', label: 'State' },
+                    { id: 'commercial', label: 'Commercial Vehicle' },
+                    { id: 'preventable', label: 'Preventable' },
+                    { id: 'details', label: 'Details' },
+                ],
+            },
         ],
     },
     {
         id: 'experience',
         title: 'Vehicle Experience',
+        // Six paired scalars, which is what VehicleExperienceSection writes. The
+        // definition previously declared a single repeating `experience` field
+        // that nothing ever wrote, so the whole section recorded nothing.
         fields: [
-            { id: 'experience', label: 'Equipment Experience', repeating: true },
+            { id: 'expStraightTruckMiles', label: 'Straight Truck — Miles Driven' },
+            { id: 'expStraightTruckExp', label: 'Straight Truck — Experience' },
+            { id: 'expSemiTrailerMiles', label: 'Tractor + Semi Trailer — Miles Driven' },
+            { id: 'expSemiTrailerExp', label: 'Tractor + Semi Trailer — Experience' },
+            { id: 'expTwoTrailersMiles', label: 'Tractor + Two Trailers — Miles Driven' },
+            { id: 'expTwoTrailersExp', label: 'Tractor + Two Trailers — Experience' },
         ],
     },
     {
         id: 'employment',
         title: 'Employment History',
         fields: [
-            { id: 'employers', label: 'Employment History', gate: 'employmentHistory', repeating: true },
+            {
+                id: 'employers',
+                label: 'Previous Employers',
+                gate: 'employmentHistory',
+                repeating: true,
+                columns: [
+                    { id: 'companyName', label: 'Employer' },
+                    { id: 'position', label: 'Position' },
+                    { id: 'startDate', label: 'From', type: 'date' },
+                    { id: 'endDate', label: 'To', type: 'date' },
+                    { id: 'address', label: 'Address' },
+                    { id: 'city', label: 'City' },
+                    { id: 'state', label: 'State' },
+                    { id: 'phone', label: 'Company Phone' },
+                    { id: 'companyEmail', label: 'Company Email' },
+                    { id: 'dotNumber', label: 'DOT Number' },
+                    { id: 'supervisorName', label: 'Supervisor' },
+                    { id: 'supervisorPhone', label: 'Supervisor Phone' },
+                    { id: 'supervisorEmail', label: 'Supervisor Email' },
+                    { id: 'mayContact', label: 'May We Contact' },
+                    { id: 'reasonForLeaving', label: 'Reason for Leaving' },
+                ],
+            },
+            {
+                // Not gated: Step 6 keeps the gaps editor even where the company
+                // has hidden the employer list, because a gap is how the missing
+                // three years get accounted for.
+                id: 'unemployment',
+                label: 'Employment Gaps',
+                repeating: true,
+                columns: [
+                    { id: 'startDate', label: 'From', type: 'date' },
+                    { id: 'endDate', label: 'To', type: 'date' },
+                    { id: 'details', label: 'Explanation' },
+                ],
+            },
         ],
     },
     {
         id: 'educationMilitary',
         title: 'Education & Military',
         fields: [
-            { id: 'schools', label: 'Driving Schools', repeating: true },
-            { id: 'military', label: 'Military Service', repeating: true },
+            {
+                id: 'schools',
+                label: 'Driving Schools',
+                repeating: true,
+                columns: [
+                    { id: 'name', label: 'School' },
+                    { id: 'location', label: 'Location' },
+                    { id: 'startDate', label: 'From', type: 'date' },
+                    { id: 'endDate', label: 'To', type: 'date' },
+                ],
+            },
+            {
+                id: 'military',
+                label: 'Military Service',
+                repeating: true,
+                columns: [
+                    { id: 'branch', label: 'Branch' },
+                    { id: 'rank', label: 'Rank' },
+                    { id: 'start', label: 'From', type: 'date' },
+                    { id: 'end', label: 'To', type: 'date' },
+                    { id: 'heavyEq', label: 'Heavy Equipment Experience' },
+                    { id: 'honorable', label: 'Honourable Discharge' },
+                    { id: 'explanation', label: 'Explanation' },
+                ],
+            },
+        ],
+    },
+    {
+        id: 'businessInfo',
+        title: 'Business Information',
+        // Shown only to owner-operators and lease-operators, so for a company
+        // driver the whole section is absent rather than six blank rows claiming
+        // a question they were never asked.
+        fields: [
+            { id: 'businessName', label: 'Business Name', presentWhenAnswered: true },
+            { id: 'ein', label: 'EIN / Business Number', presentWhenAnswered: true },
+            { id: 'businessStreet', label: 'Business Street Address', presentWhenAnswered: true },
+            { id: 'businessCity', label: 'Business City', presentWhenAnswered: true },
+            { id: 'businessState', label: 'Business State', presentWhenAnswered: true },
+            { id: 'businessZip', label: 'Business ZIP Code', presentWhenAnswered: true },
         ],
     },
     {
@@ -140,28 +300,30 @@ const STANDARD_SECTIONS = Object.freeze([
             { id: 'ec1Name', label: 'Emergency Contact #1 Name', gate: 'emergencyContacts' },
             { id: 'ec1Relationship', label: 'Emergency Contact #1 Relationship', gate: 'emergencyContacts' },
             { id: 'ec1Phone', label: 'Emergency Contact #1 Phone', gate: 'emergencyContacts' },
+            { id: 'ec1Address', label: 'Emergency Contact #1 Address', gate: 'emergencyContacts' },
             { id: 'ec2Name', label: 'Emergency Contact #2 Name', gate: 'emergencyContacts' },
             { id: 'ec2Relationship', label: 'Emergency Contact #2 Relationship', gate: 'emergencyContacts' },
             { id: 'ec2Phone', label: 'Emergency Contact #2 Phone', gate: 'emergencyContacts' },
+            { id: 'ec2Address', label: 'Emergency Contact #2 Address', gate: 'emergencyContacts' },
             { id: 'has-felony', label: 'Felony Conviction' },
             { id: 'felonyExplanation', label: 'Felony Explanation', dependsOn: { field: 'has-felony', equals: 'yes' } },
-            { id: 'ein', label: 'EIN / Business Number' },
-            { id: 'businessName', label: 'Business Name' },
             { id: 'driverInitials', label: 'Driver Initials' },
         ],
     },
     {
         id: 'documents',
-        title: 'Required Documents',
+        title: 'Uploaded Documents',
         fields: [
             { id: 'cdl-front', label: 'CDL (Front)', gate: 'cdlUpload', type: 'file' },
             { id: 'cdl-back', label: 'CDL (Back)', gate: 'cdlUpload', type: 'file' },
             { id: 'medical-card-upload', label: 'Medical Card', gate: 'medCardUpload', type: 'file' },
             { id: 'mvr-consent-upload', label: 'MVR Consent Form', gate: 'mvrConsent', type: 'file' },
-            { id: 'twic-card-upload', label: 'TWIC Card', type: 'file' },
-            { id: 'mvr-upload', label: 'MVR Report', type: 'file' },
-            { id: 'drug-test-consent-upload', label: 'Drug Test Consent', type: 'file' },
-            { id: 'ssc-upload', label: 'Social Security Card', type: 'file', sensitive: true },
+            // Never requested by the wizard; they arrive later, through the DQ
+            // file, so they appear only when one is actually on the record.
+            { id: 'twic-card-upload', label: 'TWIC Card', type: 'file', presentWhenAnswered: true },
+            { id: 'mvr-upload', label: 'MVR Report', type: 'file', presentWhenAnswered: true },
+            { id: 'drug-test-consent-upload', label: 'Drug Test Consent', type: 'file', presentWhenAnswered: true },
+            { id: 'ssc-upload', label: 'Social Security Card', type: 'file', sensitive: true, presentWhenAnswered: true },
         ],
     },
 ]);
@@ -384,7 +546,17 @@ function buildApplicationDefinition({ company, agreementVersion = CURRENT_AGREEM
                 label: field.label,
                 type: field.type || 'text',
                 repeating: Boolean(field.repeating),
+                // Frozen with the definition so a preserved record can lay out a
+                // row's cells with the labels that were in force at the time.
+                columns: Array.isArray(field.columns)
+                    ? field.columns.map((column) => ({
+                        id: column.id,
+                        label: column.label,
+                        type: column.type || 'text',
+                    }))
+                    : null,
                 sensitive: Boolean(field.sensitive),
+                presentWhenAnswered: Boolean(field.presentWhenAnswered),
                 dependsOn: field.dependsOn || null,
                 gate: field.gate || null,
                 required: gate.required,
