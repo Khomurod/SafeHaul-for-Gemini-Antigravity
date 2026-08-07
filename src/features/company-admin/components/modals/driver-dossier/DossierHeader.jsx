@@ -79,10 +79,17 @@ export function DossierHeader({
     const handleDownload = async () => {
         // `companyId` is stamped on every application document; the profile is a
         // fallback for the manual-entry records that predate that stamping.
+        //
+        // `applicationId` before `id`: useAppFetch assigns `docSnap.data()`
+        // without adding the Firestore document id, so `appData.id` is usually
+        // undefined on a guest application — relying on it made Download do
+        // nothing at all, silently. `buildApplicationDoc` writes `applicationId`
+        // into the document itself, so that is the identifier that is really there.
         const companyId = appData?.companyId || companyProfile?.id;
-        if (!companyId || !appData?.id) return;
+        const applicationId = appData?.applicationId || appData?.id || appData?.applicantId;
+        if (!companyId || !applicationId) return;
         try {
-            await downloadPreservedApplicationPdf({ companyId, applicationId: appData.id });
+            await downloadPreservedApplicationPdf({ companyId, applicationId });
         } catch (error) {
             // A dossier header has no toast of its own; the same download is
             // available from the application view, which reports failures. What

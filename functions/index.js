@@ -118,6 +118,9 @@ exports.createPostApplicationSigningRequest = require('./postApplicationEdocs').
 // Deliberately separate from parseCdlWithGroq (public guest path, different model pin).
 exports.analyzeEdocFieldPlacement = require('./edocFieldPlacement').analyzeEdocFieldPlacement;
 exports.backfillApplicationSearchFields = require('./searchFieldsBackfill').backfillApplicationSearchFields;
+// Gives applications submitted before preservation a preserved record and PDF,
+// built only from evidence that survives, and marked as reconstructed.
+exports.reconstructHistoricalApplications = require('./reconstructHistoricalApplications').reconstructHistoricalApplications;
 
 // 4d. Sandbox applications (Super Admin maintenance)
 const sandboxApplication = require('./sandboxApplication');

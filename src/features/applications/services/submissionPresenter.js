@@ -131,8 +131,16 @@ export function describeAgreementEvidence(agreement) {
         ? 'accepted'
         : (agreement.evidenceRecorded ? 'declined' : 'unrecorded');
 
+    // A historical record can evidence that the applicant certified the whole set
+    // with one action, but not that they accepted this agreement on its own.
+    // Saying "accepted and signed" there would overclaim; saying "not accepted"
+    // would be false. The distinction is stated instead.
+    const combined = agreement.acceptanceScope === 'combined';
+
     const summary = {
-        accepted: 'Accepted and signed by the applicant',
+        accepted: combined
+            ? 'Certified as part of a single combined acknowledgement'
+            : 'Accepted and signed by the applicant',
         declined: 'The applicant did not accept this agreement',
         unrecorded: 'No acceptance was recorded for this agreement',
     }[status];
@@ -145,6 +153,8 @@ export function describeAgreementEvidence(agreement) {
         status,
         summary,
         acceptedAt: agreement.acceptedAt || null,
+        acceptanceScope: agreement.acceptanceScope || null,
+        acceptedIndividually: status === 'accepted' && !combined,
         // Only ever true where this agreement itself carries acceptance evidence.
         hasSignature: Boolean(agreement.signature && agreement.signature.present),
         signatureType: agreement.signature?.type || null,

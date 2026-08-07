@@ -462,8 +462,20 @@ function drawAgreement(doc, agreement, { signatureImage, applicantName, index, t
         return;
     }
 
-    doc.line('ACCEPTED AND SIGNED', { size: TYPE.LABEL, font: doc.font.bold, color: INK.MUTED });
+    const combined = agreement.acceptanceScope === 'combined';
+    doc.line(combined ? 'CERTIFIED AS PART OF A COMBINED ACKNOWLEDGEMENT' : 'ACCEPTED AND SIGNED', {
+        size: TYPE.LABEL, font: doc.font.bold, color: INK.MUTED,
+    });
     doc.moveDown(4);
+    if (combined) {
+        // Recording this as an individual acceptance would overclaim; recording
+        // it as a refusal would be false. Say exactly what the evidence supports.
+        doc.note(
+            'The applicant certified the agreements as a set with one action. Individual '
+            + 'acceptance of this agreement was not captured at the time.',
+        );
+        doc.moveDown(2);
+    }
 
     const hasBitmap = Boolean(signatureImage && agreement.signature && agreement.signature.present);
     if (hasBitmap) {

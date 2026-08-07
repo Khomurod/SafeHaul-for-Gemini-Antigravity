@@ -17,6 +17,8 @@ jest.mock('firebase-admin/firestore', () => ({
 const mockState = {
   applications: {},   // path -> data
   snapshots: {},      // path -> data
+  dqFiles: {},        // path -> data
+  storedPdfs: {},     // storage path -> { buffer, options }
   publicProfile: null,
   createShouldFail: null,
 };
@@ -46,6 +48,14 @@ function mockApplicationDoc(companyId, applicationId) {
       }),
       doc: (seq) => {
         const path = `${appPath}/${name}/${seq}`;
+        if (name === 'dq_files') {
+          return {
+            async set(data, options) {
+              const base = options && options.merge ? (mockState.dqFiles[path] || {}) : {};
+              mockState.dqFiles[path] = { ...base, ...data };
+            },
+          };
+        }
         return {
           async create(data) {
             if (mockState.createShouldFail) throw mockState.createShouldFail;
@@ -66,6 +76,21 @@ function mockApplicationDoc(companyId, applicationId) {
 }
 
 jest.mock('../../firebaseAdmin', () => ({
+  admin: { firestore: { FieldValue: { serverTimestamp: () => ({ __srv: true }) } } },
+  storage: {
+    bucket: () => ({
+      file: (path) => ({
+        exists: async () => [path in mockState.storedPdfs],
+        getMetadata: async () => [mockState.storedPdfs[path]?.options?.metadata || {}],
+        save: async (buffer, options) => {
+          if (options?.preconditionOpts?.ifGenerationMatch === 0 && path in mockState.storedPdfs) {
+            const error = new Error('precondition failed'); error.code = 412; throw error;
+          }
+          mockState.storedPdfs[path] = { buffer, options };
+        },
+      }),
+    }),
+  },
   db: {
     collection: (col) => {
       if (col === 'public_profiles') {
@@ -125,6 +150,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockState.applications = {};
   mockState.snapshots = {};
+  mockState.dqFiles = {};
+  mockState.storedPdfs = {};
   mockState.publicProfile = null;
   mockState.createShouldFail = null;
 });
@@ -422,5 +449,79 @@ describe('every submission states whether it was preserved', () => {
     await submitGuestApplication(payload(attempt), ctx);
     await submitGuestApplication(payload(attempt), ctx);
     expect(applicationDoc().submissionRecord.deduplicated).toBe(true);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// The preserved PDF must describe the record that was actually STORED.
+// ---------------------------------------------------------------------------
+
+describe('preserving the application PDF at submission', () => {
+  const submit = (formData = {}) => submitGuestApplication(payload(formData), { rawRequest: { ip: '203.0.113.9' } });
+  const applicationDoc = () => Object.values(mockState.applications)[0];
+
+  it('stores an original alongside the snapshot, and files it as a DQ document', async () => {
+    await submit();
+
+    const paths = Object.keys(mockState.storedPdfs);
+    expect(paths).toHaveLength(1);
+    expect(paths[0]).toMatch(/^application_originals\/co1\/.+\/v1\.pdf$/);
+    expect(mockState.storedPdfs[paths[0]].buffer.length).toBeGreaterThan(1000);
+
+    const dq = Object.values(mockState.dqFiles);
+    expect(dq).toHaveLength(1);
+    expect(dq[0].fileType).toBe('Application for Employment');
+    expect(dq[0].url).toBeNull();
+    expect(dq[0].requiresAuditedAccess).toBe(true);
+
+    expect(applicationDoc().submissionRecord.pdfPreserved).toBe(true);
+  });
+
+  it('renders a redelivery from the STORED snapshot, not a freshly rebuilt one', async () => {
+    // The redelivery arrives with the same attempt id, so the snapshot writer
+    // returns the existing record. Rendering the in-memory rebuild would stamp a
+    // different submission time — and could pick up company or question changes
+    // made since — so the preserved PDF would not be the application it claims
+    // to represent.
+    await submit({ submissionAttemptId: 'attempt-1' });
+    const storedPath = Object.keys(mockState.storedPdfs)[0];
+    const firstBytes = mockState.storedPdfs[storedPath].buffer;
+
+    // Between the two deliveries the company renames itself. The stored record
+    // still says what it said.
+    mockState.publicProfile = {
+      companyName: 'Renamed Carrier LLC',
+      applicationConfig: {
+        cdlUpload: { hidden: false, required: false },
+        medCardUpload: { hidden: false, required: false },
+      },
+      customQuestions: [],
+    };
+
+    await submit({ submissionAttemptId: 'attempt-1' });
+
+    expect(Object.keys(mockState.storedPdfs)).toHaveLength(1);
+    expect(mockState.storedPdfs[storedPath].buffer).toBe(firstBytes);
+    // One preserved record, one preserved document, no second "original".
+    expect(Object.keys(mockState.snapshots)).toHaveLength(1);
+  });
+
+  it('keeps the application when preserving the PDF fails', async () => {
+    const bucket = require('../../firebaseAdmin').storage.bucket;
+    const spy = jest.spyOn(require('../../firebaseAdmin').storage, 'bucket').mockImplementation(() => ({
+      file: () => ({
+        exists: async () => [false],
+        save: async () => { throw new Error('storage unavailable'); },
+      }),
+    }));
+
+    const result = await submit();
+
+    expect(result.applicationId).toBeTruthy();
+    expect(applicationDoc().submissionRecord.status).toBe('recorded');
+    expect(applicationDoc().submissionRecord.pdfPreserved).toBe(false);
+    spy.mockRestore();
+    expect(typeof bucket).toBe('function');
   });
 });

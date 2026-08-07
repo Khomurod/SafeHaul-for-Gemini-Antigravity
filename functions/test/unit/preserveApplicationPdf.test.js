@@ -27,18 +27,41 @@ function makeSnapshot(over = {}) {
     });
 }
 
-/** Storage double: records saves and reports existence honestly. */
+/**
+ * Storage double.
+ *
+ * Models the one behaviour the immutability guarantee rests on: `save` with
+ * `ifGenerationMatch: 0` is create-only, and a second writer gets a 412 rather
+ * than replacing the object — which is exactly what Cloud Storage does.
+ */
 function makeStorage() {
     const objects = new Map();
     const saves = [];
+    /** Runs between the existence check and the save, to model a racing writer. */
+    const interference = { hook: null };
+
     return {
         __objects: objects,
         __saves: saves,
+        __interference: interference,
         bucket: () => ({
             file: (path) => ({
-                exists: async () => [objects.has(path)],
+                exists: async () => {
+                    const answer = [objects.has(path)];
+                    if (interference.hook) {
+                        const hook = interference.hook;
+                        interference.hook = null;
+                        hook(path);
+                    }
+                    return answer;
+                },
                 getMetadata: async () => [objects.get(path)?.options?.metadata || {}],
                 save: async (buffer, options) => {
+                    if (options?.preconditionOpts?.ifGenerationMatch === 0 && objects.has(path)) {
+                        const error = new Error('At least one of the pre-conditions you specified did not hold.');
+                        error.code = 412;
+                        throw error;
+                    }
                     saves.push({ path, size: buffer.length });
                     objects.set(path, { buffer, options });
                 },
@@ -179,6 +202,52 @@ describe('preserving the original application PDF', () => {
         expect(stored.options.metadata.metadata.safehaulContainsFullSsn).toBe('true');
         // Metadata carries no SSN of its own.
         expect(JSON.stringify(stored.options.metadata)).not.toMatch(/412-?88-?7391/);
+    });
+
+    it('will not let a racing writer replace an original that already landed', async () => {
+        // `exists()` then `save()` is not atomic. Two redeliveries can both see
+        // no object; without a create-only precondition the later save replaces
+        // the earlier, and since each render stamps its own generation time the
+        // "immutable" original would silently become different bytes.
+        const db = makeDb();
+        const storage = makeStorage();
+
+        // Another writer lands the object between our check and our save.
+        storage.__interference.hook = (path) => {
+            storage.__objects.set(path, {
+                buffer: Buffer.from('the original that won the race'),
+                options: { metadata: { metadata: { safehaulFileName: 'winner.pdf', safehaulApplicant: 'Marcus Delgado' } } },
+            });
+        };
+
+        const result = await preserve(db, storage);
+
+        expect(result.alreadyExisted).toBe(true);
+        expect(result.fileName).toBe('winner.pdf');
+        expect(storage.__saves).toHaveLength(0);
+        expect(storage.__objects.get(`application_originals/${COMPANY_ID}/${APPLICATION_ID}/v1.pdf`).buffer.toString())
+            .toBe('the original that won the race');
+    });
+
+    it('repairs a missing DQ entry when the object is already there', async () => {
+        // If save() succeeded but the DQ write did not — a crash between them, a
+        // transient Firestore failure — an early return left the preserved
+        // original absent from the Documents tab forever, while the caller was
+        // told it had been preserved.
+        const db = makeDb();
+        const storage = makeStorage();
+        await preserve(db, storage);
+
+        const dqPath = `companies/${COMPANY_ID}/applications/${APPLICATION_ID}/dq_files/${dqFileIdFor('v1')}`;
+        db.__docs.delete(dqPath);
+
+        const second = await preserve(db, storage);
+
+        expect(second.alreadyExisted).toBe(true);
+        expect(db.__docs.get(dqPath)).toBeTruthy();
+        expect(db.__docs.get(dqPath).fileType).toBe('Application for Employment');
+        // And still exactly one stored object.
+        expect(storage.__saves).toHaveLength(1);
     });
 
     it('refuses to run without the arguments that bind it to one tenant', async () => {

@@ -271,6 +271,19 @@ function buildAgreementRecords({ definition, acceptances = {}, signature = null 
         const evidence = given[declaredAgreement.id];
         const accepted = Boolean(evidence && evidence.accepted === true);
         const acceptedAt = accepted ? (clean(evidence.acceptedAt) || null) : null;
+        /**
+         * HOW acceptance was given, not merely whether.
+         *
+         * `individual` — this agreement was accepted on its own, which is what a
+         * live submission records.
+         * `combined` — the applicant certified the set with one action, which is
+         * all a historical application can evidence. Recording it as `individual`
+         * would overclaim; recording it as "not accepted" would be false, because
+         * they did certify. Consumers state the distinction in words.
+         */
+        const acceptanceScope = accepted
+            ? (clean(evidence.scope) === 'combined' ? 'combined' : 'individual')
+            : null;
 
         return {
             id: resolved.id,
@@ -282,6 +295,7 @@ function buildAgreementRecords({ definition, acceptances = {}, signature = null 
             requiresSignature: resolved.requiresSignature,
             accepted,
             acceptedAt,
+            acceptanceScope,
             evidenceRecorded: Boolean(evidence),
             acceptanceContext: accepted
                 ? {

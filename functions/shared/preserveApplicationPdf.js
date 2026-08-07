@@ -65,6 +65,55 @@ function dqFileIdFor(snapshotId) {
     return `application-pdf-${snapshotId}`;
 }
 
+/** GCS refuses a create-only write on an existing object with 412. */
+function isPreconditionFailure(error) {
+    return error?.code === 412 || /precondition/i.test(String(error?.message || ''));
+}
+
+/**
+ * File the document in the Documents model SafeHaul already has.
+ *
+ * Written on BOTH paths — after a fresh save and when the object already
+ * existed. If `save()` succeeded but this write did not (a crash between the
+ * two, a transient Firestore failure), the next run must repair it; an early
+ * return on the existing-object path left the preserved original absent from
+ * the DQ tab forever, while the caller was told it had been preserved.
+ *
+ * Idempotent: a deterministic document id and a merge, so repeating it is a
+ * no-op rather than a duplicate row.
+ */
+async function writeDqFileEntry({
+    db, companyId, applicationId, snapshotId, sequence, storagePath, fileName, ownerIds, serverTimestamp,
+}) {
+    await db
+        .collection('companies').doc(companyId)
+        .collection('applications').doc(applicationId)
+        .collection('dq_files').doc(dqFileIdFor(snapshotId))
+        .set({
+            // `fileType` / `fileName` are the field names the DQ tab reads.
+            // Writing the document in the shape the existing Documents model
+            // already uses is the point: this is not a parallel store.
+            fileType: DQ_FILE_TYPE,
+            fileName,
+            storagePath,
+            // No durable link, deliberately: the file is served only by the
+            // audited callable, so a `url` here would be an unaudited way in.
+            url: null,
+            source: 'preserved_submission',
+            snapshotId,
+            sequence,
+            isOriginal: Number(sequence) === 1,
+            requiresAuditedAccess: true,
+            containsFullSsn: true,
+            companyId,
+            applicationId,
+            applicantId: ownerIds.applicantId || applicationId,
+            driverId: ownerIds.driverId || applicationId,
+            ownerUserIds: [ownerIds.driverId || ownerIds.applicantId || applicationId],
+            createdAt: serverTimestamp,
+        }, { merge: true });
+}
+
 /**
  * Render, store and file the preserved application PDF.
  *
@@ -108,22 +157,30 @@ async function preserveApplicationPdf({
     const bucket = storage.bucket();
     const file = bucket.file(storagePath);
 
-    const [exists] = await file.exists();
-    if (exists) {
+    /** Adopt an object that is already there, repairing its DQ entry. */
+    const adoptExisting = async () => {
         const [metadata] = await file.getMetadata();
-        console.log(`[${logLabel}] Original PDF already preserved at ${storagePath}; leaving it untouched`);
+        const fileName = metadata?.metadata?.safehaulFileName || originalPdfFilename({
+            applicantName: metadata?.metadata?.safehaulApplicant,
+            submittedAt: snapshot?.submittedAt,
+            sequence,
+        });
+        await writeDqFileEntry({
+            db, companyId, applicationId, snapshotId, sequence, storagePath, fileName,
+            ownerIds, serverTimestamp,
+        });
+        console.log(`[${logLabel}] Original PDF already preserved at ${storagePath}; left untouched`);
         return {
             storagePath,
-            fileName: metadata?.metadata?.safehaulFileName || originalPdfFilename({
-                applicantName: metadata?.metadata?.safehaulApplicant,
-                submittedAt: snapshot?.submittedAt,
-                sequence,
-            }),
+            fileName,
             pageCount: Number(metadata?.metadata?.safehaulPageCount) || null,
             applicantName: metadata?.metadata?.safehaulApplicant || null,
             alreadyExisted: true,
         };
-    }
+    };
+
+    const [exists] = await file.exists();
+    if (exists) return adoptExisting();
 
     // The stored original is the AUTHORIZED original: it carries the full SSN.
     // Every path that serves it authorizes the caller and audits the access.
@@ -141,63 +198,43 @@ async function preserveApplicationPdf({
         sequence,
     });
 
-    await file.save(Buffer.from(bytes), {
-        resumable: false,
-        contentType: 'application/pdf',
-        metadata: {
+    try {
+        await file.save(Buffer.from(bytes), {
+            resumable: false,
             contentType: 'application/pdf',
-            // Custom metadata carries nothing sensitive: a name, a page count and
-            // the tenant binding. Never the SSN, and never a signed URL.
+            // Create-only. `exists()` then `save()` is not atomic: two redeliveries
+            // can both see no object and both write, and Cloud Storage lets the
+            // later one replace the earlier. Since each render stamps its own
+            // `generatedAt`, that would silently swap the immutable original for
+            // different bytes. `ifGenerationMatch: 0` makes the second writer fail.
+            preconditionOpts: { ifGenerationMatch: 0 },
             metadata: {
-                safehaulCompanyId: companyId,
-                safehaulApplicationId: applicationId,
-                safehaulSnapshotId: snapshotId,
-                safehaulSequence: String(sequence),
-                safehaulApplicant: applicantName,
-                safehaulPageCount: String(pageCount),
-                safehaulFileName: fileName,
-                safehaulContainsFullSsn: 'true',
+                contentType: 'application/pdf',
+                // Custom metadata carries nothing sensitive: a name, a page count and
+                // the tenant binding. Never the SSN, and never a signed URL.
+                metadata: {
+                    safehaulCompanyId: companyId,
+                    safehaulApplicationId: applicationId,
+                    safehaulSnapshotId: snapshotId,
+                    safehaulSequence: String(sequence),
+                    safehaulApplicant: applicantName,
+                    safehaulPageCount: String(pageCount),
+                    safehaulFileName: fileName,
+                    safehaulContainsFullSsn: 'true',
+                },
             },
-        },
+        });
+    } catch (error) {
+        // The other writer won the race. Its object IS the original; ours is
+        // discarded. That is the correct outcome, not a failure.
+        if (!isPreconditionFailure(error)) throw error;
+        return adoptExisting();
+    }
+
+    await writeDqFileEntry({
+        db, companyId, applicationId, snapshotId, sequence, storagePath, fileName,
+        ownerIds, serverTimestamp,
     });
-
-    // File it in the Documents model SafeHaul already has, under the DQ type
-    // that already exists for exactly this document, rather than inventing a
-    // parallel store. `url` is deliberately absent: this file is never served by
-    // a durable link, only by the audited callable.
-    const dqRef = db
-        .collection('companies').doc(companyId)
-        .collection('applications').doc(applicationId)
-        .collection('dq_files').doc(dqFileIdFor(snapshotId));
-
-    await dqRef.set({
-        // `fileType` / `fileName` are the field names the DQ tab reads. Writing
-        // the document in the shape the existing Documents model already uses is
-        // the point: this is not a parallel store, it is an entry in the one
-        // SafeHaul has, under the DQ type that already exists for it.
-        fileType: DQ_FILE_TYPE,
-        fileName,
-        storagePath,
-        // No durable link, deliberately: the file is served only by the audited
-        // callable, so a `url` here would be an unaudited way in.
-        url: null,
-        source: 'preserved_submission',
-        snapshotId,
-        sequence,
-        isOriginal: Number(sequence) === 1,
-        // Sensitive originals are fetched through getApplicationOriginalPdfUrl,
-        // which authorizes and audits. A viewer must not try a direct link.
-        requiresAuditedAccess: true,
-        containsFullSsn: true,
-        companyId,
-        applicationId,
-        applicantId: ownerIds.applicantId || applicationId,
-        driverId: ownerIds.driverId || applicationId,
-        // Same owner list the DQ tab writes, so the Firestore read rule can
-        // identify the driver for their own document.
-        ownerUserIds: [ownerIds.driverId || ownerIds.applicantId || applicationId],
-        createdAt: serverTimestamp,
-    }, { merge: true });
 
     console.log(
         `[${logLabel}] Preserved original application PDF (${pageCount} pages) at ${storagePath}`,

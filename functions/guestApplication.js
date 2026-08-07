@@ -188,11 +188,30 @@ exports.submitGuestApplication = functions
                     logLabel: 'submitGuestApplication',
                 });
 
-                // Render and preserve the official PDF from the record we have
-                // just frozen. Separately best-effort: a storage hiccup must not
-                // cost the driver their application, and the PDF can be rebuilt
-                // from the snapshot later, byte-identically, because the snapshot
-                // is the only input.
+                // Render and preserve the official PDF from the record that was
+                // actually stored — which is not always the one just built.
+                //
+                // A redelivery (a browser retry, an offline replay) is recognised
+                // by its attempt id and returns the EXISTING snapshot. Rendering
+                // the freshly rebuilt in-memory one would stamp a different
+                // submission and signature time, and could pick up company or
+                // question changes made since, so the preserved PDF would not be
+                // the application it claims to represent. Reading the frozen
+                // document back is what makes them the same thing.
+                let sourceSnapshot = snapshot;
+                if (submissionSnapshot.deduplicated) {
+                    const storedSnap = await db
+                        .collection('companies').doc(companyId)
+                        .collection('applications').doc(result.applicationId)
+                        .collection('submission').doc(submissionSnapshot.snapshotId)
+                        .get();
+                    if (storedSnap.exists) sourceSnapshot = storedSnap.data();
+                }
+
+                // Separately best-effort: a storage hiccup must not cost the
+                // driver their application, and the PDF can be rebuilt from the
+                // snapshot later, byte-identically, because the snapshot is the
+                // only input.
                 let preservedPdf = null;
                 try {
                     preservedPdf = await preserveApplicationPdf({
@@ -201,7 +220,7 @@ exports.submitGuestApplication = functions
                         serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
                         companyId,
                         applicationId: result.applicationId,
-                        snapshot,
+                        snapshot: sourceSnapshot,
                         snapshotId: submissionSnapshot.snapshotId,
                         sequence: submissionSnapshot.sequence,
                         signatureImage: signature,
