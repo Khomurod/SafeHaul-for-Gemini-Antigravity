@@ -343,3 +343,48 @@ describe('layout primitives', () => {
         expect(singularize('Military Service')).toBe('Military Service');
     });
 });
+
+describe('a record written before columns existed', () => {
+    /** The snapshot shape from between the first snapshot release and columns. */
+    const withoutColumns = (snapshot) => {
+        const legacy = JSON.parse(JSON.stringify(snapshot));
+        for (const section of legacy.sections) {
+            for (const answer of section.answers) {
+                if (answer.repeating && Array.isArray(answer.value) && answer.value.length) {
+                    answer.rows = null;
+                }
+            }
+        }
+        return legacy;
+    };
+
+    it('still shows the applicant\'s records rather than dropping them', async () => {
+        // Rendering `rows` alone would say "None recorded" for an applicant who
+        // listed employers — silently dropping submitted data.
+        const { snapshot } = await render();
+        const legacy = withoutColumns(snapshot);
+        const { bytes } = await renderApplicationPdf({ snapshot: legacy, generatedAt: SUBMITTED_AT });
+        const text = await extractText(bytes);
+
+        expect(text).toMatch(/Lone Star Logistics/);
+        expect(text).toMatch(/OTR Driver/);
+    });
+
+    it('says the layout uses current field names rather than implying they were frozen', async () => {
+        const { snapshot } = await render();
+        const { bytes } = await renderApplicationPdf({ snapshot: withoutColumns(snapshot), generatedAt: SUBMITTED_AT });
+        const text = await extractText(bytes);
+
+        expect(text).toMatch(/predates stored field names/);
+        expect(text).toMatch(/answers are unchanged/);
+    });
+
+    it('still prints no internal key from such a record', async () => {
+        const { snapshot } = await render();
+        const { bytes } = await renderApplicationPdf({ snapshot: withoutColumns(snapshot), generatedAt: SUBMITTED_AT });
+        const text = await extractText(bytes);
+
+        expect(text).not.toMatch(/draft-7712-internal/);
+        expect(text).not.toMatch(/\[object Object\]/);
+    });
+});

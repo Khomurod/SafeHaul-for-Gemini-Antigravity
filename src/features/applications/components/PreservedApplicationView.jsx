@@ -172,6 +172,13 @@ export function PreservedApplicationView({ record }) {
                     {section.answers.filter((answer) => answer.repeating).map((answer) => (
                         <div key={answer.key} className="mt-ds-4 border-t border-ds-border-subtle pt-ds-4">
                             <h5 className="mb-ds-2 text-ds-sm font-semibold text-ds-content">{answer.label}</h5>
+                            {answer.usedCurrentColumns && (
+                                <p className={`mb-ds-2 text-ds-xs ${NOT_PROVIDED_TONE}`}>
+                                    This record predates stored field names, so these entries are laid
+                                    out under the application&rsquo;s current ones. The
+                                    applicant&rsquo;s answers are unchanged.
+                                </p>
+                            )}
                             <RecordRows answer={answer} />
                         </div>
                     ))}

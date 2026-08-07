@@ -20,8 +20,44 @@
 //
 // Pure and framework-free so it can be unit tested and reused by any renderer.
 
+import STANDARD_SECTIONS from '../../../../functions/shared/applicationSections.json';
+import { buildRepeatingRows } from '@/config/applicationDefinition';
+
 /** Shown when a field was presented but left empty. */
 export const NOT_PROVIDED = 'Not provided';
+
+/** Every repeating field's current columns, by field id. */
+const CURRENT_COLUMNS = new Map(
+    STANDARD_SECTIONS
+        .flatMap((section) => section.fields)
+        .filter((field) => field.repeating && Array.isArray(field.columns))
+        .map((field) => [field.id, field.columns]),
+);
+
+/**
+ * The rows to render for one repeating answer.
+ *
+ * A snapshot written before columns were declared holds its records as raw
+ * objects in `value` and has no `rows`. Showing only `rows` would say "None
+ * recorded" for an applicant who listed three employers — silently dropping
+ * submitted data, which is the one thing no renderer here may do.
+ *
+ * The fallback lays those records out under the field's CURRENT column names and
+ * flags it, so a screen can say the labels are today's rather than the ones the
+ * record froze. Showing the driver's employers under current field names,
+ * labelled as such, is honest; dropping them is not.
+ */
+function resolveRows(answer) {
+    if (Array.isArray(answer?.rows) && answer.rows.length > 0) {
+        return { rows: answer.rows, usedCurrentColumns: false };
+    }
+    if (!Array.isArray(answer?.value) || answer.value.length === 0) {
+        return { rows: [], usedCurrentColumns: false };
+    }
+    const columns = CURRENT_COLUMNS.get(answer.fieldId);
+    if (!columns) return { rows: [], usedCurrentColumns: false };
+    return { rows: buildRepeatingRows(answer.value, columns), usedCurrentColumns: true };
+}
 
 /** Shown when a custom question's wording was never recorded. */
 export const WORDING_UNAVAILABLE = 'Question wording not recorded';
@@ -75,7 +111,7 @@ export function toDisplayAnswer(answer) {
          * legitimately shows the group as having nothing to display rather than
          * printing raw objects.
          */
-        rows: answer.repeating && Array.isArray(answer.rows) ? answer.rows : [],
+        ...(answer.repeating ? resolveRows(answer) : { rows: [], usedCurrentColumns: false }),
         rawValue: answer.repeating ? answer.value : undefined,
     };
 }

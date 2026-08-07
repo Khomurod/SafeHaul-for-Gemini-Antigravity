@@ -35,7 +35,7 @@
 //      the renderer, driven by the `sensitive` flag.
 
 const { resolveAgreement } = require('./legalAgreements');
-const { visibleFields } = require('./applicationDefinition');
+const { STANDARD_SECTIONS, visibleFields } = require('./applicationDefinition');
 const { computeEmploymentCoverage } = require('./employmentCoverage');
 
 const SNAPSHOT_SCHEMA_VERSION = 1;
@@ -134,6 +134,45 @@ function buildRepeatingRows(value, columns) {
                 .filter((cell) => cell.displayValue !== null);
         })
         .filter((cells) => cells.length > 0);
+}
+
+/**
+ * The rows to render for one repeating answer.
+ *
+ * A snapshot written before columns were declared holds its records as raw
+ * objects in `value` and has no `rows`. Rendering only `rows` would show
+ * "None recorded" for an applicant who listed three employers — silently
+ * dropping submitted data, which is the one thing no renderer here may do.
+ *
+ * So the fallback lays those records out using the field's CURRENT column list,
+ * and says so with `usedCurrentColumns`. Consumers state that, because the
+ * labels are today's wording rather than wording the record froze. Showing the
+ * driver's employers under current field names, labelled as such, is honest;
+ * dropping them is not.
+ */
+function resolveRepeatingRows(answer, currentColumnsById = null) {
+    if (Array.isArray(answer?.rows) && answer.rows.length > 0) {
+        return { rows: answer.rows, usedCurrentColumns: false };
+    }
+    if (!Array.isArray(answer?.value) || answer.value.length === 0) {
+        return { rows: [], usedCurrentColumns: false };
+    }
+    const columns = currentColumnsById && currentColumnsById.get
+        ? currentColumnsById.get(answer.fieldId)
+        : null;
+    if (!columns) return { rows: [], usedCurrentColumns: false };
+    return { rows: buildRepeatingRows(answer.value, columns), usedCurrentColumns: true };
+}
+
+/** Every repeating field's current columns, by field id. */
+function currentRepeatingColumns() {
+    const map = new Map();
+    for (const section of STANDARD_SECTIONS) {
+        for (const field of section.fields) {
+            if (field.repeating && Array.isArray(field.columns)) map.set(field.id, field.columns);
+        }
+    }
+    return map;
 }
 
 /** Was a conditional field actually shown to the driver? */
@@ -395,6 +434,8 @@ module.exports = {
     buildCustomAnswers,
     buildRepeatingRows,
     buildSections,
+    currentRepeatingColumns,
+    resolveRepeatingRows,
     buildSubmissionSnapshot,
     formatAnswerForDisplay,
     formatDateForDisplay,

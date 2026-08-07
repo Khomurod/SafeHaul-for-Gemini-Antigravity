@@ -38,6 +38,7 @@ const {
     MARGIN,
     TYPE,
 } = require('./documentBuilder');
+const { currentRepeatingColumns, resolveRepeatingRows } = require('../submissionSnapshot');
 
 /** Printed where a presented question was left blank. */
 const NOT_PROVIDED = 'Not provided';
@@ -250,7 +251,7 @@ function drawProvenance(doc, snapshot) {
 }
 
 /** One answer section: scalars in a grid, repeating groups as record blocks. */
-function drawSection(doc, section, { includeFullSsn }) {
+function drawSection(doc, section, { includeFullSsn, columnsById }) {
     const answers = (section.answers || []).filter((answer) => answer.presented !== false);
     if (answers.length === 0) return;
 
@@ -284,7 +285,7 @@ function drawSection(doc, section, { includeFullSsn }) {
     }
 
     for (const group of groups) {
-        const rows = Array.isArray(group.rows) ? group.rows : [];
+        const { rows, usedCurrentColumns } = resolveRepeatingRows(group, columnsById);
         // Keep the group label with its first record, measured rather than
         // guessed: a fifteen-field employer block is three times the height of a
         // four-field violation, and a fixed reserve orphans one or wastes a
@@ -296,6 +297,12 @@ function drawSection(doc, section, { includeFullSsn }) {
         if (rows.length === 0) {
             doc.note(NONE_RECORDED);
             continue;
+        }
+        if (usedCurrentColumns) {
+            doc.note(
+                'This record predates stored field names, so these entries are laid out under '
+                + 'the application\'s current ones. The applicant\'s answers are unchanged.',
+            );
         }
         const singular = singularize(group.label);
         rows.forEach((cells, index) => {
@@ -557,8 +564,9 @@ async function renderApplicationPdf({
     drawSubmissionBand(doc, snapshot, { sequence, isOriginal });
     drawProvenance(doc, snapshot);
 
+    const columnsById = currentRepeatingColumns();
     for (const section of snapshot.sections || []) {
-        drawSection(doc, section, { includeFullSsn });
+        drawSection(doc, section, { includeFullSsn, columnsById });
     }
 
     drawCoverage(doc, snapshot);
