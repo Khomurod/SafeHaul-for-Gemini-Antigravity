@@ -151,6 +151,9 @@ exports.migrateEmailSettings = require('./migrateEmailSettings').migrateEmailSet
 // 7. Data Migration
 exports.runMigration = companyAdmin.runMigration;
 exports.backfillPublicProfiles = companyAdmin.backfillPublicProfiles;
+// Hourly reconciler: rewrites public profiles left behind by a change to the
+// projection itself, which the onWrite trigger alone can never reach.
+exports.reconcilePublicProfilesSchedule = companyAdmin.reconcilePublicProfilesSchedule;
 
 
 
