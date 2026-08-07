@@ -123,9 +123,16 @@ export function ApplicationTab({ appData, fileUrls = {}, canEdit = false, compan
     const { record: submissionRecord, loading: recordLoading } = useSubmissionRecord(companyId, applicationId);
 
     const hasPreservedRecord = Boolean(submissionRecord?.isPreserved);
-    // Chosen once the record has resolved, and never afterwards, so a reader who
-    // has switched views does not get moved.
-    const resolvedViewMode = viewMode ?? (hasPreservedRecord ? 'submitted' : 'summary');
+    /**
+     * An explicit choice always wins, so a reader who has switched views is never
+     * moved. With no choice yet, the default assumes a preserved record WHILE THE
+     * READ IS STILL IN FLIGHT — otherwise the tab would open on live data and
+     * then swap to the frozen record a moment later, which is the one transition
+     * that must not happen quietly on this screen. It settles on the summary only
+     * once we know there is nothing preserved to show.
+     */
+    const resolvedViewMode = viewMode
+        ?? ((recordLoading || hasPreservedRecord) ? 'submitted' : 'summary');
 
     // DEFECT FIX: this used to `return null`, so an application that resolved to
     // nothing left the dossier's tab panel completely blank — no explanation and

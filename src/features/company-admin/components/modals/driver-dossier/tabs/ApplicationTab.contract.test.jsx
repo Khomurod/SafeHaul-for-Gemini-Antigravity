@@ -449,9 +449,13 @@ describe('ApplicationTab — which record it shows', () => {
     expect(screen.queryByText('***-**-6789')).toBeNull();
   });
 
-  it('announces the record while it is still loading', () => {
+  it('waits for the record rather than opening on live data and swapping', () => {
+    // Defaulting to the summary during the read would show the live document
+    // and then replace it with the frozen one — the one transition that must
+    // not happen quietly on this screen.
     renderTab(APP, { submissionRecord: { record: null, loading: true, error: null } });
-    fireEvent.click(screen.getByRole('button', { name: /As Submitted/i }));
+    expect(screen.getByRole('button', { name: /As Submitted/i })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/Loading the preserved record/i)).toBeInTheDocument();
+    expect(screen.queryByText('Maria Elena Garcia')).toBeNull();
   });
 });
