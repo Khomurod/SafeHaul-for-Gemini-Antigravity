@@ -1,3 +1,31 @@
+> # ⚠️ ARCHIVED / INACTIVE
+>
+> **SafeHaul's active source of truth is
+> [Khomurod/SafeHaul](https://github.com/Khomurod/SafeHaul).**
+>
+> This repository is preserved for historical reference only.
+> **Do not develop or deploy from this repository.**
+>
+> Its full history, branches, tags and pull requests are kept intact on purpose —
+> they are the record of how much of SafeHaul was built. Nothing has been deleted.
+>
+> SafeHaul now runs from one repository with two frontend release channels that
+> share one real Firebase backend:
+>
+> | Channel | Application | Updated by |
+> |---|---|---|
+> | Testing | `truckerapp-system.web.app` | every merge to `main` in `Khomurod/SafeHaul` |
+> | Production | `app.safehaul.io` | explicit promotion of a tested release |
+>
+> This repository used to deploy the Testing channel. The deploy jobs have been
+> removed from `.github/workflows/main.yml`, so it can no longer reach Firebase:
+> a push or a manual workflow run here would otherwise overwrite live Testing
+> with stale source and break the exact-release promotion used for production.
+>
+> The URLs are unchanged. Existing driver application links such as
+> `truckerapp-system.web.app/apply/<company>?r=<code>` keep working exactly as
+> before — this consolidation changed no route, slug or recruiter code.
+
 <p align="center">
   <h1 align="center">🚛 SafeHaul</h1>
   <p align="center">

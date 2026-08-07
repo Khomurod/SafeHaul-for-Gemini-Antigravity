@@ -245,171 +245,25 @@ jobs:
             storage-debug.log
             ui-debug.log
 
-  deploy-hosting:
-    name: Deploy Firebase Hosting and Production Rules
-    runs-on: ubuntu-latest
-    needs:
-      - secret-scan
-      - test-functions
-      - frontend-build
-      - frontend-quality
-      - storybook-build
-      - callable-contract
-      - rules-emulator
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
-    concurrency:
-      group: firebase-hosting-live
-      cancel-in-progress: true
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      FIREBASE_PROJECT_ID: truckerapp-system
-      FIREBASE_HOSTING_TARGET: ${{ github.repository == 'Khomurod/SafeHaul' && 'production' || 'testing' }}
-      FIREBASE_LANDING_TARGET: ${{ github.repository == 'Khomurod/SafeHaul' && 'landing-production' || 'landing-testing' }}
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v5
-        with:
-          node-version: 20.x
-          cache: 'npm'
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: projects/725898258453/locations/global/workloadIdentityPools/safehaul-github/providers/safehaul-github-provider
-          service_account: safehaul-github-deployer@truckerapp-system.iam.gserviceaccount.com
-          project_id: ${{ env.FIREBASE_PROJECT_ID }}
-
-      - name: Load browser settings from Google Secret Manager
-        id: browser-settings
-        uses: google-github-actions/get-secretmanager-secrets@v3
-        with:
-          secrets: |-
-            VITE_FACEBOOK_APP_ID:truckerapp-system/VITE_FACEBOOK_APP_ID
-            VITE_SENTRY_DSN:truckerapp-system/VITE_SENTRY_DSN
-            VITE_SOCRATA_APP_TOKEN:truckerapp-system/VITE_SOCRATA_APP_TOKEN
-
-      - name: Install Frontend Dependencies
-        run: npm ci
-
-      - name: Build Frontend
-        env:
-          VITE_RELEASE_SHA: ${{ github.sha }}
-          VITE_FACEBOOK_APP_ID: ${{ steps.browser-settings.outputs.VITE_FACEBOOK_APP_ID }}
-          VITE_SENTRY_DSN: ${{ steps.browser-settings.outputs.VITE_SENTRY_DSN }}
-          VITE_SOCRATA_APP_TOKEN: ${{ steps.browser-settings.outputs.VITE_SOCRATA_APP_TOKEN }}
-        run: npm run build
-
-      # E1: Never publish *.map files to Firebase Hosting (no public source disclosure).
-      # Runs unconditionally, after any upload and before deploy.
-      - name: Strip sourcemaps from deploy artifact
-        run: find dist -name '*.map' -delete
-
-      - name: Deploy app and landing-page Hosting sites
-        run: npx firebase deploy --only "hosting:$FIREBASE_HOSTING_TARGET,hosting:$FIREBASE_LANDING_TARGET" --project "$FIREBASE_PROJECT_ID" --non-interactive
-
-      # Rules + Storage first so an indexes IAM issue does not block rule rollouts.
-      #
-      # Production alone owns the shared rules and indexes. The test repository
-      # deploys only its Hosting target and can never alter backend access policy.
-      - name: Deploy Firestore rules and Storage rules
-        if: github.repository == 'Khomurod/SafeHaul'
-        run: npx firebase deploy --only firestore:rules,storage --project "$FIREBASE_PROJECT_ID" --non-interactive
-
-      - name: Deploy Firestore indexes
-        if: github.repository == 'Khomurod/SafeHaul'
-        run: npx firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT_ID" --non-interactive
-
-  deploy-functions:
-    name: Deploy Cloud Functions
-    runs-on: ubuntu-latest
-    needs:
-      - secret-scan
-      - test-functions
-      - frontend-build
-      - frontend-quality
-      - storybook-build
-      - callable-contract
-      - rules-emulator
-    if: github.repository == 'Khomurod/SafeHaul' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch')
-    concurrency:
-      group: firebase-functions-live
-      cancel-in-progress: true
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      FIREBASE_PROJECT_ID: truckerapp-system
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v5
-        with:
-          node-version: 20.x
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            functions/package-lock.json
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: projects/725898258453/locations/global/workloadIdentityPools/safehaul-github/providers/safehaul-github-provider
-          service_account: safehaul-github-deployer@truckerapp-system.iam.gserviceaccount.com
-          project_id: ${{ env.FIREBASE_PROJECT_ID }}
-
-      # Root lockfile pins firebase-tools; without this, npx downloads a random CLI each run.
-      - name: Install repo dependencies (Firebase CLI from package-lock)
-        run: npm ci
-
-      - name: Install Functions Dependencies
-        run: npm ci
-        working-directory: ./functions
-
-      # Legacy trigger removed from driverSync.js — Cloud still had it; deploy --non-interactive refuses to delete without confirmation.
-      # Safe to ignore failure once the function is already gone (continue-on-error).
-      - name: Delete retired function onLeadSubmitted (if present)
-        continue-on-error: true
-        run: npx firebase functions:delete onLeadSubmitted --region us-central1 --project "$FIREBASE_PROJECT_ID" --non-interactive --force
-
-      - name: Validate function export wiring parser
-        run: npm run check:function-exports
-
-      - name: Validate incremental deploy planner behavior
-        run: npm run check:deploy-script
-
-      # Incremental strict mode: deploy only changed/mapped runtime functions.
-      # Never auto-full-deploy; explicit full deploy requires DEPLOY_FUNCTIONS_FORCE_FULL=1.
-      - name: Deploy Cloud Functions (incremental or full)
-        env:
-          GITHUB_PUSH_BEFORE: ${{ github.event.before }}
-          GITHUB_SHA: ${{ github.sha }}
-          DEPLOY_FUNCTIONS_SLEEP_SEC: '0'
-          DEPLOY_FUNCTIONS_ALWAYS_INCLUDE: parseCdlWithGroq,analyzeEdocFieldPlacement,initBulkSession,processBulkBatch
-        run: |
-          max_attempts=3
-          attempt=1
-          while [ "$attempt" -le "$max_attempts" ]; do
-            echo "Deploy attempt $attempt/$max_attempts"
-            if node scripts/deploy-functions-incremental.mjs; then
-              exit 0
-            fi
-            if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "Deploy failed after $max_attempts attempts."
-              exit 1
-            fi
-            echo "Transient deploy failure; retrying in 20 seconds..."
-            sleep 20
-            attempt=$((attempt + 1))
-          done
-
-      - name: Post-deploy smoke check
-        run: node scripts/smoke-functions-deploy.mjs
+  # ---------------------------------------------------------------------------
+  # DEPLOYMENT REMOVED — THIS REPOSITORY IS ARCHIVED
+  # ---------------------------------------------------------------------------
+  #
+  # SafeHaul now develops and deploys from ONE repository: Khomurod/SafeHaul.
+  #
+  # This repository previously deployed the Testing channel
+  # (truckerapp-system.web.app and safehaul-landing-testing.web.app), because the
+  # old workflow chose its Hosting target from `github.repository`. Keeping those
+  # jobs here would be actively dangerous, not merely redundant: a push or a
+  # manual "Run workflow" would overwrite the live Testing channel with stale
+  # source, and would break the commit-to-Hosting-version mapping that
+  # Khomurod/SafeHaul's production promotion depends on to ship an exact tested
+  # release.
+  #
+  # So the `deploy-hosting` and `deploy-functions` jobs are deleted rather than
+  # disabled. They remain in this repository's git history for reference.
+  #
+  # The checks above still run, so this repository stays useful for reading and
+  # for verifying old commits. Nothing here can reach Firebase.
+  #
+  # To develop SafeHaul, use https://github.com/Khomurod/SafeHaul.
